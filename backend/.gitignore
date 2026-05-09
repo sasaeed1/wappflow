@@ -1,0 +1,9 @@
+node_modules/
+.env
+wappflow.db
+wappflow.db-shm
+wappflow.db-wal
+.wwebjs_auth/
+uploads/
+data/
+*.log
