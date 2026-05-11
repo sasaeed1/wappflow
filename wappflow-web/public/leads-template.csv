@@ -1,0 +1,6 @@
+customer_name,customer_phone,email,status,address,date_of_birth,lead_source,estimated_value
+John Smith,+15551234567,john@example.com,New,"123 Main St, Springfield",1985-04-12,WhatsApp,5000
+Maria Garcia,+15559876543,maria@example.com,Interested,"45 Oak Ave, Chicago",1990-08-30,Referral,12000
+Ahmed Khan,+923001234567,ahmed@example.com,New,"Lahore, Pakistan",1992-01-15,Instagram,8000
+Sarah Lee,+447700900123,sarah@example.com,Contacted,"London, UK",1988-11-05,Website,3500
+Carlos Mendez,+5215551234567,carlos@example.com,Negotiating,"Mexico City",1983-06-22,Cold Call,15000
