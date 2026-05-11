@@ -74,7 +74,8 @@
       "Bash(\\\\$\\\\{sc\\\\.bg\\\\}66)",
       "Bash(Remove-Item \"D:\\\\WAPPFLOW\\\\backend\\\\server_output.log\" -ErrorAction SilentlyContinue)",
       "Bash(Remove-Item \"D:\\\\WAPPFLOW\\\\backend\\\\server_test.log\" -ErrorAction SilentlyContinue)",
-      "Bash(Write-Host \"done\")"
+      "Bash(Write-Host \"done\")",
+      "Bash(npm run *)"
     ]
   }
 }

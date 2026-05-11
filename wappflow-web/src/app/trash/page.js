@@ -33,7 +33,7 @@ export default function TrashPage() {
   const fetchTrash = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/leads/trash', {
+      const response = await fetch(`${API_URL}/leads/trash`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

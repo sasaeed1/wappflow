@@ -7,3 +7,7 @@ wappflow.db-wal
 uploads/
 data/
 *.log
+node_modules
+.wwebjs_auth
+wappflow.db
+.env
