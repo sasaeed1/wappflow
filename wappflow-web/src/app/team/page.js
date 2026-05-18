@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { workspaceAPI, auditAPI } from '../../lib/api';
 import NavBar from '../../components/NavBar';
+import { useConfirm } from '@/lib/confirm';
 
 const ROLES = [
   { value: 'super_admin', label: 'Super Admin', color: '#f59e0b', icon: Crown,     desc: 'Full access · Workspace owner' },
@@ -77,6 +78,7 @@ function Toggle({ value, onChange, color = '#6366f1', disabled }) {
 
 // ── Invite Modal ─────────────────────────────────────────────
 function InviteModal({ onSave, onClose }) {
+  const confirm = useConfirm();
   const [form, setForm] = useState({ email: '', role: 'user', full_name: '' });
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
@@ -90,7 +92,7 @@ function InviteModal({ onSave, onClose }) {
       if (res?.invite_link) setResult(res);
       else onClose(true);
     } catch (e) {
-      alert(e.response?.data?.error || 'Failed to invite');
+      await confirm({ title: 'Could not invite', message: e.response?.data?.error || 'Failed to invite', alertOnly: true, tone: 'danger' });
     } finally { setSaving(false); }
   };
 
@@ -193,12 +195,14 @@ function InviteModal({ onSave, onClose }) {
 
 // ── Role Change Modal ─────────────────────────────────────────
 function RoleModal({ member, onSave, onClose }) {
+  const confirm = useConfirm();
   const [role, setRole] = useState(member.role);
   const [saving, setSaving] = useState(false);
   const handle = async () => {
     setSaving(true);
     try { await onSave(member.id, { role }); onClose(); }
-    catch (e) { alert(e.response?.data?.error || 'Failed'); } finally { setSaving(false); }
+    catch (e) { await confirm({ title: 'Failed to update role', message: e.response?.data?.error || 'Unknown error', alertOnly: true, tone: 'danger' }); }
+    finally { setSaving(false); }
   };
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
@@ -238,6 +242,7 @@ function RoleModal({ member, onSave, onClose }) {
 
 // ── Per-Member Permission Override Modal ─────────────────────
 function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
+  const confirm = useConfirm();
   const roleDefs = roleDefaults[member.role] || DEFAULTS[member.role] || {};
   const existingOverrides = member.permissions ? (typeof member.permissions === 'string' ? JSON.parse(member.permissions) : member.permissions) : null;
   const [hasOverride, setHasOverride] = useState(!!existingOverrides);
@@ -252,7 +257,8 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
     try {
       await onSave(member.id, { permissions: hasOverride ? local : null });
       onClose();
-    } catch (e) { alert(e.response?.data?.error || 'Failed'); } finally { setSaving(false); }
+    } catch (e) { await confirm({ title: 'Failed to update permissions', message: e.response?.data?.error || 'Unknown error', alertOnly: true, tone: 'danger' }); }
+    finally { setSaving(false); }
   };
 
   const addCustomPerm = () => {
@@ -447,6 +453,7 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
 // ── Main Page ─────────────────────────────────────────────────
 export default function TeamPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [workspace, setWorkspace] = useState(null);
   const [members, setMembers] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -517,7 +524,13 @@ export default function TeamPage() {
   };
 
   const handleRemove = async (id) => {
-    if (!confirm('Remove this member from the workspace?')) return;
+    const ok = await confirm({
+      title: 'Remove member?',
+      message: 'They will lose access to this workspace immediately. They can be re-invited later.',
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await workspaceAPI.removeMember(id);
       showToast('Member removed.');

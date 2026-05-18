@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, X, Minus, Maximize2, Send, Paperclip, Phone, ChevronDown, Smile, Search } from 'lucide-react';
 import { leadsAPI, BASE_URL, displayPhone } from '../lib/api';
+import { useConfirm } from '@/lib/confirm';
 
 const EMOJI_LIST = ['😊','😂','❤️','👍','👋','🙏','✅','🔥','🎉','💯','😎','🤝','💪','📞','💰','🚀'];
 
@@ -10,6 +11,7 @@ const EMOJI_LIST = ['😊','😂','❤️','👍','👋','🙏','✅','🔥','�
 const STORAGE_KEY = 'wf_floating_chat_lead';
 
 export default function FloatingChat() {
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [activeLead, setActiveLead] = useState(null);
@@ -119,7 +121,7 @@ export default function FloatingChat() {
     try {
       await leadsAPI.sendMessage(activeLead.id, text);
       await fetchMessages(activeLead.id);
-    } catch { alert('Failed to send — is WhatsApp connected?'); }
+    } catch { await confirm({ title: 'Send failed', message: 'Could not send the message. Is WhatsApp connected?', alertOnly: true, tone: 'danger' }); }
     finally { setSending(false); }
   };
 
@@ -131,7 +133,7 @@ export default function FloatingChat() {
       fd.append('file', file);
       await leadsAPI.sendMedia(activeLead.id, fd);
       await fetchMessages(activeLead.id);
-    } catch { alert('Failed to send file.'); }
+    } catch { await confirm({ title: 'Upload failed', message: 'Could not send that file.', alertOnly: true, tone: 'danger' }); }
     e.target.value = '';
   };
 

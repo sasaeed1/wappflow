@@ -20,6 +20,7 @@ import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_UR
 import AddLeadModal from '../../components/AddLeadModal';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import NavBar from '../../components/NavBar';
+import { useSound } from '@/lib/sounds';
 
 const COLUMNS = [
   { id: 'New',           label: 'New',        color: '#6366f1', light: 'rgba(99,102,241,0.2)' },
@@ -609,6 +610,7 @@ function CustomTooltip({ active, payload, label }) {
 // ── MAIN ──────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
+  const { play: playSound } = useSound();
   const notifRef = useRef(null);
   const sseRef = useRef(null);
   const sseRetryRef = useRef(null);
@@ -663,7 +665,7 @@ export default function DashboardPage() {
       setNotifBadge(prev => prev + 1);
 
       // Sound
-      if (soundEnabledRef.current) playNewLeadSound();
+      if (soundEnabledRef.current) playSound('newLead');
 
       // Toast
       showToast(`New lead: ${data.customer_name || 'Unknown'}`, '#6366f1', '👤');
@@ -681,7 +683,7 @@ export default function DashboardPage() {
       const event = { id: Date.now(), type: 'new_message', data, time: new Date().toISOString() };
       setLiveEvents(prev => [event, ...prev].slice(0, 20));
       setNotifBadge(prev => prev + 1);
-      if (soundEnabledRef.current) playNewMessageSound();
+      if (soundEnabledRef.current) playSound(data.platform === 'whatsapp' || !data.platform ? 'whatsapp' : 'system');
       showToast(`New message from ${data.customer_name || 'Unknown'}`, '#10b981', '💬');
       // Update message count optimistically
       setAllLeads(prev => prev.map(l => l.id === (data.lead_id || data.id) ? { ...l, total_messages: (l.total_messages || 0) + 1 } : l));

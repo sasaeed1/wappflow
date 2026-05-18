@@ -12,7 +12,7 @@ import {
   FileText, History, Play, Volume2, Globe, Hash,
   ChevronRight, Activity, Receipt, Workflow, RefreshCw,
   Layers, Link2, GitMerge, Network, Lock, MessageCircle,
-  Camera, MonitorSmartphone
+  Camera, MonitorSmartphone, Video
 } from 'lucide-react';
 import {
   leadsAPI, presetsAPI, tagsAPI, emailTemplatesAPI,
@@ -20,6 +20,8 @@ import {
   leadEmailsAPI, leadChannelsAPI, leadRelationsAPI, timelineAPI, aiAPI,
   displayPhone, formatCurrency, BASE_URL,
 } from '../../../lib/api';
+import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
+import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
 import NavBar from '../../../components/NavBar';
 
@@ -200,6 +202,7 @@ function LostModal({ name, onConfirm, onCancel, loading }) {
 
 // ── Invoice Modal ─────────────────────────────────────────────────────────────
 function InvoiceModal({ lead, company, onClose, onSaved }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState([{ description: '', qty: 1, rate: 0 }]);
   const [notes, setNotes] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -232,7 +235,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
       await invoicesAPI.create(payload);
       onSaved();
       onClose();
-    } catch (e) { alert('Error creating invoice: ' + e.message); } finally { setSaving(false); }
+    } catch (e) { await confirm({ title: 'Could not create invoice', message: e.message, alertOnly: true, tone: 'danger' }); } finally { setSaving(false); }
   };
 
   const handlePrint = () => {
@@ -377,6 +380,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
 
 // ── Email Workflow Modal ───────────────────────────────────────────────────────
 function EmailWorkflowModal({ lead, templates, onClose, onSaved }) {
+  const confirm = useConfirm();
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [saving, setSaving] = useState(false);
@@ -388,7 +392,7 @@ function EmailWorkflowModal({ lead, templates, onClose, onSaved }) {
       await leadsAPI.createEmailWorkflow(lead.id, { template_id: selectedTemplate, scheduled_at: scheduledAt });
       onSaved();
       onClose();
-    } catch (e) { alert('Error: ' + e.message); } finally { setSaving(false); }
+    } catch (e) { await confirm({ title: 'Could not schedule workflow', message: e.message, alertOnly: true, tone: 'danger' }); } finally { setSaving(false); }
   };
 
   return (
@@ -478,6 +482,7 @@ export default function LeadDetailPage() {
   const [teamMembers, setTeamMembers] = useState([]);
   const [company, setCompany] = useState(null);
   const [showEmailCompose, setShowEmailCompose] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [verticalIndustry, setVerticalIndustry] = useState(null);
 const [verticalLoading, setVerticalLoading] = useState(false);
 const [verticalSuggestion, setVerticalSuggestion] = useState(null);
@@ -1053,6 +1058,12 @@ useEffect(() => {
       {showLostModal && <LostModal name={lead.customer_name} onConfirm={handleLostConfirm} onCancel={() => setShowLostModal(false)} loading={actionLoading} />}
       {showInvoiceModal && <InvoiceModal lead={lead} company={company} onClose={() => setShowInvoiceModal(false)} onSaved={fetchAll} />}
       {showEmailModal && <EmailWorkflowModal lead={lead} templates={emailTemplates} onClose={() => setShowEmailModal(false)} onSaved={fetchAll} />}
+      <ScheduleMeetingModal
+        open={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        lead={lead ? { id: lead.id, name: lead.customer_name, email: lead.email } : null}
+        onScheduled={() => fetchAll()}
+      />
 
       {/* Full-size image lightbox */}
       {viewImage && (
@@ -1115,6 +1126,9 @@ useEffect(() => {
             </button>
             <button onClick={() => setShowEmailCompose(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
               <Mail size={14} /> Email
+            </button>
+            <button onClick={() => setShowScheduleModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.12)', color: '#818cf8', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+              <Video size={14} /> Schedule
             </button>
             {lead.customer_phone && (() => {
               const waPhone = lead.customer_phone.replace(/\D/g, '');

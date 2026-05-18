@@ -249,6 +249,18 @@ export const chatAPI = {
   react: (messageId, emoji) => api.post(`/chat/messages/${messageId}/react`, { emoji }),
 };
 
+export const integrationsAPI = {
+  status:                () => api.get('/integrations/status'),
+  saveCalendly:          (url) => api.put('/integrations/calendly', { url }),
+  connectGoogleCalendar: (code) => api.post('/integrations/google-calendar/connect', { code }),
+  disconnectGoogleCalendar: () => api.delete('/integrations/google-calendar'),
+};
+
+export const meetingsAPI = {
+  create: (leadId, data) => api.post(`/leads/${leadId}/meetings`, data),
+  list:   (leadId)       => api.get(`/leads/${leadId}/meetings`),
+};
+
 // Returns a human-friendly representation of `phone`. For real phone numbers
 // the raw value (minus WhatsApp suffixes) is returned. For platform user IDs
 // (Instagram/Facebook sender IDs are 13–17 digit integers, NOT phone numbers)

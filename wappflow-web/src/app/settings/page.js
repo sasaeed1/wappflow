@@ -9,11 +9,17 @@ import {
   Upload, Eye, EyeOff, RefreshCw, Sparkles, Shield, Hash, Clock,
   ToggleLeft, ToggleRight, AlertCircle, Info, Palette, Lock,
   MessageCircle, Camera, Globe as GlobeIcon, MonitorSmartphone,
-  Link, Unlink, Copy, Wifi, WifiOff, Layers, QrCode, Key
+  Link, Unlink, Copy, Wifi, WifiOff, Layers, QrCode, Key,
+  Plug, Calendar, Video, Volume2, Play
 } from 'lucide-react';
-import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, BASE_URL } from '../../lib/api';
+import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, BASE_URL } from '../../lib/api';
 import { Send as SendIcon } from 'lucide-react';
 import NavBar from '../../components/NavBar';
+import { useConfirm } from '@/lib/confirm';
+import { useSound, SOUND_KINDS } from '@/lib/sounds';
+import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
 const PALETTE = ['#ef4444','#f97316','#f59e0b','#22c55e','#06b6d4','#3b82f6','#6366f1','#a855f7','#ec4899','#64748b'];
 
@@ -47,6 +53,7 @@ const TABS = [
   { id: 'autoreply', label: 'Auto-Reply Rules', icon: Bot, color: '#8b5cf6' },
   { id: 'tags', label: 'Tags', icon: Tag, color: '#ec4899' },
   { id: 'notifications', label: 'Notifications', icon: Bell, color: '#ef4444' },
+  { id: 'integrations', label: 'Integrations', icon: Plug, color: '#22c55e' },
   { id: 'workspace', label: 'Workspace', icon: Users, color: '#8b5cf6' },
   { id: 'ai_command', label: 'AI Command', icon: Sparkles, color: '#8b5cf6' },
   { id: 'password', label: 'Change Password', icon: Lock, color: '#ef4444' },
@@ -293,6 +300,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
 
 // ── Presets Tab ───────────────────────────────────────────────────────────────
 function PresetsTab({ showToast }) {
+  const confirm = useConfirm();
   const [presets, setPresets] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -320,7 +328,8 @@ function PresetsTab({ showToast }) {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this preset?')) return;
+    const ok = await confirm({ title: 'Delete this preset?', message: 'The preset will be removed permanently.', confirmLabel: 'Delete', tone: 'danger' });
+    if (!ok) return;
     await presetsAPI.delete(id);
     showToast('Preset deleted.');
     fetchPresets();
@@ -388,6 +397,7 @@ function PresetsTab({ showToast }) {
 
 // ── Email Templates Tab ───────────────────────────────────────────────────────
 function EmailTemplatesTab({ showToast }) {
+  const confirm = useConfirm();
   const [templates, setTemplates] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -486,7 +496,7 @@ function EmailTemplatesTab({ showToast }) {
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={() => openEdit(t)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Edit</button>
-              <button onClick={async () => { if (!confirm('Delete?')) return; await emailTemplatesAPI.delete(t.id); showToast('Deleted'); fetchTemplates(); }}
+              <button onClick={async () => { const ok = await confirm({ title: 'Delete this template?', confirmLabel: 'Delete', tone: 'danger' }); if (!ok) return; await emailTemplatesAPI.delete(t.id); showToast('Deleted'); fetchTemplates(); }}
                 style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'var(--danger-bg)', color: '#ef4444', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Delete</button>
             </div>
           </div>
@@ -498,6 +508,7 @@ function EmailTemplatesTab({ showToast }) {
 
 // ── Auto-Reply Tab ────────────────────────────────────────────────────────────
 function AutoReplyTab({ showToast }) {
+  const confirm = useConfirm();
   const [rules, setRules] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -591,7 +602,7 @@ function AutoReplyTab({ showToast }) {
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={() => openEdit(r)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Edit</button>
-              <button onClick={async () => { if (!confirm('Delete?')) return; await autoReplyAPI.delete(r.id); fetchRules(); }}
+              <button onClick={async () => { const ok = await confirm({ title: 'Delete this rule?', confirmLabel: 'Delete', tone: 'danger' }); if (!ok) return; await autoReplyAPI.delete(r.id); fetchRules(); }}
                 style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'var(--danger-bg)', color: '#ef4444', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Delete</button>
             </div>
           </div>
@@ -609,6 +620,7 @@ function AutoReplyTab({ showToast }) {
 
 // ── Tags Tab ──────────────────────────────────────────────────────────────────
 function TagsTab({ showToast }) {
+  const confirm = useConfirm();
   const [tags, setTags] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -674,7 +686,7 @@ function TagsTab({ showToast }) {
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: tag.color }} />
             <span style={{ fontSize: 13, fontWeight: 700, color: tag.color }}>{tag.name}</span>
             <button onClick={() => { setEditing(tag); setForm({ name: tag.name, color: tag.color }); setShowForm(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tag.color, opacity: 0.7, display: 'flex' }}><Edit2 size={12} /></button>
-            <button onClick={async () => { if (!confirm('Delete?')) return; await tagsAPI.delete(tag.id); fetchTags(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', opacity: 0.6, display: 'flex' }}><Trash2 size={12} /></button>
+            <button onClick={async () => { const ok = await confirm({ title: 'Delete this tag?', message: 'Leads currently tagged will lose it.', confirmLabel: 'Delete', tone: 'danger' }); if (!ok) return; await tagsAPI.delete(tag.id); fetchTags(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', opacity: 0.6, display: 'flex' }}><Trash2 size={12} /></button>
           </div>
         ))}
         {tags.length === 0 && !showForm && <p style={{ color: 'var(--text-dim)', fontSize: 14 }}>No tags yet. Create one above.</p>}
@@ -685,6 +697,7 @@ function TagsTab({ showToast }) {
 
 // ── Notifications Tab ─────────────────────────────────────────────────────────
 function NotificationsTab({ showToast }) {
+  const sound = useSound();
   const [supported, setSupported] = useState(false);
   const [permission, setPermission] = useState('default');
   const [subscribed, setSubscribed] = useState(false);
@@ -854,6 +867,236 @@ function NotificationsTab({ showToast }) {
           )}
         </div>
       )}
+
+      {/* ───────── Sound preferences ───────── */}
+      <div style={{ marginTop: 24, paddingTop: 24, borderTop: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <Volume2 size={16} color="#a855f7" />
+          <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Notification sounds</h3>
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '0 0 16px' }}>Each event has its own tone. Click the play icon to preview. Adjust master volume below.</p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
+          {SOUND_KINDS.map(k => (
+            <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 10 }}>
+              <button onClick={() => sound.preview(k.id)} title="Preview sound"
+                style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.25)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                <Play size={13} />
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{k.label}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{k.desc}</div>
+              </div>
+              <button onClick={() => sound.setPref(k.id, !sound.prefs[k.id])}
+                style={{ width: 42, height: 24, borderRadius: 999, border: 'none', cursor: 'pointer', background: sound.prefs[k.id] ? '#22c55e' : '#374151', position: 'relative', transition: 'background 0.15s', padding: 0 }}>
+                <span style={{ position: 'absolute', top: 2, left: sound.prefs[k.id] ? 20 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left 0.15s', boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 6 }}>Master volume</label>
+          <input type="range" min={0} max={1} step={0.05} value={sound.volume} onChange={(e) => sound.setVolume(parseFloat(e.target.value))}
+            style={{ width: '100%', accentColor: '#818cf8' }} />
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+//  INTEGRATIONS TAB — Google Calendar + Calendly
+// ════════════════════════════════════════════════════════════
+
+function IntegrationsTab({ showToast }) {
+  return (
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || 'placeholder'}>
+      <IntegrationsContent showToast={showToast} />
+    </GoogleOAuthProvider>
+  );
+}
+
+function IntegrationsContent({ showToast }) {
+  const confirm = useConfirm();
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [calendlyDraft, setCalendlyDraft] = useState('');
+
+  useEffect(() => { reload(); }, []);
+
+  async function reload() {
+    setLoading(true);
+    try {
+      const r = await integrationsAPI.status();
+      setStatus(r.data);
+      setCalendlyDraft(r.data?.calendly?.url || '');
+    } catch (e) {
+      showToast('Failed to load integrations', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Google Calendar — auth-code popup flow
+  const googleLogin = useGoogleLogin({
+    flow: 'auth-code',
+    scope: 'https://www.googleapis.com/auth/calendar.events',
+    onSuccess: async (codeResponse) => {
+      setBusy(true);
+      try {
+        await integrationsAPI.connectGoogleCalendar(codeResponse.code);
+        showToast('Google Calendar connected');
+        reload();
+      } catch (e) {
+        await confirm({
+          title: 'Connection failed',
+          message: e.response?.data?.error || e.message,
+          alertOnly: true,
+          tone: 'danger',
+        });
+      } finally {
+        setBusy(false);
+      }
+    },
+    onError: () => showToast('Google authorization cancelled', 'error'),
+  });
+
+  async function handleDisconnectGoogle() {
+    const ok = await confirm({
+      title: 'Disconnect Google Calendar?',
+      message: 'You won’t be able to create Google Meet events from the CRM until you reconnect.',
+      confirmLabel: 'Disconnect',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await integrationsAPI.disconnectGoogleCalendar();
+      showToast('Google Calendar disconnected');
+      reload();
+    } catch (e) {
+      showToast('Failed to disconnect', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveCalendly() {
+    setBusy(true);
+    try {
+      await integrationsAPI.saveCalendly(calendlyDraft || null);
+      showToast(calendlyDraft ? 'Calendly URL saved' : 'Calendly URL cleared');
+      reload();
+    } catch (e) {
+      const err = e.response?.data?.error || 'Save failed';
+      showToast(err, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading) {
+    return <SectionCard icon={Plug} title="Integrations" color="#22c55e"><div style={{ padding: 14, color: 'var(--text-muted)' }}>Loading…</div></SectionCard>;
+  }
+
+  const g = status?.googleCalendar || {};
+  const c = status?.calendly || {};
+
+  return (
+    <SectionCard icon={Plug} title="Integrations" subtitle="Connect external services" color="#22c55e">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+        {/* ───────── Google Calendar ───────── */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(99,102,241,0.12)', color: '#818cf8', display: 'grid', placeItems: 'center', border: '1px solid rgba(99,102,241,0.25)' }}>
+              <Calendar size={18} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Google Calendar</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                Create Google Meet events with one click from any lead.
+              </div>
+            </div>
+            {g.connected && (
+              <span style={{ padding: '4px 10px', background: 'rgba(16,185,129,0.12)', color: '#34d399', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+                ● Connected
+              </span>
+            )}
+          </div>
+
+          {!g.configured && (
+            <div style={{ padding: '12px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 10, color: '#fde68a', fontSize: 13, marginTop: 14 }}>
+              Server is missing <code>GOOGLE_CLIENT_SECRET</code>. Set it in the backend <code>.env</code> and restart.
+            </div>
+          )}
+
+          {g.connected ? (
+            <div style={{ marginTop: 14, padding: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text)' }}>{g.email || 'Connected account'}</div>
+                {g.connected_at && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Connected {new Date(g.connected_at).toLocaleString()}</div>
+                )}
+              </div>
+              <button onClick={handleDisconnectGoogle} disabled={busy}
+                style={{ padding: '9px 16px', background: 'rgba(239,68,68,0.1)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Unlink size={14} /> Disconnect
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginTop: 14 }}>
+              <button onClick={() => googleLogin()} disabled={busy || !g.configured || !GOOGLE_CLIENT_ID}
+                style={{ padding: '11px 18px', background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: (busy || !g.configured) ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 6px 16px rgba(99,102,241,0.35)', opacity: (busy || !g.configured) ? 0.6 : 1 }}>
+                <Link size={14} /> Connect Google Calendar
+              </button>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+                You’ll grant the <code>calendar.events</code> scope. We only create events you trigger from the CRM.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ height: 1, background: 'var(--border)' }} />
+
+        {/* ───────── Calendly ───────── */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(34,197,94,0.12)', color: '#34d399', display: 'grid', placeItems: 'center', border: '1px solid rgba(34,197,94,0.25)' }}>
+              <Calendar size={18} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Calendly</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                Send your Calendly link to leads to let them self-book.
+              </div>
+            </div>
+            {c.configured && (
+              <span style={{ padding: '4px 10px', background: 'rgba(16,185,129,0.12)', color: '#34d399', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+                ● Configured
+              </span>
+            )}
+          </div>
+
+          <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              type="url"
+              value={calendlyDraft}
+              onChange={(e) => setCalendlyDraft(e.target.value)}
+              placeholder="https://calendly.com/your-handle/30min"
+              style={{ flex: 1, minWidth: 240, padding: '11px 14px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text)', fontSize: 13.5, outline: 'none' }}
+            />
+            <button onClick={handleSaveCalendly} disabled={busy}
+              style={{ padding: '11px 18px', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 6px 16px rgba(16,185,129,0.3)' }}>
+              <Save size={14} /> {c.configured ? 'Update' : 'Save'}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+            Find this URL on your Calendly account page. The CRM will offer this link as a one-click “Send Calendly” on every lead.
+          </div>
+        </div>
+      </div>
     </SectionCard>
   );
 }
@@ -1217,6 +1460,7 @@ const PLATFORM_DEFS = [
 ];
 
 function ConnectionsTab({ showToast }) {
+  const confirm = useConfirm();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePlatform, setActivePlatform] = useState('whatsapp');
@@ -1255,7 +1499,13 @@ function ConnectionsTab({ showToast }) {
   };
 
   const handleDeleteAccount = async (id) => {
-    if (!confirm('Delete this account?')) return;
+    const ok = await confirm({
+      title: 'Disconnect this account?',
+      message: 'You will lose the channel\'s session. New messages won\'t flow into the CRM until you reconnect.',
+      confirmLabel: 'Disconnect',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await platformAccountsAPI.delete(id);
       setAccounts(prev => prev.filter(a => a.id !== id));
@@ -1839,6 +2089,7 @@ export default function SettingsPage() {
               {activeTab === 'autoreply' && <AutoReplyTab showToast={showToast} />}
               {activeTab === 'tags' && <TagsTab showToast={showToast} />}
               {activeTab === 'notifications' && <NotificationsTab showToast={showToast} />}
+              {activeTab === 'integrations' && <IntegrationsTab showToast={showToast} />}
               {activeTab === 'workspace' && <WorkspaceTab showToast={showToast} router={router} />}
               {activeTab === 'ai_command' && <AICommandTab showToast={showToast} />}
               {activeTab === 'password' && <PasswordTab showToast={showToast} />}

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { invoicesAPI, settingsAPI, leadEmailsAPI, displayPhone, BASE_URL } from '../../lib/api';
 import NavBar from '../../components/NavBar';
+import { useConfirm } from '@/lib/confirm';
 
 const STATUS_COLORS = {
   draft:   { bg: '#f1f5f9', text: '#64748b', dot: '#94a3b8', label: 'Draft' },
@@ -220,6 +221,7 @@ ${invoice.notes ? `<div style="margin-top:24px;padding:16px;background:#f8fafc;b
 
 export default function InvoicesPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [invoices, setInvoices] = useState([]);
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(true);
@@ -246,7 +248,7 @@ export default function InvoicesPage() {
       await invoicesAPI.update(id, { status: 'paid' });
       setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'paid' } : inv));
       if (viewInvoice?.id === id) setViewInvoice(prev => ({ ...prev, status: 'paid' }));
-    } catch (e) { alert('Failed to update: ' + e.message); }
+    } catch (e) { await confirm({ title: 'Could not update invoice', message: e.message, alertOnly: true, tone: 'danger' }); }
   };
 
   const filtered = invoices.filter(inv => {

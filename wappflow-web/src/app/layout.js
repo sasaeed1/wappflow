@@ -1,4 +1,5 @@
 import './globals.css'
+import Providers from './providers'
 
 export const metadata = {
   title: 'WappFlow - WhatsApp CRM',
@@ -16,7 +17,9 @@ export default function RootLayout({ children }) {
           } catch(e) {}
         ` }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }

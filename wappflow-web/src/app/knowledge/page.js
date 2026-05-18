@@ -8,6 +8,7 @@ import {
   BookOpen, Sparkles, Database, File, MessageSquare, Tag
 } from 'lucide-react';
 import NavBar from '../../components/NavBar';
+import { useConfirm } from '@/lib/confirm';
 
 const API = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001';
 const authHeader = () => ({
@@ -48,6 +49,7 @@ function Toast({ message, type }) {
 
 export default function KnowledgePage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const fileInputRef = useRef();
 
   const [documents, setDocuments] = useState([]);
@@ -116,7 +118,8 @@ export default function KnowledgePage() {
   };
 
   const handleDeleteDoc = async (id) => {
-    if (!confirm('Delete this document and all its extracted memories?')) return;
+    const ok = await confirm({ title: 'Delete document?', message: 'This will also remove every memory extracted from it. This cannot be undone.', confirmLabel: 'Delete', tone: 'danger' });
+    if (!ok) return;
     try {
       await fetch(`${API}/api/knowledge/${id}`, { method: 'DELETE', headers: authHeader() });
       showToast('Document deleted');
@@ -170,7 +173,8 @@ export default function KnowledgePage() {
   };
 
   const handleDeleteMemory = async (id) => {
-    if (!confirm('Delete this memory?')) return;
+    const ok = await confirm({ title: 'Delete memory?', message: 'The AI will no longer use this fact in suggested replies.', confirmLabel: 'Delete', tone: 'danger' });
+    if (!ok) return;
     try {
       await fetch(`${API}/api/memories/${id}`, { method: 'DELETE', headers: authHeader() });
       showToast('Memory deleted');

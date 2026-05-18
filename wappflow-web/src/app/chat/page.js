@@ -7,11 +7,14 @@ import {
   MoreHorizontal, Image, FileText, ChevronDown,
   MessageCircle, Users, Lock, Check, Edit3,
   Bold, Italic, Code, Link2, AtSign, Search,
-  Volume2, VolumeX, Bell, BellOff,
+  Volume2, VolumeX, Bell, BellOff, Video, Phone,
   List, ListOrdered, Quote, Strikethrough, Underline as UnderlineIcon
 } from 'lucide-react';
 import { chatAPI, BASE_URL } from '../../lib/api';
 import NavBar from '../../components/NavBar';
+import HuddleModal from '@/components/HuddleModal';
+import { useConfirm } from '@/lib/confirm';
+import { useSound } from '@/lib/sounds';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '✅', '👀', '🚀'];
 
@@ -292,10 +295,14 @@ export default function ChatPage() {
   const inputRef = useRef(null);
   const pollRef = useRef(null);
 
+  const confirm = useConfirm();
+  const { play: playSound } = useSound();
+  const lastMsgIdRef = useRef(null);
   const [user, setUser] = useState(null);
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [huddle, setHuddle] = useState(null); // { roomName, video: boolean }
   const [hasContent, setHasContent] = useState(false); // tracks whether contentEditable input has any text
   const [sending, setSending] = useState(false);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
@@ -345,13 +352,24 @@ export default function ChatPage() {
     try {
       const res = await chatAPI.getMessages(channelId, { limit: 60 });
       const msgs = res.data.messages || [];
+      // Play sound if a new message arrived from someone else on a silent poll
+      if (silent && msgs.length > 0) {
+        const latest = msgs[msgs.length - 1];
+        const myUserId = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}')?.id; } catch { return null; } })();
+        if (lastMsgIdRef.current && latest.id !== lastMsgIdRef.current && latest.user_id !== myUserId) {
+          playSound('team');
+        }
+        lastMsgIdRef.current = latest.id;
+      } else if (msgs.length > 0) {
+        lastMsgIdRef.current = msgs[msgs.length - 1].id;
+      }
       setMessages(msgs);
       // Mark as read
       setUnreadCounts(prev => ({ ...prev, [channelId]: 0 }));
     } catch (e) { console.error(e); } finally {
       if (!silent) setLoadingMessages(false);
     }
-  }, []);
+  }, [playSound]);
 
   const handleChannelSelect = (channel) => {
     setActiveChannel(channel);
@@ -420,7 +438,8 @@ export default function ChatPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this message?')) return;
+    const ok = await confirm({ title: 'Delete this message?', message: 'This cannot be undone.', confirmLabel: 'Delete', tone: 'danger' });
+    if (!ok) return;
     try {
       await chatAPI.deleteMessage(id);
       setMessages(prev => prev.filter(m => m.id !== id));
@@ -554,15 +573,29 @@ export default function ChatPage() {
 
           {/* Channel header */}
           <div style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
               <Hash size={18} color="#6366f1" />
               <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{activeChannel.name}</span>
               {activeChannel.is_private && <Lock size={13} color="#9ca3af" />}
               {activeChannel.description && (
-                <span style={{ fontSize: 12, color: 'var(--text-dim)', borderLeft: '1px solid #e5e7eb', paddingLeft: 12 }}>{activeChannel.description}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-dim)', borderLeft: '1px solid #e5e7eb', paddingLeft: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeChannel.description}</span>
               )}
             </div>
-            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{messages.length} messages</span>
+            <button
+              onClick={() => setHuddle({ roomName: `wappflow-${activeChannel.id || activeChannel.name}-${Date.now().toString(36)}`, video: false })}
+              title="Start voice huddle"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(34,197,94,0.10)', color: '#22c55e', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
+            >
+              <Phone size={13} /> Huddle
+            </button>
+            <button
+              onClick={() => setHuddle({ roomName: `wappflow-${activeChannel.id || activeChannel.name}-${Date.now().toString(36)}`, video: true })}
+              title="Start video huddle"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.12)', color: '#818cf8', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
+            >
+              <Video size={13} /> Video call
+            </button>
+            <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 4 }}>{messages.length} messages</span>
           </div>
 
           {/* Messages area */}
@@ -739,6 +772,13 @@ export default function ChatPage() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
       `}</style>
+      <HuddleModal
+        open={!!huddle}
+        onClose={() => setHuddle(null)}
+        roomName={huddle?.roomName || ''}
+        displayName={(() => { try { return JSON.parse(localStorage.getItem('user') || '{}')?.full_name || JSON.parse(localStorage.getItem('user') || '{}')?.business_name || 'Teammate'; } catch { return 'Teammate'; } })()}
+        startWithVideo={!!huddle?.video}
+      />
     </div>
     </NavBar>
   );

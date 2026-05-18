@@ -14,6 +14,7 @@ import { leadsAPI, tagsAPI, workspaceAPI, displayPhone, PLATFORM_COLORS, platfor
 import NavBar from '../../components/NavBar';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import AddLeadModal from '../../components/AddLeadModal';
+import { useConfirm } from '@/lib/confirm';
 
 const STATUS_META = {
   'New':           { dot: '#6366f1', bg: 'rgba(99,102,241,0.12)',  text: '#4338ca' },
@@ -34,6 +35,7 @@ const SORT_OPTIONS = [
 
 // ── Bulk Assign Modal ───────────────────────────────────────────────────────
 function BulkAssignModal({ leadIds, members, onClose, onDone }) {
+  const confirm = useConfirm();
   const [selected, setSelected] = useState('');
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('manual'); // 'manual' | 'round_robin'
@@ -51,7 +53,10 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
 
   const handleAssign = async () => {
     if (mode === 'manual' && !selected) return;
-    if (mode === 'round_robin' && rrSelected.size === 0) { alert('Select at least one member for round robin'); return; }
+    if (mode === 'round_robin' && rrSelected.size === 0) {
+      await confirm({ title: 'Pick at least one teammate', message: 'Select at least one member to distribute leads to.', alertOnly: true, tone: 'warning' });
+      return;
+    }
     setLoading(true);
     try {
       if (mode === 'round_robin') {
@@ -62,7 +67,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
       }
       onDone();
     } catch (e) {
-      alert(e.response?.data?.error || 'Assignment failed');
+      await confirm({ title: 'Assignment failed', message: e.response?.data?.error || 'Unknown error', alertOnly: true, tone: 'danger' });
     } finally {
       setLoading(false);
     }

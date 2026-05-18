@@ -685,6 +685,32 @@ db.exec(`
     received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(platform, event_id)
   );
+
+  CREATE TABLE IF NOT EXISTS workspace_integrations (
+    workspace_id TEXT PRIMARY KEY,
+    calendly_url TEXT,
+    google_calendar_refresh_token TEXT,
+    google_calendar_email TEXT,
+    google_calendar_connected_at TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS meetings (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    lead_id TEXT NOT NULL,
+    user_id TEXT,
+    provider TEXT DEFAULT 'google',
+    title TEXT,
+    starts_at TIMESTAMP,
+    ends_at TIMESTAMP,
+    meet_link TEXT,
+    event_id TEXT,
+    html_link TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'scheduled',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ── Migrate password_hash → password for databases created with old schema ──
@@ -4579,6 +4605,267 @@ app.post('/api/leads/bulk-trash', auth, (req, res) => {
     try { for (const id of lead_ids) broadcastToWorkspace(req.workspaceId, 'lead_deleted', { id }); } catch {}
     res.json({ moved: result.changes, message: `Moved ${result.changes} lead${result.changes === 1 ? '' : 's'} to trash` });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  INTEGRATIONS — Calendly + Google Calendar
+// ════════════════════════════════════════════════════════════
+
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+
+// Helpers --------------------------------------------------------------------
+function readIntegrations(workspaceId) {
+  return db.prepare('SELECT * FROM workspace_integrations WHERE workspace_id = ?').get(workspaceId) || null;
+}
+
+function upsertIntegrations(workspaceId, patch) {
+  const existing = readIntegrations(workspaceId);
+  if (existing) {
+    const cols = Object.keys(patch);
+    if (!cols.length) return existing;
+    const sets = cols.map(c => `${c} = ?`).join(', ');
+    db.prepare(`UPDATE workspace_integrations SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ?`)
+      .run(...cols.map(c => patch[c]), workspaceId);
+  } else {
+    const cols = ['workspace_id', ...Object.keys(patch)];
+    const placeholders = cols.map(() => '?').join(',');
+    db.prepare(`INSERT INTO workspace_integrations (${cols.join(',')}) VALUES (${placeholders})`)
+      .run(workspaceId, ...Object.keys(patch).map(c => patch[c]));
+  }
+  return readIntegrations(workspaceId);
+}
+
+async function googleExchangeAuthCode(code) {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error('Google OAuth not configured on server (missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET)');
+  }
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      redirect_uri: 'postmessage', // popup flow
+      grant_type: 'authorization_code',
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error_description || data.error || 'Token exchange failed');
+  }
+  return data; // { access_token, refresh_token, expires_in, id_token, scope, token_type }
+}
+
+async function googleRefreshAccessToken(refreshToken) {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      grant_type: 'refresh_token',
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description || data.error || 'Refresh failed');
+  return data.access_token;
+}
+
+async function googleCreateCalendarEvent(accessToken, { summary, description, startsAt, endsAt, attendees, timezone }) {
+  const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all';
+  const body = {
+    summary,
+    description: description || '',
+    start: { dateTime: new Date(startsAt).toISOString(), timeZone: timezone || 'UTC' },
+    end:   { dateTime: new Date(endsAt).toISOString(),   timeZone: timezone || 'UTC' },
+    conferenceData: {
+      createRequest: {
+        requestId: 'wf-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    },
+    attendees: (attendees || []).filter(a => a && a.email).map(a => ({ email: a.email, displayName: a.name || undefined })),
+    reminders: { useDefault: true },
+  };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data.error && data.error.message) || 'Calendar event creation failed');
+  return data;
+}
+
+// Routes ---------------------------------------------------------------------
+
+// GET /api/integrations/status — show what's connected for this workspace
+app.get('/api/integrations/status', auth, (req, res) => {
+  try {
+    const row = readIntegrations(req.workspaceId);
+    res.json({
+      calendly: {
+        configured: !!row?.calendly_url,
+        url: row?.calendly_url || null,
+      },
+      googleCalendar: {
+        connected: !!row?.google_calendar_refresh_token,
+        email: row?.google_calendar_email || null,
+        connected_at: row?.google_calendar_connected_at || null,
+        configured: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/integrations/calendly — save / update Calendly URL
+app.put('/api/integrations/calendly', auth, (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (url && !/^https?:\/\/(?:www\.)?calendly\.com\//i.test(String(url).trim())) {
+      return res.status(400).json({ error: 'URL must be a Calendly link (https://calendly.com/...)' });
+    }
+    upsertIntegrations(req.workspaceId, { calendly_url: url ? String(url).trim() : null });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/integrations/google-calendar/connect — exchange auth code for refresh token
+app.post('/api/integrations/google-calendar/connect', auth, async (req, res) => {
+  try {
+    const { code } = req.body || {};
+    if (!code) return res.status(400).json({ error: 'Authorization code required' });
+
+    const tokens = await googleExchangeAuthCode(code);
+    if (!tokens.refresh_token) {
+      return res.status(400).json({
+        error: 'No refresh token returned. Revoke WappFlow access from your Google Account settings and try again.',
+      });
+    }
+
+    // Decode the id_token to get the user's email
+    let email = null;
+    try {
+      if (tokens.id_token) {
+        const payload = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64url').toString('utf8'));
+        email = payload.email;
+      }
+    } catch {}
+
+    upsertIntegrations(req.workspaceId, {
+      google_calendar_refresh_token: tokens.refresh_token,
+      google_calendar_email: email,
+      google_calendar_connected_at: new Date().toISOString(),
+    });
+
+    res.json({ ok: true, email });
+  } catch (e) {
+    console.error('Google Calendar connect error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/integrations/google-calendar — disconnect
+app.delete('/api/integrations/google-calendar', auth, (req, res) => {
+  try {
+    upsertIntegrations(req.workspaceId, {
+      google_calendar_refresh_token: null,
+      google_calendar_email: null,
+      google_calendar_connected_at: null,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+//  MEETINGS — schedule + list per lead
+// ════════════════════════════════════════════════════════════
+
+// POST /api/leads/:leadId/meetings — create a meeting (Google Meet event)
+app.post('/api/leads/:leadId/meetings', auth, async (req, res) => {
+  try {
+    const { leadId } = req.params;
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    const { provider = 'google', title, starts_at, ends_at, notes, send_invite } = req.body || {};
+
+    if (provider !== 'google') {
+      return res.status(400).json({ error: 'Only Google Meet provider is implemented' });
+    }
+
+    const intg = readIntegrations(req.workspaceId);
+    if (!intg?.google_calendar_refresh_token) {
+      return res.status(400).json({ error: 'Google Calendar not connected. Connect it in Settings → Integrations.' });
+    }
+
+    const accessToken = await googleRefreshAccessToken(intg.google_calendar_refresh_token);
+
+    const attendees = [];
+    if (send_invite && lead.email) {
+      attendees.push({ email: lead.email, name: lead.name });
+    }
+
+    const event = await googleCreateCalendarEvent(accessToken, {
+      summary: title || `Meeting with ${lead.name || 'lead'}`,
+      description: notes,
+      startsAt: starts_at,
+      endsAt: ends_at,
+      attendees,
+      timezone: 'UTC', // could store per-workspace tz
+    });
+
+    const meetLink = event.hangoutLink || (event.conferenceData?.entryPoints || []).find(e => e.entryPointType === 'video')?.uri || null;
+
+    const meetingId = generateId();
+    db.prepare(`INSERT INTO meetings (id, workspace_id, lead_id, user_id, provider, title, starts_at, ends_at, meet_link, event_id, html_link, notes, status)
+                VALUES (?, ?, ?, ?, 'google', ?, ?, ?, ?, ?, ?, ?, 'scheduled')`)
+      .run(meetingId, req.workspaceId, leadId, req.userId, title || null, starts_at, ends_at, meetLink, event.id, event.htmlLink || null, notes || null);
+
+    // Log activity
+    try {
+      db.prepare(`INSERT INTO activity_timeline (id, lead_id, workspace_id, user_id, actor_name, activity_type, title, body, metadata)
+                  VALUES (?, ?, ?, ?, ?, 'meeting_scheduled', ?, ?, ?)`)
+        .run(generateId(), leadId, req.workspaceId, req.userId, req.senderName || 'Team Member',
+             title || 'Meeting scheduled',
+             meetLink ? `Google Meet link: ${meetLink}` : 'Calendar event created',
+             JSON.stringify({ meeting_id: meetingId, event_id: event.id, html_link: event.htmlLink, meet_link: meetLink, starts_at, ends_at }));
+    } catch {}
+
+    res.json({
+      id: meetingId,
+      provider: 'google',
+      title: title,
+      starts_at,
+      ends_at,
+      meet_link: meetLink,
+      event_id: event.id,
+      html_link: event.htmlLink,
+    });
+  } catch (e) {
+    console.error('Meeting create error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/leads/:leadId/meetings — list meetings for a lead
+app.get('/api/leads/:leadId/meetings', auth, (req, res) => {
+  try {
+    const { leadId } = req.params;
+    const rows = db.prepare('SELECT * FROM meetings WHERE workspace_id = ? AND lead_id = ? ORDER BY starts_at DESC')
+      .all(req.workspaceId, leadId);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ════════════════════════════════════════════════════════════
