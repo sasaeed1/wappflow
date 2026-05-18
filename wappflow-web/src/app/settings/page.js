@@ -1351,14 +1351,21 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    let lastQR = null;
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${BASE_URL}/api/whatsapp/accounts/${account.id}/status`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
-        setStatus(await res.json());
+        const data = await res.json();
+        // Only update state if something meaningful changed (avoid re-rendering the large QR image every 3s)
+        setStatus(prev => {
+          if (prev?.status === data.status && prev?.isReady === data.isReady && prev?.qrCode === data.qrCode) return prev;
+          return data;
+        });
       } catch {}
     };
     fetchStatus();
-    const iv = setInterval(fetchStatus, 3000);
+    // Poll slower (5s) — QR refreshes every ~20s so 5s is more than enough
+    const iv = setInterval(fetchStatus, 5000);
     return () => clearInterval(iv);
   }, [account.id]);
 
