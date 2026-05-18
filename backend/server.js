@@ -12,6 +12,7 @@ const fs = require('fs');
 const webpush = require('web-push');
 const { OAuth2Client } = require('google-auth-library');
 const nodemailer = require('nodemailer');
+const aiEngine = require('./ai-engine');
 
 // VAPID keys (generate once, store in env for production)
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BPismtnocRKwNB_MlJqoFdWIG5vKNGhw89sH0nut1Ms7mS2Jlod5htjjgL53Wd_X8emuODWC5a1P1Hy52oUqAv0';
@@ -36,7 +37,7 @@ db.pragma('journal_mode = WAL');
 // Upload directories
 // Persistent data directories (Railway volume: /data, local: __dirname)
 const DATA_ROOT = process.env.NODE_ENV === 'production' ? '/data' : __dirname;
-['/data', DATA_ROOT, path.join(DATA_ROOT, 'uploads'), path.join(DATA_ROOT, 'uploads', 'logos'), path.join(DATA_ROOT, 'uploads', 'voices'), path.join(DATA_ROOT, 'uploads', 'avatars')].forEach(d => {
+['/data', DATA_ROOT, path.join(DATA_ROOT, 'uploads'), path.join(DATA_ROOT, 'uploads', 'logos'), path.join(DATA_ROOT, 'uploads', 'voices'), path.join(DATA_ROOT, 'uploads', 'avatars'), path.join(DATA_ROOT, 'uploads', 'images'), path.join(DATA_ROOT, 'uploads', 'videos'), path.join(DATA_ROOT, 'uploads', 'files')].forEach(d => {
   try { fs.mkdirSync(d, { recursive: true }); } catch {}
 });
 const uploadsDir = path.join(DATA_ROOT, 'uploads');
@@ -44,10 +45,25 @@ const logosDir   = path.join(DATA_ROOT, 'uploads', 'logos');
 const voicesDir  = path.join(DATA_ROOT, 'uploads', 'voices');
 const avatarsDir = path.join(DATA_ROOT, 'uploads', 'avatars');
 
-// Security middleware
-app.use(helmet({ contentSecurityPolicy: false }));
+// Security middleware. Disable CSP (we use inline styles heavily) and set CORP to
+// cross-origin so the Next.js dev frontend on :3000 can load /uploads/* images
+// served from this API on :3001. Without this, helmet sends CORP=same-origin and
+// browsers block all cross-origin image/media subresource requests.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false,
+}));
 
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false });
+// Rate limiter — exempt the /uploads static path so loading a chat full of images
+// doesn't trip the per-IP limit and start returning 429s for legitimate media.
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path.startsWith('/uploads/'),
+});
 app.use(limiter);
 
 // CORS
@@ -56,13 +72,23 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '50mb' }));
-app.use('/uploads', express.static(uploadsDir));
+// Static uploads — add an explicit Access-Control-Allow-Origin so cross-origin <img> tags work.
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(uploadsDir));
 
-// Multer — general files
+// Multer — general files. Sanitize the original filename so URLs work without encoding.
 const upload = multer({
   storage: multer.diskStorage({
     destination: uploadsDir,
-    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
+    filename: (req, file, cb) => {
+      const safe = (file.originalname || 'file')
+        .normalize('NFKD').replace(/[^\w.\-]/g, '_')
+        .slice(0, 100);
+      cb(null, `${Date.now()}-${safe}`);
+    }
   }),
   limits: { fileSize: 16 * 1024 * 1024 }
 });
@@ -80,11 +106,20 @@ const logoUpload = multer({
   }
 });
 
-// Multer — voice notes
+// Multer — voice notes — preserve real extension so WhatsApp can decode correctly
 const voiceUpload = multer({
   storage: multer.diskStorage({
     destination: voicesDir,
-    filename: (req, file, cb) => cb(null, `voice-${Date.now()}.ogg`)
+    filename: (req, file, cb) => {
+      const mt = (file.mimetype || '').toLowerCase();
+      const ext = mt.includes('ogg') ? 'ogg'
+                : mt.includes('webm') ? 'webm'
+                : mt.includes('mp4') || mt.includes('m4a') ? 'm4a'
+                : mt.includes('mpeg') || mt.includes('mp3') ? 'mp3'
+                : (file.originalname && file.originalname.includes('.')) ? file.originalname.split('.').pop()
+                : 'ogg';
+      cb(null, `voice-${Date.now()}.${ext}`);
+    }
   }),
   limits: { fileSize: 16 * 1024 * 1024 }
 });
@@ -492,6 +527,20 @@ CREATE TABLE IF NOT EXISTS ai_memories (
     processed INTEGER DEFAULT 0,
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS platform_accounts (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    account_name TEXT NOT NULL DEFAULT 'Account 1',
+    account_handle TEXT,
+    credentials TEXT DEFAULT '{}',
+    webhook_verify_token TEXT,
+    status TEXT DEFAULT 'disconnected',
+    slot_index INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+  );
   `);
 
 // ── Safe ALTER TABLE (ignore duplicate column errors) ──
@@ -512,6 +561,21 @@ safeAlter('ALTER TABLE leads ADD COLUMN email TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN assigned_to TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN lead_source TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN lead_score INTEGER DEFAULT 0');
+safeAlter('ALTER TABLE leads ADD COLUMN sentiment TEXT');         // positive | neutral | negative | frustrated
+safeAlter('ALTER TABLE leads ADD COLUMN urgency TEXT');           // low | medium | high | critical
+safeAlter('ALTER TABLE leads ADD COLUMN intent_category TEXT');   // pricing_inquiry | product_inquiry | ...
+safeAlter('ALTER TABLE leads ADD COLUMN ai_last_analyzed_at TIMESTAMP');
+db.exec(`CREATE TABLE IF NOT EXISTS workspace_ai_profile (
+  workspace_id TEXT PRIMARY KEY,
+  business_description TEXT,
+  tone TEXT DEFAULT 'professional',
+  language TEXT DEFAULT 'English',
+  signature TEXT,
+  dos TEXT,
+  donts TEXT,
+  auto_analyze INTEGER DEFAULT 0,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)`);
 safeAlter('ALTER TABLE users ADD COLUMN role TEXT DEFAULT "owner"');
 safeAlter('ALTER TABLE users ADD COLUMN workspace_id TEXT');
 safeAlter('ALTER TABLE reminders ADD COLUMN reminder_date TIMESTAMP');
@@ -526,8 +590,99 @@ safeAlter('ALTER TABLE users ADD COLUMN google_id TEXT');
 safeAlter('ALTER TABLE messages ADD COLUMN media_url TEXT');
 safeAlter('ALTER TABLE messages ADD COLUMN media_type TEXT');
 safeAlter('ALTER TABLE messages ADD COLUMN wa_message_id TEXT');
+// Multi-platform message routing: which platform this message lives on, and which connected account it used.
+safeAlter('ALTER TABLE messages ADD COLUMN platform TEXT DEFAULT "whatsapp"');
+safeAlter('ALTER TABLE messages ADD COLUMN platform_account_id TEXT');
+// Backfill: pre-existing messages with NULL platform default to whatsapp (since that was the only channel before).
+try { db.prepare('UPDATE messages SET platform = ? WHERE platform IS NULL').run('whatsapp'); } catch {}
 safeAlter('ALTER TABLE knowledge_documents ADD COLUMN workspace_id TEXT');
 safeAlter('ALTER TABLE ai_memories ADD COLUMN document_id TEXT');
+safeAlter('ALTER TABLE leads ADD COLUMN platform_account_id TEXT');
+safeAlter('ALTER TABLE leads ADD COLUMN platform_source TEXT');
+
+// ── Reminders schema drift fix: older DBs created the table BEFORE these columns existed.
+// CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so add the columns explicitly.
+safeAlter("ALTER TABLE reminders ADD COLUMN title TEXT");
+safeAlter("ALTER TABLE reminders ADD COLUMN due_date TIMESTAMP");
+safeAlter("ALTER TABLE reminders ADD COLUMN completed INTEGER DEFAULT 0");
+try { db.prepare("UPDATE reminders SET title = COALESCE(title, message), due_date = COALESCE(due_date, reminder_date), completed = COALESCE(completed, is_completed, 0)").run(); } catch {}
+
+// ── Phase-1 multi-channel tables. Idempotent CREATE IF NOT EXISTS so they're safe to keep.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lead_channels (
+    id TEXT PRIMARY KEY,
+    lead_id TEXT NOT NULL,
+    workspace_id TEXT,
+    platform TEXT NOT NULL,
+    identifier TEXT NOT NULL,
+    platform_account_id TEXT,
+    display_name TEXT,
+    added_by TEXT DEFAULT 'manual',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(lead_id, platform, identifier)
+  );
+
+  CREATE TABLE IF NOT EXISTS lead_relations (
+    id TEXT PRIMARY KEY,
+    lead_id_a TEXT NOT NULL,
+    lead_id_b TEXT NOT NULL,
+    relation_type TEXT DEFAULT 'linked',
+    merged_into TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(lead_id_a, lead_id_b)
+  );
+
+  CREATE TABLE IF NOT EXISTS activity_timeline (
+    id TEXT PRIMARY KEY,
+    lead_id TEXT NOT NULL,
+    workspace_id TEXT,
+    user_id TEXT,
+    actor_name TEXT,
+    activity_type TEXT NOT NULL,
+    platform TEXT,
+    platform_account_id TEXT,
+    account_nickname TEXT,
+    title TEXT,
+    body TEXT,
+    metadata TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS workspace_plan (
+    workspace_id TEXT PRIMARY KEY,
+    plan TEXT DEFAULT 'starter',
+    features TEXT,
+    limits TEXT,
+    trial_ends_at TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS outbound_message_queue (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT,
+    lead_id TEXT,
+    platform TEXT,
+    platform_account_id TEXT,
+    message_type TEXT,
+    payload TEXT,
+    status TEXT DEFAULT 'pending',
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    next_retry_at TIMESTAMP,
+    sent_at TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS webhook_events (
+    id TEXT PRIMARY KEY,
+    platform TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(platform, event_id)
+  );
+`);
 
 // ── Migrate password_hash → password for databases created with old schema ──
 safeAlter('ALTER TABLE users ADD COLUMN password TEXT');
@@ -671,15 +826,33 @@ function findLeadByPhone(workspaceId, phone) {
   return lead || null;
 }
 
+// Enrich one lead with platform-account info so the UI can render
+// a "WhatsApp · <nickname>" chip without an extra round-trip per lead.
+function attachAccountInfo(lead) {
+  if (!lead || !lead.platform_account_id) return lead;
+  try {
+    const acc = db.prepare('SELECT account_name, nickname FROM platform_accounts WHERE id = ?').get(lead.platform_account_id);
+    if (acc) {
+      lead.account_nickname = acc.nickname || null;
+      lead.account_name = acc.account_name || null;
+      lead.account_display_name = acc.nickname || acc.account_name || null;
+    }
+  } catch {}
+  return lead;
+}
+
 function attachTags(leads) {
-  return leads.map(lead => ({
-    ...lead,
-    tags: db.prepare(`
-      SELECT t.id, t.name, t.color FROM tags t
-      JOIN lead_tags lt ON t.id = lt.tag_id
-      WHERE lt.lead_id = ? ORDER BY t.name
-    `).all(lead.id)
-  }));
+  return leads.map(lead => {
+    const enriched = {
+      ...lead,
+      tags: db.prepare(`
+        SELECT t.id, t.name, t.color FROM tags t
+        JOIN lead_tags lt ON t.id = lt.tag_id
+        WHERE lt.lead_id = ? ORDER BY t.name
+      `).all(lead.id)
+    };
+    return attachAccountInfo(enriched);
+  });
 }
 
 function getCurrencySymbol(userId) {
@@ -709,15 +882,15 @@ function addContactHistory(leadId, userId, type, description, metadata = null) {
 //  WHATSAPP SERVICE
 // ════════════════════════════════════════════════════════════
 
-const WhatsAppService = require('./whatsapp-service');
-const whatsappService = new WhatsAppService(db, broadcastToUser);
+const { WhatsAppService, WhatsAppManager } = require('./whatsapp-service');
+const whatsappService = new WhatsAppManager(db, broadcastToUser);
 
 // Rate-limit map for lead message sync — prevents flooding Puppeteer with
 // repeated fetchHistory calls when a user opens the same lead multiple times.
 // Key: leadId, Value: timestamp of last sync
 const syncCooldowns = new Map();
 console.log('🔄 Initializing WhatsApp...');
-whatsappService.initialize();
+whatsappService.loadAccounts();
 
 // ════════════════════════════════════════════════════════════
 //  AUTH ROUTES
@@ -1142,7 +1315,7 @@ app.post('/api/leads/round-robin', auth, (req, res) => {
 
 app.get('/api/leads', auth, (req, res) => {
   try {
-    const { status, assigned_to, source } = req.query;
+    const { status, assigned_to, source, platform, account_id } = req.query;
     let query = 'SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)';
     const params = [req.workspaceId];
     // 'user' role can only see assigned leads
@@ -1150,6 +1323,8 @@ app.get('/api/leads', auth, (req, res) => {
     if (status && status !== 'all') { query += ' AND status = ?'; params.push(status); }
     if (assigned_to) { query += ' AND assigned_to = ?'; params.push(assigned_to); }
     if (source) { query += ' AND lead_source = ?'; params.push(source); }
+    if (platform && platform !== 'all') { query += ' AND platform_source = ?'; params.push(platform); }
+    if (account_id) { query += ' AND platform_account_id = ?'; params.push(account_id); }
     query += ' ORDER BY last_message_at DESC';
     const leads = attachTags(db.prepare(query).all(...params));
 
@@ -1159,7 +1334,19 @@ app.get('/api/leads', auth, (req, res) => {
     // Also from team_members for backward compat
     const teamMembers = db.prepare('SELECT id, name FROM team_members WHERE workspace_id = ?').all(req.workspaceOwnerId);
     teamMembers.forEach(m => { if (!memberMap[m.id]) memberMap[m.id] = m.name; });
-    const enriched = leads.map(l => ({ ...l, assigned_name: memberMap[l.assigned_to] || null }));
+    // Attach platform account nickname/name so the UI can show "WhatsApp · Admissions" etc.
+    const accounts = db.prepare(`SELECT id, account_name, nickname, platform FROM platform_accounts WHERE workspace_id = ?`).all(req.workspaceId);
+    const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
+    const enriched = leads.map(l => {
+      const acc = l.platform_account_id ? accountMap[l.platform_account_id] : null;
+      return {
+        ...l,
+        assigned_name: memberMap[l.assigned_to] || null,
+        account_nickname: acc?.nickname || null,
+        account_name: acc?.account_name || null,
+        account_display_name: acc?.nickname || acc?.account_name || null,
+      };
+    });
     res.json({ leads: enriched });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1214,44 +1401,91 @@ app.post('/api/leads/bulk-upload', auth, (req, res) => {
 // Messages — BEFORE /:id
 app.get('/api/leads/:leadId/messages', auth, (req, res) => {
   try {
-    const messages = db.prepare(`SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC`).all(req.params.leadId);
-    res.json({ messages });
+    // Optionally filter by ?platform=whatsapp|instagram|facebook|website
+    const platform = (req.query.platform || '').toLowerCase();
+    let messages;
+    if (platform && platform !== 'all') {
+      messages = db.prepare(`SELECT * FROM messages WHERE lead_id = ? AND (platform = ? OR (platform IS NULL AND ? = 'whatsapp')) ORDER BY timestamp ASC`)
+        .all(req.params.leadId, platform, platform);
+    } else {
+      messages = db.prepare(`SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC`).all(req.params.leadId);
+    }
+    // Per-platform counts so the UI can show notification dots without an extra request
+    const counts = db.prepare(`SELECT COALESCE(platform, 'whatsapp') AS platform, COUNT(*) AS c FROM messages WHERE lead_id = ? GROUP BY COALESCE(platform, 'whatsapp')`)
+      .all(req.params.leadId);
+    const platform_counts = counts.reduce((acc, r) => { acc[r.platform] = r.c; return acc; }, {});
+    res.json({ messages, platform_counts });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
   try {
-    const { body } = req.body;
+    const { body, platform } = req.body;
     const { leadId } = req.params;
     const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
-    await whatsappService.sendMessage(lead.customer_phone, body);
-    whatsappService.saveOutgoingMessage(leadId, req.userId, body);
+    const targetPlatform = (platform || 'whatsapp').toLowerCase();
+
+    // Only WhatsApp has a real outbound send wired today. Other platforms persist the message
+    // locally so the user sees their draft in the chat history, but flag that delivery is pending.
+    let delivered = false;
+    if (targetPlatform === 'whatsapp') {
+      await whatsappService.sendMessage(lead.customer_phone, body);
+      delivered = true;
+    }
+
+    const msgId = generateId();
+    db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp, platform) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)`)
+      .run(msgId, leadId, req.userId, body, targetPlatform);
     db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
-    addContactHistory(leadId, req.userId, 'message', `Sent message: ${body.substring(0, 80)}${body.length > 80 ? '…' : ''}`);
-    res.json({ message: 'Sent' });
+    addContactHistory(leadId, req.userId, 'message', `Sent ${targetPlatform} message: ${body.substring(0, 80)}${body.length > 80 ? '…' : ''}`);
+
+    res.json({ message: 'Sent', delivered, platform: targetPlatform });
   } catch (e) { res.status(500).json({ error: e.message || e.toString() }); }
 });
 
-// Send voice note
-app.post('/api/leads/:leadId/messages/voice', auth, voiceUpload.single('audio'), async (req, res) => {
-  try {
-    const { leadId } = req.params;
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
-    if (!req.file) return res.status(400).json({ error: 'No audio file uploaded — check the field name is "audio"' });
-    const mediaUrl = `/uploads/voices/${req.file.filename}`;
-    // sendVoiceNote uses sendAudioAsVoice:true so WhatsApp treats it as PTT, not a file attachment
-    await whatsappService.sendVoiceNote(lead.customer_phone, req.file.path, req.file.mimetype);
-    const msgId = generateId();
-    db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, media_url, media_type, timestamp) VALUES (?, ?, ?, ?, 1, ?, 'voice', CURRENT_TIMESTAMP)`)
-      .run(msgId, leadId, req.userId, '[Voice Note]', mediaUrl);
-    db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
-    res.json({ message: 'Voice sent', media_url: mediaUrl });
-  } catch (e) {
-    const msg = (e instanceof Error) ? e.message : (typeof e === 'string' ? e : JSON.stringify(e));
-    res.status(500).json({ error: msg || 'Unknown error sending voice note' });
-  }
+// Send voice note. Multer errors are handled inline (they're middleware errors,
+// not caught by the inner try/catch), so we always send a JSON body.
+app.post('/api/leads/:leadId/messages/voice', auth, (req, res) => {
+  voiceUpload.single('audio')(req, res, async (mErr) => {
+    if (mErr) {
+      console.error('Voice upload (multer) failed:', mErr);
+      const msg = mErr.message || mErr.code || 'Audio upload failed';
+      return res.status(400).json({ error: `Upload error: ${msg}` });
+    }
+    try {
+      const { leadId } = req.params;
+      const platform = ((req.body && req.body.platform) || 'whatsapp').toLowerCase();
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      if (!req.file) return res.status(400).json({ error: 'No audio file uploaded — check the field name is "audio"' });
+
+      const mediaUrl = `/uploads/voices/${req.file.filename}`;
+      let delivered = false;
+
+      if (platform === 'whatsapp') {
+        try {
+          await whatsappService.sendVoiceNote(lead.customer_phone, req.file.path, req.file.mimetype);
+          delivered = true;
+        } catch (sendErr) {
+          console.error('Voice send via WhatsApp failed:', sendErr);
+          const detail = sendErr.message || String(sendErr) || 'WhatsApp delivery failed';
+          // Don't 500 — the file IS saved. Tell the client what went wrong with delivery.
+          return res.status(502).json({ error: `WhatsApp send failed: ${detail}`, media_url: mediaUrl });
+        }
+      }
+
+      const msgId = generateId();
+      db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, media_url, media_type, timestamp, platform) VALUES (?, ?, ?, ?, 1, ?, 'voice', CURRENT_TIMESTAMP, ?)`)
+        .run(msgId, leadId, req.userId, '[Voice Note]', mediaUrl, platform);
+      db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
+      res.json({ message: delivered ? 'Voice sent' : 'Voice saved as draft', media_url: mediaUrl, delivered, platform });
+    } catch (e) {
+      console.error('Voice route error:', e);
+      const msg = (e instanceof Error) ? e.message : (typeof e === 'string' ? e : JSON.stringify(e));
+      res.status(500).json({ error: msg || 'Unknown error sending voice note' });
+    }
+  });
 });
 
 // Sync WhatsApp message history for a lead
@@ -1396,7 +1630,7 @@ app.get('/api/leads/:id', auth, (req, res) => {
       }
     } catch {}
 
-    res.json({ lead: { ...lead, tags }, notes, reminders, history, invoices, emailWorkflows, assignee });
+    res.json({ lead: attachAccountInfo({ ...lead, tags }), notes, reminders, history, invoices, emailWorkflows, assignee });
   } catch (e) {
     console.error('GET /api/leads/:id error:', e.message);
     res.status(500).json({ error: e.message });
@@ -1586,25 +1820,47 @@ app.put('/api/reminders/:id/toggle', auth, (req, res) => {
 //  MEDIA SEND
 // ════════════════════════════════════════════════════════════
 
-app.post('/api/leads/:leadId/messages/media', auth, upload.single('file'), async (req, res) => {
-  try {
-    const { leadId } = req.params;
-    const caption = req.body.caption || '';
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
-    if (!req.file) return res.status(400).json({ error: 'No file' });
+app.post('/api/leads/:leadId/messages/media', auth, (req, res) => {
+  upload.single('file')(req, res, async (mErr) => {
+    if (mErr) {
+      console.error('Media upload (multer) failed:', mErr);
+      const msg = mErr.message || mErr.code || 'File upload failed';
+      return res.status(400).json({ error: `Upload error: ${msg}` });
+    }
+    try {
+      const { leadId } = req.params;
+      const caption = req.body.caption || '';
+      const platform = ((req.body && req.body.platform) || 'whatsapp').toLowerCase();
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      if (!req.file) return res.status(400).json({ error: 'No file' });
 
-    await whatsappService.sendMedia(lead.customer_phone, req.file.path, req.file.mimetype, req.file.originalname, caption);
-    const mediaUrl = `/uploads/${req.file.filename}`;
-    const mediaType = req.file.mimetype.startsWith('image/') ? 'image'
-      : req.file.mimetype.startsWith('video/') ? 'video'
-      : req.file.mimetype.startsWith('audio/') ? 'audio' : 'document';
+      const mediaUrl = `/uploads/${req.file.filename}`;
+      const mediaType = req.file.mimetype.startsWith('image/') ? 'image'
+        : req.file.mimetype.startsWith('video/') ? 'video'
+        : req.file.mimetype.startsWith('audio/') ? 'audio' : 'document';
 
-    db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, media_url, media_type, timestamp) VALUES (?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP)`)
-      .run(generateId(), leadId, req.userId, caption || `[${req.file.originalname}]`, mediaUrl, mediaType);
-    db.prepare('UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?').run(leadId);
-    res.json({ message: 'Media sent', media_url: mediaUrl });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+      let delivered = false;
+      if (platform === 'whatsapp') {
+        try {
+          await whatsappService.sendMedia(lead.customer_phone, req.file.path, req.file.mimetype, req.file.originalname, caption);
+          delivered = true;
+        } catch (sendErr) {
+          console.error('Media send via WhatsApp failed:', sendErr);
+          const detail = sendErr.message || String(sendErr) || 'WhatsApp delivery failed';
+          return res.status(502).json({ error: `WhatsApp send failed: ${detail}`, media_url: mediaUrl });
+        }
+      }
+
+      db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, media_url, media_type, timestamp, platform) VALUES (?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP, ?)`)
+        .run(generateId(), leadId, req.userId, caption || `[${req.file.originalname}]`, mediaUrl, mediaType, platform);
+      db.prepare('UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?').run(leadId);
+      res.json({ message: delivered ? 'Media sent' : 'Media saved as draft', media_url: mediaUrl, delivered, platform });
+    } catch (e) {
+      console.error('Media route error:', e);
+      res.status(500).json({ error: e.message || 'Unknown error sending media' });
+    }
+  });
 });
 
 // ════════════════════════════════════════════════════════════
@@ -1870,12 +2126,19 @@ app.get('/api/reports/overview', auth, (req, res) => {
       GROUP BY lost_reason ORDER BY count DESC
     `).all(wid);
 
+    // Platform breakdown
+    const platforms = db.prepare(`
+      SELECT COALESCE(platform_source, 'whatsapp') as platform, COUNT(*) as count
+      FROM leads WHERE workspace_id=? AND (is_deleted=0 OR is_deleted IS NULL)
+      GROUP BY COALESCE(platform_source, 'whatsapp') ORDER BY count DESC
+    `).all(wid);
+
     const cs = db.prepare('SELECT currency_symbol FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
 
     res.json({
       leadsOverTime, revenueOverTime, pipeline, sources, agentPerf,
       avgResponseMinutes: responseTime?.avg_minutes || 0,
-      lostReasons, currencySymbol: cs?.currency_symbol || '$'
+      lostReasons, platforms, currencySymbol: cs?.currency_symbol || '$'
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1965,7 +2228,29 @@ app.delete('/api/presets/:id', auth, (req, res) => {
 //  WHATSAPP ROUTES
 // ════════════════════════════════════════════════════════════
 
-app.get('/api/whatsapp/status', (req, res) => res.json(whatsappService.getStatus()));
+app.get('/api/whatsapp/status', (req, res) => res.json(whatsappService.getLegacyStatus()));
+
+// ── Per-account WhatsApp routes ──────────────────────────────────────────────
+app.get('/api/whatsapp/accounts/:id/status', auth, (req, res) => {
+  const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  const status = whatsappService.getStatus(req.params.id);
+  res.json({ ...status, account_id: req.params.id, account_name: account.account_name });
+});
+
+app.post('/api/whatsapp/accounts/:id/connect', auth, async (req, res) => {
+  const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  try { await whatsappService.reconnect(req.params.id); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/whatsapp/accounts/:id/disconnect', auth, async (req, res) => {
+  const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  try { await whatsappService.disconnect(req.params.id); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.post('/api/whatsapp/disconnect', async (req, res) => {
   try { await whatsappService.disconnect(); res.json({ message: 'Disconnected' }); }
@@ -2865,47 +3150,131 @@ ${context}
   }
 });
 
-// POST /api/leads/:id/ai/analyze
+// POST /api/leads/:id/ai/analyze — uses centralized ai-engine, persists sentiment/urgency/intent
 app.post('/api/leads/:id/ai/analyze', auth, async (req, res) => {
   try {
     const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC LIMIT 30').all(req.params.id);
 
-    const context = buildConversationContext(messages, lead);
-    const memoryContext = getMemoryContext(req.workspaceId);
-const prompt = `
-You are an AI sales analyst for a WhatsApp CRM.
-${memoryContext}
-Analyze this conversation and return a JSON object with exactly these fields:
-{
-  "intent": "one short phrase describing what the customer wants",
-  "intent_category": "one of: pricing_inquiry, product_inquiry, appointment_booking, complaint, payment_issue, follow_up, general_inquiry, not_interested",
-  "lead_score": <number 1-10>,
-  "lead_score_reason": "one sentence explaining the score",
-  "temperature": "one of: cold, warm, hot, urgent",
-  "industry": "detected business industry in 2-3 words",
-  "next_action": "one specific action the sales staff should take next",
-  "key_entities": ["list", "of", "important", "topics", "mentioned"]
-}
-Return JSON only, no explanation, no markdown.
+    const memories = db.prepare(`SELECT memory_type, key, value FROM ai_memories WHERE workspace_id = ? ORDER BY confidence DESC LIMIT 30`).all(req.workspaceId);
+    const profile = db.prepare(`SELECT * FROM workspace_ai_profile WHERE workspace_id = ?`).get(req.workspaceId);
+    const memoryContext = aiEngine.formatMemoryContext(memories) + aiEngine.formatProfileContext(profile);
 
-${context}
-    `.trim();
+    const analysis = await aiEngine.analyzeLeadIntelligence(messages, lead, memoryContext);
 
-    const raw = await callGemini(prompt);
-    let analysis = extractJSON(raw, 'object') || { intent: 'Unable to analyze', lead_score: 5, temperature: 'warm', next_action: 'Review conversation manually' };
-
-    // Auto-update lead score in DB
-    if (analysis.lead_score) {
-      db.prepare('UPDATE leads SET lead_score = ? WHERE id = ?').run(analysis.lead_score, req.params.id);
-    }
+    // Persist intelligence fields on the lead
+    db.prepare(`UPDATE leads SET
+      lead_score = COALESCE(?, lead_score),
+      sentiment = ?,
+      urgency = ?,
+      intent_category = ?,
+      ai_last_analyzed_at = CURRENT_TIMESTAMP
+      WHERE id = ?`).run(
+      analysis.lead_score ?? null,
+      analysis.sentiment || null,
+      analysis.urgency || null,
+      analysis.intent_category || null,
+      req.params.id
+    );
 
     res.json({ analysis });
   } catch (e) {
     console.error('AI analyze error:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// POST /api/ai/sentiment — quick single-message sentiment classification
+app.post('/api/ai/sentiment', auth, async (req, res) => {
+  try {
+    const { text } = req.body || {};
+    const result = await aiEngine.detectSentiment(text);
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/ai/rewrite — rewrite a message in a given tone (professional|friendly|casual|formal|empathetic)
+// Falls back to the workspace's preferred tone if no tone supplied.
+app.post('/api/ai/rewrite', auth, async (req, res) => {
+  try {
+    const { text, tone } = req.body || {};
+    if (!text) return res.status(400).json({ error: 'text required' });
+    let resolvedTone = tone;
+    if (!resolvedTone) {
+      const prof = db.prepare(`SELECT tone FROM workspace_ai_profile WHERE workspace_id = ?`).get(req.workspaceId);
+      resolvedTone = prof?.tone || 'professional';
+    }
+    const out = await aiEngine.rewriteMessage(text, resolvedTone);
+    res.json({ text: out, tone: resolvedTone });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/ai/translate — translate text to a target language
+app.post('/api/ai/translate', auth, async (req, res) => {
+  try {
+    const { text, target_lang } = req.body || {};
+    if (!text) return res.status(400).json({ error: 'text required' });
+    const out = await aiEngine.translateMessage(text, target_lang || 'English');
+    res.json({ text: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/ai/shorten — shorten a message while keeping meaning
+app.post('/api/ai/shorten', auth, async (req, res) => {
+  try {
+    const { text } = req.body || {};
+    if (!text) return res.status(400).json({ error: 'text required' });
+    const out = await aiEngine.shortenMessage(text);
+    res.json({ text: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/ai/status — report which provider is active (for diagnostics / UI)
+app.get('/api/ai/status', auth, (req, res) => {
+  res.json({ provider: aiEngine.getActiveProvider() });
+});
+
+// GET /api/ai/profile — workspace AI command center settings
+app.get('/api/ai/profile', auth, (req, res) => {
+  try {
+    let profile = db.prepare('SELECT * FROM workspace_ai_profile WHERE workspace_id = ?').get(req.workspaceId);
+    if (!profile) {
+      profile = { workspace_id: req.workspaceId, tone: 'professional', language: 'English', auto_analyze: 0 };
+    }
+    res.json({ profile });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/ai/profile — update workspace AI command center settings
+app.put('/api/ai/profile', auth, (req, res) => {
+  try {
+    const { business_description, tone, language, signature, dos, donts, auto_analyze } = req.body || {};
+    db.prepare(`INSERT INTO workspace_ai_profile
+      (workspace_id, business_description, tone, language, signature, dos, donts, auto_analyze, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(workspace_id) DO UPDATE SET
+        business_description = excluded.business_description,
+        tone = excluded.tone,
+        language = excluded.language,
+        signature = excluded.signature,
+        dos = excluded.dos,
+        donts = excluded.donts,
+        auto_analyze = excluded.auto_analyze,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(
+      req.workspaceId,
+      business_description || null,
+      tone || 'professional',
+      language || 'English',
+      signature || null,
+      dos || null,
+      donts || null,
+      auto_analyze ? 1 : 0
+    );
+    const profile = db.prepare('SELECT * FROM workspace_ai_profile WHERE workspace_id = ?').get(req.workspaceId);
+    res.json({ profile });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // POST /api/ai/industry-detect — workspace-level industry detection
@@ -3067,15 +3436,19 @@ ${truncated}
   }
 }
 
-// Helper: get workspace memories as context string for AI
+// Helper: get workspace memories + AI profile as combined context string for AI prompts
 function getMemoryContext(workspaceId) {
   try {
     const memories = db.prepare(`
       SELECT memory_type, key, value FROM ai_memories
       WHERE workspace_id = ? ORDER BY confidence DESC LIMIT 30
     `).all(workspaceId);
-    if (memories.length === 0) return '';
-    return '\nBusiness Knowledge:\n' + memories.map(m => `- ${m.key}: ${m.value}`).join('\n');
+    const profile = db.prepare(`SELECT * FROM workspace_ai_profile WHERE workspace_id = ?`).get(workspaceId);
+    const memText = memories.length
+      ? '\nBusiness Knowledge:\n' + memories.map(m => `- ${m.key}: ${m.value}`).join('\n')
+      : '';
+    const profText = profile ? aiEngine.formatProfileContext(profile) : '';
+    return memText + profText;
   } catch { return ''; }
 }
 
@@ -3644,6 +4017,564 @@ Lead status: ${lead.status}
     const match = raw.match(/\{[\s\S]*\}/);
     const suggestion = JSON.parse(match ? match[0] : raw);
     res.json({ suggestion, industry, workflow: { name: workflow.name, emoji: workflow.emoji, color: workflow.color } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  PLATFORM ACCOUNTS — CRUD
+// ════════════════════════════════════════════════════════════
+
+app.get('/api/platform-accounts', auth, (req, res) => {
+  try {
+    const { platform } = req.query;
+    let query = 'SELECT * FROM platform_accounts WHERE workspace_id = ?';
+    const params = [req.workspaceId];
+    if (platform) { query += ' AND platform = ?'; params.push(platform); }
+    query += ' ORDER BY platform, slot_index ASC';
+    const accounts = db.prepare(query).all(...params).map(a => ({
+      ...a,
+      credentials: (() => { try { return JSON.parse(a.credentials || '{}'); } catch { return {}; } })()
+    }));
+    res.json({ accounts });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/platform-accounts', auth, (req, res) => {
+  try {
+    const { platform, account_name, slot_index } = req.body;
+    if (!platform) return res.status(400).json({ error: 'platform required' });
+
+    const existing = db.prepare('SELECT COUNT(*) as cnt FROM platform_accounts WHERE workspace_id = ? AND platform = ?').get(req.workspaceId, platform);
+    if (existing.cnt >= 5) return res.status(400).json({ error: 'Maximum 5 accounts per platform' });
+
+    const id = generateId();
+    const verifyToken = generateId().replace(/-/g, '').slice(0, 24);
+    db.prepare(`
+      INSERT INTO platform_accounts (id, workspace_id, platform, account_name, webhook_verify_token, slot_index)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, req.workspaceId, platform, account_name || `Account ${(slot_index || 0) + 1}`, verifyToken, slot_index || 0);
+
+    const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ?').get(id);
+    // Auto-start WhatsApp session when a whatsapp account slot is created
+    if (platform === 'whatsapp') {
+      whatsappService.addAccount(id, slot_index || 0);
+    }
+    res.json({ account: { ...account, credentials: {} } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/platform-accounts/:id', auth, (req, res) => {
+  try {
+    const { account_name, account_handle, credentials, status } = req.body;
+    const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    db.prepare(`
+      UPDATE platform_accounts SET
+        account_name = COALESCE(?, account_name),
+        account_handle = COALESCE(?, account_handle),
+        credentials = COALESCE(?, credentials),
+        status = COALESCE(?, status)
+      WHERE id = ?
+    `).run(
+      account_name || null,
+      account_handle || null,
+      credentials ? JSON.stringify(credentials) : null,
+      status || null,
+      req.params.id
+    );
+
+    const updated = db.prepare('SELECT * FROM platform_accounts WHERE id = ?').get(req.params.id);
+    res.json({ account: { ...updated, credentials: (() => { try { return JSON.parse(updated.credentials || '{}'); } catch { return {}; } })() } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/platform-accounts/:id', auth, (req, res) => {
+  try {
+    const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+    db.prepare('DELETE FROM platform_accounts WHERE id = ?').run(req.params.id);
+    // Stop WhatsApp session if removing a whatsapp account
+    if (account.platform === 'whatsapp') {
+      whatsappService.removeAccount(req.params.id).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  INSTAGRAM WEBHOOK
+// ════════════════════════════════════════════════════════════
+
+app.get('/api/webhooks/instagram', (req, res) => {
+  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
+  if (mode === 'subscribe') {
+    const account = db.prepare("SELECT * FROM platform_accounts WHERE platform = 'instagram' AND webhook_verify_token = ?").get(token);
+    if (account) return res.send(challenge);
+  }
+  res.sendStatus(403);
+});
+
+app.post('/api/webhooks/instagram', (req, res) => {
+  try {
+    const body = req.body;
+    if (body.object !== 'instagram') return res.sendStatus(404);
+
+    (body.entry || []).forEach(entry => {
+      const pageId = entry.id;
+      const account = db.prepare("SELECT * FROM platform_accounts WHERE platform = 'instagram' AND account_handle = ?").get(pageId)
+        || db.prepare("SELECT * FROM platform_accounts WHERE platform = 'instagram' ORDER BY created_at ASC LIMIT 1").get();
+      if (!account) return;
+
+      (entry.messaging || []).forEach(event => {
+        if (!event.message || event.message.is_echo) return;
+        const senderId = event.sender.id;
+        const text = event.message.text || '';
+        const ts = event.timestamp ? new Date(event.timestamp) : new Date();
+
+        let lead = db.prepare("SELECT * FROM leads WHERE workspace_id = ? AND customer_phone = ? AND (is_deleted = 0 OR is_deleted IS NULL)").get(account.workspace_id, senderId);
+        if (!lead) {
+          const leadId = generateId();
+          db.prepare(`
+            INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, status, first_message, total_messages, platform_source, platform_account_id, created_at, last_message_at)
+            VALUES (?, ?, ?, ?, ?, 'New', ?, 1, 'instagram', ?, ?, ?)
+          `).run(leadId, account.workspace_id, account.workspace_id, `Instagram User`, senderId, text.slice(0, 200), account.id, ts.toISOString(), ts.toISOString());
+          lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
+
+          const wsClients = sseClients.get(account.workspace_id) || [];
+          wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+        }
+
+        if (text) {
+          db.prepare(`
+            INSERT OR IGNORE INTO messages (id, lead_id, user_id, body, from_me, timestamp)
+            VALUES (?, ?, ?, ?, 0, ?)
+          `).run(generateId(), lead.id, account.workspace_id, text, ts.toISOString());
+          db.prepare('UPDATE leads SET total_messages = total_messages + 1, last_message_at = ? WHERE id = ?').run(ts.toISOString(), lead.id);
+        }
+      });
+    });
+
+    res.json({ status: 'ok' });
+  } catch (e) { console.error('Instagram webhook error:', e.message); res.sendStatus(500); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  FACEBOOK MESSENGER WEBHOOK
+// ════════════════════════════════════════════════════════════
+
+app.get('/api/webhooks/facebook', (req, res) => {
+  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
+  if (mode === 'subscribe') {
+    const account = db.prepare("SELECT * FROM platform_accounts WHERE platform = 'facebook' AND webhook_verify_token = ?").get(token);
+    if (account) return res.send(challenge);
+  }
+  res.sendStatus(403);
+});
+
+app.post('/api/webhooks/facebook', (req, res) => {
+  try {
+    const body = req.body;
+    if (body.object !== 'page') return res.sendStatus(404);
+
+    (body.entry || []).forEach(entry => {
+      const pageId = entry.id;
+      const account = db.prepare("SELECT * FROM platform_accounts WHERE platform = 'facebook' AND account_handle = ?").get(pageId)
+        || db.prepare("SELECT * FROM platform_accounts WHERE platform = 'facebook' ORDER BY created_at ASC LIMIT 1").get();
+      if (!account) return;
+
+      (entry.messaging || []).forEach(event => {
+        if (!event.message || event.message.is_echo) return;
+        const senderId = event.sender.id;
+        const text = event.message.text || '';
+        const ts = event.timestamp ? new Date(event.timestamp) : new Date();
+
+        let lead = db.prepare("SELECT * FROM leads WHERE workspace_id = ? AND customer_phone = ? AND (is_deleted = 0 OR is_deleted IS NULL)").get(account.workspace_id, senderId);
+        if (!lead) {
+          const leadId = generateId();
+          db.prepare(`
+            INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, status, first_message, total_messages, platform_source, platform_account_id, created_at, last_message_at)
+            VALUES (?, ?, ?, ?, ?, 'New', ?, 1, 'facebook', ?, ?, ?)
+          `).run(leadId, account.workspace_id, account.workspace_id, `Facebook User`, senderId, text.slice(0, 200), account.id, ts.toISOString(), ts.toISOString());
+          lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
+
+          const wsClients = sseClients.get(account.workspace_id) || [];
+          wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+        }
+
+        if (text) {
+          db.prepare(`
+            INSERT OR IGNORE INTO messages (id, lead_id, user_id, body, from_me, timestamp)
+            VALUES (?, ?, ?, ?, 0, ?)
+          `).run(generateId(), lead.id, account.workspace_id, text, ts.toISOString());
+          db.prepare('UPDATE leads SET total_messages = total_messages + 1, last_message_at = ? WHERE id = ?').run(ts.toISOString(), lead.id);
+        }
+      });
+    });
+
+    res.json({ status: 'ok' });
+  } catch (e) { console.error('Facebook webhook error:', e.message); res.sendStatus(500); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  WEBSITE FORM — PUBLIC SUBMISSION ENDPOINT
+// ════════════════════════════════════════════════════════════
+
+app.post('/api/website-form/:formToken/submit', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  try {
+    const account = db.prepare("SELECT * FROM platform_accounts WHERE platform = 'website' AND webhook_verify_token = ?").get(req.params.formToken);
+    if (!account) return res.status(404).json({ error: 'Form not found' });
+
+    // Normalize field names — support both WappFlow widget format and Formspree format
+    const body = req.body || {};
+    const name = body.name || body.full_name || body._name || body.your_name || 'Website Visitor';
+    const phone = body.phone || body.telephone || body.mobile || body.phone_number || null;
+    const email = body.email || body._replyto || body.your_email || null;
+    const message = body.message || body.comments || body.comment || body.msg || null;
+    if (!name && !phone && !email) return res.status(400).json({ error: 'At least one contact field required' });
+
+    const leadId = generateId();
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, email, status, first_message, platform_source, platform_account_id, created_at, last_message_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'New', ?, 'website', ?, ?, ?)
+    `).run(leadId, account.workspace_id, account.workspace_id, name, phone, email, message, account.id, now, now);
+
+    if (message) {
+      db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp) VALUES (?, ?, ?, ?, 0, ?)`).run(generateId(), leadId, account.workspace_id, message, now);
+    }
+
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
+    const wsClients = sseClients.get(account.workspace_id) || [];
+    wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+
+    res.json({ ok: true, lead_id: leadId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.options('/api/website-form/:formToken/submit', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+// ════════════════════════════════════════════════════════════
+//  CONNECTED CHANNELS / RELATIONS / TIMELINE
+// ════════════════════════════════════════════════════════════
+
+// GET /api/leads/:leadId/channels — list extra communication channels linked to a lead
+app.get('/api/leads/:leadId/channels', auth, (req, res) => {
+  try {
+    const channels = db.prepare(`
+      SELECT lc.*, pa.nickname AS account_nickname, pa.account_name
+      FROM lead_channels lc
+      LEFT JOIN platform_accounts pa ON pa.id = lc.platform_account_id
+      WHERE lc.lead_id = ? ORDER BY lc.created_at ASC
+    `).all(req.params.leadId);
+    res.json({ channels });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/leads/:leadId/channels', auth, (req, res) => {
+  try {
+    const { platform, identifier, platform_account_id, display_name } = req.body || {};
+    if (!platform || !identifier) return res.status(400).json({ error: 'platform and identifier required' });
+    const id = generateId();
+    db.prepare(`INSERT INTO lead_channels (id, lead_id, workspace_id, platform, identifier, platform_account_id, display_name) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, req.params.leadId, req.workspaceId, platform.toLowerCase(), identifier, platform_account_id || null, display_name || null);
+    res.json({ channel: db.prepare('SELECT * FROM lead_channels WHERE id = ?').get(id) });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'This channel is already linked to the lead' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/leads/:leadId/channels/:channelId', auth, (req, res) => {
+  try {
+    db.prepare('DELETE FROM lead_channels WHERE id = ? AND lead_id = ?').run(req.params.channelId, req.params.leadId);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/leads/:leadId/related — heuristic suggestions + already-linked relations
+app.get('/api/leads/:leadId/related', auth, (req, res) => {
+  try {
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.leadId, req.workspaceId);
+    if (!lead) return res.json({ suggestions: [], linked: [] });
+
+    // Linked = lead_relations rows where this lead is on either side
+    const linked = db.prepare(`
+      SELECT lr.id, lr.relation_type,
+             CASE WHEN lr.lead_id_a = ? THEN lr.lead_id_b ELSE lr.lead_id_a END AS other_lead_id,
+             l.customer_name, l.customer_phone, l.email, l.status, l.platform_source
+      FROM lead_relations lr
+      JOIN leads l ON l.id = CASE WHEN lr.lead_id_a = ? THEN lr.lead_id_b ELSE lr.lead_id_a END
+      WHERE (lr.lead_id_a = ? OR lr.lead_id_b = ?)
+        AND l.workspace_id = ?
+    `).all(req.params.leadId, req.params.leadId, req.params.leadId, req.params.leadId, req.workspaceId);
+
+    // Suggest matches by phone last-10-digits, email, or exact name (excluding self + already linked)
+    const linkedIds = new Set(linked.map(r => r.other_lead_id));
+    linkedIds.add(req.params.leadId);
+    const stripSQL = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(customer_phone,' ',''),'+',''),'-',''),'(',''),')',''),'.','')`;
+    const phoneTail = (lead.customer_phone || '').replace(/\D/g, '').slice(-10);
+    const suggestions = [];
+    if (phoneTail.length >= 7) {
+      const rows = db.prepare(`SELECT id, customer_name, customer_phone, email, status, platform_source FROM leads WHERE workspace_id = ? AND id != ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} LIKE ?`)
+        .all(req.workspaceId, req.params.leadId, `%${phoneTail}`);
+      for (const r of rows) if (!linkedIds.has(r.id)) suggestions.push({ ...r, match_reason: 'phone match' });
+    }
+    if (lead.email) {
+      const rows = db.prepare(`SELECT id, customer_name, customer_phone, email, status, platform_source FROM leads WHERE workspace_id = ? AND id != ? AND email = ? AND (is_deleted = 0 OR is_deleted IS NULL)`)
+        .all(req.workspaceId, req.params.leadId, lead.email);
+      for (const r of rows) if (!linkedIds.has(r.id) && !suggestions.find(s => s.id === r.id)) suggestions.push({ ...r, match_reason: 'email match' });
+    }
+    if (lead.customer_name) {
+      const rows = db.prepare(`SELECT id, customer_name, customer_phone, email, status, platform_source FROM leads WHERE workspace_id = ? AND id != ? AND LOWER(customer_name) = LOWER(?) AND (is_deleted = 0 OR is_deleted IS NULL)`)
+        .all(req.workspaceId, req.params.leadId, lead.customer_name);
+      for (const r of rows) if (!linkedIds.has(r.id) && !suggestions.find(s => s.id === r.id)) suggestions.push({ ...r, match_reason: 'name match' });
+    }
+    res.json({ suggestions: suggestions.slice(0, 10), linked });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/lead-relations', auth, (req, res) => {
+  try {
+    const { lead_id_a, lead_id_b, relation_type } = req.body || {};
+    if (!lead_id_a || !lead_id_b || lead_id_a === lead_id_b) return res.status(400).json({ error: 'two different leads required' });
+    // Canonical ordering so UNIQUE works regardless of which side initiated
+    const [a, b] = [lead_id_a, lead_id_b].sort();
+    const id = generateId();
+    db.prepare(`INSERT INTO lead_relations (id, lead_id_a, lead_id_b, relation_type, created_by) VALUES (?, ?, ?, ?, ?)`)
+      .run(id, a, b, relation_type || 'linked', req.userId);
+    res.json({ relation: db.prepare('SELECT * FROM lead_relations WHERE id = ?').get(id) });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'These leads are already linked' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/lead-relations/:id', auth, (req, res) => {
+  try {
+    db.prepare('DELETE FROM lead_relations WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/leads/:leadId/timeline — unified activity feed
+app.get('/api/leads/:leadId/timeline', auth, (req, res) => {
+  try {
+    const items = [];
+    // 1) Native activity rows
+    const acts = db.prepare(`SELECT * FROM activity_timeline WHERE lead_id = ? ORDER BY created_at ASC`).all(req.params.leadId);
+    for (const a of acts) items.push({ ...a, source: 'activity' });
+    // 2) Messages — fold in last 50
+    const msgs = db.prepare(`SELECT id, lead_id, body, from_me, media_type, timestamp AS created_at, platform, platform_account_id FROM messages WHERE lead_id = ? ORDER BY timestamp DESC LIMIT 50`).all(req.params.leadId);
+    for (const m of msgs) items.push({
+      id: 'msg-' + m.id,
+      activity_type: m.from_me ? 'message_out' : 'message_in',
+      platform: m.platform || 'whatsapp',
+      title: m.from_me ? 'Sent message' : 'Received message',
+      body: m.body || (m.media_type ? `[${m.media_type}]` : ''),
+      created_at: m.created_at,
+      source: 'message',
+    });
+    // 3) Notes
+    const notes = db.prepare(`SELECT * FROM notes WHERE lead_id = ? ORDER BY created_at DESC LIMIT 30`).all(req.params.leadId);
+    for (const n of notes) items.push({ id: 'note-' + n.id, activity_type: 'note', title: 'Note added', body: n.content, created_at: n.created_at, source: 'note' });
+    // 4) History
+    try {
+      const hist = db.prepare(`SELECT * FROM contact_history WHERE lead_id = ? ORDER BY created_at DESC LIMIT 30`).all(req.params.leadId);
+      for (const h of hist) items.push({ id: 'hist-' + h.id, activity_type: h.type || 'status_change', title: h.description, created_at: h.created_at, source: 'history' });
+    } catch {}
+    items.sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+    res.json({ timeline: items.slice(0, 100) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET/PUT /api/workspace/plan — read or update the workspace plan tier
+app.get('/api/workspace/plan', auth, (req, res) => {
+  try {
+    let plan = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId);
+    if (!plan) {
+      db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'starter')`).run(req.workspaceId);
+      plan = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId);
+    }
+    res.json({ plan });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/workspace/plan', auth, (req, res) => {
+  try {
+    const { plan, features, limits, trial_ends_at } = req.body || {};
+    db.prepare(`INSERT INTO workspace_plan (workspace_id, plan, features, limits, trial_ends_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(workspace_id) DO UPDATE SET
+        plan = excluded.plan, features = excluded.features, limits = excluded.limits, trial_ends_at = excluded.trial_ends_at, updated_at = CURRENT_TIMESTAMP
+    `).run(req.workspaceId, plan || 'starter', features ? JSON.stringify(features) : null, limits ? JSON.stringify(limits) : null, trial_ends_at || null);
+    res.json({ plan: db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/message-queue — outbound queue status
+app.get('/api/message-queue', auth, (req, res) => {
+  try {
+    const items = db.prepare(`SELECT * FROM outbound_message_queue WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 100`).all(req.workspaceId);
+    res.json({ items });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/message-queue/:id/retry', auth, (req, res) => {
+  try {
+    db.prepare(`UPDATE outbound_message_queue SET status = 'pending', retry_count = 0, next_retry_at = NULL, error_message = NULL WHERE id = ?`).run(req.params.id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  WHATSAPP GROUPS
+// ════════════════════════════════════════════════════════════
+
+// GET /api/whatsapp/ready-accounts — which WA accounts are connected and usable
+// Used by the "Create Group" modal to pick a source number.
+app.get('/api/whatsapp/ready-accounts', auth, (req, res) => {
+  try {
+    const accounts = (typeof whatsappService.listReadyAccounts === 'function')
+      ? whatsappService.listReadyAccounts()
+      : [];
+    // Filter to accounts in this workspace (accountId is in platform_accounts.workspace_id)
+    const filtered = accounts.filter(a => {
+      if (!a.accountId) return true; // legacy session — no account row, always allow workspace owner
+      const row = db.prepare(`SELECT workspace_id FROM platform_accounts WHERE id = ?`).get(a.accountId);
+      return !row || row.workspace_id === req.workspaceId;
+    });
+    res.json({ accounts: filtered });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/whatsapp/groups — create a WhatsApp group from a list of lead ids
+// Body: { name, description?, lead_ids: string[], account_id?: string }
+// Returns: { group_id, invite_link, added_count, skipped }
+app.post('/api/whatsapp/groups', auth, async (req, res) => {
+  try {
+    const { name, description, lead_ids, account_id } = req.body || {};
+    if (!name || typeof name !== 'string' || name.trim().length < 1) {
+      return res.status(400).json({ error: 'Group name required' });
+    }
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'At least one lead is required' });
+    }
+    if (lead_ids.length > 256) {
+      return res.status(400).json({ error: 'WhatsApp limits groups to ~256 participants' });
+    }
+
+    // Fetch the leads, filter to workspace + WhatsApp-source + has a real phone number.
+    // We let platform-account-mismatch through (a manager may be moving cross-account leads into a group).
+    const placeholders = lead_ids.map(() => '?').join(',');
+    const leads = db.prepare(`SELECT id, customer_name, customer_phone, platform_source FROM leads WHERE workspace_id = ? AND id IN (${placeholders}) AND (is_deleted = 0 OR is_deleted IS NULL)`)
+      .all(req.workspaceId, ...lead_ids);
+
+    const usableLeads = [];
+    const ineligible = [];
+    for (const l of leads) {
+      const digits = String(l.customer_phone || '').replace(/\D/g, '');
+      const hasJid = String(l.customer_phone || '').includes('@');
+      // Real phone OR a WA JID — anything 7-15 digits OR contains '@'
+      if (hasJid || (digits.length >= 7 && digits.length <= 15)) {
+        usableLeads.push(l);
+      } else {
+        ineligible.push({ id: l.id, name: l.customer_name, reason: 'not a valid WhatsApp number (platform user id)' });
+      }
+    }
+
+    if (usableLeads.length === 0) {
+      return res.status(400).json({
+        error: 'None of the selected leads have a valid WhatsApp number',
+        ineligible,
+      });
+    }
+
+    const phones = usableLeads.map(l => l.customer_phone);
+    const result = await whatsappService.createGroup(name.trim(), phones, description || null, account_id || null);
+
+    // Persist the group for future reference (sending broadcasts to it, naming it, etc.)
+    try {
+      db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_groups (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        platform_account_id TEXT,
+        name TEXT,
+        description TEXT,
+        invite_link TEXT,
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(workspace_id, group_id)
+      )`);
+      db.prepare(`INSERT OR IGNORE INTO whatsapp_groups (id, workspace_id, group_id, platform_account_id, name, description, invite_link, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(generateId(), req.workspaceId, result.groupId, account_id || null, name.trim(), description || null, result.inviteLink || null, req.userId);
+    } catch (e) { console.log('⚠️ Group persist warning:', e.message); }
+
+    res.json({
+      group_id: result.groupId,
+      invite_link: result.inviteLink,
+      added_count: result.addedCount,
+      skipped: result.skipped,
+      ineligible,
+    });
+  } catch (e) {
+    console.error('Group creation error:', e);
+    res.status(500).json({ error: e.message || 'Group creation failed' });
+  }
+});
+
+// PATCH /api/whatsapp/groups/:groupId — update name, description (multipart for icon)
+app.patch('/api/whatsapp/groups/:groupId', auth, (req, res) => {
+  // Use multer dynamically so JSON requests don't need a file
+  upload.single('icon')(req, res, async (mErr) => {
+    if (mErr) return res.status(400).json({ error: 'Icon upload failed: ' + (mErr.message || mErr.code) });
+    try {
+      const groupId = req.params.groupId;
+      const { name, description, account_id } = req.body || {};
+      if (name) await whatsappService.setGroupSubject(groupId, String(name).trim(), account_id || null);
+      if (typeof description === 'string') await whatsappService.setGroupDescription(groupId, description, account_id || null);
+      if (req.file) await whatsappService.setGroupPicture(groupId, req.file.path, req.file.mimetype, account_id || null);
+
+      // Update our local mirror
+      try {
+        if (name || typeof description === 'string') {
+          db.prepare(`UPDATE whatsapp_groups SET name = COALESCE(?, name), description = COALESCE(?, description) WHERE workspace_id = ? AND group_id = ?`)
+            .run(name || null, typeof description === 'string' ? description : null, req.workspaceId, groupId);
+        }
+      } catch {}
+      res.json({ success: true });
+    } catch (e) {
+      console.error('Group update error:', e);
+      res.status(500).json({ error: e.message || 'Group update failed' });
+    }
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+//  BULK LEAD ACTIONS
+// ════════════════════════════════════════════════════════════
+
+// POST /api/leads/bulk-trash — soft-delete many leads in one call
+app.post('/api/leads/bulk-trash', auth, (req, res) => {
+  try {
+    const { lead_ids } = req.body || {};
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+    const placeholders = lead_ids.map(() => '?').join(',');
+    const result = db.prepare(`UPDATE leads SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND id IN (${placeholders})`)
+      .run(req.workspaceId, ...lead_ids);
+    // Notify SSE listeners so dashboards update
+    try { for (const id of lead_ids) broadcastToWorkspace(req.workspaceId, 'lead_deleted', { id }); } catch {}
+    res.json({ moved: result.changes, message: `Moved ${result.changes} lead${result.changes === 1 ? '' : 's'} to trash` });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -192,8 +192,8 @@ export default function AICommandCenter({ enabled = true }) {
                   {QUICK_COMMANDS.map(qc => (
                     <button key={qc.command} onClick={() => handleCommand(qc.command)}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 12, border: '1.5px solid #f3f4f6', background: 'var(--surface)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.background = '#faf5ff'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#f3f4f6'; e.currentTarget.style.background = 'white'; }}>
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.background = 'rgba(139,92,246,0.10)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--surface2)'; e.currentTarget.style.background = 'white'; }}>
                       <span style={{ fontSize: 16 }}>{qc.icon}</span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{qc.label}</span>
                     </button>
@@ -207,7 +207,7 @@ export default function AICommandCenter({ enabled = true }) {
                     {history.slice(0, 3).map((h, i) => (
                       <button key={i} onClick={() => handleCommand(h.command)}
                         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', marginBottom: 4 }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                         <Clock size={12} color="#9ca3af" />
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.command}</span>
@@ -239,7 +239,7 @@ export default function AICommandCenter({ enabled = true }) {
 
                 {/* Error */}
                 {result.type === 'error' && (
-                  <div style={{ padding: '12px 14px', background: '#fef2f2', borderRadius: 12, border: '1.5px solid #fecaca' }}>
+                  <div style={{ padding: '12px 14px', background: 'rgba(239,68,68,0.12)', borderRadius: 12, border: '1.5px solid #fecaca' }}>
                     <p style={{ fontSize: 13, color: '#b91c1c', margin: 0 }}>⚠️ {result.message}</p>
                   </div>
                 )}
@@ -269,7 +269,7 @@ export default function AICommandCenter({ enabled = true }) {
                       ))}
                     </div>
                     {result.data.summary && (
-                      <div style={{ padding: '12px 14px', background: '#f0fdf4', borderRadius: 12, border: '1.5px solid #bbf7d0' }}>
+                      <div style={{ padding: '12px 14px', background: 'rgba(16,185,129,0.10)', borderRadius: 12, border: '1.5px solid #bbf7d0' }}>
                         <p style={{ fontSize: 13, color: 'var(--text)', margin: 0, lineHeight: 1.6 }}>{result.data.summary}</p>
                       </div>
                     )}
@@ -287,8 +287,8 @@ export default function AICommandCenter({ enabled = true }) {
                       <div key={lead.id}
                         onClick={() => { router.push(`/leads/${lead.id}`); setOpen(false); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid #f3f4f6', cursor: 'pointer', transition: 'all 0.15s' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.background = '#faf5ff'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = '#f3f4f6'; e.currentTarget.style.background = 'white'; }}>
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.background = 'rgba(139,92,246,0.10)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--surface2)'; e.currentTarget.style.background = 'white'; }}>
                         <div style={{ width: 36, height: 36, borderRadius: 11, background: `linear-gradient(135deg, ${STATUS_COLORS[lead.status] || '#6366f1'}, ${STATUS_COLORS[lead.status] || '#6366f1'}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: 'white', flexShrink: 0 }}>
                           {lead.customer_name?.[0]?.toUpperCase() || '?'}
                         </div>
@@ -313,7 +313,7 @@ export default function AICommandCenter({ enabled = true }) {
                         <p style={{ fontSize: 13, margin: 0 }}>No upcoming reminders</p>
                       </div>
                     ) : result.data.reminders.map(r => (
-                      <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', background: '#faf5ff', borderRadius: 12, border: '1.5px solid #e9d5ff' }}>
+                      <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', background: 'rgba(139,92,246,0.10)', borderRadius: 12, border: '1.5px solid #e9d5ff' }}>
                         <Bell size={14} color="#8b5cf6" style={{ marginTop: 2, flexShrink: 0 }} />
                         <div style={{ flex: 1 }}>
                           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{r.title || r.message || 'Reminder'}</p>
@@ -335,13 +335,13 @@ export default function AICommandCenter({ enabled = true }) {
                         {result.data.todayLeads.map(lead => (
                           <div key={lead.id} onClick={() => { router.push(`/leads/${lead.id}`); setOpen(false); }}
                             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface)', borderRadius: 10, border: '1.5px solid #f3f4f6', cursor: 'pointer' }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'white'}>
-                            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#6366f1' }}>
+                            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#6366f1' }}>
                               {lead.customer_name?.[0]?.toUpperCase()}
                             </div>
                             <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: 0 }}>{lead.customer_name}</p>
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 6, background: '#eef2ff', color: '#6366f1', marginLeft: 'auto' }}>New today</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 6, background: 'rgba(99,102,241,0.12)', color: '#6366f1', marginLeft: 'auto' }}>New today</span>
                           </div>
                         ))}
                       </div>

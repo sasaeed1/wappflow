@@ -106,7 +106,7 @@ function EmojiPicker({ onPick, onClose }) {
     <div ref={ref} style={{ position: 'absolute', bottom: '100%', right: 0, marginBottom: 8, background: 'var(--surface)', border: '1.5px solid #e5e7eb', borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.15)', width: 340, maxHeight: 360, display: 'flex', flexDirection: 'column', zIndex: 100, overflow: 'hidden' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', overflowX: 'auto' }}>
         {Object.keys(EMOJI_CATEGORIES).map(cat => (
-          <button key={cat} onClick={() => setActiveCat(cat)} style={{ padding: '8px 12px', fontSize: 11, fontWeight: activeCat === cat ? 700 : 600, color: activeCat === cat ? '#6366f1' : '#6b7280', background: activeCat === cat ? '#eef2ff' : 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', borderBottom: `2px solid ${activeCat === cat ? '#6366f1' : 'transparent'}` }}>
+          <button key={cat} onClick={() => setActiveCat(cat)} style={{ padding: '8px 12px', fontSize: 11, fontWeight: activeCat === cat ? 700 : 600, color: activeCat === cat ? '#6366f1' : '#6b7280', background: activeCat === cat ? 'rgba(99,102,241,0.12)' : 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', borderBottom: `2px solid ${activeCat === cat ? '#6366f1' : 'transparent'}` }}>
             {cat}
           </button>
         ))}
@@ -114,7 +114,7 @@ function EmojiPicker({ onPick, onClose }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: 10, display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
         {EMOJI_CATEGORIES[activeCat].map((e, i) => (
           <button key={`${e}-${i}`} onClick={() => onPick(e)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, padding: 4, borderRadius: 6, lineHeight: 1, transition: 'background 0.1s' }}
-            onMouseEnter={ev => ev.currentTarget.style.background = '#f3f4f6'}
+            onMouseEnter={ev => ev.currentTarget.style.background = 'var(--surface2)'}
             onMouseLeave={ev => ev.currentTarget.style.background = 'none'}>
             {e}
           </button>
@@ -210,7 +210,7 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo }) {
 
         {/* Body */}
         {msg.body && !msg.media_url && (
-          <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5, background: isMe ? '#eef2ff' : 'var(--surface2)', border: `1.5px solid ${isMe ? '#c7d2fe' : '#f3f4f6'}`, borderRadius: '0 12px 12px 12px', padding: '8px 12px', display: 'inline-block', maxWidth: '80%', wordBreak: 'break-word' }}>
+          <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5, background: isMe ? 'rgba(99,102,241,0.12)' : 'var(--surface2)', border: `1.5px solid ${isMe ? '#c7d2fe' : 'var(--surface2)'}`, borderRadius: '0 12px 12px 12px', padding: '8px 12px', display: 'inline-block', maxWidth: '80%', wordBreak: 'break-word' }}>
             <FormattedText text={msg.body} />
           </div>
         )}
@@ -235,7 +235,7 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo }) {
             {Object.values(reactionGroups).map(r => (
               <button key={r.emoji} onClick={() => onReact(msg.id, r.emoji)} style={{
                 display: 'flex', alignItems: 'center', gap: 3, padding: '2px 7px',
-                background: r.users.includes(currentUserId) ? '#eef2ff' : '#f9fafb',
+                background: r.users.includes(currentUserId) ? 'rgba(99,102,241,0.12)' : 'var(--surface2)',
                 border: `1.5px solid ${r.users.includes(currentUserId) ? '#c7d2fe' : 'var(--border)'}`,
                 borderRadius: 12, cursor: 'pointer', fontSize: 13
               }}>
@@ -260,7 +260,7 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo }) {
                 {QUICK_EMOJIS.map(emoji => (
                   <button key={emoji} onClick={() => { onReact(msg.id, emoji); setShowEmojiPicker(false); }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: '3px 5px', borderRadius: 6, lineHeight: 1 }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                     {emoji}
                   </button>
@@ -571,7 +571,7 @@ export default function ChatPage() {
               <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)', fontSize: 14 }}>Loading messages...</div>
             ) : messages.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                <div style={{ width: 60, height: 60, borderRadius: 18, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <div style={{ width: 60, height: 60, borderRadius: 18, background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                   <Hash size={24} color="#6366f1" />
                 </div>
                 <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: '0 0 6px' }}>Welcome to #{activeChannel.name}</p>
@@ -627,7 +627,7 @@ export default function ChatPage() {
                   <button key={cmd} onMouseDown={e => e.preventDefault()} onClick={() => applyFormat(cmd)}
                     title={shortcut ? `${label} (${shortcut})` : label}
                     style={{ width: 28, height: 28, padding: 0, background: 'none', border: 'none', borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.color = '#6366f1'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.12)'; e.currentTarget.style.color = '#6366f1'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#6b7280'; }}>
                     <Icon size={14} />
                   </button>
@@ -635,7 +635,7 @@ export default function ChatPage() {
                 <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 6px' }} />
                 {QUICK_EMOJIS.map(e => (
                   <button key={e} onMouseDown={ev => ev.preventDefault()} onClick={() => insertEmoji(e)} style={{ width: 26, height: 26, padding: 0, background: 'none', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-                    onMouseEnter={ev => ev.currentTarget.style.background = '#f3f4f6'}
+                    onMouseEnter={ev => ev.currentTarget.style.background = 'var(--surface2)'}
                     onMouseLeave={ev => ev.currentTarget.style.background = 'none'}>
                     {e}
                   </button>
@@ -643,7 +643,7 @@ export default function ChatPage() {
                 <div style={{ position: 'relative', marginLeft: 'auto' }}>
                   <button onMouseDown={e => e.preventDefault()} onClick={() => setShowEmojiPicker(s => !s)}
                     title="More emojis"
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: showEmojiPicker ? '#eef2ff' : 'none', color: showEmojiPicker ? '#6366f1' : '#6b7280', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: showEmojiPicker ? 'rgba(99,102,241,0.12)' : 'none', color: showEmojiPicker ? '#6366f1' : '#6b7280', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
                     <Smile size={13} /> More
                   </button>
                   {showEmojiPicker && <EmojiPicker onPick={insertEmoji} onClose={() => setShowEmojiPicker(false)} />}
@@ -674,7 +674,7 @@ export default function ChatPage() {
                   <button onMouseDown={e => e.preventDefault()} onClick={() => fileInputRef.current?.click()}
                     title="Attach file"
                     style={{ width: 30, height: 30, padding: 0, borderRadius: 8, border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.color = '#6366f1'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.12)'; e.currentTarget.style.color = '#6366f1'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#6b7280'; }}>
                     <Paperclip size={14} />
                   </button>
@@ -703,7 +703,7 @@ export default function ChatPage() {
         </div>
       ) : (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
-          <div style={{ width: 64, height: 64, borderRadius: 18, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 64, height: 64, borderRadius: 18, background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <MessageCircle size={28} color="#6366f1" />
           </div>
           <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Select a channel</p>

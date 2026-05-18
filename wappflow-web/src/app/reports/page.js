@@ -6,7 +6,8 @@ import {
   ArrowLeft, TrendingUp, DollarSign, Users, Target,
   Clock, Award, BarChart2, PieChart as PieIcon, Activity,
   Download, RefreshCw, Calendar, ChevronDown, ArrowUpRight,
-  ArrowDownRight, Minus, AlertCircle, CheckCircle, XCircle
+  ArrowDownRight, Minus, AlertCircle, CheckCircle, XCircle,
+  Camera, Globe as GlobeIcon, MonitorSmartphone, Layers, MessageCircle
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -33,7 +34,7 @@ function StatCard({ icon: Icon, label, value, sub, color, trend, trendVal }) {
           <Icon size={22} color={color} />
         </div>
         {trend && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, background: neutral ? 'var(--surface2)' : up ? '#ecfdf5' : '#fef2f2' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, background: neutral ? 'var(--surface2)' : up ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.12)' }}>
             {neutral ? <Minus size={13} color="var(--text-dim)" /> : up ? <ArrowUpRight size={13} color="#10b981" /> : <ArrowDownRight size={13} color="#ef4444" />}
             <span style={{ fontSize: 12, fontWeight: 700, color: neutral ? 'var(--text-dim)' : up ? '#10b981' : '#ef4444' }}>{trendVal}</span>
           </div>
@@ -244,12 +245,12 @@ export default function ReportsPage() {
             {[{ v: '7', l: '7D' }, { v: '30', l: '30D' }, { v: '90', l: '90D' }, { v: '365', l: '1Y' }].map(p => {
               const active = !customStart && !customEnd && period === p.v;
               return (
-                <button key={p.v} onClick={() => setPreset(p.v)} style={{ padding: '5px 12px', borderRadius: 8, border: `2px solid ${active ? '#6366f1' : 'var(--border)'}`, background: active ? '#eef2ff' : 'var(--surface)', color: active ? '#6366f1' : 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>{p.l}</button>
+                <button key={p.v} onClick={() => setPreset(p.v)} style={{ padding: '5px 12px', borderRadius: 8, border: `2px solid ${active ? '#6366f1' : 'var(--border)'}`, background: active ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: active ? '#6366f1' : 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>{p.l}</button>
               );
             })}
             <button
               onClick={() => setShowCustom(s => !s)}
-              style={{ padding: '5px 12px', borderRadius: 8, border: `2px solid ${(customStart && customEnd) ? '#6366f1' : 'var(--border)'}`, background: (customStart && customEnd) ? '#eef2ff' : 'var(--surface)', color: (customStart && customEnd) ? '#6366f1' : 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+              style={{ padding: '5px 12px', borderRadius: 8, border: `2px solid ${(customStart && customEnd) ? '#6366f1' : 'var(--border)'}`, background: (customStart && customEnd) ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: (customStart && customEnd) ? '#6366f1' : 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
             >
               <Calendar size={12} /> {(customStart && customEnd) ? `${customStart.slice(5)}—${customEnd.slice(5)}` : 'Custom'}
             </button>
@@ -281,7 +282,7 @@ export default function ReportsPage() {
                       const end = new Date(); const start = new Date(); start.setDate(start.getDate() - p.days);
                       setCustomStart(start.toISOString().slice(0, 10));
                       setCustomEnd(end.toISOString().slice(0, 10));
-                    }} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 8, cursor: 'pointer' }}>{p.l}</button>
+                    }} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, color: '#6366f1', background: 'rgba(99,102,241,0.12)', border: '1px solid #c7d2fe', borderRadius: 8, cursor: 'pointer' }}>{p.l}</button>
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
@@ -293,7 +294,7 @@ export default function ReportsPage() {
               </div>
             )}
           </div>
-          <button onClick={handleExportCSV} disabled={!data} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #a7f3d0', background: data ? '#ecfdf5' : 'var(--surface2)', color: data ? '#059669' : 'var(--text-dim)', cursor: data ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12 }}>
+          <button onClick={handleExportCSV} disabled={!data} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #a7f3d0', background: data ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', color: data ? '#059669' : 'var(--text-dim)', cursor: data ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12 }}>
             <Download size={13} /> Export CSV
           </button>
           <button onClick={fetchAll} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 12 }}>
@@ -385,13 +386,54 @@ export default function ReportsPage() {
                   </div>
                 </div>
 
+                {/* Platform breakdown */}
+                {(() => {
+                  const PLAT_META = {
+                    whatsapp: { label: 'WhatsApp', color: '#25d366' },
+                    instagram: { label: 'Instagram', color: '#e1306c' },
+                    facebook: { label: 'Facebook', color: '#1877f2' },
+                    website: { label: 'Website', color: '#6366f1' },
+                  };
+                  const platData = data?.platforms || [];
+                  if (platData.length === 0) return null;
+                  const total = platData.reduce((s, p) => s + (p.count || 0), 0);
+                  return (
+                    <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: '22px 24px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', marginTop: 16 }}>
+                      <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: '0 0 16px' }}>Leads by Platform</h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {platData.map(p => {
+                          const meta = PLAT_META[p.platform] || { label: p.platform, color: '#9ca3af' };
+                          const pct = total > 0 ? Math.round((p.count / total) * 100) : 0;
+                          return (
+                            <div key={p.platform}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: meta.color, display: 'inline-block' }} />
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{meta.label}</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{pct}%</span>
+                                  <span style={{ fontSize: 13, fontWeight: 800, color: meta.color }}>{p.count}</span>
+                                </div>
+                              </div>
+                              <div style={{ height: 6, background: 'var(--surface2)', borderRadius: 6 }}>
+                                <div style={{ height: 6, width: `${pct}%`, background: meta.color, borderRadius: 6, transition: 'width 0.5s ease', boxShadow: pct > 0 ? `0 0 6px ${meta.color}55` : 'none' }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Lost Reasons */}
                 {data?.lostReasons?.length > 0 && (
                   <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                     <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 20 }}>Lost Deal Reasons</p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                       {data.lostReasons.map((r, i) => (
-                        <div key={i} style={{ padding: '14px 16px', borderRadius: 12, background: '#fef2f2', border: '1.5px solid #fecaca' }}>
+                        <div key={i} style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(239,68,68,0.12)', border: '1.5px solid #fecaca' }}>
                           <p style={{ fontSize: 20, fontWeight: 800, color: '#ef4444', marginBottom: 4 }}>{r.count}</p>
                           <p style={{ fontSize: 13, color: '#b91c1c', fontWeight: 600 }}>{r.lost_reason}</p>
                         </div>
@@ -519,11 +561,11 @@ export default function ReportsPage() {
                 <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 28, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                   <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 16 }}>SLA & Response Time</p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                    <div style={{ padding: '20px 24px', borderRadius: 14, background: '#f0fdf4', border: '1.5px solid #bbf7d0' }}>
+                    <div style={{ padding: '20px 24px', borderRadius: 14, background: 'rgba(16,185,129,0.10)', border: '1.5px solid #bbf7d0' }}>
                       <p style={{ fontSize: 30, fontWeight: 900, color: '#10b981', marginBottom: 4 }}>{avgResponseDisplay || '—'}</p>
                       <p style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>Avg First Response</p>
                     </div>
-                    <div style={{ padding: '20px 24px', borderRadius: 14, background: '#eff6ff', border: '1.5px solid #bfdbfe' }}>
+                    <div style={{ padding: '20px 24px', borderRadius: 14, background: 'rgba(59,130,246,0.10)', border: '1.5px solid #bfdbfe' }}>
                       <p style={{ fontSize: 30, fontWeight: 900, color: '#3b82f6', marginBottom: 4 }}>{analytics?.leads_today || 0}</p>
                       <p style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8' }}>Leads Today</p>
                     </div>

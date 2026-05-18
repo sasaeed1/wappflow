@@ -66,19 +66,19 @@ function AcceptInviteContent() {
             <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(99,102,241,0.3)' }}>
               <Zap size={22} color="white" />
             </div>
-            <span style={{ fontSize: 26, fontWeight: 900, color: '#111827', letterSpacing: '-0.5px' }}>WappFlow</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '3px 10px', borderRadius: 20 }}>PRO</span>
+            <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>WappFlow</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.12)', border: '1px solid #c7d2fe', padding: '3px 10px', borderRadius: 20 }}>PRO</span>
           </div>
         </div>
 
-        <div style={{ background: 'white', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.08)', padding: 32, border: '1.5px solid #f3f4f6' }}>
+        <div style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: 'var(--shadow)', padding: 32, border: '1.5px solid var(--border)' }}>
           {error && !info ? (
             /* Invalid link state */
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <div style={{ width: 60, height: 60, borderRadius: 20, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <div style={{ width: 60, height: 60, borderRadius: 20, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                 <AlertCircle size={28} color="#ef4444" />
               </div>
-              <h1 style={{ fontSize: 20, fontWeight: 800, color: '#111827', margin: '0 0 8px' }}>Invalid Invite Link</h1>
+              <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: '0 0 8px' }}>Invalid Invite Link</h1>
               <p style={{ fontSize: 14, color: '#6b7280', margin: '0 0 24px' }}>{error}</p>
               <button onClick={() => router.push('/login')} style={{ padding: '11px 28px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
                 Go to Login
@@ -90,7 +90,7 @@ function AcceptInviteContent() {
               <div style={{ width: 60, height: 60, borderRadius: 20, background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                 <CheckCircle size={28} color="#10b981" />
               </div>
-              <h1 style={{ fontSize: 20, fontWeight: 800, color: '#111827', margin: '0 0 8px' }}>Welcome aboard!</h1>
+              <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: '0 0 8px' }}>Welcome aboard!</h1>
               <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>Redirecting you to the dashboard...</p>
             </div>
           ) : (
@@ -98,9 +98,9 @@ function AcceptInviteContent() {
             <>
               {/* Workspace badge */}
               {info && (
-                <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 14, padding: '14px 18px', marginBottom: 24 }}>
+                <div style={{ background: 'rgba(16,185,129,0.10)', border: '1.5px solid #bbf7d0', borderRadius: 14, padding: '14px 18px', marginBottom: 24 }}>
                   <p style={{ fontSize: 12, color: '#166534', fontWeight: 700, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>You're invited to</p>
-                  <p style={{ fontSize: 18, fontWeight: 900, color: '#111827', margin: '0 0 4px' }}>{info.workspace_name}</p>
+                  <p style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)', margin: '0 0 4px' }}>{info.workspace_name}</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, color: '#6b7280' }}>{info.email}</span>
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#6366f118', color: '#6366f1' }}>
@@ -110,18 +110,18 @@ function AcceptInviteContent() {
                 </div>
               )}
 
-              <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>Set up your account</h1>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px' }}>Set up your account</h1>
               <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 24px' }}>Choose a name and password to get started</p>
 
               {error && (
-                <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', color: '#b91c1c', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: 'rgba(239,68,68,0.12)', border: '1.5px solid #fecaca', color: '#b91c1c', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <AlertCircle size={14} /> {error}
                 </div>
               )}
 
               <form onSubmit={handleSubmit}>
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Full Name</label>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Full Name</label>
                   <div style={{ position: 'relative' }}>
                     <User size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                     <input
@@ -129,7 +129,7 @@ function AcceptInviteContent() {
                       value={form.full_name}
                       onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))}
                       placeholder="John Smith"
-                      style={{ width: '100%', padding: '12px 14px 12px 40px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '12px 14px 12px 40px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
                       onFocus={e => e.target.style.borderColor = '#6366f1'}
                       onBlur={e => e.target.style.borderColor = '#e5e7eb'}
                     />
@@ -137,7 +137,7 @@ function AcceptInviteContent() {
                 </div>
 
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Password</label>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Password</label>
                   <div style={{ position: 'relative' }}>
                     <Lock size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                     <input
@@ -145,7 +145,7 @@ function AcceptInviteContent() {
                       value={form.password}
                       onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
                       placeholder="At least 6 characters"
-                      style={{ width: '100%', padding: '12px 44px 12px 40px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '12px 44px 12px 40px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
                       onFocus={e => e.target.style.borderColor = '#6366f1'}
                       onBlur={e => e.target.style.borderColor = '#e5e7eb'}
                     />
@@ -156,7 +156,7 @@ function AcceptInviteContent() {
                 </div>
 
                 <div style={{ marginBottom: 22 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Confirm Password</label>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Confirm Password</label>
                   <div style={{ position: 'relative' }}>
                     <Lock size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                     <input
@@ -164,7 +164,7 @@ function AcceptInviteContent() {
                       value={form.confirm}
                       onChange={e => setForm(p => ({ ...p, confirm: e.target.value }))}
                       placeholder="Repeat password"
-                      style={{ width: '100%', padding: '12px 14px 12px 40px', border: `1.5px solid ${form.confirm && form.confirm !== form.password ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 11, fontSize: 14, color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '12px 14px 12px 40px', border: `1.5px solid ${form.confirm && form.confirm !== form.password ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 11, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
                       onFocus={e => e.target.style.borderColor = '#6366f1'}
                       onBlur={e => e.target.style.borderColor = (form.confirm && form.confirm !== form.password) ? '#fca5a5' : '#e5e7eb'}
                     />

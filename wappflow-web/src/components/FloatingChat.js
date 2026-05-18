@@ -163,7 +163,7 @@ export default function FloatingChat() {
 
         {/* Lead picker dropdown */}
         {showLeadSearch && (
-          <div style={{ position: 'absolute', bottom: 60, right: 0, width: 300, background: 'var(--surface)', borderRadius: 16, boxShadow: '0 16px 48px rgba(0,0,0,0.18)', border: '1.5px solid #e5e7eb', overflow: 'hidden', zIndex: 9001 }}>
+          <div style={{ position: 'absolute', bottom: 60, right: 0, width: 300, background: 'var(--surface)', borderRadius: 16, boxShadow: '0 16px 48px rgba(0,0,0,0.18)', border: '1.5px solid var(--border)', overflow: 'hidden', zIndex: 9001 }}>
             <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', gap: 8, alignItems: 'center' }}>
               <Search size={14} color="#9ca3af" />
               <input autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads to chat…"
@@ -176,7 +176,7 @@ export default function FloatingChat() {
               ) : filteredLeads.map(l => (
                 <button key={l.id} onClick={() => openLead(l)}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid #f9fafb' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#f9fafb'}
+                  onMouseEnter={e => e.currentTarget.style.background='var(--surface2)'}
                   onMouseLeave={e => e.currentTarget.style.background='none'}
                 >
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #25d366, #128c7e)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'white', flexShrink: 0 }}>
@@ -184,7 +184,7 @@ export default function FloatingChat() {
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.customer_name || 'Unknown'}</p>
-                    <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{displayPhone(l.customer_phone)}</p>
+                    <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{displayPhone(l.customer_phone, l.platform_source)}</p>
                   </div>
                 </button>
               ))}
@@ -201,7 +201,7 @@ export default function FloatingChat() {
       position: 'fixed', bottom: 24, right: 24, zIndex: 9000,
       width: 340, background: 'var(--surface)', borderRadius: 20,
       boxShadow: '0 24px 80px rgba(0,0,0,0.2)',
-      border: '1.5px solid #e5e7eb',
+      border: '1.5px solid var(--border)',
       display: 'flex', flexDirection: 'column',
       height: minimized ? 'auto' : 520,
       transition: 'height 0.2s ease',
@@ -215,7 +215,7 @@ export default function FloatingChat() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: 'white', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeLead?.customer_name || 'Unknown'}</p>
-          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0 }}>{displayPhone(activeLead?.customer_phone)}</p>
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0 }}>{displayPhone(activeLead?.customer_phone, activeLead?.platform_source)}</p>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           <button onClick={handleOpenSearch} title="Switch lead" style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
@@ -242,7 +242,7 @@ export default function FloatingChat() {
               {filteredLeads.map(l => (
                 <button key={l.id} onClick={() => openLead(l)}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid #f9fafb' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#f9fafb'}
+                  onMouseEnter={e => e.currentTarget.style.background='var(--surface2)'}
                   onMouseLeave={e => e.currentTarget.style.background='none'}
                 >
                   <div style={{ width: 28, height: 28, borderRadius: 7, background: '#25d366', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: 'white', flexShrink: 0 }}>
@@ -250,7 +250,7 @@ export default function FloatingChat() {
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.customer_name || 'Unknown'}</p>
-                    <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{displayPhone(l.customer_phone)}</p>
+                    <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{displayPhone(l.customer_phone, l.platform_source)}</p>
                   </div>
                 </button>
               ))}
@@ -269,7 +269,7 @@ export default function FloatingChat() {
           }}>
             {loadingMsgs ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-                <div style={{ width: 24, height: 24, border: '3px solid #e5e7eb', borderTopColor: '#25d366', borderRadius: '50%', animation: 'fcSpin 0.8s linear infinite' }} />
+                <div style={{ width: 24, height: 24, border: '3px solid var(--border)', borderTopColor: '#25d366', borderRadius: '50%', animation: 'fcSpin 0.8s linear infinite' }} />
               </div>
             ) : messages.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--text-dim)' }}>
@@ -284,7 +284,10 @@ export default function FloatingChat() {
                   <div key={msg.id || i} style={{ display: 'flex', justifyContent: fromMe ? 'flex-end' : 'flex-start' }}>
                     <div style={{
                       maxWidth: '78%', padding: '7px 10px',
-                      background: fromMe ? '#dcf8c6' : 'white',
+                      background: fromMe
+                        ? (typeof document !== 'undefined' && document.documentElement.classList.contains('light') ? '#dcf8c6' : '#1a4731')
+                        : 'var(--surface2)',
+                      color: 'var(--text)',
                       borderRadius: fromMe ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
                       boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
                     }}>
@@ -327,11 +330,11 @@ export default function FloatingChat() {
             <textarea ref={inputRef} value={newMsg} onChange={e => setNewMsg(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder="Type a message…" rows={1}
-              style={{ flex: 1, border: '1.5px solid #e5e7eb', borderRadius: 20, padding: '7px 12px', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, minHeight: 34, maxHeight: 80, overflowY: 'auto', boxSizing: 'border-box' }}
+              style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 20, padding: '7px 12px', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, minHeight: 34, maxHeight: 80, overflowY: 'auto', boxSizing: 'border-box' }}
               onFocus={e => e.target.style.borderColor='#25d366'} onBlur={e => e.target.style.borderColor='var(--border)'}
             />
             <button onClick={handleSend} disabled={sending || !newMsg.trim()}
-              style={{ width: 34, height: 34, background: newMsg.trim() ? 'linear-gradient(135deg, #25d366, #128c7e)' : '#f3f4f6', border: 'none', borderRadius: '50%', cursor: newMsg.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>
+              style={{ width: 34, height: 34, background: newMsg.trim() ? 'linear-gradient(135deg, #25d366, #128c7e)' : 'var(--surface2)', border: 'none', borderRadius: '50%', cursor: newMsg.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>
               <Send size={14} color={newMsg.trim() ? 'white' : '#d1d5db'} />
             </button>
           </div>

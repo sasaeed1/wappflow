@@ -7,7 +7,7 @@ import {
   Smartphone, Mail, Bell, Zap, BookOpen, Globe,
   CheckCircle, Star, Upload, Tag, Brain, UserCheck,
   FileText, Keyboard, Lightbulb, ArrowRight, Shield,
-  RefreshCw, Volume2, Calendar
+  RefreshCw, Volume2, Calendar, Layers
 } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 
@@ -55,6 +55,22 @@ const SECTIONS = [
       { title: 'Auto-reply rules', body: 'Auto-reply rules automatically respond when a customer sends a message containing specific keywords. Go to Settings → Auto-Reply Rules. Set a rule name, keywords (comma-separated), and the reply message. Match type can be "contains" or "exact".' },
       { title: 'WhatsApp formatting', body: 'Use WhatsApp markdown in the message input: *bold* for bold, _italic_ for italic. The chat toolbar also has Bold, Italic, and Bullet buttons. Click the emoji (😊) button to open the emoji picker.' },
       { title: 'Message history sync', body: 'When you open a lead profile, WappFlow automatically syncs the latest WhatsApp message history in the background. If new messages are found, the chat panel refreshes. You\'ll see a "Syncing history..." indicator.' },
+    ]
+  },
+  {
+    id: 'platforms',
+    label: 'Platform Integrations',
+    icon: Layers,
+    color: '#6366f1',
+    description: 'Connect Instagram, Facebook Messenger, and your website to capture leads automatically',
+    articles: [
+      { title: 'Connecting Instagram DMs', body: 'Go to Settings → Connections → Instagram → Add Account.\n\n1. Go to developers.facebook.com and create a Business app.\n2. Add the Instagram product to your app.\n3. Your App ID and App Secret are under Settings → Basic.\n4. Get a Page Access Token from Meta Business Manager → System Users. Create a System User, add your Instagram page as an asset, and generate a token with instagram_manage_messages and pages_messaging permissions.\n5. Get your Instagram Account ID from the Graph API: GET /me?fields=id using your access token.\n6. In your Meta App → Instagram → Webhooks → Configure. Use the Callback URL and Verify Token from your WappFlow Settings. Subscribe to the "messages" field.\n\nOnce connected, all Instagram DMs will automatically create leads in WappFlow.' },
+      { title: 'Connecting Facebook Messenger', body: 'Go to Settings → Connections → Facebook → Add Account.\n\n1. Go to developers.facebook.com and create a Business app.\n2. Add the Messenger product to your app.\n3. Your App ID is under Settings → Basic. App Secret is right below it.\n4. In Messenger API Settings → Generate Token, pick your Facebook Page and copy the token.\n5. Your Page ID is in your Facebook Page\'s About section or Business Manager URL.\n6. In your Meta App → Messenger → Webhooks → Edit. Use the Callback URL and Verify Token from WappFlow Settings. Subscribe to messages and messaging_postbacks.\n\nAll Facebook Messenger conversations will become leads automatically.' },
+      { title: 'Website Embed Widget', body: 'Go to Settings → Connections → Website → Add Account. Choose "Embed Widget" as the integration type.\n\nCopy the embed code snippet shown and paste it just before the </body> tag on your website. A floating "Contact Us" button appears in the bottom-right corner. When visitors fill in the form, a new lead is created in WappFlow instantly. You can customize the button color and title using the data-color and data-title attributes in the snippet.' },
+      { title: 'Website Custom Webhook', body: 'Go to Settings → Connections → Website → Add Account. Choose "Custom Webhook" as the integration type.\n\nCopy the Webhook URL. In your own website\'s form handler, send a POST request to that URL with JSON: { name, phone, email, message }. No authentication header is required — the unique token in the URL handles that. The submission will appear as a lead in WappFlow within seconds.' },
+      { title: 'Website Formspree Integration', body: 'Go to Settings → Connections → Website → Add Account. Choose "Formspree" as the integration type.\n\n1. Create an account at formspree.io and set up your form.\n2. In Formspree dashboard → your form → Integrations → Webhooks → Add a webhook.\n3. Paste the Webhook URL from WappFlow as the destination. Choose JSON format.\n4. Make sure your Formspree form has a "name" or "full_name" field and optionally "phone", "email", "message".\n\nEvery Formspree submission will be forwarded to WappFlow and appear as a new lead.' },
+      { title: 'Filtering leads by platform', body: 'On the Dashboard (Kanban view), use the Platform filter row above the Pipeline Board to show only leads from a specific source — WhatsApp, Instagram, Facebook, or Website. You can switch between platforms with a single click.\n\nOn the Leads List page, the same filter is available at the top. You can also navigate there directly from the Platform dropdown in the top navigation bar. All filters are stateless — refresh the page to return to all leads.' },
+      { title: 'Understanding platform_source on leads', body: 'Every lead in WappFlow has a platform_source field that records where the lead came from: whatsapp, instagram, facebook, or website. This is set automatically when the lead is created and cannot be changed.\n\nYou can see the platform source on the Leads List page (shown as a colored badge) and on individual lead profile pages. Analytics and Reports pages also show a breakdown of leads by platform.' },
     ]
   },
   {

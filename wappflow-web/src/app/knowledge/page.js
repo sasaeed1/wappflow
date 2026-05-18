@@ -15,15 +15,15 @@ const authHeader = () => ({
 });
 
 const MEMORY_TYPES = [
-  { value: 'pricing', label: 'Pricing', color: '#10b981', bg: '#ecfdf5' },
-  { value: 'service', label: 'Service', color: '#6366f1', bg: '#eef2ff' },
-  { value: 'course', label: 'Course', color: '#f59e0b', bg: '#fffbeb' },
-  { value: 'product', label: 'Product', color: '#06b6d4', bg: '#ecfeff' },
-  { value: 'policy', label: 'Policy', color: '#ef4444', bg: '#fef2f2' },
-  { value: 'schedule', label: 'Schedule', color: '#8b5cf6', bg: '#faf5ff' },
-  { value: 'contact', label: 'Contact', color: '#f97316', bg: '#fff7ed' },
+  { value: 'pricing', label: 'Pricing', color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
+  { value: 'service', label: 'Service', color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
+  { value: 'course', label: 'Course', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' },
+  { value: 'product', label: 'Product', color: '#06b6d4', bg: 'rgba(6,182,212,0.10)' },
+  { value: 'policy', label: 'Policy', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  { value: 'schedule', label: 'Schedule', color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
+  { value: 'contact', label: 'Contact', color: '#f97316', bg: 'rgba(249,115,22,0.10)' },
   { value: 'faq', label: 'FAQ', color: '#84cc16', bg: '#f7fee7' },
-  { value: 'other', label: 'Other', color: 'var(--text-dim)', bg: '#f9fafb' },
+  { value: 'other', label: 'Other', color: 'var(--text-dim)', bg: 'var(--surface2)' },
 ];
 
 function getTypeInfo(type) {
@@ -198,7 +198,7 @@ export default function KnowledgePage() {
 
   return (
     <NavBar>
-      <div style={{ minHeight: '100vh', background: 'var(--surface2)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
         <style>{`
           @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
           @keyframes spin { to { transform: rotate(360deg); } }
@@ -223,7 +223,7 @@ export default function KnowledgePage() {
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={handleLearnFromMessages} disabled={learning} style={{
                 display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px',
-                borderRadius: 12, border: '1.5px solid #c4b5fd', background: '#faf5ff',
+                borderRadius: 12, border: '1.5px solid #c4b5fd', background: 'rgba(139,92,246,0.10)',
                 color: '#7c3aed', fontWeight: 700, cursor: learning ? 'not-allowed' : 'pointer', fontSize: 13
               }}>
                 {learning ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <MessageSquare size={14} />}
@@ -246,9 +246,9 @@ export default function KnowledgePage() {
           {/* Stats row */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
             {[
-              { label: 'Documents', value: documents.length, icon: FileText, color: '#6366f1', bg: '#eef2ff' },
-              { label: 'Memories', value: memories.length, icon: Database, color: '#8b5cf6', bg: '#faf5ff' },
-              { label: 'Auto-Learned', value: memories.filter(m => m.source !== 'manual').length, icon: Sparkles, color: '#10b981', bg: '#ecfdf5' },
+              { label: 'Documents', value: documents.length, icon: FileText, color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
+              { label: 'Memories', value: memories.length, icon: Database, color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
+              { label: 'Auto-Learned', value: memories.filter(m => m.source !== 'manual').length, icon: Sparkles, color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
             ].map(s => (
               <div key={s.label} style={{ background: 'var(--surface)', borderRadius: 16, padding: '18px 20px', border: '1.5px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 14 }}>
                 <div style={{ width: 44, height: 44, borderRadius: 14, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -307,25 +307,25 @@ export default function KnowledgePage() {
                       {documents.map(doc => (
                         <div key={doc.id} style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid #e5e7eb', overflow: 'hidden' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px' }}>
-                            <div style={{ width: 44, height: 44, borderRadius: 14, background: doc.file_type?.includes('pdf') ? '#fef2f2' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <div style={{ width: 44, height: 44, borderRadius: 14, background: doc.file_type?.includes('pdf') ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               <File size={20} color={doc.file_type?.includes('pdf') ? '#ef4444' : '#3b82f6'} />
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.document_name}</p>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
                                 <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{new Date(doc.uploaded_at).toLocaleDateString()}</span>
-                                {doc.processed === 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: '#fffbeb', padding: '2px 8px', borderRadius: 6, animation: 'pulse 1.5s infinite' }}>⏳ Processing...</span>}
-                                {doc.processed === 1 && <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>✅ {doc.memory_count} memories extracted</span>}
-                                {doc.processed === 2 && <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: '#fef2f2', padding: '2px 8px', borderRadius: 6 }}>❌ Processing failed</span>}
+                                {doc.processed === 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.10)', padding: '2px 8px', borderRadius: 6, animation: 'pulse 1.5s infinite' }}>⏳ Processing...</span>}
+                                {doc.processed === 1 && <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.10)', padding: '2px 8px', borderRadius: 6 }}>✅ {doc.memory_count} memories extracted</span>}
+                                {doc.processed === 2 && <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '2px 8px', borderRadius: 6 }}>❌ Processing failed</span>}
                               </div>
                             </div>
                             <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                               {doc.processed === 1 && doc.memory_count > 0 && (
-                                <button onClick={() => handleExpandDoc(doc.id)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #c4b5fd', background: '#faf5ff', color: '#7c3aed', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
+                                <button onClick={() => handleExpandDoc(doc.id)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #c4b5fd', background: 'rgba(139,92,246,0.10)', color: '#7c3aed', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
                                   <Database size={12} /> Memories {expandedDoc === doc.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 </button>
                               )}
-                              <button onClick={() => handleDeleteDoc(doc.id)} style={{ padding: '7px 12px', borderRadius: 10, border: '1.5px solid #fecaca', background: '#fff5f5', color: '#ef4444', cursor: 'pointer' }}>
+                              <button onClick={() => handleDeleteDoc(doc.id)} style={{ padding: '7px 12px', borderRadius: 10, border: '1.5px solid #fecaca', background: 'rgba(239,68,68,0.10)', color: '#ef4444', cursor: 'pointer' }}>
                                 <Trash2 size={14} />
                               </button>
                             </div>
@@ -385,7 +385,7 @@ export default function KnowledgePage() {
 
                   {/* Add/Edit Memory Form */}
                   {showMemoryForm && (
-                    <div style={{ background: '#faf5ff', border: '2px solid #8b5cf6', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+                    <div style={{ background: 'rgba(139,92,246,0.10)', border: '2px solid #8b5cf6', borderRadius: 16, padding: 20, marginBottom: 16 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                         <p style={{ fontSize: 15, fontWeight: 800, color: '#7c3aed', margin: 0 }}>{editingMemory ? 'Edit Memory' : 'Add Memory'}</p>
                         <button onClick={() => { setShowMemoryForm(false); setEditingMemory(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={16} /></button>
@@ -449,13 +449,13 @@ export default function KnowledgePage() {
                                     <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 'auto', flexShrink: 0 }}>{m.confidence}%</span>
                                   </div>
                                   <p style={{ fontSize: 13, color: 'var(--text)', margin: '0 0 6px', lineHeight: 1.5 }}>{m.value}</p>
-                                  <span style={{ fontSize: 10, fontWeight: 600, color: m.source === 'manual' ? '#6366f1' : m.source === 'document' ? '#10b981' : '#f59e0b', background: m.source === 'manual' ? '#eef2ff' : m.source === 'document' ? '#ecfdf5' : '#fffbeb', padding: '2px 8px', borderRadius: 6 }}>
+                                  <span style={{ fontSize: 10, fontWeight: 600, color: m.source === 'manual' ? '#6366f1' : m.source === 'document' ? '#10b981' : '#f59e0b', background: m.source === 'manual' ? 'rgba(99,102,241,0.12)' : m.source === 'document' ? 'rgba(16,185,129,0.10)' : 'rgba(245,158,11,0.10)', padding: '2px 8px', borderRadius: 6 }}>
                                     {m.source === 'manual' ? '✏️ Manual' : m.source === 'document' ? '📄 Document' : '💬 Auto-learned'}
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
                                   <button onClick={() => openEditMemory(m)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}><Edit2 size={12} /></button>
-                                  <button onClick={() => handleDeleteMemory(m.id)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #fecaca', background: '#fff5f5', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={12} /></button>
+                                  <button onClick={() => handleDeleteMemory(m.id)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'rgba(239,68,68,0.10)', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={12} /></button>
                                 </div>
                               </div>
                             ))}

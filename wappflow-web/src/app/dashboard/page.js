@@ -9,13 +9,14 @@ import {
   ChevronRight, X, Settings, Clock, CheckCircle, AlertCircle,
   ArrowUpRight, Activity, Target, Star, Upload, FileText,
   BarChart2, HelpCircle, UserCheck, Download, RefreshCw,
-  Volume2, VolumeX, Wifi, WifiOff
+  Volume2, VolumeX, Wifi, WifiOff,
+  Camera, Globe as GlobeIcon, MonitorSmartphone, Layers
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, BASE_URL } from '../../lib/api';
+import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_URL, platformAccountsAPI } from '../../lib/api';
 import AddLeadModal from '../../components/AddLeadModal';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import NavBar from '../../components/NavBar';
@@ -336,18 +337,75 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew }) {
               <ChevronRight style={{ width: 14, height: 14, color: 'var(--border)', flexShrink: 0, opacity: 0 }} className="group-hover:opacity-100" />
             </div>
 
-            {lead.customer_phone && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
-                <Phone style={{ width: 10, height: 10, color: 'var(--text-dim)' }} />
-                <span style={{ fontSize: 11, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayPhone(lead.customer_phone)}</span>
-              </div>
-            )}
+            {/* Platform · account chip — always visible so the source is unambiguous */}
+            {(() => {
+              const platform = (lead.platform_source || 'whatsapp').toLowerCase();
+              const pColor = PLATFORM_COLORS[platform] || '#6b7280';
+              const acctName = lead.account_display_name || lead.account_nickname || lead.account_name;
+              const platName = { whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', website: 'Website' }[platform] || platform;
+              return (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 20, background: pColor + '18', color: pColor, fontSize: 10, fontWeight: 700, marginBottom: 6, maxWidth: '100%' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: pColor, flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {platName}{acctName ? ` · ${acctName}` : ''}
+                  </span>
+                </div>
+              );
+            })()}
+
+            {lead.customer_phone && (() => {
+              const display = displayPhone(lead.customer_phone, lead.platform_source);
+              if (!display || display === 'No phone') return null;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+                  <Phone style={{ width: 10, height: 10, color: 'var(--text-dim)' }} />
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{display}</span>
+                </div>
+              );
+            })()}
 
             {tags.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }} onClick={e => e.stopPropagation()}>
                 {tags.map(tag => <TagChip key={tag.id} tag={tag} size="sm" />)}
               </div>
             )}
+
+            {/* AI intelligence badges — only shown after analysis has run */}
+            {(lead.sentiment || lead.urgency || (lead.lead_score && lead.lead_score > 0)) && (() => {
+              const SENT = {
+                positive: { emoji: '😊', color: '#10b981' },
+                neutral:  { emoji: '😐', color: '#6b7280' },
+                negative: { emoji: '😟', color: '#f59e0b' },
+                frustrated: { emoji: '😠', color: '#ef4444' },
+              };
+              const URG = {
+                low:      { color: '#10b981', label: 'low' },
+                medium:   { color: '#f59e0b', label: 'med' },
+                high:     { color: '#f97316', label: 'high' },
+                critical: { color: '#ef4444', label: '🔥 critical' },
+              };
+              const s = SENT[lead.sentiment];
+              const u = URG[lead.urgency];
+              return (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                  {lead.lead_score > 0 && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>
+                      ✨ {lead.lead_score}/10
+                    </span>
+                  )}
+                  {s && (
+                    <span title={`Sentiment: ${lead.sentiment}`} style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: s.color + '18', color: s.color }}>
+                      {s.emoji}
+                    </span>
+                  )}
+                  {u && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: u.color + '18', color: u.color }}>
+                      {u.label}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -446,11 +504,11 @@ function NotificationPanel({ leads, reminders, liveEvents, onClose, onMarkAllRea
       href: e.data?.lead_id ? `/leads/${e.data.lead_id}` : null,
       isLive: true,
     })),
-    ...todayLeads.map(l => ({ id: `lead-${l.id}`, type: 'lead', title: `New lead: ${l.customer_name || 'Unknown'}`, sub: `Came in today · ${displayPhone(l.customer_phone)}`, color: '#6366f1', bg: '#eef2ff', href: `/leads/${l.id}` })),
+    ...todayLeads.map(l => ({ id: `lead-${l.id}`, type: 'lead', title: `New lead: ${l.customer_name || 'Unknown'}`, sub: `Came in today · ${displayPhone(l.customer_phone, l.platform_source)}`, color: '#6366f1', bg: 'rgba(99,102,241,0.12)', href: `/leads/${l.id}` })),
     ...urgentReminders.map(r => {
       const due = new Date(r.due_date || r.reminder_date);
       const overdue = due < now;
-      return { id: `rem-${r.id}`, type: 'reminder', title: r.title || r.message || 'Reminder', sub: overdue ? `Overdue — ${due.toLocaleString()}` : `Due ${due.toLocaleString()}`, color: overdue ? '#ef4444' : '#f59e0b', bg: overdue ? '#fef2f2' : '#fffbeb', href: null };
+      return { id: `rem-${r.id}`, type: 'reminder', title: r.title || r.message || 'Reminder', sub: overdue ? `Overdue — ${due.toLocaleString()}` : `Due ${due.toLocaleString()}`, color: overdue ? '#ef4444' : '#f59e0b', bg: overdue ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.10)', href: null };
     }),
   ].filter(item => !dismissed.has(item.id));
 
@@ -526,7 +584,7 @@ function NotificationPanel({ leads, reminders, liveEvents, onClose, onMarkAllRea
 // ── SSE Status indicator ──────────────────────────────────────────────────────
 function SSEStatus({ connected }) {
   return (
-    <div title={connected ? 'Live updates active' : 'Reconnecting...'} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', background: connected ? '#ecfdf5' : '#fef2f2', border: `1.5px solid ${connected ? '#a7f3d0' : '#fecaca'}`, borderRadius: 20, fontSize: 11, fontWeight: 700, color: connected ? '#059669' : '#ef4444' }}>
+    <div title={connected ? 'Live updates active' : 'Reconnecting...'} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', background: connected ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.12)', border: `1.5px solid ${connected ? '#a7f3d0' : '#fecaca'}`, borderRadius: 20, fontSize: 11, fontWeight: 700, color: connected ? '#059669' : '#ef4444' }}>
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: connected ? '#10b981' : '#ef4444', animation: connected ? 'pulse 2s infinite' : 'none' }} />
       {connected ? 'Live' : 'Reconnecting'}
     </div>
@@ -574,6 +632,7 @@ export default function DashboardPage() {
   const [newLeadIds, setNewLeadIds] = useState(new Set());
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [toast, setToast] = useState(null); // { message, color, icon }
+  const [platformFilter, setPlatformFilter] = useState('all');
 
   // ── Toast helper ────────────────────────────────────────────────────────────
   const showToast = useCallback((message, color = '#6366f1', icon = '🔔') => {
@@ -630,7 +689,9 @@ export default function DashboardPage() {
 
     es.addEventListener('lead_updated', (e) => {
       const data = JSON.parse(e.data);
-      setAllLeads(prev => prev.map(l => l.id === data.id ? { ...l, ...data } : l));
+      const updated = data.lead || data;
+      if (!updated?.id) return;
+      setAllLeads(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
     });
 
     es.addEventListener('missed_sync_complete', (e) => {
@@ -713,14 +774,20 @@ export default function DashboardPage() {
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) { setLeads(allLeads); return; }
-    const q = searchQuery.toLowerCase();
-    setLeads(allLeads.filter(l =>
-      l.customer_name?.toLowerCase().includes(q) ||
-      l.customer_phone?.includes(q) ||
-      l.status?.toLowerCase().includes(q)
-    ));
-  }, [searchQuery, allLeads]);
+    let filtered = allLeads;
+    if (platformFilter !== 'all') {
+      filtered = filtered.filter(l => (l.platform_source || 'whatsapp') === platformFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(l =>
+        l.customer_name?.toLowerCase().includes(q) ||
+        l.customer_phone?.includes(q) ||
+        l.status?.toLowerCase().includes(q)
+      );
+    }
+    setLeads(filtered);
+  }, [searchQuery, allLeads, platformFilter]);
 
   useEffect(() => {
     const handler = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifications(false); };
@@ -794,7 +861,7 @@ export default function DashboardPage() {
   if (loading) return (
     <div style={{ minHeight: '100vh', background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="text-center">
-        <div style={{ width: 44, height: 44, border: '3px solid #e5e7eb', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
+        <div style={{ width: 44, height: 44, border: '3px solid var(--border)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
         <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: 14 }}>Loading WappFlow...</p>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -826,7 +893,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── DASHBOARD SUB-HEADER (page-specific actions) ── */}
-      <div style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 60, zIndex: 40 }}>
+      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 60, zIndex: 40 }}>
         <div style={{ maxWidth: 1600, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 56, gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -851,7 +918,7 @@ export default function DashboardPage() {
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
               title={soundEnabled ? 'Mute notifications' : 'Unmute notifications'}
-              style={{ width: 34, height: 34, borderRadius: 9, border: `1.5px solid ${soundEnabled ? '#a7f3d0' : 'var(--border)'}`, background: soundEnabled ? '#ecfdf5' : '#f9fafb', color: soundEnabled ? '#059669' : '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 34, height: 34, borderRadius: 9, border: `1.5px solid ${soundEnabled ? '#a7f3d0' : 'var(--border)'}`, background: soundEnabled ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', color: soundEnabled ? '#059669' : '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               {soundEnabled ? <Volume2 style={{ width: 14, height: 14 }} /> : <VolumeX style={{ width: 14, height: 14 }} />}
             </button>
@@ -869,11 +936,11 @@ export default function DashboardPage() {
       <main style={{ maxWidth: 1600, margin: '0 auto', padding: '20px' }}>
 
         {/* ── STAT CARDS ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
+        <div className="dash-stats-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
           {[
-            { label: 'Total Leads',  value: analytics?.total_leads || 0,                              icon: Users,        color: '#6366f1', bg: '#eef2ff', trend: '+' + (analytics?.leads_today || 0) + ' today' },
-            { label: 'Conversion',   value: `${analytics?.conversion_rate || 0}%`,                    icon: Target,       color: '#10b981', bg: '#ecfdf5', trend: 'Won / Total' },
-            { label: 'New Today',    value: analytics?.leads_today || 0,                               icon: Activity,     color: '#06b6d4', bg: '#ecfeff', trend: 'Incoming leads' },
+            { label: 'Total Leads',  value: analytics?.total_leads || 0,                              icon: Users,        color: '#6366f1', bg: 'rgba(99,102,241,0.12)', trend: '+' + (analytics?.leads_today || 0) + ' today' },
+            { label: 'Conversion',   value: `${analytics?.conversion_rate || 0}%`,                    icon: Target,       color: '#10b981', bg: 'rgba(16,185,129,0.10)', trend: 'Won / Total' },
+            { label: 'New Today',    value: analytics?.leads_today || 0,                               icon: Activity,     color: '#06b6d4', bg: 'rgba(6,182,212,0.10)', trend: 'Incoming leads' },
           ].map(({ label, value, icon: Icon, color, bg, trend }) => (
             <div key={label} style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '20px 22px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -999,7 +1066,7 @@ export default function DashboardPage() {
         })()}
 
         {/* ── ANALYTICS ROW ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 280px', gap: 14, marginBottom: 20 }}>
+        <div className="dash-main" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 280px', gap: 14, marginBottom: 20 }}>
 
           {/* Bar chart — leads per stage */}
           <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
@@ -1082,11 +1149,53 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── PLATFORM FILTER ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', marginRight: 4 }}>Platform:</span>
+          {[
+            { id: 'all',       label: 'All Platforms', color: '#6366f1', icon: Layers },
+            { id: 'whatsapp',  label: 'WhatsApp',      color: '#25d366', icon: MessageCircle },
+            { id: 'instagram', label: 'Instagram',     color: '#e1306c', icon: Camera },
+            { id: 'facebook',  label: 'Facebook',      color: '#1877f2', icon: MonitorSmartphone },
+            { id: 'website',   label: 'Website',       color: '#6366f1', icon: GlobeIcon },
+          ].map(({ id, label, color, icon: Icon }) => {
+            const count = id === 'all' ? allLeads.length : allLeads.filter(l => (l.platform_source || 'whatsapp') === id).length;
+            const isActive = platformFilter === id;
+            return (
+              <button key={id} onClick={() => setPlatformFilter(id)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 13px',
+                borderRadius: 20, border: `1.5px solid ${isActive ? color : 'var(--border)'}`,
+                background: isActive ? color + '15' : 'var(--surface)',
+                color: isActive ? color : 'var(--text-muted)',
+                fontSize: 12, fontWeight: isActive ? 700 : 600, cursor: 'pointer', transition: 'all 0.15s',
+              }}>
+                <Icon style={{ width: 13, height: 13 }} />
+                {label}
+                {count > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 10, background: isActive ? color + '25' : 'var(--surface2)', color: isActive ? color : 'var(--text-muted)' }}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {platformFilter !== 'all' && (
+            <button onClick={() => setPlatformFilter('all')} style={{ padding: '6px 10px', borderRadius: 20, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <X style={{ width: 11, height: 11 }} /> Clear
+            </button>
+          )}
+        </div>
+
         {/* ── PIPELINE / LIST HEADER ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Pipeline Board</h2>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', padding: '2px 10px', borderRadius: 20 }}>{leads.length} leads</span>
+            {platformFilter !== 'all' && (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20, background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}>
+                {['whatsapp','instagram','facebook','website'].find(p=>p===platformFilter) && platformFilter.charAt(0).toUpperCase() + platformFilter.slice(1)} only
+              </span>
+            )}
             {searchQuery && <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>· "{searchQuery}"</span>}
             {liveEvents.length > 0 && (
               <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', padding: '2px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1152,13 +1261,30 @@ export default function DashboardPage() {
                     {lead.customer_name?.[0]?.toUpperCase() || '?'}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{lead.customer_name || 'Unknown'}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.text }}>{lead.status}</span>
-                      {isNew && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: '#eef2ff', color: '#6366f1' }}>NEW</span>}
+                      {(() => {
+                        const platform = (lead.platform_source || 'whatsapp').toLowerCase();
+                        const pColor = PLATFORM_COLORS[platform] || '#6b7280';
+                        const acctName = lead.account_display_name || lead.account_nickname || lead.account_name;
+                        const platName = { whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', website: 'Website' }[platform] || platform;
+                        return (
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: pColor + '18', color: pColor, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: pColor }} />
+                            {platName}{acctName ? ` · ${acctName}` : ''}
+                          </span>
+                        );
+                      })()}
+                      {isNew && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>NEW</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 16, marginTop: 2 }}>
-                      <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{displayPhone(lead.customer_phone)}</span>
+                      {(() => {
+                        const display = displayPhone(lead.customer_phone, lead.platform_source);
+                        return display && display !== 'No phone'
+                          ? <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{display}</span>
+                          : null;
+                      })()}
                       <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{lead.total_messages} msgs</span>
                     </div>
                   </div>
@@ -1177,7 +1303,7 @@ export default function DashboardPage() {
         {/* Trash link */}
         <div style={{ marginTop: 32, display: 'flex', justifyContent: 'center' }}>
           <button onClick={() => router.push('/trash')} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text-dim)', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = '#fecaca'; e.currentTarget.style.background = '#fef2f2'; }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = '#fecaca'; e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; }}
             onMouseLeave={e => { e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'white'; }}
           >
             <Trash2 style={{ width: 13, height: 13 }} /> Trash & Deleted Leads

@@ -59,8 +59,8 @@ function LoginContent() {
             <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(99,102,241,0.3)' }}>
               <Zap size={22} color="white" />
             </div>
-            <span style={{ fontSize: 26, fontWeight: 900, color: '#111827', letterSpacing: '-0.5px' }}>WappFlow</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '3px 10px', borderRadius: 20 }}>PRO</span>
+            <span style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' }}>WappFlow</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.12)', border: '1px solid #c7d2fe', padding: '3px 10px', borderRadius: 20 }}>PRO</span>
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 11, color: '#9ca3af' }}>Powered by</span>
@@ -70,12 +70,12 @@ function LoginContent() {
         </div>
 
         {/* Card */}
-        <div style={{ background: 'white', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)', padding: 32, border: '1.5px solid #f3f4f6' }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>Welcome back</h1>
-          <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 24px' }}>Sign in to manage your pipeline</p>
+        <div style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: 'var(--shadow)', padding: 32, border: '1.5px solid var(--border)' }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px' }}>Welcome back</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '0 0 24px' }}>Sign in to manage your pipeline</p>
 
           {error && (
-            <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', color: '#b91c1c', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ background: 'rgba(239,68,68,0.12)', border: '1.5px solid #fecaca', color: '#b91c1c', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>⚠️</span> {error}
             </div>
           )}
@@ -107,7 +107,7 @@ function LoginContent() {
 
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Email</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Email</label>
               <div style={{ position: 'relative' }}>
                 <Mail size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                 <input
@@ -116,7 +116,7 @@ function LoginContent() {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="you@example.com"
-                  style={{ width: '100%', padding: '12px 14px 12px 40px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, color: '#111827', outline: 'none', boxSizing: 'border-box', transition: 'all 0.15s' }}
+                  style={{ width: '100%', padding: '12px 14px 12px 40px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', transition: 'all 0.15s' }}
                   onFocus={e => e.target.style.borderColor = '#6366f1'}
                   onBlur={e => e.target.style.borderColor = '#e5e7eb'}
                 />
@@ -124,7 +124,7 @@ function LoginContent() {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Password</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Password</label>
               <div style={{ position: 'relative' }}>
                 <Lock size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                 <input
@@ -133,7 +133,7 @@ function LoginContent() {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder="••••••••"
-                  style={{ width: '100%', padding: '12px 44px 12px 40px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, color: '#111827', outline: 'none', boxSizing: 'border-box', transition: 'all 0.15s' }}
+                  style={{ width: '100%', padding: '12px 44px 12px 40px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', transition: 'all 0.15s' }}
                   onFocus={e => e.target.style.borderColor = '#6366f1'}
                   onBlur={e => e.target.style.borderColor = '#e5e7eb'}
                 />

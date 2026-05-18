@@ -130,7 +130,7 @@ export default function ProfilePage() {
         {toast && (
           <div style={{
             position: 'fixed', top: 80, right: 24, zIndex: 9999,
-            background: toast.type === 'error' ? '#fef2f2' : '#f0fdf4',
+            background: toast.type === 'error' ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.10)',
             border: `1.5px solid ${toast.type === 'error' ? '#fecaca' : '#bbf7d0'}`,
             color: toast.type === 'error' ? '#b91c1c' : '#15803d',
             padding: '10px 16px', borderRadius: 12, fontSize: 13, fontWeight: 600,

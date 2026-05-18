@@ -41,12 +41,12 @@ function Toast({ message, type = 'success' }) {
   return (
     <div style={{
       position: 'fixed', top: 20, right: 24, zIndex: 9999,
-      background: type === 'error' ? '#ef4444' : '#111827',
+      background: type === 'error' ? 'rgba(239,68,68,0.95)' : 'rgba(16,185,129,0.95)',
       color: 'white', padding: '13px 20px', borderRadius: 14, fontSize: 13, fontWeight: 600,
       display: 'flex', alignItems: 'center', gap: 10,
-      boxShadow: '0 12px 40px rgba(0,0,0,0.25)', maxWidth: 380,
+      boxShadow: '0 12px 40px rgba(0,0,0,0.35)', maxWidth: 380,
     }}>
-      {type === 'error' ? <AlertCircle size={16} /> : <CheckCircle size={16} color="#10b981" />}
+      {type === 'error' ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
       {message}
     </div>
   );
@@ -103,7 +103,7 @@ function InviteModal({ onSave, onClose }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
       <div style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:460, width:'100%', padding:32 }}>
         <div style={{ textAlign:'center', marginBottom:24 }}>
-          <div style={{ width:60, height:60, borderRadius:20, background:'#d1fae5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+          <div style={{ width:60, height:60, borderRadius:20, background:'rgba(16,185,129,0.15)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
             <CheckCircle size={28} color="#10b981" />
           </div>
           <h2 style={{ fontSize:20, fontWeight:800, color:'var(--text)', margin:'0 0 8px' }}>
@@ -117,9 +117,9 @@ function InviteModal({ onSave, onClose }) {
         </div>
 
         {result.email_sent ? (
-          <div style={{ background:'#ecfdf5', border:'1.5px solid #6ee7b7', borderRadius:12, padding:'14px 16px', marginBottom:16, textAlign:'center' }}>
-            <p style={{ fontSize:13, fontWeight:700, color:'#065f46', margin:'0 0 4px' }}>✅ Email delivered to {form.email}</p>
-            <p style={{ fontSize:12, color:'#059669', margin:0 }}>They'll receive an invite with a direct link to set their password.</p>
+          <div style={{ background:'rgba(16,185,129,0.10)', border:'1.5px solid rgba(16,185,129,0.35)', borderRadius:12, padding:'14px 16px', marginBottom:16, textAlign:'center' }}>
+            <p style={{ fontSize:13, fontWeight:700, color:'#10b981', margin:'0 0 4px' }}>✅ Email delivered to {form.email}</p>
+            <p style={{ fontSize:12, color:'#34d399', margin:0 }}>They'll receive an invite with a direct link to set their password.</p>
           </div>
         ) : (
           <div style={{ background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:12, padding:'14px 16px', marginBottom:16 }}>
@@ -129,7 +129,7 @@ function InviteModal({ onSave, onClose }) {
         )}
 
         {!result.email_sent && (
-          <button onClick={copyLink} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:12, border:'1.5px solid #c7d2fe', background: copied ? '#d1fae5' : '#eef2ff', color: copied ? '#065f46' : '#6366f1', fontWeight:700, cursor:'pointer', fontSize:14, marginBottom:10, transition:'all 0.2s' }}>
+          <button onClick={copyLink} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:12, border:'1.5px solid rgba(99,102,241,0.35)', background: copied ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.12)', color: copied ? '#065f46' : '#6366f1', fontWeight:700, cursor:'pointer', fontSize:14, marginBottom:10, transition:'all 0.2s' }}>
             {copied ? <><Check size={15} /> Copied!</> : <><Copy size={15} /> Copy Invite Link</>}
           </button>
         )}
@@ -151,13 +151,13 @@ function InviteModal({ onSave, onClose }) {
         <div style={{ marginBottom:14 }}>
           <label style={{ fontSize:12, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:8 }}>Full Name</label>
           <input value={form.full_name} onChange={e => setForm(p => ({...p, full_name:e.target.value}))} placeholder="John Smith"
-            style={{ width:'100%', padding:'11px 14px', border:'1.5px solid #e5e7eb', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }}
+            style={{ width:'100%', padding:'11px 14px', border:'1.5px solid var(--border)', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }}
             onFocus={e=>e.target.style.borderColor='#6366f1'} onBlur={e=>e.target.style.borderColor='var(--border)'} />
         </div>
         <div style={{ marginBottom:14 }}>
           <label style={{ fontSize:12, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:8 }}>Email Address</label>
           <input value={form.email} onChange={e => setForm(p => ({...p, email:e.target.value}))} placeholder="john@company.com" type="email" autoFocus
-            style={{ width:'100%', padding:'11px 14px', border:'1.5px solid #e5e7eb', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }}
+            style={{ width:'100%', padding:'11px 14px', border:'1.5px solid var(--border)', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }}
             onFocus={e=>e.target.style.borderColor='#6366f1'} onBlur={e=>e.target.style.borderColor='var(--border)'} />
         </div>
         <div style={{ marginBottom:24 }}>
@@ -166,7 +166,7 @@ function InviteModal({ onSave, onClose }) {
             {ROLES.filter(r => r.value !== 'super_admin').map(role => {
               const RI = role.icon; const sel = form.role === role.value;
               return (
-                <button key={role.value} onClick={() => setForm(p=>({...p,role:role.value}))} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', borderRadius:12, border:`2px solid ${sel?role.color:'var(--border)'}`, background:sel?role.color+'0d':'white', cursor:'pointer', textAlign:'left' }}>
+                <button key={role.value} onClick={() => setForm(p=>({...p,role:role.value}))} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 14px', borderRadius:12, border:`2px solid ${sel?role.color:'var(--border)'}`, background:sel?role.color+'0d':'var(--surface)', cursor:'pointer', textAlign:'left' }}>
                   <div style={{ width:34, height:34, borderRadius:10, background:role.color+'20', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                     <RI size={16} color={role.color} />
                   </div>
@@ -181,7 +181,7 @@ function InviteModal({ onSave, onClose }) {
           </div>
         </div>
         <div style={{ display:'flex', gap:12 }}>
-          <button onClick={() => onClose(false)} style={{ flex:1, padding:'13px', border:'1.5px solid #e5e7eb', borderRadius:12, background:'var(--surface)', color:'var(--text-muted)', fontWeight:600, cursor:'pointer', fontSize:14 }}>Cancel</button>
+          <button onClick={() => onClose(false)} style={{ flex:1, padding:'13px', border:'1.5px solid var(--border)', borderRadius:12, background:'var(--surface)', color:'var(--text-muted)', fontWeight:600, cursor:'pointer', fontSize:14 }}>Cancel</button>
           <button onClick={handle} disabled={saving||!form.email.trim()} style={{ flex:2, padding:'13px', border:'none', borderRadius:12, background:saving?'#9ca3af':'linear-gradient(135deg,#6366f1,#4f46e5)', color:'white', fontWeight:700, cursor:saving?'not-allowed':'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
             <Send size={14} /> {saving ? 'Creating...' : 'Create Invite Link'}
           </button>
@@ -214,7 +214,7 @@ function RoleModal({ member, onSave, onClose }) {
           {ROLES.filter(r => r.value !== 'super_admin').map(r => {
             const RI = r.icon; const sel = role === r.value;
             return (
-              <button key={r.value} onClick={() => setRole(r.value)} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 14px', borderRadius:12, border:`2px solid ${sel?r.color:'var(--border)'}`, background:sel?r.color+'0d':'white', cursor:'pointer', textAlign:'left' }}>
+              <button key={r.value} onClick={() => setRole(r.value)} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 14px', borderRadius:12, border:`2px solid ${sel?r.color:'var(--border)'}`, background:sel?r.color+'0d':'var(--surface)', cursor:'pointer', textAlign:'left' }}>
                 <RI size={16} color={r.color} />
                 <div style={{ flex:1 }}>
                   <p style={{ fontSize:13, fontWeight:700, color:sel?r.color:'var(--text)', margin:0 }}>{r.label}</p>
@@ -226,7 +226,7 @@ function RoleModal({ member, onSave, onClose }) {
           })}
         </div>
         <div style={{ display:'flex', gap:12 }}>
-          <button onClick={onClose} style={{ flex:1, padding:'12px', border:'1.5px solid #e5e7eb', borderRadius:12, background:'var(--surface)', color:'var(--text-muted)', fontWeight:600, cursor:'pointer', fontSize:14 }}>Cancel</button>
+          <button onClick={onClose} style={{ flex:1, padding:'12px', border:'1.5px solid var(--border)', borderRadius:12, background:'var(--surface)', color:'var(--text-muted)', fontWeight:600, cursor:'pointer', fontSize:14 }}>Cancel</button>
           <button onClick={handle} disabled={saving||role===member.role} style={{ flex:2, padding:'12px', border:'none', borderRadius:12, background:'linear-gradient(135deg,#6366f1,#4f46e5)', color:'white', fontWeight:700, cursor:saving?'not-allowed':'pointer', fontSize:14 }}>
             {saving ? 'Saving...' : 'Update Role'}
           </button>
@@ -276,7 +276,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
         </div>
 
         {/* Override toggle */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'#f8faff', borderRadius:14, border:'1.5px solid #c7d2fe', marginBottom:20 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'rgba(99,102,241,0.06)', borderRadius:14, border:'1.5px solid rgba(99,102,241,0.35)', marginBottom:20 }}>
           <div>
             <p style={{ fontSize:14, fontWeight:700, color:'var(--text)', margin:0 }}>Custom permission override</p>
             <p style={{ fontSize:12, color:'var(--text-dim)', margin:0 }}>Override this member's permissions beyond their role defaults</p>
@@ -294,7 +294,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
                   <div key={key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', background:'var(--surface2)', borderRadius:10, gap:12 }}>
                     <div style={{ flex:1 }}>
                       <span style={{ fontSize:13, color:'var(--text)', fontWeight:600 }}>{label}</span>
-                      {isCustom && <span style={{ fontSize:10, color:'#6366f1', fontWeight:700, marginLeft:6, background:'#eef2ff', padding:'1px 6px', borderRadius:4 }}>CUSTOM</span>}
+                      {isCustom && <span style={{ fontSize:10, color:'#6366f1', fontWeight:700, marginLeft:6, background:'rgba(99,102,241,0.12)', padding:'1px 6px', borderRadius:4 }}>CUSTOM</span>}
                     </div>
                     <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                       <span style={{ fontSize:11, color: local[key] ? '#10b981' : '#ef4444', fontWeight:700 }}>{local[key] ? 'ON' : 'OFF'}</span>
@@ -311,7 +311,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
             </div>
 
             {/* Add custom permission */}
-            <div style={{ background:'#f0fdf4', border:'1.5px dashed #86efac', borderRadius:12, padding:16, marginBottom:20 }}>
+            <div style={{ background:'rgba(16,185,129,0.10)', border:'1.5px dashed #86efac', borderRadius:12, padding:16, marginBottom:20 }}>
               <p style={{ fontSize:12, fontWeight:700, color:'#166534', margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'0.4px' }}>Add Custom Permission</p>
               <div style={{ display:'flex', gap:8 }}>
                 <input value={customKey} onChange={e=>setCustomKey(e.target.value)} placeholder="e.g. export_data" onKeyDown={e=>e.key==='Enter'&&addCustomPerm()}
@@ -323,7 +323,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
         )}
 
         <div style={{ display:'flex', gap:12 }}>
-          <button onClick={onClose} style={{ flex:1, padding:'12px', border:'1.5px solid #e5e7eb', borderRadius:12, background:'var(--surface)', color:'var(--text-muted)', fontWeight:600, cursor:'pointer', fontSize:14 }}>Cancel</button>
+          <button onClick={onClose} style={{ flex:1, padding:'12px', border:'1.5px solid var(--border)', borderRadius:12, background:'var(--surface)', color:'var(--text-muted)', fontWeight:600, cursor:'pointer', fontSize:14 }}>Cancel</button>
           <button onClick={handleSave} disabled={saving} style={{ flex:2, padding:'12px', border:'none', borderRadius:12, background:'linear-gradient(135deg,#6366f1,#4f46e5)', color:'white', fontWeight:700, cursor:saving?'not-allowed':'pointer', fontSize:14 }}>
             {saving ? 'Saving...' : hasOverride ? 'Save Custom Permissions' : 'Remove Override (use role defaults)'}
           </button>
@@ -386,7 +386,7 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
           const allKeys = [...new Set([...Object.keys(PERM_LABELS), ...Object.keys(perms)])];
 
           return (
-            <div key={role} style={{ background:'var(--surface)', borderRadius:20, border:'1.5px solid #e5e7eb', padding:24, boxShadow:'0 2px 8px rgba(0,0,0,0.04)' }}>
+            <div key={role} style={{ background:'var(--surface)', borderRadius:20, border:'1.5px solid var(--border)', padding:24, boxShadow:'0 2px 8px rgba(0,0,0,0.04)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
                 <div style={{ width:40, height:40, borderRadius:12, background:ri?.color+'18', display:'flex', alignItems:'center', justifyContent:'center' }}>
                   <RI size={18} color={ri?.color} />
@@ -403,7 +403,7 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
                   const isCustom = !PERM_LABELS[key];
                   return (
                     <div key={key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', borderRadius:8, background:'var(--surface2)', gap:8 }}>
-                      <span style={{ fontSize:12, color:'var(--text)', fontWeight:500, flex:1 }}>{label}{isCustom && <span style={{ fontSize:9, color:'#6366f1', fontWeight:700, marginLeft:5, background:'#eef2ff', padding:'1px 5px', borderRadius:3 }}>CUSTOM</span>}</span>
+                      <span style={{ fontSize:12, color:'var(--text)', fontWeight:500, flex:1 }}>{label}{isCustom && <span style={{ fontSize:9, color:'#6366f1', fontWeight:700, marginLeft:5, background:'rgba(99,102,241,0.12)', padding:'1px 5px', borderRadius:3 }}>CUSTOM</span>}</span>
                       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                         <span style={{ fontSize:10, color:perms[key]?'#10b981':'#9ca3af', fontWeight:700, minWidth:24 }}>{perms[key]?'ON':'OFF'}</span>
                         <Toggle value={!!perms[key]} onChange={v=>isOwner&&setLocal(prev=>({...prev,[role]:{...prev[role],[key]:v}}))} color={ri?.color} disabled={!isOwner} />
@@ -424,10 +424,10 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
                         onKeyDown={e=>{if(e.key==='Enter')addCustomPerm(role);if(e.key==='Escape'){setAddingKey(null);setNewKey('');}}}
                         style={{ flex:1, padding:'7px 10px', border:'1.5px solid #6366f1', borderRadius:8, fontSize:12, outline:'none', boxSizing:'border-box' }} />
                       <button onClick={()=>addCustomPerm(role)} style={{ padding:'7px 12px', borderRadius:8, border:'none', background:'#10b981', color:'white', fontWeight:700, cursor:'pointer', fontSize:12 }}>Add</button>
-                      <button onClick={()=>{setAddingKey(null);setNewKey('');}} style={{ padding:'7px 10px', borderRadius:8, border:'1.5px solid #e5e7eb', background:'var(--surface)', color:'var(--text-muted)', cursor:'pointer', fontSize:12 }}>✕</button>
+                      <button onClick={()=>{setAddingKey(null);setNewKey('');}} style={{ padding:'7px 10px', borderRadius:8, border:'1.5px solid var(--border)', background:'var(--surface)', color:'var(--text-muted)', cursor:'pointer', fontSize:12 }}>✕</button>
                     </div>
                   ) : (
-                    <button onClick={()=>setAddingKey(role)} style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1.5px dashed #d1d5db', background:'transparent', color:'var(--text-dim)', cursor:'pointer', fontSize:12, fontWeight:600, marginBottom:10, width:'100%' }}>
+                    <button onClick={()=>setAddingKey(role)} style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:8, border:'1.5px dashed var(--border)', background:'transparent', color:'var(--text-dim)', cursor:'pointer', fontSize:12, fontWeight:600, marginBottom:10, width:'100%' }}>
                       <Plus size={12}/> Add custom permission
                     </button>
                   )}
@@ -540,14 +540,14 @@ export default function TeamPage() {
 
   return (
     <NavBar>
-    <div style={{ minHeight:'100vh', background:'#f1f5f9', fontFamily:'system-ui,-apple-system,sans-serif' }}>
+    <div style={{ minHeight:'100vh', background:'var(--bg)', fontFamily:'system-ui,-apple-system,sans-serif' }}>
       {toast && <Toast message={toast.msg} type={toast.type} />}
       {showInvite && <InviteModal onSave={handleInvite} onClose={handleInviteClose} />}
       {roleModal && <RoleModal member={roleModal} onSave={handleRoleUpdate} onClose={()=>setRoleModal(null)} />}
       {permModal && <MemberPermissionsModal member={permModal} roleDefaults={permissions} onSave={handlePermUpdate} onClose={()=>setPermModal(null)} />}
 
       {/* Sub-header */}
-      <div style={{ background:'var(--surface)', borderBottom:'1px solid #e5e7eb', position:'sticky', top:60, zIndex:40 }}>
+      <div style={{ background:'var(--surface)', borderBottom:'1px solid var(--border)', position:'sticky', top:60, zIndex:40 }}>
         <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px', display:'flex', alignItems:'center', height:52, gap:16 }}>
           <div style={{ flex:1, display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,#6366f1,#8b5cf6)', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -558,7 +558,7 @@ export default function TeamPage() {
               <span style={{ fontSize:12, color:'var(--text-dim)', marginLeft:8 }}>{members.length} member{members.length!==1?'s':''}</span>
             </div>
           </div>
-          <button onClick={fetchAll} style={{ padding:'6px 12px', borderRadius:9, border:'1.5px solid #e5e7eb', background:'var(--surface)', color:'var(--text-muted)', cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', gap:5 }}>
+          <button onClick={fetchAll} style={{ padding:'6px 12px', borderRadius:9, border:'1.5px solid var(--border)', background:'var(--surface)', color:'var(--text-muted)', cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', gap:5 }}>
             <RefreshCw size={12} /> Refresh
           </button>
           {canManage && (
@@ -593,7 +593,7 @@ export default function TeamPage() {
                     { label:'Active', value:members.filter(m=>m.invite_status==='active').length, color:'#10b981', icon:UserCheck },
                     { label:'Pending', value:members.filter(m=>m.invite_status==='pending').length, color:'#f97316', icon:Clock },
                   ].map((s,i) => (
-                    <div key={i} style={{ background:'var(--surface)', borderRadius:16, border:'1.5px solid #e5e7eb', padding:'18px 20px', boxShadow:'0 2px 6px rgba(0,0,0,0.04)' }}>
+                    <div key={i} style={{ background:'var(--surface)', borderRadius:16, border:'1.5px solid var(--border)', padding:'18px 20px', boxShadow:'0 2px 6px rgba(0,0,0,0.04)' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
                         <div style={{ width:34, height:34, borderRadius:10, background:s.color+'18', display:'flex', alignItems:'center', justifyContent:'center' }}>
                           <s.icon size={16} color={s.color} />
@@ -606,7 +606,7 @@ export default function TeamPage() {
                 </div>
 
                 {/* Search */}
-                <div style={{ background:'var(--surface)', borderRadius:14, border:'1.5px solid #e5e7eb', padding:'10px 14px', marginBottom:14, display:'flex', alignItems:'center', gap:10, maxWidth:380 }}>
+                <div style={{ background:'var(--surface)', borderRadius:14, border:'1.5px solid var(--border)', padding:'10px 14px', marginBottom:14, display:'flex', alignItems:'center', gap:10, maxWidth:380 }}>
                   <Search size={15} color="#9ca3af" />
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search members..."
                     style={{ border:'none', outline:'none', fontSize:14, color:'var(--text)', flex:1, background:'transparent' }} />
@@ -614,7 +614,7 @@ export default function TeamPage() {
 
                 {/* Member cards */}
                 {filtered.length === 0 ? (
-                  <div style={{ background:'var(--surface)', borderRadius:20, border:'1.5px solid #e5e7eb', padding:60, textAlign:'center' }}>
+                  <div style={{ background:'var(--surface)', borderRadius:20, border:'1.5px solid var(--border)', padding:60, textAlign:'center' }}>
                     <Users size={44} color="#d1d5db" style={{ margin:'0 auto 16px', display:'block' }} />
                     <p style={{ fontSize:16, fontWeight:700, color:'var(--text-dim)', marginBottom:8 }}>No team members yet</p>
                     {canManage && <button onClick={()=>setShowInvite(true)} style={{ marginTop:16, padding:'10px 24px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#6366f1,#4f46e5)', color:'white', fontWeight:700, cursor:'pointer', fontSize:14 }}>Invite Member</button>}
@@ -631,8 +631,8 @@ export default function TeamPage() {
                       const isSelf = (() => { try { const u=JSON.parse(localStorage.getItem('user')||'{}'); return u.id===member.user_id; } catch { return false; } })();
 
                       return (
-                        <div key={member.id} style={{ background:'var(--surface)', borderRadius:16, border:`1.5px solid ${isPending?'#fed7aa':'var(--border)'}`, padding:'18px 22px', boxShadow:'0 2px 6px rgba(0,0,0,0.04)', display:'flex', alignItems:'center', gap:16 }}>
-                          <div style={{ width:46, height:46, borderRadius:14, flexShrink:0, background:isPending?'#f3f4f6':`linear-gradient(135deg,${ri.color}cc,${ri.color}66)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:900, color:isPending?'#9ca3af':'white', border:`2px solid ${isPending?'var(--border)':ri.color+'40'}` }}>
+                        <div key={member.id} style={{ background:'var(--surface)', borderRadius:16, border:`1.5px solid ${isPending?'rgba(249,115,22,0.35)':'var(--border)'}`, padding:'18px 22px', boxShadow:'0 2px 6px rgba(0,0,0,0.04)', display:'flex', alignItems:'center', gap:16 }}>
+                          <div style={{ width:46, height:46, borderRadius:14, flexShrink:0, background:isPending?'var(--surface2)':`linear-gradient(135deg,${ri.color}cc,${ri.color}66)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:900, color:isPending?'#9ca3af':'white', border:`2px solid ${isPending?'var(--border)':ri.color+'40'}` }}>
                             {isPending ? <Clock size={18} color="#9ca3af" /> : (displayName[0]?.toUpperCase()||'?')}
                           </div>
                           <div style={{ flex:1, minWidth:0 }}>
@@ -644,8 +644,8 @@ export default function TeamPage() {
                               <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 9px', borderRadius:8, background:ri.color+'18', color:ri.color, fontSize:11, fontWeight:700 }}>
                                 <RI size={10} /> {ri.label}
                               </span>
-                              {isPending && <span style={{ padding:'2px 8px', borderRadius:6, background:'#fff7ed', color:'#c2410c', fontSize:11, fontWeight:700 }}>Pending invite</span>}
-                              {hasCustomPerms && <span style={{ padding:'2px 8px', borderRadius:6, background:'#eef2ff', color:'#6366f1', fontSize:11, fontWeight:700, display:'inline-flex', alignItems:'center', gap:3 }}><Lock size={9}/>Custom perms</span>}
+                              {isPending && <span style={{ padding:'2px 8px', borderRadius:6, background:'rgba(249,115,22,0.10)', color:'#c2410c', fontSize:11, fontWeight:700 }}>Pending invite</span>}
+                              {hasCustomPerms && <span style={{ padding:'2px 8px', borderRadius:6, background:'rgba(99,102,241,0.12)', color:'#6366f1', fontSize:11, fontWeight:700, display:'inline-flex', alignItems:'center', gap:3 }}><Lock size={9}/>Custom perms</span>}
                             </div>
                             <p style={{ fontSize:13, color:'var(--text-muted)', margin:0, display:'flex', alignItems:'center', gap:5 }}>
                               <Mail size={12} /> {displayEmail}
@@ -653,10 +653,10 @@ export default function TeamPage() {
                           </div>
                           {canManage && !isSelf && member.role !== 'super_admin' && (
                             <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                              <button onClick={()=>setRoleModal(member)} style={{ padding:'7px 12px', borderRadius:10, border:'1.5px solid #e5e7eb', background:'var(--surface)', color:'var(--text-muted)', cursor:'pointer', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+                              <button onClick={()=>setRoleModal(member)} style={{ padding:'7px 12px', borderRadius:10, border:'1.5px solid var(--border)', background:'var(--surface)', color:'var(--text-muted)', cursor:'pointer', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
                                 <Edit2 size={12}/> Role
                               </button>
-                              <button onClick={()=>setPermModal(member)} style={{ padding:'7px 12px', borderRadius:10, border:`1.5px solid ${hasCustomPerms?'#c7d2fe':'var(--border)'}`, background:hasCustomPerms?'#eef2ff':'white', color:hasCustomPerms?'#6366f1':'#6b7280', cursor:'pointer', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+                              <button onClick={()=>setPermModal(member)} style={{ padding:'7px 12px', borderRadius:10, border:`1.5px solid ${hasCustomPerms?'rgba(99,102,241,0.35)':'var(--border)'}`, background:hasCustomPerms?'rgba(99,102,241,0.12)':'var(--surface)', color:hasCustomPerms?'#6366f1':'var(--text-muted)', cursor:'pointer', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
                                 <Lock size={12}/> Perms
                               </button>
                               <button onClick={()=>handleRemove(member.id)} style={{ padding:'7px 12px', borderRadius:10, border:'1.5px solid #fecaca', background: 'var(--danger-bg)', color: '#ef4444', cursor:'pointer', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
@@ -679,8 +679,8 @@ export default function TeamPage() {
 
             {/* ── Logs Tab ── */}
             {tab === 'logs' && (
-              <div style={{ background:'var(--surface)', borderRadius:20, border:'1.5px solid #e5e7eb', boxShadow:'0 2px 8px rgba(0,0,0,0.04)', overflow:'hidden' }}>
-                <div style={{ padding:'20px 24px', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ background:'var(--surface)', borderRadius:20, border:'1.5px solid var(--border)', boxShadow:'0 2px 8px rgba(0,0,0,0.04)', overflow:'hidden' }}>
+                <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
                   <Activity size={18} color="#6366f1" />
                   <p style={{ fontSize:15, fontWeight:800, color:'var(--text)', margin:0 }}>Activity Logs</p>
                   <span style={{ fontSize:12, color:'var(--text-dim)' }}>({logs.length} entries)</span>
@@ -693,7 +693,7 @@ export default function TeamPage() {
                 ) : (
                   <div style={{ maxHeight:600, overflowY:'auto' }}>
                     {logs.map((log,i) => (
-                      <div key={log.id||i} style={{ display:'flex', alignItems:'flex-start', gap:14, padding:'14px 24px', borderBottom:'1px solid #f9fafb' }}>
+                      <div key={log.id||i} style={{ display:'flex', alignItems:'flex-start', gap:14, padding:'14px 24px', borderBottom:'1px solid var(--border)' }}>
                         <div style={{ width:8, height:8, borderRadius:'50%', background:'#6366f1', marginTop:6, flexShrink:0 }} />
                         <div style={{ flex:1 }}>
                           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>

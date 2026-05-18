@@ -7,9 +7,11 @@ import {
   Image, Save, Tag, MessageSquare, Plus, Edit2, Trash2, X, CheckCircle,
   Settings, Zap, Users, FileText, Bell, BellOff, Bot, ChevronRight,
   Upload, Eye, EyeOff, RefreshCw, Sparkles, Shield, Hash, Clock,
-  ToggleLeft, ToggleRight, AlertCircle, Info, Palette, Lock
+  ToggleLeft, ToggleRight, AlertCircle, Info, Palette, Lock,
+  MessageCircle, Camera, Globe as GlobeIcon, MonitorSmartphone,
+  Link, Unlink, Copy, Wifi, WifiOff, Layers, QrCode, Key
 } from 'lucide-react';
-import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, BASE_URL } from '../../lib/api';
+import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, BASE_URL } from '../../lib/api';
 import { Send as SendIcon } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 
@@ -34,6 +36,7 @@ const CURRENCIES = [
 ];
 
 const TABS = [
+  { id: 'connections', label: 'Connections', icon: Layers, color: '#6366f1' },
   { id: 'appearance', label: 'Appearance', icon: Palette, color: '#6366f1' },
   { id: 'company', label: 'Company Profile', icon: Building2, color: '#6366f1' },
   { id: 'currency', label: 'Currency & Billing', icon: DollarSign, color: '#10b981' },
@@ -130,9 +133,9 @@ function CompanyTab({ company, setCompany, onSave, saving }) {
     <div>
       <SectionCard icon={Building2} title="Company Information" subtitle="This appears on invoices and customer communications" color="#6366f1">
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24, padding: 20, background: '#f8faff', borderRadius: 14, border: '1.5px dashed #c7d2fe' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24, padding: 20, background: 'rgba(99,102,241,0.06)', borderRadius: 14, border: '1.5px dashed #c7d2fe' }}>
           <div style={{
-            width: 80, height: 80, borderRadius: 16, background: '#eef2ff', border: '2px solid #e0e7ff',
+            width: 80, height: 80, borderRadius: 16, background: 'rgba(99,102,241,0.12)', border: '2px solid #e0e7ff',
             display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0
           }}>
             {company.company_logo
@@ -166,7 +169,7 @@ function CompanyTab({ company, setCompany, onSave, saving }) {
             value={company.company_address || ''} rows={3}
             onChange={e => setCompany(p => ({ ...p, company_address: e.target.value }))}
             placeholder="123 Business Street, City, State, Country"
-            style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
             onFocus={e => e.target.style.borderColor = '#6366f1'}
             onBlur={e => e.target.style.borderColor = 'var(--border)'}
           />
@@ -178,7 +181,7 @@ function CompanyTab({ company, setCompany, onSave, saving }) {
             value={company.email_signature || ''} rows={4}
             onChange={e => setCompany(p => ({ ...p, email_signature: e.target.value }))}
             placeholder="Best regards,&#10;Your Name&#10;Company | Phone | Website"
-            style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
             onFocus={e => e.target.style.borderColor = '#6366f1'}
             onBlur={e => e.target.style.borderColor = 'var(--border)'}
           />
@@ -211,7 +214,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
                 const cur = CURRENCIES.find(c => c.code === e.target.value);
                 setCompany(p => ({ ...p, currency: cur.code, currency_symbol: cur.symbol }));
               }}
-              style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', color: 'var(--text)', background: 'var(--surface)', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', color: 'var(--text)', background: 'var(--surface)', boxSizing: 'border-box' }}
               onFocus={e => e.target.style.borderColor = '#10b981'}
               onBlur={e => e.target.style.borderColor = 'var(--border)'}
             >
@@ -223,7 +226,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
             <input
               value={company.currency_symbol || '$'}
               onChange={e => setCompany(p => ({ ...p, currency_symbol: e.target.value }))}
-              style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
               onFocus={e => e.target.style.borderColor = '#10b981'}
               onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
@@ -235,7 +238,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
                 <button key={opt.v} onClick={() => setCompany(p => ({ ...p, currency_position: opt.v }))}
                   style={{
                     flex: 1, padding: '11px', borderRadius: 11, border: `2px solid ${company.currency_position === opt.v ? '#10b981' : 'var(--border)'}`,
-                    background: company.currency_position === opt.v ? '#ecfdf5' : 'white',
+                    background: company.currency_position === opt.v ? 'rgba(16,185,129,0.10)' : 'var(--surface)',
                     color: company.currency_position === opt.v ? '#059669' : '#6b7280',
                     fontWeight: 700, cursor: 'pointer', fontSize: 13
                   }}>
@@ -257,7 +260,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
               type="number" min="0" max="100" step="0.1"
               value={company.tax_rate || 0}
               onChange={e => setCompany(p => ({ ...p, tax_rate: parseFloat(e.target.value) || 0 }))}
-              style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
               onFocus={e => e.target.style.borderColor = '#10b981'}
               onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
@@ -265,7 +268,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
         </div>
 
         {/* Preview */}
-        <div style={{ padding: 16, background: '#f0fdf4', borderRadius: 12, border: '1.5px solid #bbf7d0', marginBottom: 20 }}>
+        <div style={{ padding: 16, background: 'rgba(16,185,129,0.10)', borderRadius: 12, border: '1.5px solid #bbf7d0', marginBottom: 20 }}>
           <p style={{ fontSize: 12, fontWeight: 700, color: '#166534', marginBottom: 6 }}>Preview</p>
           <p style={{ fontSize: 20, fontWeight: 800, color: '#15803d' }}>
             {company.currency_position === 'after'
@@ -343,12 +346,12 @@ function PresetsTab({ showToast }) {
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Message Body</label>
             <textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4}
-              placeholder="Hi {name}, thanks for reaching out!..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+              placeholder="Hi {name}, thanks for reaching out!..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
               onFocus={e => e.target.style.borderColor = '#06b6d4'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
             <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Tip: Use *bold*, _italic_ for WhatsApp formatting.</p>
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button onClick={() => setShowForm(false)} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button onClick={() => setShowForm(false)} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
             <button onClick={handleSave} disabled={saving} style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
               {saving ? 'Saving...' : editing ? 'Update' : 'Create Preset'}
             </button>
@@ -365,7 +368,7 @@ function PresetsTab({ showToast }) {
       ) : (
         presets.map(p => (
           <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderBottom: '1px solid #f3f4f6' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ecfeff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(6,182,212,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <MessageSquare size={15} color="#06b6d4" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -373,7 +376,7 @@ function PresetsTab({ showToast }) {
               <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>{p.body}</p>
             </div>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-              <button onClick={() => openEdit(p)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Edit</button>
+              <button onClick={() => openEdit(p)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Edit</button>
               <button onClick={() => handleDelete(p.id)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'var(--danger-bg)', color: '#ef4444', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Delete</button>
             </div>
           </div>
@@ -437,24 +440,24 @@ function EmailTemplatesTab({ showToast }) {
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Trigger Event</label>
               <select value={form.trigger_event} onChange={e => setForm(p => ({ ...p, trigger_event: e.target.value }))}
-                style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', background: 'var(--surface)', boxSizing: 'border-box' }}>
+                style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', background: 'var(--surface)', boxSizing: 'border-box' }}>
                 {TRIGGERS.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Send After (days)</label>
               <input type="number" min="0" value={form.delay_days} onChange={e => setForm(p => ({ ...p, delay_days: parseInt(e.target.value) || 0 }))}
-                style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Email Body</label>
             <textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={6}
-              placeholder="Dear {name},&#10;&#10;I wanted to follow up on your recent inquiry..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              placeholder="Dear {name},&#10;&#10;I wanted to follow up on your recent inquiry..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
             <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Variables: {'{name}'}, {'{phone}'}, {'{email}'}, {'{company}'}</p>
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button onClick={() => setShowForm(false)} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button onClick={() => setShowForm(false)} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
             <button onClick={handleSave} disabled={saving} style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
               {saving ? 'Saving...' : editing ? 'Update' : 'Create Template'}
             </button>
@@ -470,19 +473,19 @@ function EmailTemplatesTab({ showToast }) {
       ) : (
         templates.map(t => (
           <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderBottom: '1px solid #f3f4f6' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(245,158,11,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Mail size={15} color="#f59e0b" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
                 <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{t.name}</p>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#fef3c7', color: 'var(--warning-text)' }}>{t.trigger_event}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: 'rgba(245,158,11,0.18)', color: 'var(--warning-text)' }}>{t.trigger_event}</span>
                 {t.delay_days > 0 && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>+{t.delay_days}d</span>}
               </div>
               <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Subject: {t.subject}</p>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => openEdit(t)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Edit</button>
+              <button onClick={() => openEdit(t)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Edit</button>
               <button onClick={async () => { if (!confirm('Delete?')) return; await emailTemplatesAPI.delete(t.id); showToast('Deleted'); fetchTemplates(); }}
                 style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'var(--danger-bg)', color: '#ef4444', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Delete</button>
             </div>
@@ -543,7 +546,7 @@ function AutoReplyTab({ showToast }) {
       </div>
 
       {showForm && (
-        <div style={{ background: '#faf5ff', border: '2px solid #8b5cf6', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+        <div style={{ background: 'rgba(139,92,246,0.10)', border: '2px solid #8b5cf6', borderRadius: 16, padding: 20, marginBottom: 16 }}>
           <Input label="Rule Name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Greeting Reply, Price Inquiry..." />
           <Input label="Keywords (comma separated)" value={form.keywords} onChange={e => setForm(p => ({ ...p, keywords: e.target.value }))} placeholder="hello, hi, hey, good morning" hint="Separate multiple keywords with commas" />
           <div style={{ marginBottom: 14 }}>
@@ -552,7 +555,7 @@ function AutoReplyTab({ showToast }) {
               {[{ v: 'contains', l: 'Contains keyword' }, { v: 'exact', l: 'Exact match' }].map(opt => (
                 <button key={opt.v} onClick={() => setForm(p => ({ ...p, match_type: opt.v }))} style={{
                   flex: 1, padding: '9px', borderRadius: 10, border: `2px solid ${form.match_type === opt.v ? '#8b5cf6' : 'var(--border)'}`,
-                  background: form.match_type === opt.v ? '#faf5ff' : 'white',
+                  background: form.match_type === opt.v ? 'rgba(139,92,246,0.10)' : 'var(--surface)',
                   color: form.match_type === opt.v ? '#7c3aed' : '#6b7280', fontWeight: 700, cursor: 'pointer', fontSize: 13
                 }}>{opt.l}</button>
               ))}
@@ -561,10 +564,10 @@ function AutoReplyTab({ showToast }) {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Auto Reply Message</label>
             <textarea value={form.reply_message} onChange={e => setForm(p => ({ ...p, reply_message: e.target.value }))} rows={4}
-              placeholder="Thanks for reaching out! We'll get back to you shortly..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              placeholder="Thanks for reaching out! We'll get back to you shortly..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button onClick={() => setShowForm(false)} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button onClick={() => setShowForm(false)} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
             <button onClick={handleSave} disabled={saving} style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
               {saving ? 'Saving...' : editing ? 'Update' : 'Create Rule'}
             </button>
@@ -587,7 +590,7 @@ function AutoReplyTab({ showToast }) {
               <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.reply_message}</p>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => openEdit(r)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Edit</button>
+              <button onClick={() => openEdit(r)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Edit</button>
               <button onClick={async () => { if (!confirm('Delete?')) return; await autoReplyAPI.delete(r.id); fetchRules(); }}
                 style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'var(--danger-bg)', color: '#ef4444', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Delete</button>
             </div>
@@ -636,7 +639,7 @@ function TagsTab({ showToast }) {
       </div>
 
       {showForm && (
-        <div style={{ background: '#fdf2f8', border: '2px solid #ec4899', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+        <div style={{ background: 'rgba(236,72,153,0.10)', border: '2px solid #ec4899', borderRadius: 16, padding: 20, marginBottom: 16 }}>
           <Input label="Tag Name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Hot Lead, VIP, Follow Up..." />
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 10 }}>Color</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
@@ -657,7 +660,7 @@ function TagsTab({ showToast }) {
             </span>
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button onClick={() => setShowForm(false)} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button onClick={() => setShowForm(false)} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
             <button onClick={handleSave} disabled={saving} style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #ec4899, #db2777)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
               {saving ? 'Saving...' : editing ? 'Update' : 'Create Tag'}
             </button>
@@ -778,7 +781,7 @@ function NotificationsTab({ showToast }) {
   return (
     <SectionCard title="Push Notifications" icon={Bell} color="#ef4444">
       {!supported ? (
-        <div style={{ padding: '24px', background: '#fef2f2', borderRadius: 12, border: '1.5px solid #fecaca' }}>
+        <div style={{ padding: '24px', background: 'rgba(239,68,68,0.12)', borderRadius: 12, border: '1.5px solid #fecaca' }}>
           <p style={{ fontSize: 14, color: '#dc2626', fontWeight: 600, margin: 0 }}>
             ⚠️ Push notifications are not supported in this browser.
           </p>
@@ -787,7 +790,7 @@ function NotificationsTab({ showToast }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Status card */}
-          <div style={{ background: subscribed ? '#ecfdf5' : '#f9fafb', border: `1.5px solid ${subscribed ? '#a7f3d0' : 'var(--border)'}`, borderRadius: 14, padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ background: subscribed ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', border: `1.5px solid ${subscribed ? '#a7f3d0' : 'var(--border)'}`, borderRadius: 14, padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ width: 44, height: 44, borderRadius: 13, background: subscribed ? '#10b981' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {subscribed ? <Bell size={20} color="white" /> : <BellOff size={20} color="white" />}
             </div>
@@ -802,7 +805,7 @@ function NotificationsTab({ showToast }) {
               </p>
             </div>
             {subscribed
-              ? <button onClick={handleUnsubscribe} disabled={loading} style={{ padding: '8px 16px', background: 'var(--surface)', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--text)' }}>Disable</button>
+              ? <button onClick={handleUnsubscribe} disabled={loading} style={{ padding: '8px 16px', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--text)' }}>Disable</button>
               : <button onClick={handleSubscribe} disabled={loading || permission === 'denied'} style={{ padding: '8px 16px', background: permission === 'denied' ? 'var(--border)' : 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: permission === 'denied' ? 'not-allowed' : 'pointer', color: permission === 'denied' ? '#9ca3af' : 'white' }}>
                 {loading ? 'Enabling...' : 'Enable'}
               </button>
@@ -816,7 +819,7 @@ function NotificationsTab({ showToast }) {
           )}
 
           {/* Notification types */}
-          <div style={{ background: 'var(--surface)', border: '1.5px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
             {[
               { label: '👤 New Lead', desc: 'When a new WhatsApp contact creates a lead', key: 'newLead' },
               { label: '💬 New Message', desc: 'When a lead sends you a message', key: 'newMessage' },
@@ -845,7 +848,7 @@ function NotificationsTab({ showToast }) {
 
           {/* Test button */}
           {subscribed && (
-            <button onClick={handleTest} style={{ padding: '10px 18px', background: 'var(--surface2)', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}>
+            <button onClick={handleTest} style={{ padding: '10px 18px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}>
               <Bell size={14} /> Send Test Notification
             </button>
           )}
@@ -936,13 +939,13 @@ function WorkspaceTab({ showToast, router }) {
               <button onClick={handleSaveName} disabled={saving} style={{ padding: '11px 18px', borderRadius: 11, border: 'none', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
                 {saving ? 'Saving...' : 'Save'}
               </button>
-              <button onClick={() => setEditingName(false)} style={{ padding: '11px 14px', borderRadius: 11, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>Cancel</button>
+              <button onClick={() => setEditingName(false)} style={{ padding: '11px 14px', borderRadius: 11, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>Cancel</button>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <p style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>{workspace?.name}</p>
               {canEdit && (
-                <button onClick={() => setEditingName(true)} style={{ padding: '6px 12px', borderRadius: 9, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <button onClick={() => setEditingName(true)} style={{ padding: '6px 12px', borderRadius: 9, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
                   <Edit2 size={12} /> Edit
                 </button>
               )}
@@ -961,7 +964,7 @@ function WorkspaceTab({ showToast, router }) {
             const isPending = m.invite_status === 'pending';
             return (
               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: isPending ? '#f3f4f6' : ri.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: ri.color, flexShrink: 0 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: isPending ? 'var(--surface2)' : ri.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: ri.color, flexShrink: 0 }}>
                   {isPending ? <Clock size={14} color="#9ca3af" /> : name[0]?.toUpperCase()}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -974,7 +977,7 @@ function WorkspaceTab({ showToast, router }) {
           })}
           {members.length > 5 && <p style={{ fontSize: 13, color: 'var(--text-dim)', textAlign: 'center', margin: 0 }}>+{members.length - 5} more members</p>}
         </div>
-        <button onClick={() => router.push('/team')} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 12, border: '1.5px solid #6366f1', background: '#eef2ff', color: '#6366f1', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
+        <button onClick={() => router.push('/team')} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 12, border: '1.5px solid #6366f1', background: 'rgba(99,102,241,0.12)', color: '#6366f1', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
           <Users size={15} /> Manage Team & Permissions →
         </button>
       </SectionCard>
@@ -1114,12 +1117,614 @@ function PasswordTab({ showToast }) {
   );
 }
 
+// ════════════════════════════════════════════════════════════
+//  CONNECTIONS TAB
+// ════════════════════════════════════════════════════════════
+
+const PLATFORM_DEFS = [
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    color: '#25d366',
+    icon: MessageCircle,
+    description: 'Every incoming WhatsApp message automatically becomes a lead.',
+    type: 'qr',
+    instructions: [
+      { step: 1, text: 'Make sure your WappFlow server is running and accessible.' },
+      { step: 2, text: 'Click "Connect" below to generate a QR code.' },
+      { step: 3, text: 'Open WhatsApp on your phone → tap ⋮ (three dots) or Settings → Linked Devices → Link a Device.' },
+      { step: 4, text: 'Scan the QR code shown on screen. Once scanned, your account will connect in seconds.' },
+      { step: 5, text: 'All new WhatsApp messages will automatically create leads in WappFlow.' },
+    ],
+  },
+  {
+    id: 'instagram',
+    label: 'Instagram',
+    color: '#e1306c',
+    icon: Camera,
+    description: 'Receive Instagram DMs as leads via the Meta Messenger API.',
+    type: 'meta',
+    fields: [
+      { key: 'app_id',       label: 'App ID',             placeholder: 'Meta App ID', hint: 'From Meta Developer Console → App ID' },
+      { key: 'app_secret',   label: 'App Secret',         placeholder: 'Meta App Secret', secret: true },
+      { key: 'access_token', label: 'Page Access Token',  placeholder: 'Long-lived page token', secret: true, hint: 'Generate from Meta Business Suite → System Users' },
+      { key: 'page_id',      label: 'Instagram Account ID', placeholder: 'e.g. 17841400000000000' },
+    ],
+    instructions: [
+      { step: 1, text: 'Go to developers.facebook.com and create a new App (type: Business).' },
+      { step: 2, text: 'Add the "Instagram" product to your app from the left sidebar.' },
+      { step: 3, text: 'Your App ID is shown at the top of Settings → Basic. App Secret is right below it (click "Show").' },
+      { step: 4, text: 'In Business Manager (business.facebook.com) → System Users → Create a System User. Then click "Add Assets" and grant your Instagram page. Generate a token with instagram_basic, instagram_manage_messages, and pages_messaging permissions.' },
+      { step: 5, text: 'Your Instagram Account ID can be found in the Instagram app: Profile → Edit Profile → scroll down, or use the Graph API: GET /me?fields=id&access_token=YOUR_TOKEN.' },
+      { step: 6, text: 'In your Meta App → Instagram → Webhooks → click "Configure". Use the Callback URL and Verify Token shown below. Subscribe to the "messages" field.' },
+      { step: 7, text: 'Save your credentials here. You can save with partial credentials — come back later to complete the setup.' },
+    ],
+  },
+  {
+    id: 'facebook',
+    label: 'Facebook',
+    color: '#1877f2',
+    icon: MonitorSmartphone,
+    description: 'Receive Facebook Messenger conversations as leads.',
+    type: 'meta',
+    fields: [
+      { key: 'app_id',       label: 'App ID',             placeholder: 'Meta App ID', hint: 'From Meta Developer Console → App ID' },
+      { key: 'app_secret',   label: 'App Secret',         placeholder: 'Meta App Secret', secret: true },
+      { key: 'access_token', label: 'Page Access Token',  placeholder: 'Long-lived page token', secret: true },
+      { key: 'page_id',      label: 'Facebook Page ID',   placeholder: 'e.g. 123456789' },
+    ],
+    instructions: [
+      { step: 1, text: 'Go to developers.facebook.com and create a new App (type: Business).' },
+      { step: 2, text: 'Add the "Messenger" product to your app from the left sidebar.' },
+      { step: 3, text: 'Your App ID is shown at the top of Settings → Basic. App Secret is right below it (click "Show").' },
+      { step: 4, text: 'In Messenger API Settings → Generate Token, select your Facebook Page and copy the Page Access Token.' },
+      { step: 5, text: 'Your Facebook Page ID can be found on your Page → About section, or in the URL when viewing your page in Business Manager.' },
+      { step: 6, text: 'In your Meta App → Messenger → Webhooks → Edit Callback URL. Use the Callback URL and Verify Token shown below. Subscribe to "messages" and "messaging_postbacks".' },
+      { step: 7, text: 'Save your credentials here. You can save with partial credentials — come back later to complete the setup.' },
+    ],
+  },
+  {
+    id: 'website',
+    label: 'Website',
+    color: '#6366f1',
+    icon: GlobeIcon,
+    description: 'Capture leads from your website via embed widget, webhook, or Formspree.',
+    type: 'widget',
+    instructions: {
+      widget: [
+        { step: 1, text: 'Copy the embed code shown below.' },
+        { step: 2, text: 'Paste it just before the closing </body> tag on every page where you want the widget.' },
+        { step: 3, text: 'A floating "Contact Us" button will appear in the bottom-right corner of your website.' },
+        { step: 4, text: 'When visitors submit the form, a new lead instantly appears in WappFlow.' },
+        { step: 5, text: 'Customize the button color and title using data-color and data-title attributes.' },
+      ],
+      webhook: [
+        { step: 1, text: 'Copy the Webhook URL shown below.' },
+        { step: 2, text: 'In your website\'s form POST handler, send a JSON request to that URL.' },
+        { step: 3, text: 'Required JSON fields: name (string), phone (string). Optional: email, message.' },
+        { step: 4, text: 'Example: fetch(WEBHOOK_URL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ name, phone, email, message }) })' },
+        { step: 5, text: 'No authentication needed — the unique token in the URL authenticates the submission.' },
+      ],
+      formspree: [
+        { step: 1, text: 'Create an account at formspree.io and create a new form on your website.' },
+        { step: 2, text: 'In Formspree dashboard → your form → Integrations → Webhooks → "Add a webhook".' },
+        { step: 3, text: 'Paste the Webhook URL shown below as the webhook destination. Select "JSON" format.' },
+        { step: 4, text: 'Formspree will forward every form submission to WappFlow. Make sure your Formspree form has a "name" or "full_name" field and optionally "phone", "email", "message".' },
+        { step: 5, text: 'Test by submitting your Formspree form — the lead should appear in WappFlow within seconds.' },
+      ],
+    },
+  },
+];
+
+function ConnectionsTab({ showToast }) {
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activePlatform, setActivePlatform] = useState('whatsapp');
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => { loadAccounts(); }, []);
+
+  const loadAccounts = async () => {
+    setLoading(true);
+    try {
+      const res = await platformAccountsAPI.getAll();
+      setAccounts(res.data.accounts || []);
+    } catch {} finally { setLoading(false); }
+  };
+
+  const handleAddAccount = async (platform) => {
+    setCreating(true);
+    try {
+      const existing = accounts.filter(a => a.platform === platform);
+      if (existing.length >= 5) { showToast('Maximum 5 accounts per platform', 'error'); return; }
+      const res = await platformAccountsAPI.create({ platform, account_name: `Account ${existing.length + 1}`, slot_index: existing.length });
+      setAccounts(prev => [...prev, res.data.account]);
+      setEditingAccount(res.data.account.id);
+      showToast('Account slot created');
+    } catch (e) { showToast(e.response?.data?.error || 'Failed to create account', 'error'); } finally { setCreating(false); }
+  };
+
+  const handleSaveAccount = async (id, data) => {
+    try {
+      const res = await platformAccountsAPI.update(id, data);
+      setAccounts(prev => prev.map(a => a.id === id ? res.data.account : a));
+      setEditingAccount(null);
+      showToast('Account saved');
+    } catch (e) { showToast(e.response?.data?.error || 'Failed to save', 'error'); }
+  };
+
+  const handleDeleteAccount = async (id) => {
+    if (!confirm('Delete this account?')) return;
+    try {
+      await platformAccountsAPI.delete(id);
+      setAccounts(prev => prev.filter(a => a.id !== id));
+      if (editingAccount === id) setEditingAccount(null);
+      showToast('Account removed');
+    } catch { showToast('Failed to delete', 'error'); }
+  };
+
+  const platformAccounts = accounts.filter(a => a.platform === activePlatform);
+  const activeDef = PLATFORM_DEFS.find(p => p.id === activePlatform);
+
+  return (
+    <div>
+      {/* Platform tabs */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+        {PLATFORM_DEFS.map(p => {
+          const Icon = p.icon;
+          const count = accounts.filter(a => a.platform === p.id && a.status === 'connected').length;
+          const active = activePlatform === p.id;
+          return (
+            <button key={p.id} onClick={() => setActivePlatform(p.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 9, padding: '10px 18px',
+              borderRadius: 12, border: `2px solid ${active ? p.color : 'var(--border)'}`,
+              background: active ? p.color + '12' : 'var(--surface)',
+              color: active ? p.color : 'var(--text-muted)',
+              fontWeight: active ? 700 : 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s',
+            }}>
+              <Icon size={15} />
+              {p.label}
+              {count > 0 && (
+                <span style={{ fontSize: 10, background: p.color, color: 'white', padding: '1px 6px', borderRadius: 8, fontWeight: 800 }}>{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Platform section */}
+      {activeDef && (
+        <SectionCard icon={activeDef.icon} title={`${activeDef.label} Connections`} subtitle={activeDef.description} color={activeDef.color}>
+          {/* All platforms — account slots (WhatsApp uses QR cards, others use credential cards) */}
+          {loading ? (
+            <div style={{ color: 'var(--text-muted)', padding: '20px 0' }}>Loading accounts...</div>
+          ) : platformAccounts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '28px 0' }}>
+              <div style={{ width: 56, height: 56, borderRadius: 16, background: activeDef.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                <activeDef.icon size={26} color={activeDef.color} />
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>No {activeDef.label} accounts yet</p>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+                {activeDef.id === 'whatsapp' ? 'Link up to 5 WhatsApp numbers. Each gets its own QR code.' : `Add up to 5 accounts to capture leads from ${activeDef.label}`}
+              </p>
+              <button onClick={() => handleAddAccount(activeDef.id)} disabled={creating} style={{ padding: '10px 22px', background: activeDef.color, color: 'white', border: 'none', borderRadius: 11, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                <Plus size={14} /> Add {activeDef.label} Account
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {platformAccounts.map(account => (
+                activeDef.id === 'whatsapp'
+                  ? <WhatsAppAccountCard key={account.id} account={account} showToast={showToast} onDelete={() => handleDeleteAccount(account.id)} onNameSave={(name) => handleSaveAccount(account.id, { account_name: name })} />
+                  : <PlatformAccountCard
+                      key={account.id}
+                      account={account}
+                      def={activeDef}
+                      isEditing={editingAccount === account.id}
+                      onEdit={() => setEditingAccount(account.id)}
+                      onCancel={() => setEditingAccount(null)}
+                      onSave={(data) => handleSaveAccount(account.id, data)}
+                      onDelete={() => handleDeleteAccount(account.id)}
+                      showToast={showToast}
+                    />
+              ))}
+              {platformAccounts.length < 5 && (
+                <button onClick={() => handleAddAccount(activeDef.id)} disabled={creating} style={{ padding: '10px', border: `2px dashed ${activeDef.color}40`, borderRadius: 12, background: 'transparent', color: activeDef.color, fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, transition: 'all 0.15s' }}>
+                  <Plus size={14} /> Add Another Account ({platformAccounts.length}/5)
+                </button>
+              )}
+            </div>
+          )}
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
+  const [status, setStatus] = useState(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(account.account_name);
+  const [savingName, setSavingName] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/api/whatsapp/accounts/${account.id}/status`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+        setStatus(await res.json());
+      } catch {}
+    };
+    fetchStatus();
+    const iv = setInterval(fetchStatus, 3000);
+    return () => clearInterval(iv);
+  }, [account.id]);
+
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${BASE_URL}/api/whatsapp/accounts/${account.id}/connect`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    } catch {} finally { setReconnecting(false); }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${BASE_URL}/api/whatsapp/accounts/${account.id}/disconnect`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    } catch {}
+  };
+
+  const handleSaveName = async () => {
+    if (!nameVal.trim()) return;
+    setSavingName(true);
+    try {
+      await onNameSave(nameVal.trim());
+      setEditingName(false);
+    } catch {} finally { setSavingName(false); }
+  };
+
+  const isConnected = status?.isReady;
+  const isError = !status || ['disconnected', 'error', 'auth_failed', 'not_initialized'].includes(status?.status);
+  const isQR = status?.qrCode || status?.status === 'qr_ready';
+
+  return (
+    <div style={{ border: `1.5px solid ${isConnected ? '#10b98130' : 'var(--border)'}`, borderRadius: 16, overflow: 'hidden', background: isConnected ? 'rgba(16,185,129,0.10)' : 'var(--surface2)' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 12, background: isConnected ? '#10b98120' : 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {isConnected ? <Wifi size={18} color="#10b981" /> : isError ? <WifiOff size={18} color="#ef4444" /> : <RefreshCw size={18} color="#f59e0b" style={{ animation: 'spin 1.5s linear infinite' }} />}
+          </div>
+          <div>
+            {editingName ? (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input value={nameVal} onChange={e => setNameVal(e.target.value)} autoFocus
+                  style={{ padding: '5px 10px', border: '1.5px solid #25d366', borderRadius: 8, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface)', width: 160 }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
+                />
+                <button onClick={handleSaveName} disabled={savingName} style={{ padding: '5px 10px', background: '#25d366', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  {savingName ? '...' : 'Save'}
+                </button>
+                <button onClick={() => setEditingName(false)} style={{ padding: '5px 8px', background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>{account.account_name}</p>
+                <button onClick={() => setEditingName(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}><Edit2 size={12} /></button>
+              </div>
+            )}
+            <p style={{ fontSize: 12, color: isConnected ? '#10b981' : isError ? '#ef4444' : '#f59e0b', margin: 0, fontWeight: 600 }}>
+              {isConnected ? `Connected — +${status.phoneNumber}` : isError ? 'Disconnected' : 'Connecting...'}
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {(isError || !status?.isReady) && (
+            <button onClick={handleReconnect} disabled={reconnecting} style={{ padding: '7px 14px', background: '#25d366', color: 'white', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={13} style={reconnecting ? { animation: 'spin 1s linear infinite' } : {}} />
+              {reconnecting ? 'Connecting...' : 'Connect'}
+            </button>
+          )}
+          {isConnected && (
+            <button onClick={handleDisconnect} style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #ef4444', color: '#ef4444', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+              Disconnect
+            </button>
+          )}
+          <button onClick={onDelete} style={{ padding: '7px 10px', background: 'transparent', border: '1.5px solid #ef444430', color: '#ef4444', borderRadius: 9, fontSize: 12, cursor: 'pointer', display: 'flex' }}>
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
+
+      {/* QR Code */}
+      {isQR && (
+        <div style={{ textAlign: 'center', padding: '16px 18px', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+          {status?.qrCode ? (
+            /* Inner box stays white so the QR code can be scanned reliably */
+            <div style={{ display: 'inline-block', padding: 10, background: '#ffffff', borderRadius: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.10)', marginBottom: 10 }}>
+              <img src={status.qrCode} alt="WhatsApp QR" style={{ width: 180, height: 180, display: 'block' }} />
+            </div>
+          ) : (
+            <div style={{ width: 180, height: 180, background: 'var(--surface2)', borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+              <RefreshCw size={28} color="#25d366" style={{ animation: 'spin 1.5s linear infinite' }} />
+            </div>
+          )}
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Scan with WhatsApp → Linked Devices → Link a Device</p>
+        </div>
+      )}
+
+      {/* Connected features */}
+      {isConnected && (
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', padding: '10px 18px', borderTop: '1px solid var(--border)' }}>
+          {[
+            { label: 'Auto Lead Capture', desc: 'Every message creates a lead' },
+            { label: 'Real-time Sync', desc: 'Instant delivery' },
+          ].map(f => (
+            <div key={f.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <CheckCircle size={13} color="#10b981" />
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{f.label}</p>
+                <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: 0 }}>{f.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Setup guide */}
+      <details style={{ borderTop: '1px solid var(--border)' }}>
+        <summary style={{ fontSize: 12, fontWeight: 700, color: '#25d366', cursor: 'pointer', userSelect: 'none', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 6 }}>
+          📖 How to connect WhatsApp
+        </summary>
+        <div style={{ padding: '0 18px 14px' }}>
+          {[
+            'Open WhatsApp on your phone.',
+            'Tap ⋮ (Android) or Settings (iPhone) → Linked Devices → Link a Device.',
+            'Point your camera at the QR code shown above.',
+            'Once scanned, this account connects automatically.',
+            'All incoming messages create leads in WappFlow in real-time.',
+          ].map((text, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
+              <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#25d36620', color: '#25d366', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>{text}</p>
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave, onDelete, showToast }) {
+  const [form, setForm] = useState({ account_name: account.account_name, website_type: account.credentials?.website_type || 'widget', ...(account.credentials || {}) });
+  const [saving, setSaving] = useState(false);
+  const [showSecrets, setShowSecrets] = useState({});
+  const [copied, setCopied] = useState('');
+  const [showInstructions, setShowInstructions] = useState(false);
+
+  const credKeys = def.fields?.map(f => f.key) || [];
+  const filledKeys = credKeys.filter(k => account.credentials?.[k]);
+  const isConnected = def.type === 'widget' || (filledKeys.length === credKeys.length && credKeys.length > 0);
+  const isPartial = !isConnected && filledKeys.length > 0;
+
+  const webhookUrl = `${BASE_URL}/api/webhooks/${def.id}`;
+  const verifyToken = account.webhook_verify_token || '';
+  const widgetToken = account.webhook_verify_token || '';
+  const frontendUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const widgetSnippet = `<script src="${frontendUrl}/widget.js" data-form="${widgetToken}" data-api="${BASE_URL}" data-title="${account.account_name}"></script>`;
+
+  const handleCopy = (text, key) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(''), 2000);
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const { account_name, ...credFields } = form;
+    await onSave({ account_name, credentials: credFields });
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ border: `1.5px solid ${isEditing ? def.color + '50' : 'var(--border)'}`, borderRadius: 14, overflow: 'hidden', transition: 'border-color 0.2s' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', background: isEditing ? def.color + '08' : 'transparent' }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: def.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <def.icon size={17} color={def.color} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{account.account_name}</p>
+          <p style={{ fontSize: 11, color: isConnected ? '#10b981' : isPartial ? '#f59e0b' : 'var(--text-muted)', margin: 0, fontWeight: isConnected || isPartial ? 600 : 400 }}>
+            {def.type === 'widget' ? 'Embed form ready' : isConnected ? 'Connected' : isPartial ? `Partial setup (${filledKeys.length}/${credKeys.length} fields)` : 'Credentials required'}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {!isEditing && (
+            <button onClick={onEdit} style={{ padding: '6px 12px', borderRadius: 9, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Edit2 size={12} /> Edit
+            </button>
+          )}
+          <button onClick={onDelete} style={{ padding: '6px 10px', borderRadius: 9, border: '1.5px solid #ef444430', background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
+
+      {/* Instructions accordion */}
+      {def.instructions && (
+        <div style={{ borderTop: '1px solid var(--border)' }}>
+          <button
+            onClick={() => setShowInstructions(s => !s)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 18px', background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', fontSize: 12, fontWeight: 700 }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Info size={13} /> Setup Guide
+            </span>
+            <ChevronRight size={13} style={{ transform: showInstructions ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+          </button>
+          {showInstructions && (
+            <div style={{ padding: '0 18px 14px', background: 'rgba(99,102,241,0.04)' }}>
+              {(Array.isArray(def.instructions) ? def.instructions : (def.instructions[form.website_type || 'widget'] || def.instructions.widget)).map(item => (
+                <div key={item.step} style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'flex-start' }}>
+                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#6366f1', color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{item.step}</span>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>{item.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Edit form */}
+      {isEditing && (
+        <div style={{ padding: '0 18px 18px', borderTop: '1px solid var(--border)' }}>
+          <div style={{ marginTop: 16, marginBottom: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>Account Name</label>
+            <input value={form.account_name || ''} onChange={e => setForm(f => ({ ...f, account_name: e.target.value }))} placeholder="e.g. Main Business Account"
+              style={{ width: '100%', padding: '10px 13px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              onFocus={e => e.target.style.borderColor = def.color}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+            />
+          </div>
+
+          {/* Website type selector */}
+          {def.id === 'website' && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Integration Type</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { value: 'widget', label: '🔲 Embed Widget', desc: 'Floating form button' },
+                  { value: 'webhook', label: '🔗 Custom Webhook', desc: 'Your own form' },
+                  { value: 'formspree', label: '📋 Formspree', desc: 'Forward from Formspree' },
+                ].map(opt => (
+                  <button key={opt.value} type="button" onClick={() => setForm(f => ({ ...f, website_type: opt.value }))}
+                    style={{ flex: 1, padding: '10px 8px', borderRadius: 10, border: `2px solid ${form.website_type === opt.value ? def.color : 'var(--border)'}`, background: form.website_type === opt.value ? def.color + '10' : 'var(--surface2)', cursor: 'pointer', textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: form.website_type === opt.value ? def.color : 'var(--text)', margin: '0 0 2px' }}>{opt.label}</p>
+                    <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: 0 }}>{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Credential fields for meta platforms */}
+          {def.fields?.map(field => (
+            <div key={field.key} style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>{field.label}</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={field.secret && !showSecrets[field.key] ? 'password' : 'text'}
+                  value={form[field.key] || ''}
+                  onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
+                  placeholder={field.placeholder}
+                  style={{ width: '100%', padding: `10px ${field.secret ? '40px' : '13px'} 10px 13px`, border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+                  onFocus={e => e.target.style.borderColor = def.color}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
+                {field.secret && (
+                  <button type="button" onClick={() => setShowSecrets(p => ({ ...p, [field.key]: !p[field.key] }))} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                    {showSecrets[field.key] ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                )}
+              </div>
+              {field.hint && <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>{field.hint}</p>}
+            </div>
+          ))}
+
+          {/* Webhook info for meta platforms */}
+          {def.type === 'meta' && (
+            <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: 16, marginBottom: 14 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>Meta Webhook Configuration</p>
+              <div style={{ marginBottom: 10 }}>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px', fontWeight: 600 }}>CALLBACK URL</p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <code style={{ flex: 1, fontSize: 11, background: 'var(--surface)', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{webhookUrl}</code>
+                  <button onClick={() => handleCopy(webhookUrl, 'webhook')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: 11, color: copied === 'webhook' ? '#10b981' : 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Copy size={11} /> {copied === 'webhook' ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px', fontWeight: 600 }}>VERIFY TOKEN</p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <code style={{ flex: 1, fontSize: 11, background: 'var(--surface)', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{verifyToken}</code>
+                  <button onClick={() => handleCopy(verifyToken, 'verify')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: 11, color: copied === 'verify' ? '#10b981' : 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Copy size={11} /> {copied === 'verify' ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '10px 0 0', lineHeight: 1.5 }}>
+                Add these in your Meta App Dashboard → Webhooks. Subscribe to <strong>messages</strong> and <strong>messaging_postbacks</strong> events.
+              </p>
+            </div>
+          )}
+
+          {/* Widget snippet for website */}
+          {def.type === 'widget' && (
+            <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: 16, marginBottom: 14 }}>
+              {(form.website_type || 'widget') === 'widget' && (
+                <>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Embed Code</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>Paste this snippet just before the <code style={{ background: 'var(--surface)', padding: '1px 5px', borderRadius: 4 }}>&lt;/body&gt;</code> tag:</p>
+                  <div style={{ position: 'relative' }}>
+                    <code style={{ display: 'block', fontSize: 11, background: 'var(--surface)', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', color: 'var(--text)', wordBreak: 'break-all', lineHeight: 1.6 }}>
+                      {widgetSnippet}
+                    </code>
+                    <button onClick={() => handleCopy(widgetSnippet, 'widget')} style={{ position: 'absolute', top: 8, right: 8, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: 11, color: copied === 'widget' ? '#10b981' : 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Copy size={11} /> {copied === 'widget' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '10px 0 0' }}>Form submissions will appear as leads from <strong>Website</strong> in your CRM.</p>
+                </>
+              )}
+              {((form.website_type || 'widget') === 'webhook' || (form.website_type || 'widget') === 'formspree') && (
+                <>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Webhook URL</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+                    {(form.website_type || 'widget') === 'formspree' ? 'Add this URL as a webhook in your Formspree form settings:' : 'POST form submissions as JSON to this URL:'}
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                    <code style={{ flex: 1, fontSize: 11, background: 'var(--surface)', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`${BASE_URL}/api/website-form/${widgetToken}/submit`}</code>
+                    <button onClick={() => handleCopy(`${BASE_URL}/api/website-form/${widgetToken}/submit`, 'whook')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: 11, color: copied === 'whook' ? '#10b981' : 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Copy size={11} /> {copied === 'whook' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  {(form.website_type || 'widget') === 'webhook' && (
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>POST JSON with: <code style={{ background: 'var(--surface)', padding: '1px 4px', borderRadius: 3 }}>name</code>, <code style={{ background: 'var(--surface)', padding: '1px 4px', borderRadius: 3 }}>phone</code>, <code style={{ background: 'var(--surface)', padding: '1px 4px', borderRadius: 3 }}>email</code>, <code style={{ background: 'var(--surface)', padding: '1px 4px', borderRadius: 3 }}>message</code></p>
+                  )}
+                  {(form.website_type || 'widget') === 'formspree' && (
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>Formspree will POST submissions here. Make sure your form has <code style={{ background: 'var(--surface)', padding: '1px 4px', borderRadius: 3 }}>name</code> and <code style={{ background: 'var(--surface)', padding: '1px 4px', borderRadius: 3 }}>phone</code> fields.</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={handleSave} disabled={saving} style={{ padding: '10px 22px', background: def.color, color: 'white', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Save size={13} /> {saving ? 'Saving...' : 'Save Account'}
+            </button>
+            <button onClick={onCancel} style={{ padding: '10px 16px', background: 'transparent', border: '1.5px solid var(--border)', borderRadius: 10, fontWeight: 600, fontSize: 13, cursor: 'pointer', color: 'var(--text-muted)' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 //  MAIN SETTINGS PAGE
 // ════════════════════════════════════════════════════════════
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('company');
+  const [activeTab, setActiveTab] = useState('connections');
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1128,6 +1733,8 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!localStorage.getItem('token')) { router.push('/login'); return; }
     fetchCompany();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab')) setActiveTab(params.get('tab'));
   }, []);
 
   const fetchCompany = async () => {
@@ -1153,7 +1760,10 @@ export default function SettingsPage() {
   return (
     <NavBar>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      <style>{`@keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
+      <style>{`
+        @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
 
       {toast && <Toast message={toast.msg} type={toast.type} />}
 
@@ -1211,6 +1821,7 @@ export default function SettingsPage() {
             <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>Loading settings...</div>
           ) : (
             <>
+              {activeTab === 'connections' && <ConnectionsTab showToast={showToast} />}
               {activeTab === 'appearance' && <AppearanceTab showToast={showToast} />}
               {activeTab === 'company' && <CompanyTab company={company} setCompany={setCompany} onSave={handleSaveCompany} saving={saving} />}
               {activeTab === 'currency' && <CurrencyTab company={company} setCompany={setCompany} onSave={handleSaveCompany} saving={saving} />}
@@ -1317,7 +1928,7 @@ function EmailSendingTab({ showToast }) {
             { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587', secure: false },
           ].map(p => (
             <button key={p.label} onClick={() => setForm(f => ({ ...f, smtp_host: p.host, smtp_port: p.port, smtp_secure: p.secure }))}
-              style={{ padding: '6px 14px', borderRadius: 20, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              style={{ padding: '6px 14px', borderRadius: 20, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor='#6366f1'; e.currentTarget.style.color='#6366f1'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.color='#374151'; }}
             >{p.label}</button>
@@ -1329,17 +1940,17 @@ function EmailSendingTab({ showToast }) {
         <div style={{ paddingRight: 16 }}>
           <SettingsField label="SMTP Host" hint="e.g. smtp.gmail.com">
             <input value={form.smtp_host} onChange={e => setForm(f => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.gmail.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
               onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
           </SettingsField>
           <SettingsField label="SMTP Username / Email" hint="Usually your email address">
             <input value={form.smtp_user} onChange={e => setForm(f => ({ ...f, smtp_user: e.target.value }))} placeholder="you@gmail.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
               onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
           </SettingsField>
           <SettingsField label="From Name">
             <input value={form.from_name} onChange={e => setForm(f => ({ ...f, from_name: e.target.value }))} placeholder="Your Business Name"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
               onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
           </SettingsField>
         </div>
@@ -1347,7 +1958,7 @@ function EmailSendingTab({ showToast }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <SettingsField label="Port" hint="Usually 587 or 465">
               <input type="number" value={form.smtp_port} onChange={e => setForm(f => ({ ...f, smtp_port: e.target.value }))} placeholder="587"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
                 onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
             </SettingsField>
             <SettingsField label="Encryption">
@@ -1355,7 +1966,7 @@ function EmailSendingTab({ showToast }) {
                 {[['TLS (587)', false], ['SSL (465)', true]].map(([label, val]) => (
                   <button key={label} onClick={() => setForm(f => ({ ...f, smtp_secure: val }))} style={{
                     flex: 1, padding: '10px 4px', borderRadius: 10, border: `1.5px solid ${form.smtp_secure===val ? '#6366f1' : 'var(--border)'}`,
-                    background: form.smtp_secure===val ? '#eef2ff' : 'white', color: form.smtp_secure===val ? '#6366f1' : '#6b7280', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                    background: form.smtp_secure===val ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: form.smtp_secure===val ? '#6366f1' : '#6b7280', fontSize: 12, fontWeight: 700, cursor: 'pointer'
                   }}>{label}</button>
                 ))}
               </div>
@@ -1364,7 +1975,7 @@ function EmailSendingTab({ showToast }) {
           <SettingsField label="SMTP Password / App Password" hint="For Gmail: use an App Password">
             <div style={{ position: 'relative' }}>
               <input type={showPass ? 'text' : 'password'} value={form.smtp_pass} onChange={e => setForm(f => ({ ...f, smtp_pass: e.target.value }))} placeholder="App password"
-                style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+                style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
                 onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
               <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -1373,7 +1984,7 @@ function EmailSendingTab({ showToast }) {
           </SettingsField>
           <SettingsField label="From Email Address" hint="Email address recipients will see">
             <input value={form.from_email} onChange={e => setForm(f => ({ ...f, from_email: e.target.value }))} placeholder="noreply@yourbusiness.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
               onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
           </SettingsField>
         </div>
@@ -1388,7 +1999,7 @@ function EmailSendingTab({ showToast }) {
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button onClick={handleTest} disabled={testing || !form.smtp_host} style={{
           padding: '11px 20px', border: `1.5px solid ${form.smtp_host ? '#a7f3d0' : 'var(--border)'}`, borderRadius: 11,
-          background: form.smtp_host ? '#ecfdf5' : '#f9fafb', color: form.smtp_host ? '#059669' : '#9ca3af',
+          background: form.smtp_host ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', color: form.smtp_host ? '#059669' : '#9ca3af',
           fontSize: 14, fontWeight: 700, cursor: form.smtp_host ? 'pointer' : 'not-allowed',
           display: 'flex', alignItems: 'center', gap: 8
         }}>
@@ -1527,7 +2138,7 @@ function EmailReceivingTab({ showToast }) {
             { label: 'Zoho', host: 'imap.zoho.com', port: '993', secure: true },
           ].map(p => (
             <button key={p.label} onClick={() => setForm(f => ({ ...f, imap_host: p.host, imap_port: p.port, imap_secure: p.secure }))}
-              style={{ padding: '6px 16px', borderRadius: 20, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              style={{ padding: '6px 16px', borderRadius: 20, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor='#06b6d4'; e.currentTarget.style.color='#06b6d4'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.color='#374151'; }}>
               {p.label}
@@ -1542,13 +2153,13 @@ function EmailReceivingTab({ showToast }) {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>IMAP Host</label>
             <input value={form.imap_host} onChange={e => setForm(f => ({ ...f, imap_host: e.target.value }))} placeholder="imap.gmail.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
               onFocus={e => e.target.style.borderColor='#06b6d4'} onBlur={e => e.target.style.borderColor='var(--border)'} />
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Email Address</label>
             <input value={form.imap_user} onChange={e => setForm(f => ({ ...f, imap_user: e.target.value }))} placeholder="you@gmail.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
               onFocus={e => e.target.style.borderColor='#06b6d4'} onBlur={e => e.target.style.borderColor='var(--border)'} />
           </div>
         </div>
@@ -1557,7 +2168,7 @@ function EmailReceivingTab({ showToast }) {
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Port</label>
               <input type="number" value={form.imap_port} onChange={e => setForm(f => ({ ...f, imap_port: e.target.value }))} placeholder="993"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
                 onFocus={e => e.target.style.borderColor='#06b6d4'} onBlur={e => e.target.style.borderColor='var(--border)'} />
             </div>
             <div>
@@ -1566,7 +2177,7 @@ function EmailReceivingTab({ showToast }) {
                 {[['SSL', true], ['None', false]].map(([label, val]) => (
                   <button key={label} onClick={() => setForm(f => ({ ...f, imap_secure: val }))} style={{
                     flex: 1, padding: '10px 4px', borderRadius: 10, border: `1.5px solid ${form.imap_secure===val ? '#06b6d4' : 'var(--border)'}`,
-                    background: form.imap_secure===val ? '#ecfeff' : 'white', color: form.imap_secure===val ? '#0891b2' : '#6b7280',
+                    background: form.imap_secure===val ? 'rgba(6,182,212,0.10)' : 'var(--surface)', color: form.imap_secure===val ? '#0891b2' : '#6b7280',
                     fontSize: 12, fontWeight: 700, cursor: 'pointer'
                   }}>{label}</button>
                 ))}
@@ -1577,7 +2188,7 @@ function EmailReceivingTab({ showToast }) {
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>App Password</label>
             <div style={{ position: 'relative' }}>
               <input type={showPass ? 'text' : 'password'} value={form.imap_pass} onChange={e => setForm(f => ({ ...f, imap_pass: e.target.value }))} placeholder="16-character app password"
-                style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+                style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
                 onFocus={e => e.target.style.borderColor='#06b6d4'} onBlur={e => e.target.style.borderColor='var(--border)'} />
               <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -1590,7 +2201,7 @@ function EmailReceivingTab({ showToast }) {
 
       {/* Test result */}
       {testResult && (
-        <div style={{ padding: '12px 16px', borderRadius: 12, marginBottom: 16, background: testResult.ok ? '#ecfdf5' : '#fef2f2', border: `1.5px solid ${testResult.ok ? '#a7f3d0' : '#fecaca'}` }}>
+        <div style={{ padding: '12px 16px', borderRadius: 12, marginBottom: 16, background: testResult.ok ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.12)', border: `1.5px solid ${testResult.ok ? '#a7f3d0' : '#fecaca'}` }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: testResult.ok ? '#059669' : '#dc2626', margin: 0 }}>{testResult.msg}</p>
         </div>
       )}
@@ -1607,7 +2218,7 @@ function EmailReceivingTab({ showToast }) {
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button onClick={handleTest} disabled={testing || !form.imap_host || !form.imap_user} style={{
           padding: '11px 20px', border: `1.5px solid ${form.imap_host ? '#bae6fd' : 'var(--border)'}`, borderRadius: 11,
-          background: form.imap_host ? '#f0f9ff' : '#f9fafb', color: form.imap_host ? '#0891b2' : '#9ca3af',
+          background: form.imap_host ? '#f0f9ff' : 'var(--surface2)', color: form.imap_host ? '#0891b2' : '#9ca3af',
           fontSize: 14, fontWeight: 700, cursor: form.imap_host ? 'pointer' : 'not-allowed',
           display: 'flex', alignItems: 'center', gap: 8
         }}>
@@ -1726,6 +2337,17 @@ function AICommandTab({ showToast }) {
     if (typeof window === 'undefined') return true;
     return localStorage.getItem('wf_ai_command_enabled') !== 'false';
   });
+  const [profile, setProfile] = useState({
+    business_description: '', tone: 'professional', language: 'English',
+    signature: '', dos: '', donts: '', auto_analyze: 0
+  });
+  const [providerInfo, setProviderInfo] = useState(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  useEffect(() => {
+    aiAPI.getProfile().then(r => { if (r.data?.profile) setProfile(p => ({ ...p, ...r.data.profile })); }).catch(() => {});
+    aiAPI.status().then(r => setProviderInfo(r.data)).catch(() => {});
+  }, []);
 
   const toggle = () => {
     const newVal = !enabled;
@@ -1734,37 +2356,157 @@ function AICommandTab({ showToast }) {
     showToast(newVal ? 'AI Command Center enabled!' : 'AI Command Center disabled');
   };
 
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await aiAPI.updateProfile(profile);
+      showToast('AI profile saved');
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to save profile', 'error');
+    } finally { setSavingProfile(false); }
+  };
+
+  const TONES = ['professional', 'friendly', 'casual', 'formal', 'empathetic', 'concise'];
+
   return (
-    <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Sparkles size={20} color="white" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Header card */}
+      <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Sparkles size={20} color="white" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>AI Command Center</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>Shape how the AI assistant behaves across this workspace</p>
+          </div>
+          {providerInfo?.provider && (
+            <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20, background: 'rgba(99,102,241,0.12)', color: '#4338ca' }}>
+              Provider: {providerInfo.provider}
+            </span>
+          )}
         </div>
-        <div>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>AI Command Center</h2>
-          <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>Natural language commands for your CRM</p>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: enabled ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', borderRadius: 14, border: `1.5px solid ${enabled ? 'rgba(16,185,129,0.3)' : 'var(--border)'}` }}>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: '0 0 2px' }}>Show AI Assistant Button</p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>The ✨ floating button in the bottom right corner</p>
+          </div>
+          <button onClick={toggle} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            {enabled ? <ToggleRight size={44} color="#10b981" /> : <ToggleLeft size={44} color="#d1d5db" />}
+          </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', background: enabled ? '#ecfdf5' : '#f9fafb', borderRadius: 16, border: `1.5px solid ${enabled ? '#a7f3d0' : 'var(--border)'}`, marginBottom: 24 }}>
-        <div>
-          <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 4px' }}>Show AI Assistant Button</p>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>The ✨ floating button in the bottom right corner</p>
+      {/* Workspace AI profile */}
+      <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
+        <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px' }}>Workspace AI Profile</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '0 0 24px' }}>
+          These settings are added as context to every AI request — replies, summaries, and analysis will follow your business voice.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Business Description</label>
+            <textarea
+              value={profile.business_description || ''}
+              onChange={e => setProfile(p => ({ ...p, business_description: e.target.value }))}
+              rows={3}
+              placeholder="e.g. We're a Pakistan-based real estate brokerage focused on Bahria Town and DHA. We help clients buy, sell, and rent residential plots and homes."
+              style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Tone</label>
+              <select
+                value={profile.tone || 'professional'}
+                onChange={e => setProfile(p => ({ ...p, tone: e.target.value }))}
+                style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              >
+                {TONES.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Language</label>
+              <input
+                value={profile.language || ''}
+                onChange={e => setProfile(p => ({ ...p, language: e.target.value }))}
+                placeholder="English / Urdu / Spanish..."
+                style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Do's — things the AI should always do</label>
+            <textarea
+              value={profile.dos || ''}
+              onChange={e => setProfile(p => ({ ...p, dos: e.target.value }))}
+              rows={3}
+              placeholder="• Always confirm location before quoting&#10;• Mention our 0% commission for repeat clients&#10;• Offer site visits when interest is shown"
+              style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Don'ts — things the AI must avoid</label>
+            <textarea
+              value={profile.donts || ''}
+              onChange={e => setProfile(p => ({ ...p, donts: e.target.value }))}
+              rows={3}
+              placeholder="• Never promise exact prices without seeing the property&#10;• Don't share competitor names&#10;• Avoid slang or emojis with corporate clients"
+              style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Signature</label>
+            <input
+              value={profile.signature || ''}
+              onChange={e => setProfile(p => ({ ...p, signature: e.target.value }))}
+              placeholder="e.g. Best regards, Sales Team"
+              style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--surface2)', borderRadius: 12 }}>
+            <input
+              id="auto-analyze"
+              type="checkbox"
+              checked={!!profile.auto_analyze}
+              onChange={e => setProfile(p => ({ ...p, auto_analyze: e.target.checked ? 1 : 0 }))}
+              style={{ width: 18, height: 18, cursor: 'pointer' }}
+            />
+            <label htmlFor="auto-analyze" style={{ fontSize: 13, color: 'var(--text)', cursor: 'pointer', flex: 1 }}>
+              <span style={{ fontWeight: 700 }}>Auto-analyze new leads</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>Run AI analysis automatically when a new lead's first message arrives. <strong>Never auto-sends replies</strong> — only updates score / sentiment / urgency.</span>
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <button
+              onClick={saveProfile}
+              disabled={savingProfile}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 11, border: 'none', background: savingProfile ? 'var(--border)' : 'linear-gradient(135deg, #8b5cf6, #6366f1)', color: 'white', fontWeight: 700, cursor: savingProfile ? 'wait' : 'pointer', fontSize: 14 }}
+            >
+              <Save size={15} /> {savingProfile ? 'Saving…' : 'Save AI Profile'}
+            </button>
+          </div>
         </div>
-        <button onClick={toggle} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-          {enabled
-            ? <ToggleRight size={44} color="#10b981" />
-            : <ToggleLeft size={44} color="#d1d5db" />}
-        </button>
       </div>
 
-      <div style={{ background: '#f8faff', borderRadius: 14, padding: 20, border: '1.5px solid #e0e7ff' }}>
-        <p style={{ fontSize: 13, fontWeight: 800, color: '#4338ca', margin: '0 0 12px' }}>💡 What you can ask</p>
+      {/* Examples */}
+      <div style={{ background: 'rgba(99,102,241,0.06)', borderRadius: 16, padding: 20, border: '1.5px solid rgba(99,102,241,0.18)' }}>
+        <p style={{ fontSize: 13, fontWeight: 800, color: '#6366f1', margin: '0 0 12px' }}>💡 What you can ask the AI assistant</p>
         {[
           'Show hot leads', 'Summarize today', 'Find Ali', 'Show won deals',
           'Show my reminders', 'Show new leads', 'Show workspace stats', 'Show negotiating leads'
         ].map(ex => (
-          <div key={ex} style={{ display: 'inline-block', margin: '4px 6px 4px 0', padding: '5px 12px', background: 'var(--surface)', borderRadius: 20, border: '1.5px solid #c7d2fe', fontSize: 12, fontWeight: 600, color: '#6366f1' }}>
+          <div key={ex} style={{ display: 'inline-block', margin: '4px 6px 4px 0', padding: '5px 12px', background: 'var(--surface)', borderRadius: 20, border: '1.5px solid rgba(99,102,241,0.3)', fontSize: 12, fontWeight: 600, color: '#6366f1' }}>
             "{ex}"
           </div>
         ))}

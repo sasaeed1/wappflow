@@ -64,7 +64,7 @@ export function TagPicker({ leadId, assignedTags = [], allTags = [], onToggle, c
           display: 'inline-flex', alignItems: 'center', gap: 4,
           padding: '4px 10px', borderRadius: 20,
           border: '1.5px dashed #d1d5db',
-          background: open ? '#f3f4f6' : 'transparent',
+          background: open ? 'var(--surface2)' : 'transparent',
           color: 'var(--text-dim)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
           transition: 'all 0.15s',
         }}
@@ -109,12 +109,12 @@ export function TagPicker({ leadId, assignedTags = [], allTags = [], onToggle, c
                     onClick={() => { onToggle(tag, active); }}
                     style={{
                       width: '100%', padding: '9px 14px', border: 'none',
-                      background: active ? tag.color + '18' : 'white',
+                      background: active ? tag.color + '18' : 'var(--surface)',
                       cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
                       transition: 'background 0.1s',
                     }}
-                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#f9fafb'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = active ? tag.color + '18' : 'white'; }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface2)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = active ? tag.color + '18' : 'var(--surface)'; }}
                   >
                     <span style={{ width: 12, height: 12, borderRadius: '50%', background: tag.color, flexShrink: 0 }} />
                     <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text)', textAlign: 'left' }}>{tag.name}</span>

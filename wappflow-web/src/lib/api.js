@@ -53,10 +53,11 @@ export const leadsAPI = {
   bulkUpload: (leads) => api.post('/leads/bulk-upload', { leads }),
   bulkAssign: (lead_ids, assigned_to) => api.post('/leads/bulk-assign', { lead_ids, assigned_to }),
   roundRobin: (lead_ids, user_ids) => api.post('/leads/round-robin', { lead_ids, ...(user_ids ? { user_ids } : {}) }),
+  bulkTrash: (lead_ids) => api.post('/leads/bulk-trash', { lead_ids }),
 
   // Messages
-  getMessages: (id) => api.get(`/leads/${id}/messages`),
-  sendMessage: (id, body) => api.post(`/leads/${id}/messages`, { body }),
+  getMessages: (id, platform) => api.get(`/leads/${id}/messages`, { params: platform ? { platform } : {} }),
+  sendMessage: (id, body, platform) => api.post(`/leads/${id}/messages`, { body, platform }),
   sendMedia: (id, formData) => api.post(`/leads/${id}/messages/media`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   sendVoice: (id, formData) => api.post(`/leads/${id}/messages/voice`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   syncMessages: (id) => api.post(`/leads/${id}/messages/sync`),
@@ -178,6 +179,56 @@ export const auditAPI = {
   getLogs: (params) => api.get('/audit-logs', { params }),
 };
 
+export const platformAccountsAPI = {
+  getAll: (platform) => api.get('/platform-accounts', { params: platform ? { platform } : {} }),
+  create: (data) => api.post('/platform-accounts', data),
+  update: (id, data) => api.put(`/platform-accounts/${id}`, data),
+  delete: (id) => api.delete(`/platform-accounts/${id}`),
+};
+
+// WhatsApp groups — create from selected leads, edit name/desc/icon
+export const whatsappGroupsAPI = {
+  readyAccounts: () => api.get('/whatsapp/ready-accounts'),
+  create: (data) => api.post('/whatsapp/groups', data),
+  update: (groupId, formData) => api.patch(`/whatsapp/groups/${encodeURIComponent(groupId)}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+};
+
+export const planAPI = {
+  get: () => api.get('/workspace/plan'),
+  update: (data) => api.put('/workspace/plan', data),
+};
+
+export const leadChannelsAPI = {
+  getAll: (leadId) => api.get(`/leads/${leadId}/channels`),
+  add: (leadId, data) => api.post(`/leads/${leadId}/channels`, data),
+  remove: (leadId, channelId) => api.delete(`/leads/${leadId}/channels/${channelId}`),
+};
+
+export const leadRelationsAPI = {
+  getSuggested: (leadId) => api.get(`/leads/${leadId}/related`),
+  link: (data) => api.post('/lead-relations', data),
+  unlink: (id) => api.delete(`/lead-relations/${id}`),
+};
+
+export const timelineAPI = {
+  get: (leadId) => api.get(`/leads/${leadId}/timeline`),
+};
+
+export const messageQueueAPI = {
+  getAll: () => api.get('/message-queue'),
+  retry: (id) => api.post(`/message-queue/${id}/retry`),
+};
+
+export const aiAPI = {
+  status: () => api.get('/ai/status'),
+  sentiment: (text) => api.post('/ai/sentiment', { text }),
+  rewrite: (text, tone) => api.post('/ai/rewrite', { text, tone }),
+  translate: (text, target_lang) => api.post('/ai/translate', { text, target_lang }),
+  shorten: (text) => api.post('/ai/shorten', { text }),
+  getProfile: () => api.get('/ai/profile'),
+  updateProfile: (data) => api.put('/ai/profile', data),
+};
+
 export const chatAPI = {
   getChannels: () => api.get('/chat/channels'),
   createChannel: (data) => api.post('/chat/channels', data),
@@ -196,10 +247,68 @@ export const chatAPI = {
   react: (messageId, emoji) => api.post(`/chat/messages/${messageId}/react`, { emoji }),
 };
 
-export function displayPhone(phone) {
+// Returns a human-friendly representation of `phone`. For real phone numbers
+// the raw value (minus WhatsApp suffixes) is returned. For platform user IDs
+// (Instagram/Facebook sender IDs are 13–17 digit integers, NOT phone numbers)
+// we collapse to a short label — never leak the raw numeric ID to the UI.
+export function displayPhone(phone, platform) {
   if (!phone) return '';
-  return phone.replace(/@(lid|c\.us|s\.whatsapp\.net)$/, '');
+  // Strip WhatsApp JID suffixes
+  const stripped = String(phone).replace(/@(lid|c\.us|s\.whatsapp\.net)$/, '').trim();
+  if (!stripped) return '';
+
+  // Heuristic for "this is a platform user ID, not a real phone":
+  //  - pure digits
+  //  - 13 or more digits (real intl phone numbers are 7–15 digits, mostly 10–13)
+  //  - OR doesn't start with + and is ≥14 digits
+  const digitsOnly = stripped.replace(/\D/g, '');
+  const isPlatformId = /^\d{13,}$/.test(stripped) || (digitsOnly.length >= 14 && !stripped.startsWith('+'));
+  if (isPlatformId) {
+    const p = (platform || '').toLowerCase();
+    if (p === 'instagram') return 'Instagram user';
+    if (p === 'facebook')  return 'Facebook user';
+    if (p === 'website')   return 'Website visitor';
+    return 'No phone';
+  }
+  // Real phone — ensure leading + for visual clarity
+  if (/^\d+$/.test(stripped) && stripped.length >= 7 && stripped.length <= 15) {
+    return '+' + stripped;
+  }
+  // Already-formatted phone (e.g. "+923001234567" or "(555) 555-1234")
+  if (/^\+?[\d\s\-().]+$/.test(stripped) && digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+    return stripped.startsWith('+') ? stripped : ('+' + digitsOnly);
+  }
+  // Non-phone identifiers (web-form-001, @username, etc.) — surface platform context
+  const p = (platform || '').toLowerCase();
+  if (p === 'website')   return 'Website visitor';
+  if (p === 'instagram') return stripped.startsWith('@') ? stripped : 'Instagram user';
+  if (p === 'facebook')  return 'Facebook user';
+  return stripped;
 }
+
+// Returns a short platform + account label, e.g. "WhatsApp · Admissions Team"
+// Used as a small chip on lead cards across dashboard / leads list / lead profile.
+export function platformLabel(platform, accountNickname) {
+  const labels = {
+    whatsapp:  'WhatsApp',
+    instagram: 'Instagram',
+    facebook:  'Facebook',
+    website:   'Website',
+    email:     'Email',
+    phone:     'Phone',
+  };
+  const name = labels[(platform || '').toLowerCase()] || (platform ? platform[0].toUpperCase() + platform.slice(1) : 'Unknown');
+  return accountNickname ? `${name} · ${accountNickname}` : name;
+}
+
+export const PLATFORM_COLORS = {
+  whatsapp:  '#25d366',
+  instagram: '#e1306c',
+  facebook:  '#1877f2',
+  website:   '#6366f1',
+  email:     '#f59e0b',
+  phone:     '#8b5cf6',
+};
 
 export function formatCurrency(amount, symbol = '$', position = 'before') {
   const num = parseFloat(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

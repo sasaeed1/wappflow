@@ -5,16 +5,24 @@ const { execSync } = require('child_process');
 const qrcode = require('qrcode');
 
 class WhatsAppService {
-  constructor(db, broadcastToUser) {
+  constructor(db, broadcastToUser, accountId = null, sessionName = undefined) {
     this.db = db;
     this.broadcastToUser = broadcastToUser || (() => {});
+    this.accountId = accountId;  // platform_accounts.id for this session
+    this.sessionName = sessionName; // LocalAuth clientId (undefined = legacy session)
     this.client = null;
     this.qrCode = null;
     this.status = 'disconnected';
     this.isReady = false;
     this.phoneNumber = null;
     this.processedMessages = new Set();
-
+    // Reliability — auto-reconnect & heartbeat
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 3;
+    this.reconnectTimer = null;
+    this.heartbeatTimer = null;
+    this.heartbeatFailCount = 0;
+    this.userLoggedOut = false; // set true on intentional logout — prevents auto-reconnect loops
   }
 
   generateId() {
@@ -27,7 +35,7 @@ class WhatsAppService {
   // ── Kill orphaned Chromium processes using our profile, then remove lock files ──
   _cleanLocks() {
     // Windows only: kill orphaned Chromium processes via wmic/taskkill
-    if (process.platform === 'win32') {
+    if (process.platform === 'win32' && !this.sessionName) {
       try {
         const out = execSync(
           `wmic process where "name='chrome.exe' and commandline like '%wwebjs_auth%'" get processid /format:value 2>nul`,
@@ -50,10 +58,11 @@ class WhatsAppService {
 
     // Remove lock files
     const authBase2 = process.env.NODE_ENV === 'production' ? '/data/.wwebjs_auth' : './.wwebjs_auth';
+    const sessionDir = this.sessionName ? `session-${this.sessionName}` : 'session';
     for (const p of [
-      authBase2 + '/session/SingletonLock',
-      authBase2 + '/session/SingletonCookie',
-      authBase2 + '/session/SingletonSocket',
+      `${authBase2}/${sessionDir}/SingletonLock`,
+      `${authBase2}/${sessionDir}/SingletonCookie`,
+      `${authBase2}/${sessionDir}/SingletonSocket`,
     ]) {
       try { if (fs.existsSync(p)) { fs.unlinkSync(p); console.log(`🔓 Removed stale lock: ${p}`); } } catch {}
     }
@@ -69,7 +78,10 @@ class WhatsAppService {
     this._cleanLocks();
 
     this.client = new Client({
-      authStrategy: new LocalAuth({ dataPath: process.env.NODE_ENV === 'production' ? '/data/.wwebjs_auth' : './.wwebjs_auth' }),
+      authStrategy: new LocalAuth({
+        dataPath: process.env.NODE_ENV === 'production' ? '/data/.wwebjs_auth' : './.wwebjs_auth',
+        ...(this.sessionName ? { clientId: this.sessionName } : {}),
+      }),
       puppeteer: {
         headless: true,
         args: [
@@ -101,7 +113,11 @@ class WhatsAppService {
       this.status = 'connected';
       this.qrCode = null;
       this.phoneNumber = this.client.info.wid.user;
+      this.reconnectAttempts = 0; // reset backoff counter on successful connect
+      this.heartbeatFailCount = 0;
+      this.userLoggedOut = false;
       console.log(`📞 Connected as: ${this.phoneNumber}`);
+      this._startHeartbeat();
       // Auto-sync any messages missed during downtime (wait 4s for connection to stabilise)
       setTimeout(() => this.syncMissedMessages(), 4000);
     });
@@ -122,6 +138,10 @@ class WhatsAppService {
       this.status = 'disconnected';
       this.isReady = false;
       this.qrCode = null;
+      this._stopHeartbeat();
+      // Skip auto-reconnect when user logged out from the phone (LOGOUT/NAVIGATION) — that's intentional
+      const isIntentional = this.userLoggedOut || /LOGOUT|NAVIGATION/i.test(String(reason));
+      if (!isIntentional) this._scheduleReconnect();
     });
 
     // ── INCOMING MESSAGE ──
@@ -164,26 +184,38 @@ class WhatsAppService {
         const workspaceId = user.workspace_id;
         const stripSQL = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(customer_phone,' ',''),'+',''),'-',''),'(',''),')',''),'.','')`;
         const normPhone = customerPhone.replace(/\D/g, '');
-        let lead = this.db.prepare(
-          `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} = ?`
-        ).get(workspaceId, normPhone);
-        if (!lead && normPhone.length >= 10) {
-          lead = this.db.prepare(
-            `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} LIKE ?`
-          ).get(workspaceId, `%${normPhone.slice(-10)}`);
-        }
-
         const firstMsg = message.body || (message.hasMedia ? '[Media]' : '');
-        if (lead) {
-          this.db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?`).run(lead.id);
-        } else {
+
+        // Atomic lookup-or-create — prevents duplicate leads when two messages from the same
+        // phone race through the message handler simultaneously. better-sqlite3 transactions
+        // serialize on the connection, so concurrent calls queue rather than both inserting.
+        let leadCreated = false;
+        const upsertLead = this.db.transaction(() => {
+          let l = this.db.prepare(
+            `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} = ?`
+          ).get(workspaceId, normPhone);
+          if (!l && normPhone.length >= 10) {
+            l = this.db.prepare(
+              `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} LIKE ?`
+            ).get(workspaceId, `%${normPhone.slice(-10)}`);
+          }
+          if (l) {
+            this.db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?`).run(l.id);
+            return l;
+          }
           const leadId = this.generateId();
           this.db.prepare(
-            `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, first_message, total_messages, status) VALUES (?, ?, ?, ?, ?, ?, 1, 'New')`
-          ).run(leadId, user.id, workspaceId, customerName, customerPhone, firstMsg);
-          lead = this.db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
+            `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, first_message, total_messages, status, platform_source, platform_account_id) VALUES (?, ?, ?, ?, ?, ?, 1, 'New', 'whatsapp', ?)`
+          ).run(leadId, user.id, workspaceId, customerName, customerPhone, firstMsg, this.accountId || null);
+          leadCreated = true;
+          return this.db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
+        });
+        let lead = upsertLead();
+
+        if (leadCreated) {
           console.log(`🆕 Created new lead: ${customerName}`);
           this.broadcastToUser(user.id, 'lead_created', { lead });
+          this._maybeAutoAnalyze(lead, workspaceId);
         }
 
         const msgId = this.generateId();
@@ -203,26 +235,50 @@ class WhatsAppService {
               mediaType = 'media';
             }
 
-            // Download and save voice/audio messages so they can be played back
-            if (mediaType === 'voice' || mediaType === 'audio') {
-              try {
-                const media = await message.downloadMedia();
-                if (media && media.data) {
+            // Download and save all media types
+            try {
+              const media = await message.downloadMedia();
+              if (media && media.data) {
+                const uploadsBase = path.join(process.env.NODE_ENV === 'production' ? '/data' : __dirname, 'uploads');
+                const ts = Date.now();
+                let subDir, filename;
+                if (mediaType === 'voice') {
                   const ext = media.mimetype?.includes('ogg') ? 'ogg'
                             : media.mimetype?.includes('mp4') ? 'mp4'
                             : media.mimetype?.includes('mpeg') ? 'mp3'
                             : 'ogg';
-                  const filename = `voice-${Date.now()}.${ext}`;
-                  const voicesDir = path.join(process.env.NODE_ENV === 'production' ? '/data' : __dirname, 'uploads', 'voices');
-                  if (!fs.existsSync(voicesDir)) fs.mkdirSync(voicesDir, { recursive: true });
-                  const filePath = path.join(voicesDir, filename);
-                  fs.writeFileSync(filePath, Buffer.from(media.data, 'base64'));
-                  mediaUrl = `/uploads/voices/${filename}`;
-                  console.log(`🎙️ Voice note saved: ${filename}`);
+                  subDir = 'voices';
+                  filename = `voice-${ts}.${ext}`;
+                } else if (mediaType === 'image') {
+                  const ext = media.mimetype?.includes('png') ? 'png'
+                            : media.mimetype?.includes('webp') ? 'webp'
+                            : media.mimetype?.includes('gif') ? 'gif'
+                            : 'jpg';
+                  subDir = 'images';
+                  filename = `img-${ts}.${ext}`;
+                } else if (mediaType === 'video') {
+                  const ext = media.mimetype?.includes('mp4') ? 'mp4'
+                            : media.mimetype?.includes('webm') ? 'webm'
+                            : 'mp4';
+                  subDir = 'videos';
+                  filename = `video-${ts}.${ext}`;
+                } else {
+                  // document / sticker / other
+                  const origName = media.filename || `file-${ts}`;
+                  const ext = origName.includes('.') ? origName.split('.').pop() : 'bin';
+                  const safeName = origName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+                  subDir = 'files';
+                  filename = `${ts}-${safeName}`;
+                  if (!filename.includes('.')) filename += `.${ext}`;
                 }
-              } catch (dlErr) {
-                console.log('⚠️ Could not download voice note:', dlErr.message);
+                const dir = path.join(uploadsBase, subDir);
+                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(path.join(dir, filename), Buffer.from(media.data, 'base64'));
+                mediaUrl = `/uploads/${subDir}/${filename}`;
+                console.log(`📎 Media saved [${mediaType}]: ${filename}`);
               }
+            } catch (dlErr) {
+              console.log(`⚠️ Could not download media [${mediaType}]:`, dlErr.message);
             }
           }
 
@@ -230,9 +286,14 @@ class WhatsAppService {
             const dup = this.db.prepare('SELECT id FROM messages WHERE wa_message_id = ?').get(waId);
             if (dup) return;
           }
+          const fallbackBody = mediaType === 'voice' ? '[Voice Note]'
+            : mediaType === 'image' ? '[Image]'
+            : mediaType === 'video' ? '[Video]'
+            : mediaType === 'media' ? '[File]'
+            : '[Media]';
           this.db.prepare(
-            `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id) VALUES (?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP, ?)`
-          ).run(msgId, lead.id, user.id, message.body || '[Voice Note]', mediaType, mediaUrl, waId);
+            `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id, platform, platform_account_id) VALUES (?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP, ?, 'whatsapp', ?)`
+          ).run(msgId, lead.id, user.id, message.body || fallbackBody, mediaType, mediaUrl, waId, this.accountId || null);
         } catch (e) {
           console.log('⚠️ Could not save message:', e.message);
         }
@@ -242,7 +303,7 @@ class WhatsAppService {
         try { savedMsg = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId); } catch {}
         this.broadcastToUser(user.id, 'new_message', {
           lead_id: lead.id,
-          message: savedMsg || { id: msgId, body: message.body || '[Voice Note]', from_me: 0, lead_id: lead.id }
+          message: savedMsg || { id: msgId, body: message.body || '[Media]', from_me: 0, lead_id: lead.id }
         });
 
         this.checkAutoReply(user.id, lead, message.body || '');
@@ -262,6 +323,8 @@ class WhatsAppService {
 
   // ── Properly destroy old client then start fresh ──
   async reconnect() {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    this._stopHeartbeat();
     if (this.client) {
       console.log('🔌 Tearing down existing client for reconnect...');
       const old = this.client;
@@ -277,6 +340,107 @@ class WhatsAppService {
     this.initialize();
   }
 
+  // ── Auto-reconnect with exponential backoff ──
+  // Called on unexpected disconnects. Caps at maxReconnectAttempts to avoid Puppeteer thrashing.
+  _scheduleReconnect() {
+    if (this.reconnectTimer) return; // already scheduled
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log(`⚠️ Auto-reconnect gave up after ${this.reconnectAttempts} attempts — manual reconnect required`);
+      this.status = 'reconnect_failed';
+      return;
+    }
+    const delays = [10000, 30000, 90000]; // 10s, 30s, 90s
+    const delay = delays[this.reconnectAttempts] || 90000;
+    this.reconnectAttempts++;
+    console.log(`🔄 Scheduling auto-reconnect #${this.reconnectAttempts} in ${delay / 1000}s`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.reconnect().catch(err => {
+        console.error(`❌ Auto-reconnect #${this.reconnectAttempts} failed:`, err.message);
+        this._scheduleReconnect();
+      });
+    }, delay);
+  }
+
+  // ── Heartbeat — periodically verify client is still responding ──
+  // 3 consecutive failures triggers a reconnect attempt.
+  _startHeartbeat() {
+    this._stopHeartbeat();
+    this.heartbeatTimer = setInterval(async () => {
+      if (!this.client || !this.isReady) return;
+      try {
+        const state = await Promise.race([
+          this.client.getState(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('heartbeat timeout')), 8000)),
+        ]);
+        if (state === 'CONNECTED') {
+          this.heartbeatFailCount = 0;
+        } else {
+          this.heartbeatFailCount++;
+          console.log(`💓 Heartbeat returned state=${state} (fail ${this.heartbeatFailCount}/3)`);
+        }
+      } catch (e) {
+        this.heartbeatFailCount++;
+        console.log(`💓 Heartbeat failed (${this.heartbeatFailCount}/3): ${e.message}`);
+      }
+      if (this.heartbeatFailCount >= 3) {
+        console.log('⚠️ Heartbeat threshold exceeded — triggering reconnect');
+        this.heartbeatFailCount = 0;
+        this.isReady = false;
+        this.status = 'unhealthy';
+        this._stopHeartbeat();
+        this._scheduleReconnect();
+      }
+    }, 60000); // every 60s
+  }
+
+  _stopHeartbeat() {
+    if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
+  }
+
+  // ── Auto-analyze a freshly-created lead if the workspace AI profile opts in ──
+  // Lazy-requires ai-engine to avoid circular imports. Silent on any failure.
+  _maybeAutoAnalyze(lead, workspaceId) {
+    if (!lead || !workspaceId) return;
+    setTimeout(async () => {
+      try {
+        const profile = this.db.prepare('SELECT auto_analyze FROM workspace_ai_profile WHERE workspace_id = ?').get(workspaceId);
+        if (!profile || !profile.auto_analyze) return;
+
+        const aiEngine = require('./ai-engine');
+        const messages = this.db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC LIMIT 30').all(lead.id);
+        // Need at least one message to analyze meaningfully
+        if (messages.length === 0) return;
+
+        const memories = this.db.prepare(`SELECT memory_type, key, value FROM ai_memories WHERE workspace_id = ? ORDER BY confidence DESC LIMIT 30`).all(workspaceId);
+        const fullProfile = this.db.prepare(`SELECT * FROM workspace_ai_profile WHERE workspace_id = ?`).get(workspaceId);
+        const context = aiEngine.formatMemoryContext(memories) + aiEngine.formatProfileContext(fullProfile);
+
+        const analysis = await aiEngine.analyzeLeadIntelligence(messages, lead, context);
+        this.db.prepare(`UPDATE leads SET
+          lead_score = COALESCE(?, lead_score),
+          sentiment = ?,
+          urgency = ?,
+          intent_category = ?,
+          ai_last_analyzed_at = CURRENT_TIMESTAMP
+          WHERE id = ?`).run(
+          analysis.lead_score ?? null,
+          analysis.sentiment || null,
+          analysis.urgency || null,
+          analysis.intent_category || null,
+          lead.id
+        );
+        console.log(`✨ Auto-analyzed new lead ${lead.id} → score=${analysis.lead_score}, urgency=${analysis.urgency}`);
+        // Push updated lead so UI shows intelligence badges without manual refresh
+        const updated = this.db.prepare('SELECT * FROM leads WHERE id = ?').get(lead.id);
+        const user = this.db.prepare(`SELECT u.id FROM users u WHERE u.workspace_id = ? LIMIT 1`).get(workspaceId);
+        if (user && updated) this.broadcastToUser(user.id, 'lead_updated', { lead: updated });
+      } catch (e) {
+        console.log('⚠️ Auto-analyze skipped:', e.message);
+      }
+    }, 5000); // 5s grace — let the user see the lead appear first
+  }
+
   getStatus() {
     return {
       status: this.status,
@@ -287,6 +451,9 @@ class WhatsAppService {
   }
 
   async disconnect() {
+    this.userLoggedOut = true; // prevents auto-reconnect from firing
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    this._stopHeartbeat();
     if (this.client) {
       const old = this.client;
       this.client = null;
@@ -331,7 +498,24 @@ class WhatsAppService {
   async sendVoiceNote(phone, filePath, mimetype) {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
     const data = fs.readFileSync(filePath).toString('base64');
-    const media = new MessageMedia('audio/ogg; codecs=opus', data, 'voice.ogg');
+    // Pick the right mime based on the actual file. WhatsApp PTT only renders as a voice bubble
+    // when sendAudioAsVoice is set AND the codec is ogg/opus — for webm we still send it but
+    // it may render as a regular audio attachment on the recipient side.
+    const ext = (filePath.split('.').pop() || '').toLowerCase();
+    const mt = (mimetype || '').toLowerCase();
+    let mime = 'audio/ogg; codecs=opus';
+    let filename = 'voice.ogg';
+    if (mt.includes('webm') || ext === 'webm') {
+      mime = 'audio/webm; codecs=opus';
+      filename = 'voice.webm';
+    } else if (mt.includes('mp4') || ext === 'm4a' || ext === 'mp4') {
+      mime = 'audio/mp4';
+      filename = 'voice.m4a';
+    } else if (mt.includes('mpeg') || ext === 'mp3') {
+      mime = 'audio/mpeg';
+      filename = 'voice.mp3';
+    }
+    const media = new MessageMedia(mime, data, filename);
     if (phone.includes('@lid')) {
       const chat = await this.client.getChatById(phone);
       await chat.sendMessage(media, { sendAudioAsVoice: true });
@@ -343,10 +527,96 @@ class WhatsAppService {
     await this.client.sendMessage(numberId._serialized, media, { sendAudioAsVoice: true });
   }
 
+  // ── Group creation & editing ─────────────────────────────────
+  // Resolve a mix of E.164 phones and @lid JIDs to whatsapp-web.js participant IDs.
+  // Returns { participants, skipped } so the caller can tell the user which numbers were unreachable.
+  async _resolveParticipants(phones) {
+    const participants = [];
+    const skipped = [];
+    for (const raw of phones || []) {
+      const p = String(raw || '').trim();
+      if (!p) { skipped.push({ phone: p, reason: 'empty' }); continue; }
+      try {
+        if (p.includes('@lid') || p.includes('@c.us') || p.includes('@s.whatsapp.net')) {
+          participants.push(p);
+          continue;
+        }
+        const cleanPhone = p.replace(/\D/g, '');
+        if (cleanPhone.length < 7 || cleanPhone.length > 15) {
+          skipped.push({ phone: p, reason: 'not a phone number' });
+          continue;
+        }
+        const numberId = await this.client.getNumberId(cleanPhone);
+        if (!numberId) { skipped.push({ phone: p, reason: 'not on WhatsApp' }); continue; }
+        participants.push(numberId._serialized);
+      } catch (e) {
+        skipped.push({ phone: p, reason: e.message || 'lookup failed' });
+      }
+    }
+    return { participants, skipped };
+  }
+
+  // Create a WhatsApp group with the given name and member phones.
+  // Returns { groupId, inviteLink, skipped }.
+  async createGroup(name, phones, description) {
+    if (!this.isReady) throw new Error('WhatsApp client is not ready');
+    if (!name || typeof name !== 'string') throw new Error('Group name required');
+    const { participants, skipped } = await this._resolveParticipants(phones);
+    if (participants.length === 0) throw new Error('No valid WhatsApp participants — all numbers skipped: ' + JSON.stringify(skipped));
+
+    const result = await this.client.createGroup(name, participants);
+    // whatsapp-web.js returns { gid, missingParticipants } on newer versions; fall back to raw chatId
+    const groupId = (typeof result === 'string') ? result : (result?.gid?._serialized || result?.gid || result?._serialized);
+    if (!groupId) throw new Error('Group creation succeeded but no group id returned');
+
+    // Optional description — set via the group chat's setDescription
+    if (description) {
+      try {
+        const chat = await this.client.getChatById(groupId);
+        if (chat && chat.isGroup) await chat.setDescription(description);
+      } catch (e) { console.log('⚠️ Could not set group description:', e.message); }
+    }
+
+    // Try to fetch an invite code so the user can share the link if they want
+    let inviteLink = null;
+    try {
+      const chat = await this.client.getChatById(groupId);
+      if (chat && chat.isGroup && typeof chat.getInviteCode === 'function') {
+        const code = await chat.getInviteCode();
+        if (code) inviteLink = `https://chat.whatsapp.com/${code}`;
+      }
+    } catch (e) { /* invite-link is best-effort */ }
+
+    return { groupId, inviteLink, addedCount: participants.length, skipped };
+  }
+
+  async setGroupSubject(groupId, name) {
+    if (!this.isReady) throw new Error('WhatsApp client is not ready');
+    const chat = await this.client.getChatById(groupId);
+    if (!chat || !chat.isGroup) throw new Error('Not a group chat');
+    await chat.setSubject(name);
+  }
+
+  async setGroupDescription(groupId, description) {
+    if (!this.isReady) throw new Error('WhatsApp client is not ready');
+    const chat = await this.client.getChatById(groupId);
+    if (!chat || !chat.isGroup) throw new Error('Not a group chat');
+    await chat.setDescription(description);
+  }
+
+  async setGroupPicture(groupId, filePath, mimetype) {
+    if (!this.isReady) throw new Error('WhatsApp client is not ready');
+    const chat = await this.client.getChatById(groupId);
+    if (!chat || !chat.isGroup) throw new Error('Not a group chat');
+    const data = fs.readFileSync(filePath).toString('base64');
+    const media = new MessageMedia(mimetype || 'image/jpeg', data, 'group.jpg');
+    await chat.setPicture(media);
+  }
+
   saveOutgoingMessage(leadId, userId, body) {
     try {
-      this.db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`)
-        .run(this.generateId(), leadId, userId, body);
+      this.db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp, platform, platform_account_id) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, 'whatsapp', ?)`)
+        .run(this.generateId(), leadId, userId, body, this.accountId || null);
     } catch (e) {
       console.log('⚠️ Could not save outgoing message:', e.message);
     }
@@ -452,8 +722,8 @@ class WhatsAppService {
             const leadId = this.generateId();
             const name = chat.name || customerPhone;
             this.db.prepare(
-              `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, first_message, total_messages, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'New')`
+              `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, first_message, total_messages, status, platform_source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'New', 'whatsapp')`
             ).run(leadId, user.id, user.workspace_id, name, customerPhone, newMsgs[0].body || '[Media]', newMsgs.length);
             lead = this.db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
             leadsCreated++;
@@ -470,11 +740,18 @@ class WhatsAppService {
               if (dup) continue;
             }
             const ts = new Date(m.timestamp * 1000).toISOString().replace('T', ' ').slice(0, 19);
-            const mediaType = m.hasMedia ? 'media' : null;
+            let mediaType = null;
+            let bodyFallback = '[Media]';
+            if (m.hasMedia) {
+              if (m.type === 'ptt' || m.type === 'audio') { mediaType = 'voice'; bodyFallback = '[Voice Note]'; }
+              else if (m.type === 'image' || m.type === 'sticker') { mediaType = 'image'; bodyFallback = '[Image]'; }
+              else if (m.type === 'video') { mediaType = 'video'; bodyFallback = '[Video]'; }
+              else { mediaType = 'media'; bodyFallback = '[File]'; }
+            }
             this.db.prepare(
-              `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, timestamp, wa_message_id)
-               VALUES (?, ?, ?, ?, 0, ?, ?, ?)`
-            ).run(this.generateId(), lead.id, user.id, m.body || '[Media]', mediaType, ts, waId);
+              `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, timestamp, wa_message_id, platform, platform_account_id)
+               VALUES (?, ?, ?, ?, 0, ?, ?, ?, 'whatsapp', ?)`
+            ).run(this.generateId(), lead.id, user.id, m.body || bodyFallback, mediaType, ts, waId, this.accountId || null);
             msgCount++;
           }
 
@@ -528,4 +805,202 @@ class WhatsAppService {
   }
 }
 
-module.exports = WhatsAppService;
+// ── Multi-account WhatsApp manager ─────────────────────────────────────────────
+class WhatsAppManager {
+  constructor(db, broadcastToUser) {
+    this.db = db;
+    this.broadcastToUser = broadcastToUser;
+    this.instances = new Map(); // accountId -> WhatsAppService
+  }
+
+  _generateId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  loadAccounts() {
+    const accounts = this.db.prepare(
+      `SELECT * FROM platform_accounts WHERE platform = 'whatsapp' ORDER BY slot_index ASC`
+    ).all();
+    for (const account of accounts) {
+      this._startAccount(account.id, account.slot_index);
+    }
+    // If no DB accounts exist, start legacy session (backward compat)
+    if (accounts.length === 0) {
+      this._startLegacy();
+    }
+  }
+
+  _startLegacy() {
+    if (this.instances.has('__legacy__')) return this.instances.get('__legacy__');
+    const service = new WhatsAppService(this.db, this.broadcastToUser, null, undefined);
+    this.instances.set('__legacy__', service);
+    service.initialize();
+    return service;
+  }
+
+  _startAccount(accountId, slotIndex) {
+    if (this.instances.has(accountId)) return this.instances.get(accountId);
+    // slot 0 reuses the legacy session path (no clientId) for backward compat
+    const sessionName = slotIndex === 0 ? undefined : `wf-${slotIndex}`;
+    const service = new WhatsAppService(this.db, this.broadcastToUser, accountId, sessionName);
+    this.instances.set(accountId, service);
+    service.initialize();
+    return service;
+  }
+
+  addAccount(accountId, slotIndex) {
+    return this._startAccount(accountId, slotIndex);
+  }
+
+  async removeAccount(accountId) {
+    const service = this.instances.get(accountId);
+    if (service) {
+      await service.disconnect().catch(() => {});
+      this.instances.delete(accountId);
+    }
+  }
+
+  getStatus(accountId) {
+    const key = accountId || '__legacy__';
+    const service = this.instances.get(key);
+    return service ? service.getStatus() : { status: 'not_initialized', isReady: false };
+  }
+
+  // Backward compat: first account's status
+  getLegacyStatus() {
+    if (this.instances.has('__legacy__')) return this.instances.get('__legacy__').getStatus();
+    const first = this.instances.values().next().value;
+    return first ? first.getStatus() : { status: 'disconnected', isReady: false };
+  }
+
+  async reconnect(accountId) {
+    const key = accountId || '__legacy__';
+    const service = this.instances.get(key);
+    if (service) {
+      await service.reconnect();
+    } else if (accountId) {
+      const account = this.db.prepare('SELECT * FROM platform_accounts WHERE id = ?').get(accountId);
+      if (account) this._startAccount(accountId, account.slot_index);
+    }
+  }
+
+  async disconnect(accountId) {
+    const key = accountId || '__legacy__';
+    const service = this.instances.get(key);
+    if (service) await service.disconnect().catch(() => {});
+  }
+
+  getReadyService(accountId = null) {
+    if (accountId) {
+      const s = this.instances.get(accountId);
+      if (s?.isReady) return s;
+    }
+    const legacy = this.instances.get('__legacy__');
+    if (legacy?.isReady) return legacy;
+    for (const service of this.instances.values()) {
+      if (service.isReady) return service;
+    }
+    return null;
+  }
+
+  get isReady() {
+    return !!this.getReadyService();
+  }
+
+  async sendMessage(phone, message, accountId = null) {
+    const service = this.getReadyService(accountId);
+    if (!service) throw new Error('WhatsApp not connected');
+    return service.sendMessage(phone, message);
+  }
+
+  saveOutgoingMessage(leadId, userId, body) {
+    const service = this.getReadyService() || this.instances.values().next().value;
+    if (service) {
+      service.saveOutgoingMessage(leadId, userId, body);
+    } else {
+      try {
+        const id = this._generateId();
+        this.db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp, platform) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, 'whatsapp')`).run(id, leadId, userId, body);
+      } catch {}
+    }
+  }
+
+  async sendVoiceNote(phone, filePath, mimetype, accountId = null) {
+    const service = this.getReadyService(accountId);
+    if (!service) throw new Error('WhatsApp not connected');
+    return service.sendVoiceNote(phone, filePath, mimetype);
+  }
+
+  async fetchHistory(phone, limit = 200, accountId = null) {
+    const service = this.getReadyService(accountId);
+    if (!service) throw new Error('WhatsApp not connected');
+    return service.fetchHistory(phone, limit);
+  }
+
+  async sendMedia(phone, filePath, mimetype, filename, caption = '', accountId = null) {
+    const service = this.getReadyService(accountId);
+    if (!service) throw new Error('WhatsApp not connected');
+    return service.sendMedia(phone, filePath, mimetype, filename, caption);
+  }
+
+  async syncMissedMessages() {
+    const promises = [];
+    for (const service of this.instances.values()) {
+      if (service.isReady) promises.push(service.syncMissedMessages().catch(() => {}));
+    }
+    await Promise.all(promises);
+  }
+
+  // ── Group proxies ──────────────────────────────────────────
+  async createGroup(name, phones, description, accountId = null) {
+    const service = this.getReadyService(accountId);
+    if (!service) throw new Error('WhatsApp not connected');
+    return service.createGroup(name, phones, description);
+  }
+
+  async setGroupSubject(groupId, name, accountId = null) {
+    const service = this.getReadyService(accountId);
+    if (!service) throw new Error('WhatsApp not connected');
+    return service.setGroupSubject(groupId, name);
+  }
+
+  async setGroupDescription(groupId, description, accountId = null) {
+    const service = this.getReadyService(accountId);
+    if (!service) throw new Error('WhatsApp not connected');
+    return service.setGroupDescription(groupId, description);
+  }
+
+  async setGroupPicture(groupId, filePath, mimetype, accountId = null) {
+    const service = this.getReadyService(accountId);
+    if (!service) throw new Error('WhatsApp not connected');
+    return service.setGroupPicture(groupId, filePath, mimetype);
+  }
+
+  // List which WhatsApp accounts are currently usable for sending (so the UI can offer a picker)
+  listReadyAccounts() {
+    const out = [];
+    for (const [key, svc] of this.instances.entries()) {
+      if (!svc.isReady) continue;
+      // Try to get DB row for nickname + slot info; key may be 'accountId' or '__legacy__'
+      let accountId = key === '__legacy__' ? null : key;
+      let row = null;
+      if (accountId) {
+        try { row = this.db.prepare(`SELECT id, account_name, nickname, slot_index, platform FROM platform_accounts WHERE id = ?`).get(accountId); } catch {}
+      }
+      out.push({
+        accountId,
+        key,
+        phoneNumber: svc.phoneNumber || null,
+        account_name: row?.account_name || (key === '__legacy__' ? 'Default WA' : 'WhatsApp'),
+        nickname: row?.nickname || null,
+        slot_index: row?.slot_index ?? null,
+      });
+    }
+    return out;
+  }
+}
+
+module.exports = { WhatsAppService, WhatsAppManager };

@@ -6,16 +6,23 @@ import {
   Zap, LayoutDashboard, Users, BarChart2, UserCheck,
   HelpCircle, Settings, Bell, LogOut, MessageSquare,
   MessageCircle, X, Clock, CheckCircle, Brain,
-  FileText, Inbox, Menu, ChevronDown
+  FileText, Inbox, Menu, ChevronDown, ChevronRight,
+  Camera, Globe, MonitorSmartphone, Layers
 } from 'lucide-react';
-import { leadsAPI, remindersAPI, displayPhone, BASE_URL } from '../lib/api';
+import { leadsAPI, remindersAPI, displayPhone, BASE_URL, platformAccountsAPI } from '../lib/api';
 import FloatingChat from './FloatingChat';
 import AICommandCenter from './AICommandCenter';
+
+const PLATFORM_META = {
+  whatsapp:  { label: 'WhatsApp',  color: '#25d366', icon: MessageCircle },
+  instagram: { label: 'Instagram', color: '#e1306c', icon: Camera },
+  facebook:  { label: 'Facebook',  color: '#1877f2', icon: MonitorSmartphone },
+  website:   { label: 'Website',   color: '#6366f1', icon: Globe },
+};
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Leads',     icon: Users,           path: '/leads-list' },
-  { label: 'WhatsApp',  icon: MessageCircle,   path: '/whatsapp' },
   { label: 'Inbox',     icon: Inbox,           path: '/chat' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports' },
@@ -30,8 +37,10 @@ const MORE_ITEMS = [
 export default function NavBar({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
-  const notifRef = useRef(null);
-  const moreRef  = useRef(null);
+  const notifRef   = useRef(null);
+  const moreRef    = useRef(null);
+  const platformRef = useRef(null);
+  const userMenuRef = useRef(null);
 
   const [user, setUser]                     = useState(null);
   const [workspace, setWorkspace]           = useState(null);
@@ -42,7 +51,9 @@ export default function NavBar({ children }) {
   const [mobileOpen, setMobileOpen]         = useState(false);
   const [showMore, setShowMore]             = useState(false);
   const [showUserMenu, setShowUserMenu]     = useState(false);
-  const userMenuRef = useRef(null);
+  const [showPlatform, setShowPlatform]     = useState(false);
+  const [platformAccounts, setPlatformAccounts] = useState([]);
+  const [expandedPlatform, setExpandedPlatform] = useState(null);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -50,6 +61,7 @@ export default function NavBar({ children }) {
     const wsData = localStorage.getItem('workspace');
     if (wsData) setWorkspace(JSON.parse(wsData));
     loadNotifData();
+    loadPlatformAccounts();
   }, []);
 
   useEffect(() => {
@@ -57,6 +69,7 @@ export default function NavBar({ children }) {
       if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifications(false);
       if (moreRef.current  && !moreRef.current.contains(e.target))  setShowMore(false);
       if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setShowUserMenu(false);
+      if (platformRef.current && !platformRef.current.contains(e.target)) { setShowPlatform(false); setExpandedPlatform(null); }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -87,10 +100,22 @@ export default function NavBar({ children }) {
     } catch {}
   };
 
+  const loadPlatformAccounts = async () => {
+    try {
+      const res = await platformAccountsAPI.getAll();
+      setPlatformAccounts(res.data.accounts || []);
+    } catch {}
+  };
+
   const handleLogout = () => { localStorage.clear(); router.push('/login'); };
 
   const isActive = (path) =>
     pathname === path || (path !== '/dashboard' && pathname?.startsWith(path));
+
+  const isPlatformActive = () => {
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    return params?.has('platform');
+  };
 
   const NavBtn = ({ label, icon: Icon, path, onClick }) => {
     const active = isActive(path);
@@ -117,6 +142,11 @@ export default function NavBar({ children }) {
       </button>
     );
   };
+
+  const accountsByPlatform = ['whatsapp', 'instagram', 'facebook', 'website'].reduce((acc, p) => {
+    acc[p] = platformAccounts.filter(a => a.platform === p);
+    return acc;
+  }, {});
 
   return (
     <>
@@ -152,6 +182,124 @@ export default function NavBar({ children }) {
         {/* Nav items — desktop */}
         <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
           {NAV_ITEMS.map(item => <NavBtn key={item.path} {...item} />)}
+
+          {/* Platform dropdown */}
+          <div ref={platformRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => { setShowPlatform(v => !v); if (showPlatform) setExpandedPlatform(null); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 11px', borderRadius: 9, border: 'none',
+                background: showPlatform || isPlatformActive() ? 'var(--accent-light)' : 'transparent',
+                color: showPlatform || isPlatformActive() ? 'var(--accent)' : 'var(--text-muted)',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.12s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text)'; }}
+              onMouseLeave={e => {
+                const a = showPlatform || isPlatformActive();
+                e.currentTarget.style.background = a ? 'var(--accent-light)' : 'transparent';
+                e.currentTarget.style.color = a ? 'var(--accent)' : 'var(--text-muted)';
+              }}
+            >
+              <Layers size={15} /> Platform <ChevronDown size={13} />
+            </button>
+
+            {showPlatform && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 220,
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
+                zIndex: 300, overflow: 'visible', animation: 'navFadeIn 0.12s ease',
+              }}>
+                {/* All in One */}
+                <button
+                  onClick={() => { router.push('/leads-list'); setShowPlatform(false); setExpandedPlatform(null); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '11px 16px', border: 'none', borderRadius: '14px 14px 0 0',
+                    background: 'transparent', color: 'var(--text)',
+                    fontSize: 13, fontWeight: 700, cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
+                    borderBottom: '1px solid var(--border)',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <div style={{ width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Layers size={13} color="white" />
+                  </div>
+                  All in One
+                </button>
+
+                {/* Per-platform sections */}
+                {['whatsapp', 'instagram', 'facebook', 'website'].map((p, idx, arr) => {
+                  const meta = PLATFORM_META[p];
+                  const Icon = meta.icon;
+                  const accounts = accountsByPlatform[p];
+                  const isExpanded = expandedPlatform === p;
+                  const isLast = idx === arr.length - 1;
+
+                  return (
+                    <div key={p}>
+                      <button
+                        onClick={() => {
+                          if (accounts.length === 0) {
+                            router.push('/settings?tab=connections');
+                            setShowPlatform(false); setExpandedPlatform(null);
+                          } else if (accounts.length === 1) {
+                            router.push(`/leads-list?platform=${p}&account=${accounts[0].id}`);
+                            setShowPlatform(false); setExpandedPlatform(null);
+                          } else {
+                            setExpandedPlatform(isExpanded ? null : p);
+                          }
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 16px', border: 'none',
+                          borderRadius: isLast && !isExpanded ? '0 0 14px 14px' : 0,
+                          background: 'transparent', color: 'var(--text)',
+                          fontSize: 13, fontWeight: 500, cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
+                          borderBottom: isLast && !isExpanded ? 'none' : '1px solid var(--border)',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <div style={{ width: 26, height: 26, borderRadius: 8, background: meta.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon size={13} color={meta.color} />
+                        </div>
+                        <span style={{ flex: 1 }}>{meta.label}</span>
+                        {accounts.length > 0 && (
+                          <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 6, background: meta.color + '20', color: meta.color }}>{accounts.length}</span>
+                        )}
+                        {accounts.length > 1 && <ChevronRight size={12} color="var(--text-muted)" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />}
+                      </button>
+
+                      {/* Sub-accounts */}
+                      {isExpanded && accounts.map((acc, ai) => (
+                        <button
+                          key={acc.id}
+                          onClick={() => { router.push(`/leads-list?platform=${p}&account=${acc.id}`); setShowPlatform(false); setExpandedPlatform(null); }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '9px 16px 9px 52px', border: 'none',
+                            borderRadius: isLast && ai === accounts.length - 1 ? '0 0 14px 14px' : 0,
+                            background: 'var(--surface2)', color: 'var(--text-muted)',
+                            fontSize: 12, fontWeight: 500, cursor: 'pointer', textAlign: 'left',
+                            borderBottom: isLast && ai === accounts.length - 1 ? 'none' : '1px solid var(--border)',
+                            transition: 'background 0.1s',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = meta.color + '12'; e.currentTarget.style.color = meta.color; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                        >
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: acc.status === 'connected' ? '#10b981' : '#9ca3af', flexShrink: 0 }} />
+                          {acc.account_name}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* More dropdown */}
           <div ref={moreRef} style={{ position: 'relative' }}>
@@ -383,7 +531,7 @@ export default function NavBar({ children }) {
           <div onClick={() => setMobileOpen(false)}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200 }} />
           <div style={{
-            position: 'fixed', top: 0, right: 0, width: 260, height: '100vh',
+            position: 'fixed', top: 0, right: 0, width: 280, height: '100vh',
             background: 'var(--surface)', zIndex: 250,
             boxShadow: '-8px 0 40px rgba(0,0,0,0.2)',
             display: 'flex', flexDirection: 'column',
@@ -396,7 +544,63 @@ export default function NavBar({ children }) {
               </button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-              {[...NAV_ITEMS, ...MORE_ITEMS].map(item => (
+              {NAV_ITEMS.map(item => (
+                <button key={item.path}
+                  onClick={() => { router.push(item.path); setMobileOpen(false); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '11px 14px', borderRadius: 10, border: 'none',
+                    background: isActive(item.path) ? 'var(--accent-light)' : 'transparent',
+                    color: isActive(item.path) ? 'var(--accent)' : 'var(--text)',
+                    fontSize: 14, fontWeight: isActive(item.path) ? 700 : 500,
+                    cursor: 'pointer', textAlign: 'left', marginBottom: 2,
+                  }}
+                >
+                  <item.icon size={16} />
+                  {item.label}
+                </button>
+              ))}
+
+              {/* Platform section in mobile */}
+              <div style={{ margin: '8px 0 4px 14px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Platform</div>
+              <button
+                onClick={() => { router.push('/leads-list'); setMobileOpen(false); }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', marginBottom: 2 }}
+              >
+                <Layers size={15} /> All in One
+              </button>
+              {['whatsapp', 'instagram', 'facebook', 'website'].map(p => {
+                const meta = PLATFORM_META[p];
+                const Icon = meta.icon;
+                const accounts = accountsByPlatform[p];
+                return (
+                  <div key={p}>
+                    <button
+                      onClick={() => {
+                        if (accounts.length > 0) router.push(`/leads-list?platform=${p}`);
+                        else router.push('/settings?tab=connections');
+                        setMobileOpen(false);
+                      }}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', textAlign: 'left', marginBottom: 2 }}
+                    >
+                      <Icon size={15} color={meta.color} /> {meta.label}
+                      {accounts.length > 0 && <span style={{ marginLeft: 'auto', fontSize: 10, background: meta.color + '20', color: meta.color, padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>{accounts.length}</span>}
+                    </button>
+                    {accounts.map(acc => (
+                      <button key={acc.id}
+                        onClick={() => { router.push(`/leads-list?platform=${p}&account=${acc.id}`); setMobileOpen(false); }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px 8px 40px', borderRadius: 9, border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', textAlign: 'left', marginBottom: 1 }}
+                      >
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: acc.status === 'connected' ? '#10b981' : '#9ca3af' }} />
+                        {acc.account_name}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+
+              <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
+              {MORE_ITEMS.map(item => (
                 <button key={item.path}
                   onClick={() => { router.push(item.path); setMobileOpen(false); }}
                   style={{
@@ -457,7 +661,7 @@ function MiniNotifPanel({ todayLeads, reminders, onClose, onNavigate, onMarkAllR
     ...todayLeads.map(l => ({
       id: `lead-${l.id}`, type: 'lead',
       title: `New lead: ${l.customer_name || 'Unknown'}`,
-      sub: displayPhone(l.customer_phone),
+      sub: displayPhone(l.customer_phone, l.platform_source),
       color: '#6366f1', bg: 'rgba(99,102,241,0.12)',
       href: `/leads/${l.id}`,
     })),

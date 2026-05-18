@@ -199,3 +199,42 @@ select option {
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─────────────────────────────────────────────────────────────
+   Responsive layouts
+   ───────────────────────────────────────────────────────────── */
+
+/* Lead profile — classic 2-column: identity sidebar + main column (chat over tabs) */
+.lead-grid {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  /* Tablet/mobile — everything stacks */
+  .lead-grid { grid-template-columns: 1fr; padding: 14px; gap: 14px; }
+  .lead-grid .messages-area { height: 55vh !important; min-height: 320px !important; }
+}
+
+/* Nav action buttons — wrap on narrow screens instead of overflowing */
+@media (max-width: 760px) {
+  .lead-nav-actions { flex-wrap: wrap; justify-content: flex-end; }
+}
+
+/* Dashboard responsive grids — page uses inline grid styles, we override at breakpoints */
+@media (max-width: 900px) {
+  .dash-stats-3 { grid-template-columns: repeat(2, 1fr) !important; }
+  .dash-main { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 540px) {
+  .dash-stats-3 { grid-template-columns: 1fr !important; }
+}
+
+/* Generic page container — adds reasonable padding on mobile */
+@media (max-width: 760px) {
+  .page-pad { padding: 12px !important; }
+}

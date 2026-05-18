@@ -7,14 +7,14 @@ import {
   Clock, AlertCircle, DollarSign, Building2, User, Calendar,
   ArrowLeft, Download, Send
 } from 'lucide-react';
-import { invoicesAPI, settingsAPI, leadEmailsAPI, BASE_URL } from '../../lib/api';
+import { invoicesAPI, settingsAPI, leadEmailsAPI, displayPhone, BASE_URL } from '../../lib/api';
 import NavBar from '../../components/NavBar';
 
 const STATUS_COLORS = {
   draft:   { bg: '#f1f5f9', text: '#64748b', dot: '#94a3b8', label: 'Draft' },
-  pending: { bg: '#fffbeb', text: '#b45309', dot: '#f59e0b', label: 'Pending' },
-  paid:    { bg: '#ecfdf5', text: '#047857', dot: '#10b981', label: 'Paid' },
-  overdue: { bg: '#fef2f2', text: '#b91c1c', dot: '#ef4444', label: 'Overdue' },
+  pending: { bg: 'rgba(245,158,11,0.10)', text: '#b45309', dot: '#f59e0b', label: 'Pending' },
+  paid:    { bg: 'rgba(16,185,129,0.10)', text: '#047857', dot: '#10b981', label: 'Paid' },
+  overdue: { bg: 'rgba(239,68,68,0.12)', text: '#b91c1c', dot: '#ef4444', label: 'Overdue' },
 };
 
 function InvoiceViewModal({ invoice, company, onClose, onMarkPaid }) {
@@ -64,7 +64,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid }) {
   <label>Bill To</label>
   <div class="name">${invoice.customer_name || '—'}</div>
   ${invoice.customer_email ? `<div style="font-size:13px;color:#555">${invoice.customer_email}</div>` : ''}
-  ${invoice.customer_phone ? `<div style="font-size:13px;color:#555">${invoice.customer_phone}</div>` : ''}
+  ${invoice.customer_phone ? `<div style="font-size:13px;color:#555">${displayPhone(invoice.customer_phone)}</div>` : ''}
 </div>
 
 <table>
@@ -131,7 +131,7 @@ ${invoice.notes ? `<div style="margin-top:24px;padding:16px;background:#f8fafc;b
               <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>Bill To</p>
               <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', margin: '0 0 2px' }}>{invoice.customer_name || '—'}</p>
               {invoice.customer_email && <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>{invoice.customer_email}</p>}
-              {invoice.customer_phone && <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>{invoice.customer_phone}</p>}
+              {invoice.customer_phone && <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>{displayPhone(invoice.customer_phone)}</p>}
             </div>
           </div>
 

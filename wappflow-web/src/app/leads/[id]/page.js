@@ -10,12 +10,14 @@ import {
   Italic, List, Zap, ChevronDown, Tag, Star,
   Mail, MapPin, User, Smile, Mic, MicOff, Square,
   FileText, History, Play, Volume2, Globe, Hash,
-  ChevronRight, Activity, Receipt, Workflow, RefreshCw
+  ChevronRight, Activity, Receipt, Workflow, RefreshCw,
+  Layers, Link2, GitMerge, Network, Lock, MessageCircle,
+  Camera, MonitorSmartphone
 } from 'lucide-react';
 import {
   leadsAPI, presetsAPI, tagsAPI, emailTemplatesAPI,
   invoicesAPI, emailWorkflowsAPI, teamAPI, settingsAPI,
-  leadEmailsAPI,
+  leadEmailsAPI, leadChannelsAPI, leadRelationsAPI, timelineAPI, aiAPI,
   displayPhone, formatCurrency, BASE_URL,
 } from '../../../lib/api';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
@@ -23,9 +25,9 @@ import NavBar from '../../../components/NavBar';
 
 const STATUS_META = {
   'New':           { dot: '#6366f1', bg: 'rgba(99,102,241,0.15)',  text: '#818cf8', label: 'New' },
-  'Contacted':     { dot: '#06b6d4', bg: '#ecfeff',  text: '#0e7490', label: 'Contacted' },
+  'Contacted':     { dot: '#06b6d4', bg: 'rgba(6,182,212,0.10)',  text: '#0e7490', label: 'Contacted' },
   'Interested':    { dot: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  text: '#fbbf24', label: 'Interested' },
-  'Negotiating':   { dot: '#f97316', bg: '#fff7ed',  text: '#c2410c', label: 'Negotiating' },
+  'Negotiating':   { dot: '#f97316', bg: 'rgba(249,115,22,0.10)',  text: '#c2410c', label: 'Negotiating' },
   'Closed - Won':  { dot: '#10b981', bg: 'rgba(16,185,129,0.15)',  text: '#34d399', label: '🏆 Won' },
   'Closed - Lost': { dot: '#ef4444', bg: 'rgba(239,68,68,0.15)',   text: '#f87171', label: '❌ Lost' },
 };
@@ -68,6 +70,43 @@ function EmailBodyRow({ em }) {
   );
 }
 
+// Image bubble that gracefully degrades to a clickable file-chip when the image
+// 404s or fails to load (broken filenames, missing files, etc.). The console
+// gets a one-line warn with the failed URL so the dev can find the issue.
+function ImageMessage({ src, onOpen }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    const fname = decodeURIComponent((src.split('/').pop() || 'image').split('?')[0]).replace(/^\d+-/, '');
+    return (
+      <a href={src} target="_blank" rel="noopener noreferrer"
+         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(0,0,0,0.06)', borderRadius: 10, textDecoration: 'none', color: 'var(--text)', minWidth: 180 }}>
+        <FileText size={22} color="#ef4444" style={{ flexShrink: 0 }} />
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{fname}</p>
+          <p style={{ margin: 0, fontSize: 10, color: '#ef4444' }}>Image failed to load — tap to open</p>
+        </div>
+      </a>
+    );
+  }
+  return (
+    <div
+      onClick={onOpen}
+      style={{ cursor: 'pointer', position: 'relative', display: 'inline-block', borderRadius: 8, overflow: 'hidden' }}
+      title="Click to view full size"
+    >
+      <img
+        src={src}
+        alt="image"
+        onError={() => { console.warn('Image failed to load:', src); setFailed(true); }}
+        style={{ display: 'block', maxWidth: 220, maxHeight: 160, objectFit: 'cover', borderRadius: 8 }}
+      />
+      <div style={{ position: 'absolute', bottom: 5, right: 7, background: 'rgba(0,0,0,0.45)', borderRadius: 4, padding: '1px 5px', fontSize: 10, color: 'white' }}>
+        View
+      </div>
+    </div>
+  );
+}
+
 function Modal({ children, maxWidth = 440 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
@@ -82,7 +121,7 @@ function DeleteModal({ name, onConfirm, onCancel, loading }) {
   return (
     <Modal>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 16, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 16, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <AlertTriangle size={22} color="#ef4444" />
         </div>
         <div>
@@ -92,7 +131,7 @@ function DeleteModal({ name, onConfirm, onCancel, loading }) {
       </div>
       <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 24 }}>Are you sure you want to trash <strong>{name}</strong>?</p>
       <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={onCancel} style={{ flex: 1, padding: '11px', border: '1.5px solid #e5e7eb', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        <button onClick={onCancel} style={{ flex: 1, padding: '11px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
         <button onClick={onConfirm} disabled={loading} style={{ flex: 1, padding: '11px', border: 'none', borderRadius: 12, background: '#ef4444', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
           {loading ? 'Moving...' : 'Move to Trash'}
         </button>
@@ -106,7 +145,7 @@ function WonModal({ name, onConfirm, onCancel, loading, currencySymbol }) {
   return (
     <Modal>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 16, background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 16, background: 'rgba(16,185,129,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Trophy size={22} color="#10b981" />
         </div>
         <div>
@@ -115,13 +154,13 @@ function WonModal({ name, onConfirm, onCancel, loading, currencySymbol }) {
         </div>
       </div>
       <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Sale Amount</label>
-      <div style={{ display: 'flex', border: '1.5px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
-        <span style={{ padding: '12px 16px', background: 'var(--surface2)', color: 'var(--text-muted)', fontWeight: 700, fontSize: 14, borderRight: '1.5px solid #e5e7eb' }}>{currencySymbol}</span>
+      <div style={{ display: 'flex', border: '1.5px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+        <span style={{ padding: '12px 16px', background: 'var(--surface2)', color: 'var(--text-muted)', fontWeight: 700, fontSize: 14, borderRight: '1.5px solid var(--border)' }}>{currencySymbol}</span>
         <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Enter amount..." autoFocus
           style={{ flex: 1, padding: '12px 16px', border: 'none', outline: 'none', fontSize: 16, fontWeight: 700 }} />
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={onCancel} style={{ flex: 1, padding: '11px', border: '1.5px solid #e5e7eb', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        <button onClick={onCancel} style={{ flex: 1, padding: '11px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
         <button onClick={() => onConfirm(amount)} disabled={loading} style={{ flex: 1, padding: '11px', border: 'none', borderRadius: 12, background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
           {loading ? 'Saving...' : '🏆 Mark as Won'}
         </button>
@@ -135,7 +174,7 @@ function LostModal({ name, onConfirm, onCancel, loading }) {
   return (
     <Modal>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 16, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 16, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <ThumbsDown size={22} color="#ef4444" />
         </div>
         <div>
@@ -146,11 +185,11 @@ function LostModal({ name, onConfirm, onCancel, loading }) {
       <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 10 }}>Reason</label>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
         {LOST_REASONS.map(r => (
-          <button key={r} onClick={() => setReason(r)} style={{ padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${reason === r ? '#ef4444' : 'var(--border)'}`, background: reason === r ? '#fef2f2' : 'white', color: reason === r ? '#ef4444' : '#6b7280', fontWeight: reason === r ? 700 : 500, cursor: 'pointer', fontSize: 12, textAlign: 'left' }}>{r}</button>
+          <button key={r} onClick={() => setReason(r)} style={{ padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${reason === r ? '#ef4444' : 'var(--border)'}`, background: reason === r ? 'rgba(239,68,68,0.12)' : 'var(--surface)', color: reason === r ? '#ef4444' : 'var(--text-muted)', fontWeight: reason === r ? 700 : 500, cursor: 'pointer', fontSize: 12, textAlign: 'left' }}>{r}</button>
         ))}
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={onCancel} style={{ flex: 1, padding: '11px', border: '1.5px solid #e5e7eb', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        <button onClick={onCancel} style={{ flex: 1, padding: '11px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
         <button onClick={() => onConfirm(reason)} disabled={loading} style={{ flex: 1, padding: '11px', border: 'none', borderRadius: 12, background: '#ef4444', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
           {loading ? 'Saving...' : 'Mark as Lost'}
         </button>
@@ -185,7 +224,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
         lead_id: lead.id,
         customer_name: lead.customer_name,
         customer_email: lead.email,
-        customer_phone: displayPhone(lead.customer_phone),
+        customer_phone: displayPhone(lead.customer_phone, lead.platform_source),
         items: items.map(it => ({ ...it, amount: (parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0) })),
         subtotal, tax_rate: taxRate, tax_amount: taxAmount, total,
         due_date: dueDate, notes, status: 'draft'
@@ -206,7 +245,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
       <body>
       <h1 style="color:#6366f1">INVOICE</h1>
       <div style="display:flex;justify-content:space-between;margin-bottom:24px">
-        <div><strong>Bill To:</strong><br>${lead.customer_name}<br>${displayPhone(lead.customer_phone)}</div>
+        <div><strong>Bill To:</strong><br>${lead.customer_name}<br>${displayPhone(lead.customer_phone, lead.platform_source)}</div>
         <div style="text-align:right"><strong>${company?.company_name || ''}</strong><br>${company?.company_email || ''}</div>
       </div>
       <table><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>
@@ -226,7 +265,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
       <div style={{ background: 'var(--surface)', borderRadius: 24, boxShadow: '0 32px 80px rgba(0,0,0,0.2)', maxWidth: 680, width: '100%', padding: 32, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(245,158,11,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Receipt size={22} color="#f59e0b" />
             </div>
             <div>
@@ -255,15 +294,15 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
               <tr key={i}>
                 <td style={{ padding: '6px 4px' }}>
                   <input value={item.description} onChange={e => updateItem(i, 'description', e.target.value)} placeholder="Item description..."
-                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                 </td>
                 <td style={{ padding: '6px 4px', width: 70 }}>
                   <input type="number" value={item.qty} onChange={e => updateItem(i, 'qty', e.target.value)} min="1"
-                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none' }} />
+                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none' }} />
                 </td>
                 <td style={{ padding: '6px 4px', width: 110 }}>
                   <input type="number" value={item.rate} onChange={e => updateItem(i, 'rate', e.target.value)} min="0" step="0.01"
-                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, outline: 'none' }} />
+                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none' }} />
                 </td>
                 <td style={{ padding: '6px 10px', fontWeight: 700, color: 'var(--text)', fontSize: 13 }}>
                   {sym}{((parseFloat(item.qty)||0) * (parseFloat(item.rate)||0)).toFixed(2)}
@@ -294,7 +333,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{company?.tax_name || 'Tax'}</span>
               <input type="number" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} min="0" max="100" step="0.1"
-                style={{ width: 60, padding: '4px 8px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 12, outline: 'none' }} />
+                style={{ width: 60, padding: '4px 8px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12, outline: 'none' }} />
               <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>%</span>
             </div>
             <span style={{ fontSize: 13, fontWeight: 700 }}>{sym}{taxAmount.toFixed(2)}</span>
@@ -310,17 +349,17 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Due Date</label>
             <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
-              style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+              style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
           </div>
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Notes</label>
             <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Payment terms, notes..."
-              style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+              style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={handlePrint} style={{ padding: '12px 20px', border: '1.5px solid #e5e7eb', borderRadius: 12, background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <button onClick={handlePrint} style={{ padding: '12px 20px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', gap: 7 }}>
             <FileText size={15} /> Print / PDF
           </button>
           <button onClick={handleSave} disabled={saving} style={{
@@ -377,7 +416,7 @@ function EmailWorkflowModal({ lead, templates, onClose, onSaved }) {
                 border: `2px solid ${selectedTemplate === t.id ? '#6366f1' : 'var(--border)'}`,
                 background: selectedTemplate === t.id ? 'rgba(99,102,241,0.15)' : 'var(--surface)', cursor: 'pointer', textAlign: 'left'
               }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(245,158,11,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Mail size={16} color="#f59e0b" />
                 </div>
                 <div>
@@ -391,13 +430,13 @@ function EmailWorkflowModal({ lead, templates, onClose, onSaved }) {
           <div style={{ marginBottom: 20 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Schedule (optional)</label>
             <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
-              style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e5e7eb', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+              style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
           </div>
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={onClose} style={{ flex: 1, padding: '12px', border: '1.5px solid #e5e7eb', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        <button onClick={onClose} style={{ flex: 1, padding: '12px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
         <button onClick={handle} disabled={saving || !selectedTemplate} style={{
           flex: 2, padding: '12px', border: 'none', borderRadius: 12,
           background: saving || !selectedTemplate ? '#9ca3af' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
@@ -457,11 +496,23 @@ const [aiError, setAiError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('notes');
+  const [channels, setChannels] = useState([]);
+  const [relatedLeads, setRelatedLeads] = useState({ suggestions: [], linked: [] });
+  const [timeline, setTimeline] = useState([]);
+  const [addingChannel, setAddingChannel] = useState(false);
+  const [newChannel, setNewChannel] = useState({ platform: 'whatsapp', identifier: '', display_name: '' });
+  // Active chat platform — defaults to the lead's source. The 4 platform tabs above the chat
+  // box switch which platform's conversation is displayed and which platform messages go to.
+  const [activePlatform, setActivePlatform] = useState(null); // set after lead loads
+  const [platformCounts, setPlatformCounts] = useState({});   // { whatsapp: 23, instagram: 4, ... }
+  const [unreadByPlatform, setUnreadByPlatform] = useState({}); // bumped via SSE when a non-active platform gets a message
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showWonModal, setShowWonModal] = useState(false);
   const [showLostModal, setShowLostModal] = useState(false);
   const [showPresets, setShowPresets] = useState(false);
+  const [showAiTools, setShowAiTools] = useState(false);
+  const [aiToolLoading, setAiToolLoading] = useState(null); // 'rewrite-pro' | 'translate-en' | ...
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -484,6 +535,18 @@ const [aiError, setAiError] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const recordingTimerRef = useRef(null);
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((message, type = 'error') => {
+    setToast({ message, type, ts: Date.now() });
+    setTimeout(() => setToast(t => (t && t.ts === Date.now() ? null : t)), 3500);
+  }, []);
+  // Auto-dismiss helper that doesn't get stale-closured
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   useEffect(() => { fetchAll(); }, [leadId]);
 
@@ -504,11 +567,68 @@ const [aiError, setAiError] = useState('');
       .finally(() => setSyncingHistory(false));
   }, [leadId]);
 
-  // Scroll the chat container to bottom — uses the container ref so only the chat scrolls, not the full page
+  // ── SSE listener — new messages for THIS lead appear instantly (no refresh needed)
+  useEffect(() => {
+    if (!leadId) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+    const es = new EventSource(`${BASE_URL}/api/events?token=${token}`);
+    const onNewMessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.lead_id !== leadId) return; // ignore other leads
+        const incomingPlatform = (data.message?.platform || 'whatsapp').toLowerCase();
+        // If the message arrived on the platform the user is currently viewing, refresh inline.
+        // Otherwise just bump the unread counter so the tab shows a "(1)" badge.
+        if (incomingPlatform === activePlatform) {
+          fetchMessages();
+        } else {
+          setUnreadByPlatform(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
+          // Also bump the total count so the tab number stays accurate
+          setPlatformCounts(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
+        }
+      } catch {}
+    };
+    const onLeadUpdated = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        const updated = data.lead || data;
+        if (!updated?.id || updated.id !== leadId) return;
+        setLead(prev => ({ ...prev, ...updated }));
+      } catch {}
+    };
+    es.addEventListener('new_message', onNewMessage);
+    es.addEventListener('lead_updated', onLeadUpdated);
+    return () => { es.close(); };
+  }, [leadId]);
+
+  // Track whether the user has scrolled away from the bottom — used to show a "jump to latest" pill
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const isNearBottomRef = useRef(true);
+
   useEffect(() => {
     const el = messagesContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    const onScroll = () => {
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      isNearBottomRef.current = near;
+      setShowJumpToLatest(!near);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [messages.length > 0]);
+
+  // Only auto-scroll if user is already near the bottom — preserves their position when reviewing history
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    if (isNearBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  const scrollToLatest = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, []);
 
   const fetchAll = async () => {
     try {
@@ -533,6 +653,8 @@ const [aiError, setAiError] = useState('');
       }
 
       setLead(leadData);
+      // Default the active chat tab to the lead's source platform (only once)
+      setActivePlatform(prev => prev || (leadData.platform_source || 'whatsapp').toLowerCase());
       setNotes(data.notes || []);
       setReminders(data.reminders || []);
       setHistory(data.history || []);
@@ -540,13 +662,15 @@ const [aiError, setAiError] = useState('');
       setEmailWorkflows(data.emailWorkflows || []);
 
       // Load secondary data in parallel — failures are non-fatal
-      const [presetsRes, tagsRes, templatesRes, teamRes, companyRes, emailsRes] = await Promise.all([
+      const [presetsRes, tagsRes, templatesRes, teamRes, companyRes, emailsRes, channelsRes, relatedRes] = await Promise.all([
         presetsAPI.getAll().catch(() => ({ data: { presets: [] } })),
         tagsAPI.getAll().catch(() => ({ data: { tags: [] } })),
         emailTemplatesAPI.getAll().catch(() => ({ data: { templates: [] } })),
         teamAPI.getAll().catch(() => ({ data: { members: [] } })),
         settingsAPI.getCompany().catch(() => ({ data: { company: {} } })),
         leadEmailsAPI.getAll(leadId).catch(() => ({ data: { emails: [] } })),
+        leadChannelsAPI.getAll(leadId).catch(() => ({ data: { channels: [] } })),
+        leadRelationsAPI.getSuggested(leadId).catch(() => ({ data: { suggestions: [], linked: [] } })),
       ]);
 
       setPresets(presetsRes.data.presets || []);
@@ -555,6 +679,8 @@ const [aiError, setAiError] = useState('');
       setTeamMembers(teamRes.data.members || []);
       setCompany(companyRes.data.company || {});
       setLeadEmails(emailsRes.data.emails || []);
+      setChannels(channelsRes.data.channels || []);
+      setRelatedLeads({ suggestions: relatedRes.data?.suggestions || [], linked: relatedRes.data?.linked || [] });
       setEditForm({
         customer_name: leadData.customer_name || '',
         customer_phone: leadData.customer_phone || '',
@@ -575,12 +701,21 @@ const [aiError, setAiError] = useState('');
     }
   };
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (platformOverride) => {
     try {
-      const res = await leadsAPI.getMessages(leadId);
+      const p = platformOverride || activePlatform || undefined;
+      const res = await leadsAPI.getMessages(leadId, p);
       setMessages(res.data.messages || []);
+      if (res.data.platform_counts) setPlatformCounts(res.data.platform_counts);
+      // Clear unread badge for the platform we just opened
+      if (p) setUnreadByPlatform(prev => ({ ...prev, [p]: 0 }));
     } catch { setMessages([]); }
   };
+
+  // Re-fetch whenever the active platform changes
+  useEffect(() => {
+    if (activePlatform && leadId) fetchMessages(activePlatform);
+  }, [activePlatform]);
 
   const handleSaveEdit = async () => {
     try {
@@ -644,10 +779,18 @@ const [aiError, setAiError] = useState('');
     if (!newMessage.trim()) return;
     try {
       setSendingMessage(true);
-      await leadsAPI.sendMessage(leadId, newMessage);
+      const res = await leadsAPI.sendMessage(leadId, newMessage, activePlatform);
+      // Outbound delivery is only wired for WhatsApp today. For other platforms the message
+      // is persisted locally so the user sees their draft, and the server returns delivered:false.
+      if (res.data?.delivered === false) {
+        showToast(`Saved as draft — ${activePlatform} sending isn't connected yet`, 'info');
+      }
       setNewMessage('');
       await fetchMessages();
-    } catch (e) { alert(e.response?.data?.error || 'Failed to send — is WhatsApp connected?'); } finally { setSendingMessage(false); }
+    } catch (e) {
+      const msg = e.response?.data?.error || e.message || `Failed to send on ${activePlatform || 'WhatsApp'}`;
+      showToast(msg);
+    } finally { setSendingMessage(false); }
   };
 
   const handleFileUpload = async (e) => {
@@ -658,10 +801,22 @@ const [aiError, setAiError] = useState('');
       const fd = new FormData();
       fd.append('file', file);
       fd.append('caption', newMessage);
-      await leadsAPI.sendMedia(leadId, fd);
+      fd.append('platform', activePlatform || 'whatsapp');
+      const res = await leadsAPI.sendMedia(leadId, fd);
+      if (res.data?.delivered === false) {
+        showToast(`File saved — ${activePlatform} sending isn't connected yet`, 'info');
+      }
       setNewMessage('');
       await fetchMessages();
-    } catch (e) { alert(e.response?.data?.error || 'Failed to send file — is WhatsApp connected?'); }
+    } catch (err) {
+      let msg = err?.response?.data?.error
+             || err?.response?.statusText
+             || err?.message
+             || 'Failed to send file — is WhatsApp connected?';
+      if (!msg || msg.length < 3) msg = `File send failed (HTTP ${err?.response?.status || '?'})`;
+      showToast(msg);
+      console.error('File send error:', err);
+    }
     finally { setUploadingFile(false); e.target.value = ''; }
   };
 
@@ -683,14 +838,30 @@ const [aiError, setAiError] = useState('');
         const actualMime = recorder.mimeType || 'audio/webm';
         const ext = actualMime.includes('ogg') ? 'ogg' : 'webm';
         const blob = new Blob(audioChunksRef.current, { type: actualMime });
+        // Bail out if the recording is too short / empty — these would 400 on the server.
+        if (blob.size < 1000) {
+          showToast('Recording too short — hold the mic button longer');
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
         const fd = new FormData();
         fd.append('audio', blob, `voice.${ext}`);
+        fd.append('platform', activePlatform || 'whatsapp');
         try {
-          await leadsAPI.sendVoice(leadId, fd);
+          const res = await leadsAPI.sendVoice(leadId, fd);
+          if (res.data?.delivered === false) {
+            showToast(`Voice saved — ${activePlatform} sending isn't connected yet`, 'info');
+          }
           await fetchMessages();
-        } catch (e) {
-          const msg = e.response?.data?.error || e.message || 'Failed to send voice note';
-          alert(msg);
+        } catch (err) {
+          // Surface a meaningful message — server may return { error }, or axios may have a message
+          let msg = err?.response?.data?.error
+                 || err?.response?.statusText
+                 || err?.message
+                 || 'Failed to send voice note';
+          if (!msg || msg.length < 3) msg = `Voice send failed (HTTP ${err?.response?.status || '?'})`;
+          showToast(msg);
+          console.error('Voice send error:', err, 'response body:', err?.response?.data);
         }
         stream.getTracks().forEach(t => t.stop());
       };
@@ -699,7 +870,7 @@ const [aiError, setAiError] = useState('');
       setIsRecording(true);
       setRecordingTime(0);
       recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
-    } catch { alert('Microphone access denied'); }
+    } catch { showToast('Microphone access denied — check browser permissions'); }
   };
 
   const stopRecording = () => {
@@ -790,6 +961,12 @@ const handleAIAnalysis = async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     setAiAnalysis(data.analysis);
+    // Refresh the lead so the left-panel Lead Intelligence card updates immediately
+    try {
+      const r = await leadsAPI.getById(leadId);
+      const fresh = r.data?.lead || r.data;
+      if (fresh?.id) setLead(prev => ({ ...prev, ...fresh }));
+    } catch {}
   } catch (e) { setAiError(e.message); } finally { setAiLoading(p => ({ ...p, analysis: false })); }
 };
 
@@ -840,7 +1017,7 @@ useEffect(() => {
             </button>
           )}
           <button onClick={() => router.push('/dashboard')}
-            style={{ padding: '10px 24px', background: 'var(--surface)', color: 'var(--text)', border: '1.5px solid #e5e7eb', borderRadius: 12, cursor: 'pointer', fontWeight: 700 }}>
+            style={{ padding: '10px 24px', background: 'var(--surface)', color: 'var(--text)', border: '1.5px solid var(--border)', borderRadius: 12, cursor: 'pointer', fontWeight: 700 }}>
             Back to Dashboard
           </button>
         </div>
@@ -851,12 +1028,14 @@ useEffect(() => {
   const sc = STATUS_META[lead.status] || STATUS_META['New'];
 
   const TABS = [
+  { id: 'timeline', label: 'Timeline', count: 0, color: '#6366f1' },
   { id: 'notes', label: 'Notes', count: notes.length, color: '#f59e0b' },
   { id: 'reminders', label: 'Reminders', count: reminders.filter(r => !r.is_completed).length, color: '#8b5cf6' },
   { id: 'history', label: 'History', count: history.length, color: '#06b6d4' },
   { id: 'invoices', label: 'Invoices', count: invoices.length, color: '#10b981' },
   { id: 'emails', label: 'Emails', count: leadEmails.length, color: '#10b981' },
   { id: 'email-flow', label: 'Email Flow', count: emailWorkflows.length, color: '#6366f1' },
+  { id: 'related', label: 'Related', count: relatedLeads.linked.length + relatedLeads.suggestions.length, color: '#ec4899' },
   { id: 'ai', label: '✨ AI Assistant', count: 0, color: '#8b5cf6' },
   { id: 'vertical', label: '🏭 Industry AI', count: 0, color: '#10b981' },
 ];
@@ -886,6 +1065,35 @@ useEffect(() => {
         </div>
       )}
 
+      {/* Toast notifications */}
+      {toast && (() => {
+        const palette = {
+          error:   { bg: 'rgba(239,68,68,0.95)', icon: '⚠️' },
+          success: { bg: 'rgba(16,185,129,0.95)', icon: '✓' },
+          info:    { bg: 'rgba(99,102,241,0.95)', icon: 'ℹ️' },
+        };
+        const p = palette[toast.type] || palette.error;
+        return (
+          <div
+            role="alert"
+            style={{
+              position: 'fixed', bottom: 24, right: 24, zIndex: 10000,
+              background: p.bg, color: 'white', padding: '12px 18px',
+              borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
+              fontSize: 14, fontWeight: 600, maxWidth: 380,
+              display: 'flex', alignItems: 'center', gap: 10,
+              animation: 'slideIn 0.18s ease-out',
+            }}
+          >
+            <span style={{ fontSize: 16 }}>{p.icon}</span>
+            <span style={{ flex: 1 }}>{toast.message}</span>
+            <button onClick={() => setToast(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, width: 22, height: 22, color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <X size={12} />
+            </button>
+          </div>
+        );
+      })()}
+
       {/* Nav */}
       <nav style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: 'var(--shadow)', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ maxWidth: 1500, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 62 }}>
@@ -900,19 +1108,35 @@ useEffect(() => {
             <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>{lead.customer_name}</span>
             <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: sc.bg, color: sc.text }}>{sc.label}</span>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="lead-nav-actions" style={{ display: 'flex', gap: 8 }}>
             {/* Quick actions */}
-            <button onClick={() => setShowInvoiceModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            <button onClick={() => setShowInvoiceModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
               <Receipt size={14} /> Invoice
             </button>
-            <button onClick={() => setShowEmailCompose(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            <button onClick={() => setShowEmailCompose(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
               <Mail size={14} /> Email
             </button>
+            {lead.customer_phone && (() => {
+              const waPhone = lead.customer_phone.replace(/\D/g, '');
+              // Only show call button for real phone numbers (not platform user IDs)
+              if (waPhone.length < 7 || waPhone.length > 15) return null;
+              return (
+                <a
+                  href={`https://wa.me/${waPhone}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #a7f3d0', background: 'rgba(16,185,129,0.12)', color: '#059669', fontWeight: 600, cursor: 'pointer', fontSize: 13, textDecoration: 'none' }}
+                  title="Open WhatsApp call"
+                >
+                  <Phone size={14} /> WA Call
+                </a>
+              );
+            })()}
             <button
               onClick={() => {
                 if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wf:open-chat', { detail: lead }));
               }}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #a7f3d0', background: '#ecfdf5', color: '#059669', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #a7f3d0', background: 'rgba(16,185,129,0.12)', color: '#059669', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
               title="Open WhatsApp chat in floating bar"
             >
               <MessageSquare size={14} /> Chat Bar
@@ -936,18 +1160,18 @@ useEffect(() => {
         </div>
       )}
 
-      <div style={{ maxWidth: 1500, margin: '0 auto', padding: '24px', display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20, alignItems: 'start' }}>
+      <div className="lead-grid">
 
         {/* ══ LEFT PANEL ══ */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {/* Profile card */}
-          <div style={{ background: 'var(--surface)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1.5px solid #e5e7eb' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
 
             <div style={{ background: `linear-gradient(135deg, ${sc.dot}20, ${sc.dot}08)`, padding: '24px 22px 18px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
                 {!editing ? (
-                  <button onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                  <button onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
                     <Edit2 size={12} /> Edit
                   </button>
                 ) : (
@@ -955,7 +1179,7 @@ useEffect(() => {
                     <button onClick={handleSaveEdit} disabled={actionLoading} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: '#10b981', color: 'white', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
                       <Save size={12} /> Save
                     </button>
-                    <button onClick={() => setEditing(false)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => setEditing(false)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
                   </div>
                 )}
               </div>
@@ -989,20 +1213,20 @@ useEffect(() => {
                       <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</label>
                       {type === 'select' ? (
                         <select value={editForm[field]} onChange={e => setEditForm(p => ({ ...p, [field]: e.target.value }))}
-                          style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)' }}>
+                          style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)' }}>
                           <option value="">Select source</option>
                           {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       ) : (
                         <input type={type} value={editForm[field]} onChange={e => setEditForm(p => ({ ...p, [field]: e.target.value }))}
-                          style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                          style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                       )}
                     </div>
                   ))}
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Assigned To</label>
                     <select value={editForm.assigned_to} onChange={e => setEditForm(p => ({ ...p, assigned_to: e.target.value }))}
-                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)' }}>
+                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)' }}>
                       <option value="">Unassigned</option>
                       {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
@@ -1011,11 +1235,11 @@ useEffect(() => {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {[
-                    { value: displayPhone(lead.customer_phone), icon: Phone, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+                    { value: displayPhone(lead.customer_phone, lead.platform_source), icon: Phone, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
                     { value: lead.email, icon: Mail, color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
-                    { value: lead.address, icon: MapPin, color: '#f97316', bg: '#fff7ed' },
-                    { value: lead.date_of_birth ? new Date(lead.date_of_birth).toLocaleDateString() : null, icon: Calendar, color: '#a855f7', bg: '#fdf4ff' },
-                    { value: lead.lead_source, icon: Globe, color: '#06b6d4', bg: '#ecfeff' },
+                    { value: lead.address, icon: MapPin, color: '#f97316', bg: 'rgba(249,115,22,0.10)' },
+                    { value: lead.date_of_birth ? new Date(lead.date_of_birth).toLocaleDateString() : null, icon: Calendar, color: '#a855f7', bg: 'rgba(168,85,247,0.10)' },
+                    { value: lead.lead_source, icon: Globe, color: '#06b6d4', bg: 'rgba(6,182,212,0.10)' },
                   ].filter(x => x.value).map(({ value, icon: Icon, color, bg }, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 30, height: 30, borderRadius: 8, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1029,7 +1253,7 @@ useEffect(() => {
                   {lead.assigned_to && (() => {
                     const m = teamMembers.find(tm => tm.id === lead.assigned_to);
                     return m ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f0fdf4', borderRadius: 10, border: '1.5px solid #bbf7d0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(16,185,129,0.10)', borderRadius: 10, border: '1.5px solid #bbf7d0' }}>
                         <div style={{ width: 26, height: 26, borderRadius: 8, background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'white' }}>
                           {m.name?.[0]?.toUpperCase()}
                         </div>
@@ -1061,7 +1285,7 @@ useEffect(() => {
           </div>
 
           {/* Pipeline Stage */}
-          <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid #e5e7eb' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
             <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pipeline Stage</p>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
               {PIPELINE_STEPS.map((step, i) => {
@@ -1070,7 +1294,7 @@ useEffect(() => {
                 const isPast = PIPELINE_STEPS.indexOf(lead.status) > i;
                 return (
                   <div key={step} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                    <div onClick={() => !actionLoading && handleStatusChange(step)} style={{ width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', border: `2px solid ${isActive || isPast ? meta.dot : 'var(--border)'}`, background: isActive ? meta.dot : isPast ? meta.dot + '44' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0 }}>
+                    <div onClick={() => !actionLoading && handleStatusChange(step)} style={{ width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', border: `2px solid ${isActive || isPast ? meta.dot : 'var(--border)'}`, background: isActive ? meta.dot : isPast ? meta.dot + '44' : 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0 }}>
                       {isPast ? <CheckCircle size={13} color={meta.dot} /> : isActive ? <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--surface)' }} /> : <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--border)' }} />}
                     </div>
                     {i < PIPELINE_STEPS.length - 1 && <div style={{ flex: 1, height: 2, background: isPast ? meta.dot + '66' : 'var(--border)' }} />}
@@ -1095,8 +1319,66 @@ useEffect(() => {
             </div>
           </div>
 
+          {/* Lead Intelligence — shows AI-derived score / sentiment / urgency once analysis has run */}
+          {(lead.lead_score || lead.sentiment || lead.urgency) && (() => {
+            const SENT_META = {
+              positive:   { emoji: '😊', color: '#10b981', label: 'Positive' },
+              neutral:    { emoji: '😐', color: '#6b7280', label: 'Neutral' },
+              negative:   { emoji: '😟', color: '#f59e0b', label: 'Negative' },
+              frustrated: { emoji: '😠', color: '#ef4444', label: 'Frustrated' },
+            };
+            const URG_META = {
+              low:      { color: '#10b981', label: 'Low' },
+              medium:   { color: '#f59e0b', label: 'Medium' },
+              high:     { color: '#f97316', label: 'High' },
+              critical: { color: '#ef4444', label: 'Critical' },
+            };
+            const sent = SENT_META[lead.sentiment] || null;
+            const urg = URG_META[lead.urgency] || null;
+            const score = lead.lead_score || 0;
+            const scoreColor = score >= 7 ? '#10b981' : score >= 4 ? '#f59e0b' : '#ef4444';
+            return (
+              <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '18px 20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
+                <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Lead Intelligence ✨</p>
+                {score > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Score</p>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                        <span style={{ fontSize: 22, fontWeight: 900, color: scoreColor, lineHeight: 1 }}>{score}</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>/10</span>
+                      </div>
+                    </div>
+                    <div style={{ flex: 2, height: 6, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${score * 10}%`, background: scoreColor, borderRadius: 3, transition: 'width 0.4s' }} />
+                    </div>
+                  </div>
+                )}
+                {(sent || urg) && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {sent && (
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: sent.color + '18', color: sent.color, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {sent.emoji} {sent.label}
+                      </span>
+                    )}
+                    {urg && (
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: urg.color + '18', color: urg.color }}>
+                        ⚡ {urg.label} urgency
+                      </span>
+                    )}
+                  </div>
+                )}
+                {lead.ai_last_analyzed_at && (
+                  <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: '10px 0 0' }}>
+                    Last analyzed {new Date(lead.ai_last_analyzed_at).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Activity stats */}
-          <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid #e5e7eb' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
             <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Activity</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
@@ -1114,30 +1396,208 @@ useEffect(() => {
               ))}
             </div>
           </div>
+
+          {/* Source Platform */}
+          {(() => {
+            const PLATFORM_COLORS = { whatsapp: '#25d366', instagram: '#c13584', facebook: '#1877f2', website: '#6366f1' };
+            const PLATFORM_LABELS = { whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', website: 'Website' };
+            const src = lead.platform_source || 'whatsapp';
+            const color = PLATFORM_COLORS[src] || '#6b7280';
+            return (
+              <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '18px 20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: `1.5px solid ${color}33` }}>
+                <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>Lead Source</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Globe size={16} color={color} />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', margin: 0 }}>{PLATFORM_LABELS[src] || src}</p>
+                    {lead.platform_account_id && (
+                      <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>via account</p>
+                    )}
+                  </div>
+                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: color + '18', color }}>{PLATFORM_LABELS[src] || src}</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Connected Channels */}
+          <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '18px 20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Connected Channels</p>
+              <button onClick={() => setAddingChannel(v => !v)} style={{ padding: '4px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: '#6366f1', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
+                <Plus size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />Add
+              </button>
+            </div>
+            {addingChannel && (
+              <div style={{ background: 'rgba(139,92,246,0.12)', border: '1.5px solid #ddd6fe', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                <select value={newChannel.platform} onChange={e => setNewChannel(p => ({ ...p, platform: e.target.value }))}
+                  style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #ddd6fe', borderRadius: 8, fontSize: 12, marginBottom: 6, background: 'var(--surface)', outline: 'none' }}>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="facebook">Facebook</option>
+                  <option value="email">Email</option>
+                  <option value="phone">Phone</option>
+                </select>
+                <input value={newChannel.identifier} onChange={e => setNewChannel(p => ({ ...p, identifier: e.target.value }))} placeholder="Phone / username / email..."
+                  style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #ddd6fe', borderRadius: 8, fontSize: 12, marginBottom: 8, boxSizing: 'border-box', outline: 'none' }} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setAddingChannel(false)} style={{ flex: 1, padding: '6px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={async () => {
+                    if (!newChannel.identifier.trim()) return;
+                    try { await leadChannelsAPI.add(leadId, newChannel); const r = await leadChannelsAPI.getAll(leadId); setChannels(r.data.channels || []); setAddingChannel(false); setNewChannel({ platform: 'whatsapp', identifier: '', display_name: '' }); } catch {}
+                  }} style={{ flex: 1, padding: '6px', borderRadius: 8, border: 'none', background: '#6366f1', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save</button>
+                </div>
+              </div>
+            )}
+            {channels.length === 0 && !addingChannel ? (
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', textAlign: 'center', padding: '8px 0' }}>No additional channels linked</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {channels.map(ch => {
+                  const PCOLORS = { whatsapp: '#25d366', instagram: '#c13584', facebook: '#1877f2', email: '#f59e0b', phone: '#6366f1' };
+                  const color = PCOLORS[ch.platform] || '#9ca3af';
+                  return (
+                    <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface2)', borderRadius: 10, border: `1.5px solid ${color}22` }}>
+                      <div style={{ width: 26, height: 26, borderRadius: 7, background: color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Globe size={12} color={color} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 11, fontWeight: 700, color, margin: 0, textTransform: 'capitalize' }}>{ch.platform}</p>
+                        <p style={{ fontSize: 12, color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.identifier}</p>
+                      </div>
+                      <button onClick={async () => { await leadChannelsAPI.remove(leadId, ch.id); setChannels(prev => prev.filter(c => c.id !== ch.id)); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+                        <X size={13} color="#9ca3af" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ══ RIGHT PANEL ══ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="lead-center" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
-          {/* WhatsApp Chat */}
+          {/* Multi-platform chat — tabs determine which platform's conversation is shown */}
           <div style={{ background: 'var(--surface)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
 
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface2)' }}>
-              <div style={{ width: 36, height: 36, borderRadius: 12, background: 'linear-gradient(135deg, #25d366, #128c7e)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <MessageSquare size={17} color="white" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>WhatsApp</p>
-                <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{messages.length} messages</p>
-              </div>
-              {syncingHistory && (
-                <span style={{ fontSize: 10, color: '#6366f1', background: 'rgba(99,102,241,0.15)', padding: '3px 8px', borderRadius: 20, fontWeight: 700, marginRight: 6 }}>⟳ Syncing history…</span>
-              )}
-              <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20, background: '#dcfce7', color: '#16a34a' }}>● Live</span>
-            </div>
+            {/* Platform tab bar */}
+            {(() => {
+              const PLATFORMS = [
+                { id: 'whatsapp',  label: 'WhatsApp',  icon: MessageCircle, color: '#25d366', grad: 'linear-gradient(135deg, #25d366, #128c7e)' },
+                { id: 'instagram', label: 'Instagram', icon: Camera,        color: '#e1306c', grad: 'linear-gradient(135deg, #f58529, #dd2a7b, #8134af)' },
+                { id: 'facebook',  label: 'Facebook',  icon: MonitorSmartphone, color: '#1877f2', grad: 'linear-gradient(135deg, #1877f2, #0a5cb8)' },
+                { id: 'website',   label: 'Website',   icon: Globe,         color: '#6366f1', grad: 'linear-gradient(135deg, #6366f1, #4f46e5)' },
+              ];
+              const sourceP = (lead.platform_source || 'whatsapp').toLowerCase();
+              const isUnlocked = (id) => {
+                if (id === sourceP) return true;
+                if ((platformCounts[id] || 0) > 0) return true;
+                if (channels.some(c => (c.platform || '').toLowerCase() === id)) return true;
+                return false;
+              };
+              return (
+                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', overflowX: 'auto' }}>
+                  {PLATFORMS.map(p => {
+                    const active = activePlatform === p.id;
+                    const unlocked = isUnlocked(p.id);
+                    const unread = unreadByPlatform[p.id] || 0;
+                    const totalMsgs = platformCounts[p.id] || 0;
+                    const Icon = p.icon;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          if (unlocked) setActivePlatform(p.id);
+                          else showToast(`${p.label} isn't connected for this lead yet. Add it under "Connected Channels" on the left.`, 'info');
+                        }}
+                        title={unlocked ? `Switch to ${p.label}` : `${p.label} not connected — link it under Connected Channels`}
+                        style={{
+                          flex: 1, minWidth: 110, padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer',
+                          borderBottom: `3px solid ${active ? p.color : 'transparent'}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          opacity: unlocked ? 1 : 0.45,
+                          position: 'relative',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={e => { if (unlocked && !active) e.currentTarget.style.background = 'var(--surface)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                      >
+                        <div style={{
+                          width: 26, height: 26, borderRadius: 8,
+                          background: active ? p.grad : (unlocked ? p.color + '22' : 'var(--surface)'),
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: unlocked ? 'none' : `1.5px dashed ${p.color}55`,
+                        }}>
+                          <Icon size={13} color={active ? 'white' : p.color} />
+                        </div>
+                        <div style={{ textAlign: 'left', minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <span style={{ fontSize: 12, fontWeight: active ? 800 : 600, color: active ? 'var(--text)' : 'var(--text-muted)' }}>
+                              {p.label}
+                            </span>
+                            {!unlocked && <Lock size={10} color="var(--text-dim)" />}
+                            {unread > 0 && (
+                              <span style={{
+                                fontSize: 10, fontWeight: 800,
+                                background: p.color, color: 'white',
+                                borderRadius: 10, padding: '1px 6px',
+                                minWidth: 16, textAlign: 'center', lineHeight: 1.3,
+                                animation: 'pulse 1.4s ease-in-out infinite',
+                              }}>{unread > 9 ? '9+' : unread}</span>
+                            )}
+                          </div>
+                          {unlocked && totalMsgs > 0 && (
+                            <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: 0 }}>{totalMsgs} msgs</p>
+                          )}
+                          {!unlocked && (
+                            <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: 0 }}>Not connected</p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
-            {/* Messages area — fixed height so the panel never expands; internal scroll only */}
-            <div ref={messagesContainerRef} style={{ height: 400, padding: '12px 16px', overflowY: 'auto', background: 'var(--bg)', flexShrink: 0 }}>
+            {/* Active-platform header bar */}
+            {(() => {
+              const P_META = {
+                whatsapp:  { label: 'WhatsApp',  icon: MessageCircle,     color: '#25d366', grad: 'linear-gradient(135deg, #25d366, #128c7e)' },
+                instagram: { label: 'Instagram', icon: Camera,            color: '#e1306c', grad: 'linear-gradient(135deg, #f58529, #dd2a7b, #8134af)' },
+                facebook:  { label: 'Facebook',  icon: MonitorSmartphone, color: '#1877f2', grad: 'linear-gradient(135deg, #1877f2, #0a5cb8)' },
+                website:   { label: 'Website',   icon: Globe,             color: '#6366f1', grad: 'linear-gradient(135deg, #6366f1, #4f46e5)' },
+              };
+              const meta = P_META[activePlatform] || P_META.whatsapp;
+              const Icon = meta.icon;
+              const sendableHere = activePlatform === 'whatsapp';
+              return (
+                <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface)' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 10, background: meta.grad, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon size={15} color="white" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', margin: 0 }}>{meta.label}</p>
+                    <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{messages.length} message{messages.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  {syncingHistory && activePlatform === 'whatsapp' && (
+                    <span style={{ fontSize: 10, color: '#6366f1', background: 'rgba(99,102,241,0.15)', padding: '3px 8px', borderRadius: 20, fontWeight: 700, marginRight: 6 }}>⟳ Syncing…</span>
+                  )}
+                  {sendableHere
+                    ? <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20, background: 'rgba(16,185,129,0.15)', color: '#16a34a' }}>● Live</span>
+                    : <span title="Outbound sending is not wired for this platform yet — messages will be saved as drafts" style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20, background: 'rgba(245,158,11,0.15)', color: '#d97706' }}>● Read-only</span>}
+                </div>
+              );
+            })()}
+
+            {/* Messages area — fills available viewport height, internal scroll only */}
+            <div style={{ position: 'relative' }}>
+            <div ref={messagesContainerRef} className="messages-area" style={{ height: 480, padding: '12px 16px', overflowY: 'auto', background: 'var(--bg)', flexShrink: 0 }}>
               {messages.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 200 }}>
                   <div style={{ width: 56, height: 56, borderRadius: 20, background: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
@@ -1145,16 +1605,42 @@ useEffect(() => {
                   </div>
                   <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)' }}>No messages yet</p>
                 </div>
-              ) : messages.map((msg) => {
+              ) : messages.map((msg, idx) => {
                 const isVoice = msg.media_type === 'voice' || msg.media_type === 'audio';
                 const isImage = msg.media_type === 'image';
-                const isFile  = msg.media_type === 'media' || msg.media_type === 'document';
+                const isVideo = msg.media_type === 'video';
+                const isFile  = msg.media_type === 'media' || msg.media_type === 'document' || msg.media_type === 'file';
+                // Build the media URL. URL-encode each path segment so legacy filenames
+                // with spaces / special chars still resolve through express.static.
                 const mediaSrc = msg.media_url
-                  ? (msg.media_url.startsWith('http') ? msg.media_url : `${BASE_URL}${msg.media_url}`)
+                  ? (msg.media_url.startsWith('http')
+                      ? msg.media_url
+                      : `${BASE_URL}${msg.media_url.split('/').map((p, i) => i === 0 ? p : encodeURIComponent(p)).join('/')}`)
                   : null;
+                // Grouping: tight spacing when previous message is from same sender within 2 min
+                const prev = idx > 0 ? messages[idx - 1] : null;
+                const tsCur = new Date(msg.timestamp).getTime();
+                const tsPrev = prev ? new Date(prev.timestamp).getTime() : 0;
+                const sameSender = prev && prev.from_me === msg.from_me && (tsCur - tsPrev) < 2 * 60 * 1000;
+                // Date separator when day differs from previous
+                const curDay = new Date(msg.timestamp).toDateString();
+                const prevDay = prev ? new Date(prev.timestamp).toDateString() : null;
+                const showDateBreak = !prev || curDay !== prevDay;
+                const today = new Date().toDateString();
+                const yesterday = new Date(Date.now() - 86400000).toDateString();
+                const dayLabel = curDay === today ? 'Today' : curDay === yesterday ? 'Yesterday' : new Date(msg.timestamp).toLocaleDateString();
                 return (
-                  <div key={msg.id} style={{ display: 'flex', justifyContent: msg.from_me ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                    <div style={{ maxWidth: '72%', padding: '9px 13px', borderRadius: msg.from_me ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: msg.from_me ? (typeof document !== 'undefined' && document.documentElement.classList.contains('light') ? '#dcf8c6' : '#1a4731') : 'var(--surface2)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', fontSize: 14, lineHeight: 1.5, color: 'var(--text)' }}>
+                  <div key={msg.id}>
+                    {showDateBreak && (
+                      <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 8px' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20, background: 'var(--surface2)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{dayLabel}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: msg.from_me ? 'flex-end' : 'flex-start', marginBottom: sameSender ? 2 : 8, marginTop: sameSender ? 0 : 0 }}>
+                    <div style={{ maxWidth: '72%', padding: '9px 13px', borderRadius: msg.from_me
+                          ? (sameSender ? '14px 4px 4px 14px' : '18px 18px 4px 18px')
+                          : (sameSender ? '4px 14px 14px 4px' : '18px 18px 18px 4px'),
+                        background: msg.from_me ? (typeof document !== 'undefined' && document.documentElement.classList.contains('light') ? '#dcf8c6' : '#1a4731') : 'var(--surface2)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', fontSize: 14, lineHeight: 1.5, color: 'var(--text)' }}>
                       {isVoice ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#25d366', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1171,30 +1657,26 @@ useEffect(() => {
                           )}
                         </div>
                       ) : isImage && mediaSrc ? (
-                        /* Thumbnail — click to open full-size lightbox */
-                        <div
-                          onClick={() => setViewImage(mediaSrc)}
-                          style={{ cursor: 'pointer', position: 'relative', display: 'inline-block', borderRadius: 8, overflow: 'hidden' }}
-                          title="Click to view full size"
-                        >
-                          <img
-                            src={mediaSrc}
-                            alt="media"
-                            style={{ display: 'block', maxWidth: 180, maxHeight: 130, objectFit: 'cover', borderRadius: 8 }}
-                          />
-                          <div style={{ position: 'absolute', bottom: 5, right: 7, background: 'rgba(0,0,0,0.45)', borderRadius: 4, padding: '1px 5px', fontSize: 10, color: 'white' }}>
-                            View
-                          </div>
-                        </div>
+                        /* Thumbnail — click to open full-size lightbox; onError falls back to a file chip
+                           so a 404'd image still shows the user something useful (filename + open link). */
+                        <ImageMessage src={mediaSrc} onOpen={() => setViewImage(mediaSrc)} />
+                      ) : isVideo && mediaSrc ? (
+                        <video controls src={mediaSrc} style={{ display: 'block', maxWidth: 240, maxHeight: 180, borderRadius: 8 }} />
                       ) : isFile && mediaSrc ? (
-                        /* File attachment chip */
-                        <a href={mediaSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(0,0,0,0.06)', borderRadius: 10, textDecoration: 'none', color: 'var(--text)', minWidth: 160 }}>
-                          <FileText size={20} color="#6366f1" style={{ flexShrink: 0 }} />
-                          <div>
-                            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Attachment</p>
-                            <p style={{ margin: 0, fontSize: 10, color: 'var(--text-dim)' }}>Tap to open</p>
-                          </div>
-                        </a>
+                        /* File attachment chip — show filename from the URL */
+                        (() => {
+                          const fname = decodeURIComponent((mediaSrc.split('/').pop() || 'Attachment').split('?')[0]);
+                          const cleanName = fname.replace(/^\d+-/, ''); // strip the timestamp prefix
+                          return (
+                            <a href={mediaSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(0,0,0,0.06)', borderRadius: 10, textDecoration: 'none', color: 'var(--text)', minWidth: 180 }}>
+                              <FileText size={22} color="#6366f1" style={{ flexShrink: 0 }} />
+                              <div style={{ minWidth: 0 }}>
+                                <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{cleanName}</p>
+                                <p style={{ margin: 0, fontSize: 10, color: 'var(--text-dim)' }}>Tap to open</p>
+                              </div>
+                            </a>
+                          );
+                        })()
                       ) : (
                         <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif' }}>{msg.body}</p>
                       )}
@@ -1203,10 +1685,29 @@ useEffect(() => {
                         {msg.from_me && <span style={{ color: '#34b7f1', marginLeft: 4 }}>✓✓</span>}
                       </p>
                     </div>
+                    </div>
                   </div>
                 );
               })}
               <div ref={messagesEndRef} />
+            </div>
+            {/* Jump-to-latest pill — only when user has scrolled away from the bottom */}
+            {showJumpToLatest && (
+              <button
+                onClick={scrollToLatest}
+                title="Jump to latest"
+                style={{
+                  position: 'absolute', bottom: 12, right: 14, zIndex: 5,
+                  background: 'var(--accent)', color: 'white', border: 'none',
+                  borderRadius: 24, padding: '6px 14px', fontSize: 12, fontWeight: 700,
+                  cursor: 'pointer', boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  animation: 'fadeIn 0.15s ease-out',
+                }}
+              >
+                ↓ Latest
+              </button>
+            )}
             </div>
 
             {/* Emoji picker */}
@@ -1234,7 +1735,7 @@ useEffect(() => {
                   <Icon size={15} />
                 </button>
               ))}
-              <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} title="Emoji" style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: showEmojiPicker ? '#fef9c3' : 'none', color: showEmojiPicker ? '#f59e0b' : '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
+              <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} title="Emoji" style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: showEmojiPicker ? 'rgba(245,158,11,0.18)' : 'none', color: showEmojiPicker ? '#f59e0b' : '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
                 😊
               </button>
 
@@ -1242,11 +1743,11 @@ useEffect(() => {
 
               {/* Presets */}
               <div style={{ position: 'relative' }}>
-                <button onClick={() => setShowPresets(!showPresets)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: showPresets ? '#eef2ff' : 'white', color: showPresets ? '#6366f1' : '#6b7280', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                <button onClick={() => setShowPresets(!showPresets)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: showPresets ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: showPresets ? '#6366f1' : 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                   <Zap size={13} /> Presets <ChevronDown size={11} />
                 </button>
                 {showPresets && (
-                  <div style={{ position: 'absolute', bottom: '110%', left: 0, width: 280, background: 'var(--surface)', border: '1.5px solid #e5e7eb', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.12)', zIndex: 20, overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', bottom: '110%', left: 0, width: 280, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.12)', zIndex: 20, overflow: 'hidden' }}>
                     <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Quick Replies</span>
                     </div>
@@ -1265,12 +1766,63 @@ useEffect(() => {
                   </div>
                 )}
               </div>
+
+              {/* AI Tools — rewrite / translate / shorten */}
+              <div style={{ position: 'relative', marginLeft: 4 }}>
+                <button
+                  onClick={() => setShowAiTools(v => !v)}
+                  disabled={!newMessage.trim() || !!aiToolLoading}
+                  title={!newMessage.trim() ? 'Type a message first' : 'AI Tools'}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: showAiTools ? 'rgba(139,92,246,0.10)' : 'var(--surface)', color: showAiTools ? '#8b5cf6' : 'var(--text-muted)', cursor: !newMessage.trim() ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 600, opacity: !newMessage.trim() ? 0.55 : 1 }}
+                >
+                  ✨ AI <ChevronDown size={11} />
+                </button>
+                {showAiTools && newMessage.trim() && (
+                  <div style={{ position: 'absolute', bottom: '110%', left: 0, width: 220, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.18)', zIndex: 30, overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Transform message</span>
+                    </div>
+                    {[
+                      { id: 'rewrite-pro', label: 'Rewrite — Professional', fn: () => aiAPI.rewrite(newMessage, 'professional') },
+                      { id: 'rewrite-friendly', label: 'Rewrite — Friendly', fn: () => aiAPI.rewrite(newMessage, 'friendly') },
+                      { id: 'rewrite-empathetic', label: 'Rewrite — Empathetic', fn: () => aiAPI.rewrite(newMessage, 'empathetic') },
+                      { id: 'shorten', label: 'Shorten', fn: () => aiAPI.shorten(newMessage) },
+                      { id: 'translate-en', label: 'Translate to English', fn: () => aiAPI.translate(newMessage, 'English') },
+                      { id: 'translate-es', label: 'Translate to Spanish', fn: () => aiAPI.translate(newMessage, 'Spanish') },
+                    ].map(tool => (
+                      <button
+                        key={tool.id}
+                        disabled={!!aiToolLoading}
+                        onClick={async () => {
+                          setAiToolLoading(tool.id);
+                          try {
+                            const res = await tool.fn();
+                            if (res?.data?.text) setNewMessage(res.data.text);
+                          } catch (e) {
+                            showToast(e.response?.data?.error || 'AI tool failed');
+                          } finally {
+                            setAiToolLoading(null);
+                            setShowAiTools(false);
+                            textareaRef.current?.focus();
+                          }
+                        }}
+                        style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: aiToolLoading ? 'wait' : 'pointer', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                        onMouseEnter={e => { if (!aiToolLoading) e.currentTarget.style.background = 'var(--surface2)'; }}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      >
+                        <span>{tool.label}</span>
+                        {aiToolLoading === tool.id && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>…</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Input */}
             <div style={{ padding: '10px 14px 14px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
               <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileUpload} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} title="Attach file" style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-dim)', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} title="Attach file" style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-dim)', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Paperclip size={15} />
               </button>
 
@@ -1288,9 +1840,11 @@ useEffect(() => {
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                  placeholder="Type a message... (Enter to send)"
+                  placeholder={activePlatform && activePlatform !== 'whatsapp'
+                    ? `Type a ${activePlatform} message... (saved as draft)`
+                    : 'Type a message... (Enter to send)'}
                   rows={1}
-                  style={{ flex: 1, padding: '10px 14px', border: '1.5px solid #e5e7eb', borderRadius: 14, fontSize: 14, outline: 'none', resize: 'none', lineHeight: 1.5, maxHeight: 120, overflow: 'auto', fontFamily: 'inherit', color: 'var(--text)', background: 'var(--surface2)' }}
+                  style={{ flex: 1, padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 14, fontSize: 14, outline: 'none', resize: 'none', lineHeight: 1.5, maxHeight: 120, overflow: 'auto', fontFamily: 'inherit', color: 'var(--text)', background: 'var(--surface2)' }}
                   onFocus={e => { e.target.style.borderColor = '#25d366'; }}
                   onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                   onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
@@ -1298,12 +1852,13 @@ useEffect(() => {
               )}
 
               {!isRecording && (
-                <div style={{ position: 'relative', flexShrink: 0 }} title="Voice notes — coming in V2">
-                  <button disabled style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface2)', color: 'var(--text-dim)', cursor: 'not-allowed', opacity: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Mic size={15} />
-                  </button>
-                  <span style={{ position: 'absolute', top: -7, right: -6, fontSize: 8, fontWeight: 800, background: '#f59e0b', color: 'white', borderRadius: 4, padding: '1px 4px', lineHeight: 1.4, pointerEvents: 'none' }}>BETA</span>
-                </div>
+                <button
+                  onClick={startRecording}
+                  title="Record voice note"
+                  style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: '#25d366', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Mic size={15} />
+                </button>
               )}
 
               <button onClick={handleSendMessage} disabled={!newMessage.trim() || sendingMessage} style={{ width: 42, height: 42, borderRadius: 13, border: 'none', flexShrink: 0, background: sendingMessage || !newMessage.trim() ? 'var(--border)' : 'linear-gradient(135deg, #25d366, #128c7e)', color: sendingMessage || !newMessage.trim() ? '#9ca3af' : 'white', cursor: !newMessage.trim() || sendingMessage ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1312,27 +1867,27 @@ useEffect(() => {
             </div>
 
             {(uploadingFile) && (
-              <div style={{ padding: '8px 14px', background: '#f0fdf4', borderTop: '1px solid #dcfce7', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+              <div style={{ padding: '8px 14px', background: 'rgba(16,185,129,0.10)', borderTop: '1px solid #dcfce7', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
                 Sending file...
               </div>
             )}
           </div>
 
-          {/* ── Tabs Panel ── */}
-          <div style={{ background: 'var(--surface)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1.5px solid #e5e7eb' }}>
+          {/* Tabs Panel — sits BELOW the chat in the main column */}
+          <div style={{ background: 'var(--surface)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)', marginTop: 16 }}>
             {/* Tab bar */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
               {TABS.map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                   flex: 1, padding: '13px 8px', border: 'none', background: 'none', cursor: 'pointer',
                   borderBottom: `2.5px solid ${activeTab === tab.id ? tab.color : 'transparent'}`,
-                  color: activeTab === tab.id ? '#111827' : '#9ca3af',
+                  color: activeTab === tab.id ? 'var(--text)' : 'var(--text-dim)',
                   fontWeight: activeTab === tab.id ? 800 : 500, fontSize: 12, whiteSpace: 'nowrap',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
                 }}>
                   {tab.label}
                   {tab.count > 0 && (
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 10, background: activeTab === tab.id ? tab.color : '#f3f4f6', color: activeTab === tab.id ? 'white' : '#9ca3af' }}>{tab.count}</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 10, background: activeTab === tab.id ? tab.color : 'var(--surface2)', color: activeTab === tab.id ? 'white' : '#9ca3af' }}>{tab.count}</span>
                   )}
                 </button>
               ))}
@@ -1353,7 +1908,7 @@ useEffect(() => {
                       <textarea value={newNote} onChange={e => setNewNote(e.target.value)} rows={3} placeholder="Write your note..."
                         style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #fde68a', borderRadius: 10, fontSize: 14, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }} />
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-                        <button onClick={() => setAddingNote(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+                        <button onClick={() => setAddingNote(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
                         <button onClick={handleAddNote} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#f59e0b', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>Save</button>
                       </div>
                     </div>
@@ -1364,7 +1919,7 @@ useEffect(() => {
                       <p style={{ fontSize: 14, color: 'var(--text-dim)' }}>No notes yet</p>
                     </div>
                   ) : notes.map(note => (
-                    <div key={note.id} style={{ padding: '14px 16px', background: '#fffbeb', borderRadius: 12, border: '1.5px solid #fef3c7', marginBottom: 10 }}>
+                    <div key={note.id} style={{ padding: '14px 16px', background: 'rgba(245,158,11,0.12)', borderRadius: 12, border: '1.5px solid #fef3c7', marginBottom: 10 }}>
                       <p style={{ fontSize: 14, color: 'var(--text)', margin: '0 0 6px', lineHeight: 1.6 }}>{note.content}</p>
                       <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{new Date(note.created_at).toLocaleString()}</p>
                     </div>
@@ -1381,7 +1936,7 @@ useEffect(() => {
                     </button>
                   </div>
                   {addingReminder && (
-                    <div style={{ background: '#f5f3ff', border: '1.5px solid #ddd6fe', borderRadius: 14, padding: 16, marginBottom: 14 }}>
+                    <div style={{ background: 'rgba(139,92,246,0.12)', border: '1.5px solid #ddd6fe', borderRadius: 14, padding: 16, marginBottom: 14 }}>
                       <div style={{ marginBottom: 10 }}>
                         <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>Date & Time</label>
                         <input type="datetime-local" value={newReminder.reminder_date} onChange={e => setNewReminder(p => ({ ...p, reminder_date: e.target.value }))}
@@ -1393,7 +1948,7 @@ useEffect(() => {
                           style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface)' }} />
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                        <button onClick={() => setAddingReminder(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+                        <button onClick={() => setAddingReminder(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
                         <button onClick={handleAddReminder} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#8b5cf6', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>Save</button>
                       </div>
                     </div>
@@ -1468,14 +2023,14 @@ useEffect(() => {
                       <p style={{ fontSize: 14, color: 'var(--text-dim)' }}>No invoices yet</p>
                     </div>
                   ) : invoices.map(inv => (
-                    <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: '#f0fdf4', borderRadius: 12, border: '1.5px solid #bbf7d0', marginBottom: 10 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 12, background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: 'rgba(16,185,129,0.10)', borderRadius: 12, border: '1.5px solid #bbf7d0', marginBottom: 10 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <Receipt size={18} color="#10b981" />
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{inv.invoice_number}</p>
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: inv.status === 'paid' ? '#dcfce7' : inv.status === 'sent' ? '#eff6ff' : '#fef9c3', color: inv.status === 'paid' ? '#15803d' : inv.status === 'sent' ? '#1d4ed8' : '#92400e' }}>{inv.status}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: inv.status === 'paid' ? 'rgba(16,185,129,0.15)' : inv.status === 'sent' ? 'rgba(59,130,246,0.10)' : 'rgba(245,158,11,0.18)', color: inv.status === 'paid' ? '#15803d' : inv.status === 'sent' ? '#1d4ed8' : '#92400e' }}>{inv.status}</span>
                         </div>
                         <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>{new Date(inv.created_at).toLocaleDateString()}{inv.due_date ? ` · Due ${new Date(inv.due_date).toLocaleDateString()}` : ''}</p>
                       </div>
@@ -1553,7 +2108,7 @@ useEffect(() => {
                     const statusColors = { pending: 'rgba(245,158,11,0.1)', sent: 'rgba(16,185,129,0.1)', failed: 'rgba(239,68,68,0.1)', skipped: 'var(--surface2)' };
                     const statusText = { pending: '#92400e', sent: '#15803d', failed: '#b91c1c', skipped: '#6b7280' };
                     return (
-                      <div key={wf.id || i} style={{ display: 'flex', gap: 14, padding: '14px 16px', background: statusColors[wf.status] || '#f9fafb', borderRadius: 12, border: '1.5px solid #e5e7eb', marginBottom: 10 }}>
+                      <div key={wf.id || i} style={{ display: 'flex', gap: 14, padding: '14px 16px', background: statusColors[wf.status] || 'var(--surface2)', borderRadius: 12, border: '1.5px solid var(--border)', marginBottom: 10 }}>
                         <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <Mail size={18} color="#6366f1" />
                         </div>
@@ -1599,7 +2154,7 @@ useEffect(() => {
                   {/* Loading */}
                   {verticalLoading && (
                     <div style={{ textAlign: 'center', padding: '32px 0' }}>
-                      <div style={{ width: 36, height: 36, border: '3px solid #e5e7eb', borderTopColor: '#10b981', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+                      <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: '#10b981', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
                       <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>Analyzing conversation...</p>
                     </div>
                   )}
@@ -1627,7 +2182,7 @@ useEffect(() => {
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                           <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', margin: 0 }}>🧠 AI Recommendation</p>
                           <button onClick={() => handleVerticalSuggest(verticalIndustry.industry)} disabled={verticalSuggestLoading}
-                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1.5px solid #c4b5fd', background: '#faf5ff', color: '#7c3aed', fontWeight: 700, cursor: 'pointer', fontSize: 11 }}>
+                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1.5px solid #c4b5fd', background: 'rgba(139,92,246,0.10)', color: '#7c3aed', fontWeight: 700, cursor: 'pointer', fontSize: 11 }}>
                             {verticalSuggestLoading ? '🔄 Analyzing...' : '✨ Get AI Suggestion'}
                           </button>
                         </div>
@@ -1664,7 +2219,7 @@ useEffect(() => {
                             </div>
                           </div>
                         ) : (
-                          <div style={{ padding: '16px', background: 'var(--surface2)', borderRadius: 12, border: '1.5px solid #e5e7eb', textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+                          <div style={{ padding: '16px', background: 'var(--surface2)', borderRadius: 12, border: '1.5px solid var(--border)', textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
                             Click "Get AI Suggestion" for personalized recommendations
                           </div>
                         )}
@@ -1675,14 +2230,14 @@ useEffect(() => {
                         <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', margin: '0 0 10px' }}>⚡ Quick Actions</p>
 
                         {verticalActionResult && (
-                          <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 12, background: verticalActionResult.startsWith('✅') ? 'rgba(16,185,129,0.1)' : '#fef2f2', border: `1.5px solid ${verticalActionResult.startsWith('✅') ? '#a7f3d0' : '#fecaca'}`, fontSize: 13, fontWeight: 600, color: verticalActionResult.startsWith('✅') ? '#059669' : '#dc2626' }}>
+                          <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 12, background: verticalActionResult.startsWith('✅') ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.12)', border: `1.5px solid ${verticalActionResult.startsWith('✅') ? '#a7f3d0' : '#fecaca'}`, fontSize: 13, fontWeight: 600, color: verticalActionResult.startsWith('✅') ? '#059669' : '#dc2626' }}>
                             {verticalActionResult}
                           </div>
                         )}
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {(verticalIndustry.workflow?.actions || []).map(action => (
-                            <div key={action.id} style={{ background: 'var(--surface)', borderRadius: 12, border: '1.5px solid #e5e7eb', overflow: 'hidden' }}>
+                            <div key={action.id} style={{ background: 'var(--surface)', borderRadius: 12, border: '1.5px solid var(--border)', overflow: 'hidden' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
                                 <span style={{ fontSize: 20, flexShrink: 0 }}>{action.icon}</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1693,7 +2248,7 @@ useEffect(() => {
                                   <button onClick={() => {
                                     if (editingActionMsg === action.id) { setEditingActionMsg(null); }
                                     else { setEditingActionMsg(action.id); setCustomActionMsg(action.message); }
-                                  }} style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                                  }} style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
                                     Edit
                                   </button>
                                   <button
@@ -1712,12 +2267,12 @@ useEffect(() => {
                                     value={customActionMsg}
                                     onChange={e => setCustomActionMsg(e.target.value)}
                                     rows={3}
-                                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 10 }}
+                                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 10 }}
                                     onFocus={e => e.target.style.borderColor = verticalIndustry.workflow?.color || '#10b981'}
                                     onBlur={e => e.target.style.borderColor = 'var(--border)'}
                                   />
                                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-                                    <button onClick={() => setEditingActionMsg(null)} style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Cancel</button>
+                                    <button onClick={() => setEditingActionMsg(null)} style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Cancel</button>
                                     <button onClick={() => handleVerticalAction(action.id, verticalIndustry.industry, customActionMsg)}
                                       disabled={verticalActionLoading === action.id}
                                       style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: verticalIndustry.workflow?.color || '#10b981', color: 'white', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
@@ -1759,7 +2314,7 @@ useEffect(() => {
                   </div>
 
                   {aiError && (
-                    <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ background: 'rgba(239,68,68,0.12)', border: '1.5px solid #fecaca', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 8 }}>
                       ⚠ {aiError}
                     </div>
                   )}
@@ -1786,7 +2341,7 @@ useEffect(() => {
 
                   {/* Summary Result */}
                   {aiSummary && (
-                    <div style={{ background: '#faf5ff', border: '1.5px solid #c4b5fd', borderRadius: 14, padding: '16px 18px', marginBottom: 16 }}>
+                    <div style={{ background: 'rgba(139,92,246,0.10)', border: '1.5px solid #c4b5fd', borderRadius: 14, padding: '16px 18px', marginBottom: 16 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                         <span style={{ fontSize: 16 }}>🧠</span>
                         <p style={{ fontSize: 13, fontWeight: 800, color: '#7c3aed', margin: 0 }}>Chat Summary</p>
@@ -1798,7 +2353,7 @@ useEffect(() => {
 
                   {/* Reply Suggestions Result */}
                   {aiSuggestions.length > 0 && (
-                    <div style={{ background: '#ecfeff', border: '1.5px solid #a5f3fc', borderRadius: 14, padding: '16px 18px', marginBottom: 16 }}>
+                    <div style={{ background: 'rgba(6,182,212,0.10)', border: '1.5px solid #a5f3fc', borderRadius: 14, padding: '16px 18px', marginBottom: 16 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                         <span style={{ fontSize: 16 }}>⚡</span>
                         <p style={{ fontSize: 13, fontWeight: 800, color: '#0891b2', margin: 0 }}>Reply Suggestions</p>
@@ -1828,20 +2383,52 @@ useEffect(() => {
                         <button onClick={() => setAiAnalysis(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
                         {/* Lead Score */}
-                        <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '14px', border: '1.5px solid #fde68a', textAlign: 'center' }}>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 6px' }}>Lead Score</p>
-                          <div style={{ fontSize: 36, fontWeight: 900, color: aiAnalysis.lead_score >= 7 ? '#10b981' : aiAnalysis.lead_score >= 4 ? '#f59e0b' : '#ef4444', lineHeight: 1 }}>{aiAnalysis.lead_score}<span style={{ fontSize: 16, color: 'var(--text-dim)' }}>/10</span></div>
+                        <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 10px', border: '1.5px solid #fde68a', textAlign: 'center' }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 4px' }}>Score</p>
+                          <div style={{ fontSize: 28, fontWeight: 900, color: aiAnalysis.lead_score >= 7 ? '#10b981' : aiAnalysis.lead_score >= 4 ? '#f59e0b' : '#ef4444', lineHeight: 1 }}>{aiAnalysis.lead_score}<span style={{ fontSize: 13, color: 'var(--text-dim)' }}>/10</span></div>
                         </div>
                         {/* Temperature */}
-                        <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '14px', border: '1.5px solid #fde68a', textAlign: 'center' }}>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 6px' }}>Temperature</p>
-                          <p style={{ fontSize: 22, margin: 0 }}>
+                        <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 10px', border: '1.5px solid #fde68a', textAlign: 'center' }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 4px' }}>Temperature</p>
+                          <p style={{ fontSize: 18, margin: 0 }}>
                             {aiAnalysis.temperature === 'urgent' ? '🔥' : aiAnalysis.temperature === 'hot' ? '🟠' : aiAnalysis.temperature === 'warm' ? '🟡' : '🟢'}
                           </p>
-                          <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', margin: '4px 0 0', textTransform: 'capitalize' }}>{aiAnalysis.temperature}</p>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text)', margin: '2px 0 0', textTransform: 'capitalize' }}>{aiAnalysis.temperature}</p>
                         </div>
+                        {/* Sentiment — new */}
+                        {aiAnalysis.sentiment && (() => {
+                          const sent = {
+                            positive:   { emoji: '😊', label: 'Positive' },
+                            neutral:    { emoji: '😐', label: 'Neutral' },
+                            negative:   { emoji: '😟', label: 'Negative' },
+                            frustrated: { emoji: '😠', label: 'Frustrated' },
+                          }[aiAnalysis.sentiment];
+                          return sent ? (
+                            <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 10px', border: '1.5px solid #fde68a', textAlign: 'center' }}>
+                              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 4px' }}>Sentiment</p>
+                              <p style={{ fontSize: 18, margin: 0 }}>{sent.emoji}</p>
+                              <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text)', margin: '2px 0 0' }}>{sent.label}</p>
+                            </div>
+                          ) : null;
+                        })()}
+                        {/* Urgency — new */}
+                        {aiAnalysis.urgency && (() => {
+                          const urg = {
+                            low:      { color: '#10b981', label: 'Low' },
+                            medium:   { color: '#f59e0b', label: 'Medium' },
+                            high:     { color: '#f97316', label: 'High' },
+                            critical: { color: '#ef4444', label: 'Critical' },
+                          }[aiAnalysis.urgency];
+                          return urg ? (
+                            <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 10px', border: '1.5px solid #fde68a', textAlign: 'center' }}>
+                              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 4px' }}>Urgency</p>
+                              <p style={{ fontSize: 18, margin: 0, color: urg.color }}>⚡</p>
+                              <p style={{ fontSize: 11, fontWeight: 800, color: urg.color, margin: '2px 0 0' }}>{urg.label}</p>
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
 
                       {/* Intent */}
@@ -1870,7 +2457,7 @@ useEffect(() => {
                           <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 8px' }}>Key Topics</p>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                             {aiAnalysis.key_entities.map((e, i) => (
-                              <span key={i} style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: '#fef3c7', color: 'var(--warning-text)', border: '1px solid #fde68a' }}>{e}</span>
+                              <span key={i} style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'rgba(245,158,11,0.18)', color: 'var(--warning-text)', border: '1px solid #fde68a' }}>{e}</span>
                             ))}
                           </div>
                         </div>
@@ -1888,10 +2475,152 @@ useEffect(() => {
                   )}
                 </div>
               )}
+
+              {/* UNIFIED TIMELINE */}
+              {activeTab === 'timeline' && (() => {
+                const TIMELINE_ICONS = {
+                  message_in: MessageSquare, message_out: Send, note: StickyNote, reminder: Bell,
+                  reminder_done: CheckCircle, status_change: Activity, assignment: UserCheck,
+                  invoice: Receipt, email: Mail, channel_added: Layers, relation_linked: Link2,
+                  lead_created: Star, created: Star, message: MessageSquare,
+                };
+                const TIMELINE_COLORS = {
+                  message_in: '#25d366', message_out: '#6366f1', note: '#f59e0b', reminder: '#8b5cf6',
+                  reminder_done: '#10b981', status_change: '#06b6d4', assignment: '#06b6d4',
+                  invoice: '#10b981', email: '#f59e0b', channel_added: '#ec4899', relation_linked: '#6366f1',
+                  lead_created: '#10b981', created: '#10b981', message: '#25d366',
+                };
+                const PLATFORM_LABELS = { whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', website: 'Website', email: 'Email', system: 'System' };
+                return (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+                      <button onClick={async () => { try { const r = await timelineAPI.get(leadId); setTimeline(r.data.timeline || []); } catch {} }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                        <RefreshCw size={12} /> Refresh Timeline
+                      </button>
+                    </div>
+                    {timeline.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                        <Activity size={36} color="#d1d5db" style={{ margin: '0 auto 10px' }} />
+                        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>Unified Timeline</p>
+                        <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>Click "Refresh Timeline" to load all activity</p>
+                      </div>
+                    ) : (
+                      <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'absolute', left: 15, top: 0, bottom: 0, width: 2, background: 'var(--surface2)' }} />
+                        {timeline.map((item, i) => {
+                          const type = item.activity_type || item.type || 'message';
+                          const Icon = TIMELINE_ICONS[type] || Activity;
+                          const color = TIMELINE_COLORS[type] || '#6b7280';
+                          const platform = item.platform;
+                          const nickname = item.account_nickname;
+                          return (
+                            <div key={item.id || i} style={{ display: 'flex', gap: 14, marginBottom: 14, position: 'relative' }}>
+                              <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--surface)', border: `2px solid ${color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, zIndex: 1, boxShadow: `0 0 0 3px var(--surface)` }}>
+                                <Icon size={14} color={color} />
+                              </div>
+                              <div style={{ flex: 1, paddingTop: 3 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
+                                  {platform && (
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: color + '18', color }}>
+                                      {PLATFORM_LABELS[platform] || platform}{nickname ? ` · ${nickname}` : ''}
+                                    </span>
+                                  )}
+                                  {item.actor_name && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>by {item.actor_name}</span>}
+                                </div>
+                                {item.title && <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: '0 0 2px' }}>{item.title}</p>}
+                                {item.body && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>{item.body?.slice(0, 120)}{item.body?.length > 120 ? '…' : ''}</p>}
+                                <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: '4px 0 0' }}>{new Date(item.created_at).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* RELATED LEADS */}
+              {activeTab === 'related' && (
+                <div>
+                  <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 16 }}>
+                    Leads that may represent the same person across different platforms or sources.
+                  </p>
+
+                  {/* Linked */}
+                  {relatedLeads.linked.length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>Linked Leads</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {relatedLeads.linked.map(rel => (
+                          <div key={rel.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'rgba(99,102,241,0.08)', borderRadius: 12, border: '1.5px solid rgba(99,102,241,0.2)' }}>
+                            <div style={{ width: 34, height: 34, borderRadius: 10, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
+                              {rel.customer_name?.[0]?.toUpperCase() || '?'}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{rel.customer_name || 'Unknown'}</p>
+                              <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{rel.platform_source || 'whatsapp'} · {rel.status}</p>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                              <a href={`/leads/${rel.other_lead_id}`} style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' }}>View</a>
+                              <button onClick={async () => { try { await leadRelationsAPI.unlink(rel.id); setRelatedLeads(prev => ({ ...prev, linked: prev.linked.filter(l => l.id !== rel.id) })); } catch {} }}
+                                style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'var(--surface)', color: '#ef4444', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Unlink</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Suggestions */}
+                  {relatedLeads.suggestions.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>Possible Matches</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {relatedLeads.suggestions.map(sug => (
+                          <div key={sug.id} style={{ padding: '12px 14px', background: 'var(--surface2)', borderRadius: 12, border: '1.5px solid #fde68a' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                              <div style={{ width: 34, height: 34, borderRadius: 10, background: '#f59e0b22', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
+                                {sug.customer_name?.[0]?.toUpperCase() || '?'}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{sug.customer_name || 'Unknown'}</p>
+                                <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Matched by {sug.match_reason} · {sug.platform_source || 'whatsapp'}</p>
+                              </div>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(245,158,11,0.18)', color: '#92400e' }}>Possible match</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <a href={`/leads/${sug.id}`} style={{ flex: 1, padding: '7px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', textAlign: 'center' }}>View</a>
+                              <button onClick={async () => {
+                                try {
+                                  await leadRelationsAPI.link({ lead_id_a: leadId, lead_id_b: sug.id, relation_type: 'linked' });
+                                  setRelatedLeads(prev => ({ suggestions: prev.suggestions.filter(s => s.id !== sug.id), linked: [...prev.linked, { ...sug, other_lead_id: sug.id }] }));
+                                } catch {}
+                              }} style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Link</button>
+                              <button onClick={() => setRelatedLeads(prev => ({ ...prev, suggestions: prev.suggestions.filter(s => s.id !== sug.id) }))}
+                                style={{ flex: 1, padding: '7px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Ignore</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {relatedLeads.suggestions.length === 0 && relatedLeads.linked.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                      <Network size={36} color="#d1d5db" style={{ margin: '0 auto 10px' }} />
+                      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>No Related Leads Found</p>
+                      <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>No other leads share the same phone, email, or name.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
           </div>
         </div>
-      </div>
+      </div>{/* /lead-grid */}
 
       {/* Email Compose Modal */}
       {showEmailCompose && (
@@ -1980,23 +2709,23 @@ function EmailComposeModal({ lead, onClose, onSent }) {
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>To</label>
           <input value={form.to_email} onChange={e => setForm(f => ({ ...f, to_email: e.target.value }))} placeholder="recipient@email.com" type="email"
-            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }}
+            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }}
             onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
         </div>
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Subject</label>
           <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Email subject"
-            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }}
+            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }}
             onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
         </div>
 
         {/* Rich text editor */}
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Message</label>
-          <div style={{ border: '1.5px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ border: '1.5px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
             {/* Toolbar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '8px 10px', background: 'var(--surface2)', borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '8px 10px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
               {toolbarBtns.map(btn => (
                 <button
                   key={btn.title}
@@ -2067,7 +2796,7 @@ function EmailComposeModal({ lead, onClose, onSent }) {
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '11px', border: '1.5px solid #e5e7eb', borderRadius: 11, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>Cancel</button>
+          <button onClick={onClose} style={{ flex: 1, padding: '11px', border: '1.5px solid var(--border)', borderRadius: 11, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>Cancel</button>
           <button onClick={handleSend} disabled={sending} style={{
             flex: 2, padding: '11px', background: sending ? '#6ee7b7' : 'linear-gradient(135deg, #10b981, #059669)',
             border: 'none', borderRadius: 11, color: 'white', fontWeight: 700, cursor: sending ? 'not-allowed' : 'pointer', fontSize: 14,
