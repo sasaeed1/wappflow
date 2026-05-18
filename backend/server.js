@@ -599,6 +599,9 @@ safeAlter('ALTER TABLE knowledge_documents ADD COLUMN workspace_id TEXT');
 safeAlter('ALTER TABLE ai_memories ADD COLUMN document_id TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN platform_account_id TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN platform_source TEXT');
+safeAlter('ALTER TABLE platform_accounts ADD COLUMN nickname TEXT');
+safeAlter('ALTER TABLE platform_accounts ADD COLUMN account_handle TEXT');
+safeAlter('ALTER TABLE platform_accounts ADD COLUMN slot_index INTEGER DEFAULT 0');
 
 // ── Reminders schema drift fix: older DBs created the table BEFORE these columns existed.
 // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so add the columns explicitly.
