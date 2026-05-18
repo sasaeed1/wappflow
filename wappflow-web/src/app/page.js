@@ -8,7 +8,8 @@ import {
   FileText, Bell, Workflow, Star, ChevronDown, Menu, X, Play,
   Inbox, Tag, Calendar, CreditCard, Layers, Rocket, Lock, TrendingUp,
   Phone, Instagram, Facebook, Mail, Database, Activity, Target,
-  Languages, Wand2, GitBranch, CheckCircle2,
+  Languages, Wand2, GitBranch, CheckCircle2, Video, Plug, Volume2,
+  Clock, ExternalLink, MapPin, Headphones,
 } from 'lucide-react';
 
 /* ========================================================================== */
@@ -45,7 +46,10 @@ export default function Landing() {
         <Problem />
         <FeatureGrid />
         <AISection />
+        <MeetingsSection />
+        <HuddleSection />
         <PlatformSection />
+        <IntegrationsSection />
         <HowItWorks />
         <DashboardShowcase />
         <TeamSection />
@@ -77,7 +81,8 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
         <nav className="lp-nav-links">
           <a href="#features">Features</a>
           <a href="#ai">AI</a>
-          <a href="#platforms">Platforms</a>
+          <a href="#meetings">Meetings</a>
+          <a href="#platforms">Channels</a>
           <a href="#pricing">Pricing</a>
           <a href="#faq">FAQ</a>
         </nav>
@@ -106,7 +111,8 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
         <div className="lp-mobile-menu">
           <a href="#features" onClick={() => setMobileOpen(false)}>Features</a>
           <a href="#ai" onClick={() => setMobileOpen(false)}>AI</a>
-          <a href="#platforms" onClick={() => setMobileOpen(false)}>Platforms</a>
+          <a href="#meetings" onClick={() => setMobileOpen(false)}>Meetings</a>
+          <a href="#platforms" onClick={() => setMobileOpen(false)}>Channels</a>
           <a href="#pricing" onClick={() => setMobileOpen(false)}>Pricing</a>
           <a href="#faq" onClick={() => setMobileOpen(false)}>FAQ</a>
           <div className="lp-mobile-cta">
@@ -136,7 +142,7 @@ function Hero({ authed }) {
         <Reveal>
           <div className="lp-badge">
             <Sparkles size={13} />
-            <span>AI-native CRM for WhatsApp</span>
+            <span>Now with Google Meet · Calendly · Huddles</span>
             <span className="lp-badge-dot" />
             <span className="lp-badge-pulse">Live</span>
           </div>
@@ -151,8 +157,9 @@ function Hero({ authed }) {
 
         <Reveal delay={160}>
           <p className="lp-hero-sub">
-            WappFlow is the AI-powered CRM built around the way modern teams actually sell — on WhatsApp,
-            Instagram, Facebook, and your website. One inbox. One brain. Zero leads slipping through.
+            The AI-powered CRM built for the way modern teams actually sell — on WhatsApp,
+            Instagram, Facebook, and your website. Score every lead, schedule meetings with one click,
+            huddle with your team. One inbox. One brain. Zero leads slipping through.
           </p>
         </Reveal>
 
@@ -331,11 +338,13 @@ function TrustBar() {
       <div className="lp-container">
         <div className="lp-trust-label">Built for sales teams that actually live in WhatsApp</div>
         <div className="lp-trust-stats">
-          <Stat number="150+" label="API endpoints" />
+          <Stat number="160+" label="API endpoints" />
           <Divider />
-          <Stat number="4" label="Platforms unified" />
+          <Stat number="6" label="Channels unified" />
           <Divider />
-          <Stat number="3s" label="Avg reply suggestion" />
+          <Stat number="3s" label="Avg AI reply" />
+          <Divider />
+          <Stat number="1-click" label="Google Meet" />
           <Divider />
           <Stat number="24/7" label="Auto-reconnect" />
         </div>
@@ -418,6 +427,18 @@ function FeatureGrid() {
       tone: 'violet',
     },
     {
+      icon: <Video size={22} />,
+      title: 'One-click meetings',
+      desc: 'Schedule Google Meet events with auto-generated dial-in. Or send your Calendly link in two taps.',
+      tone: 'cyan',
+    },
+    {
+      icon: <Headphones size={22} />,
+      title: 'Team huddles',
+      desc: 'Start a voice or video call from any channel. No setup, no third-party app. Powered by Jitsi.',
+      tone: 'emerald',
+    },
+    {
       icon: <Workflow size={22} />,
       title: 'Visual pipeline',
       desc: 'Drag leads across stages. See your funnel, what\'s won, what\'s rotting. Per-team-member views.',
@@ -442,16 +463,22 @@ function FeatureGrid() {
       tone: 'pink',
     },
     {
+      icon: <Volume2 size={22} />,
+      title: 'Distinct sound cues',
+      desc: 'Five hand-tuned tones — reminder chime, WhatsApp pop, team double-tap, new-lead arpeggio, system ping. Mute per channel.',
+      tone: 'yellow',
+    },
+    {
       icon: <Bell size={22} />,
       title: 'Real-time everything',
       desc: 'Server-Sent Events stream new messages, status changes, and reminders instantly to your team.',
-      tone: 'yellow',
+      tone: 'indigo',
     },
     {
       icon: <BarChart3 size={22} />,
       title: 'Reports that matter',
       desc: 'Revenue trends, conversion funnels, per-rep performance. Export to CSV in one click.',
-      tone: 'indigo',
+      tone: 'violet',
     },
     {
       icon: <Shield size={22} />,
@@ -469,7 +496,7 @@ function FeatureGrid() {
         </Reveal>
         <Reveal delay={80}>
           <h2 className="lp-section-title">
-            One platform. <span className="lp-gradient">Nine superpowers.</span>
+            One platform. <span className="lp-gradient">Twelve superpowers.</span>
           </h2>
         </Reveal>
         <Reveal delay={140}>
@@ -600,6 +627,293 @@ function SuggestionRow({ text }) {
 /* ========================================================================== */
 /* PLATFORM SECTION                                                           */
 /* ========================================================================== */
+
+/* ========================================================================== */
+/* MEETINGS SECTION — Google Meet + Calendly                                  */
+/* ========================================================================== */
+
+function MeetingsSection() {
+  return (
+    <section id="meetings" className="lp-section lp-meetings-section">
+      <div className="lp-meetings-orb" aria-hidden />
+      <div className="lp-container lp-meetings-layout">
+        <Reveal delay={120}>
+          <div className="lp-meeting-card">
+            <div className="lp-meeting-head">
+              <div className="lp-meeting-gcal">
+                <GoogleCalIcon />
+                <span>Google Calendar</span>
+              </div>
+              <div className="lp-meeting-status">
+                <span className="lp-status-dot" /> Created · just now
+              </div>
+            </div>
+
+            <div className="lp-meeting-body">
+              <div className="lp-meeting-title">Meeting with Ahmed Malik</div>
+              <div className="lp-meeting-when">
+                <Clock size={13} />
+                <span>Tomorrow · 5:00 PM – 5:30 PM PKT</span>
+              </div>
+
+              <div className="lp-meeting-meet">
+                <div className="lp-meet-icon"><Video size={14} /></div>
+                <div className="lp-meet-info">
+                  <div className="lp-meet-label">Google Meet</div>
+                  <div className="lp-meet-link">meet.google.com/atb-zxqe-pks</div>
+                </div>
+                <button className="lp-meet-join">Join</button>
+              </div>
+
+              <div className="lp-meeting-attendees">
+                <div className="lp-attendee">
+                  <span className="lp-attendee-dot lp-att-host" />
+                  <span>sami@wappflow.app</span>
+                  <span className="lp-attendee-role">Host</span>
+                </div>
+                <div className="lp-attendee">
+                  <span className="lp-attendee-dot lp-att-guest" />
+                  <span>ahmed.malik@gmail.com</span>
+                  <span className="lp-attendee-role">Invited</span>
+                </div>
+              </div>
+
+              <div className="lp-meeting-actions">
+                <div className="lp-meeting-action-chip">
+                  <Calendar size={12} /> Added to your calendar
+                </div>
+                <div className="lp-meeting-action-chip">
+                  <Mail size={12} /> Invite sent
+                </div>
+                <div className="lp-meeting-action-chip">
+                  <Activity size={12} /> Logged on lead
+                </div>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+
+        <div className="lp-meetings-text">
+          <Reveal>
+            <div className="lp-section-eyebrow">
+              <Video size={13} /> Meetings
+            </div>
+          </Reveal>
+          <Reveal delay={80}>
+            <h2 className="lp-section-title left">
+              Schedule meetings without <span className="lp-gradient">leaving the CRM</span>.
+            </h2>
+          </Reveal>
+          <Reveal delay={140}>
+            <p className="lp-section-sub left">
+              Click <strong>Schedule</strong> on any lead. Pick a time. WappFlow creates a real
+              Google Calendar event with a Google Meet link, emails the invite, and logs it on the
+              lead’s timeline. Done.
+            </p>
+          </Reveal>
+
+          <div className="lp-meeting-bullets">
+            <Reveal delay={60}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-google"><GoogleCalIcon size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">Google Meet, in one click</div>
+                  <div className="lp-mb-desc">Connect your Google account once. Every event auto-generates a Meet dial-in.</div>
+                </div>
+              </div>
+            </Reveal>
+            <Reveal delay={120}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-calendly"><Calendar size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">Or send a Calendly link</div>
+                  <div className="lp-mb-desc">Paste your URL in Settings. Send it to any lead on WhatsApp in two taps.</div>
+                </div>
+              </div>
+            </Reveal>
+            <Reveal delay={180}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-emerald"><CheckCircle2 size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">It all lands in the audit log</div>
+                  <div className="lp-mb-desc">Every scheduled meeting appears on the lead timeline — searchable, exportable.</div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GoogleCalIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <rect x="3" y="5" width="18" height="16" rx="2" fill="#fff" stroke="#dadce0" />
+      <rect x="3" y="5" width="18" height="4" rx="2" fill="#1a73e8" />
+      <text x="12" y="17" textAnchor="middle" fontSize="8" fontWeight="700" fill="#1a73e8" fontFamily="system-ui, sans-serif">31</text>
+    </svg>
+  );
+}
+
+/* ========================================================================== */
+/* HUDDLE SECTION — Jitsi voice/video                                         */
+/* ========================================================================== */
+
+function HuddleSection() {
+  return (
+    <section className="lp-section lp-huddle-section">
+      <div className="lp-container lp-huddle-layout">
+        <div className="lp-huddle-text">
+          <Reveal>
+            <div className="lp-section-eyebrow">
+              <Headphones size={13} /> Team Huddles
+            </div>
+          </Reveal>
+          <Reveal delay={80}>
+            <h2 className="lp-section-title left">
+              Hop on a call. <span className="lp-gradient">Don&apos;t leave the app.</span>
+            </h2>
+          </Reveal>
+          <Reveal delay={140}>
+            <p className="lp-section-sub left">
+              Hit <strong>Huddle</strong> in any team channel — voice or video. A call room opens
+              instantly. No accounts, no app installs, no API keys. Powered by Jitsi.
+            </p>
+          </Reveal>
+
+          <div className="lp-huddle-bullets">
+            <Reveal delay={60}>
+              <div className="lp-huddle-bullet">
+                <CheckCircle2 size={15} />
+                <span>Voice or video — your call (literally)</span>
+              </div>
+            </Reveal>
+            <Reveal delay={100}>
+              <div className="lp-huddle-bullet">
+                <CheckCircle2 size={15} />
+                <span>Screen share, mute, hand raise — all included</span>
+              </div>
+            </Reveal>
+            <Reveal delay={140}>
+              <div className="lp-huddle-bullet">
+                <CheckCircle2 size={15} />
+                <span>Copy invite link to share with the rest of the team</span>
+              </div>
+            </Reveal>
+            <Reveal delay={180}>
+              <div className="lp-huddle-bullet">
+                <CheckCircle2 size={15} />
+                <span>End-to-end encrypted via Jitsi infrastructure</span>
+              </div>
+            </Reveal>
+          </div>
+        </div>
+
+        <Reveal delay={180}>
+          <div className="lp-huddle-card">
+            <div className="lp-preview-topbar">
+              <div className="lp-dots"><span /><span /><span /></div>
+              <div className="lp-preview-url">meet.jit.si/wappflow-sales-team</div>
+              <div className="lp-preview-status"><span className="lp-status-dot" /> Live · 4 in call</div>
+            </div>
+
+            <div className="lp-huddle-grid">
+              <HuddleTile name="Sami S." color="#6366f1" speaking video />
+              <HuddleTile name="Ayesha K." color="#06b6d4" />
+              <HuddleTile name="Bilal A." color="#10b981" video />
+              <HuddleTile name="Fatima I." color="#f59e0b" muted />
+            </div>
+
+            <div className="lp-huddle-toolbar">
+              <button className="lp-huddle-btn"><Mic size={14} /></button>
+              <button className="lp-huddle-btn"><Video size={14} /></button>
+              <button className="lp-huddle-btn"><MapPin size={14} /></button>
+              <button className="lp-huddle-btn lp-huddle-end">End</button>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function HuddleTile({ name, color, video, speaking, muted }) {
+  const initials = name.split(' ').map(p => p[0]).join('');
+  return (
+    <div className={`lp-htile ${speaking ? 'speaking' : ''}`}>
+      {video ? (
+        <div className="lp-htile-video" style={{ background: `radial-gradient(circle at 50% 30%, ${color}66, ${color}22 60%, #111 80%)` }}>
+          <div className="lp-htile-avatar" style={{ background: color }}>{initials}</div>
+        </div>
+      ) : (
+        <div className="lp-htile-noVideo">
+          <div className="lp-htile-avatar lg" style={{ background: color }}>{initials}</div>
+        </div>
+      )}
+      <div className="lp-htile-foot">
+        <span>{name}</span>
+        {muted && <Mic size={11} className="lp-htile-mute" />}
+        {speaking && <span className="lp-htile-pulse" aria-hidden />}
+      </div>
+    </div>
+  );
+}
+
+/* ========================================================================== */
+/* INTEGRATIONS SECTION                                                       */
+/* ========================================================================== */
+
+function IntegrationsSection() {
+  const items = [
+    { name: 'Google Meet', desc: 'Auto-generated dial-ins on every event', color: '#1a73e8', icon: <Video size={16} /> },
+    { name: 'Google Calendar', desc: 'Real calendar events from any lead', color: '#34a853', icon: <Calendar size={16} /> },
+    { name: 'Calendly', desc: 'One-click send to lead on WhatsApp', color: '#006bff', icon: <Calendar size={16} /> },
+    { name: 'Jitsi Meet', desc: 'Voice + video huddles, end-to-end encrypted', color: '#1e8c4a', icon: <Headphones size={16} /> },
+    { name: 'Groq · OpenAI · Anthropic', desc: 'Bring your own LLM keys', color: '#a855f7', icon: <Brain size={16} /> },
+    { name: 'SMTP · IMAP', desc: 'Send email, poll inbound replies', color: '#f59e0b', icon: <Mail size={16} /> },
+    { name: 'Google OAuth', desc: 'One-click sign-in for your team', color: '#ea4335', icon: <Lock size={16} /> },
+    { name: 'Web Push (VAPID)', desc: 'Browser notifications, even when closed', color: '#06b6d4', icon: <Bell size={16} /> },
+  ];
+
+  return (
+    <section className="lp-section lp-int-section">
+      <div className="lp-container">
+        <Reveal>
+          <div className="lp-section-eyebrow">
+            <Plug size={13} /> Integrations
+          </div>
+        </Reveal>
+        <Reveal delay={80}>
+          <h2 className="lp-section-title">
+            Plugs into the <span className="lp-gradient">stack you already use</span>.
+          </h2>
+        </Reveal>
+        <Reveal delay={140}>
+          <p className="lp-section-sub">
+            WappFlow connects to the services your team actually relies on — without giving up data ownership.
+            Your keys. Your servers. Your control.
+          </p>
+        </Reveal>
+
+        <div className="lp-int-grid">
+          {items.map((it, i) => (
+            <Reveal key={i} delay={(i % 4) * 50}>
+              <div className="lp-int-card" style={{ '--c': it.color }}>
+                <div className="lp-int-icon">{it.icon}</div>
+                <div className="lp-int-text">
+                  <div className="lp-int-name">{it.name}</div>
+                  <div className="lp-int-desc">{it.desc}</div>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function PlatformSection() {
   const platforms = [
@@ -870,6 +1184,10 @@ function Testimonials() {
       n: 'Owner, Karachi real estate agency',
     },
     {
+      q: 'Schedule, meet, follow up — all in one window. The Google Meet integration alone saved my team six tabs.',
+      n: 'Head of Sales, SaaS company',
+    },
+    {
       q: 'The unified inbox alone was worth switching. My team used to flip between three phones. Now everything is one tab.',
       n: 'Sales Lead, e-commerce brand',
     },
@@ -1026,6 +1344,18 @@ function FAQ() {
     {
       q: 'Can I migrate from another CRM?',
       a: 'Yes. CSV import is built in for leads and contacts. For complex migrations, our team can help — talk to sales.',
+    },
+    {
+      q: 'How does Google Meet scheduling work?',
+      a: 'Connect Google Calendar from Settings → Integrations (one-time OAuth). Then click Schedule on any lead — WappFlow creates a real Google Calendar event with an auto-generated Meet link, sends the invite to the lead\'s email, and logs the meeting on their timeline.',
+    },
+    {
+      q: 'Do I need a Calendly account?',
+      a: 'No, Calendly is optional. If you have one, paste the URL in Settings → Integrations. Then Schedule → Calendly link → "Send to lead on WhatsApp" delivers your booking page in a tap. Without Calendly, you can still use Google Meet scheduling.',
+    },
+    {
+      q: 'Are team huddles really included?',
+      a: 'Yes, no upcharge. Huddles run on Jitsi Meet — free, open-source, end-to-end encrypted. Voice and video supported. No accounts, no installs, no API keys needed.',
     },
   ];
 
@@ -1709,6 +2039,252 @@ function GlobalStyles() {
       .lp-ai-card-foot { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--lp-text-muted); padding-top: 12px; border-top: 1px solid var(--lp-border); }
       .lp-ai-foot-chip { padding: 3px 8px; background: rgba(168,85,247,0.1); border-radius: 6px; color: #c084fc; }
 
+      /* ============== MEETINGS ============== */
+      .lp-meetings-section { position: relative; }
+      .lp-meetings-orb {
+        position: absolute; top: 30%; right: -10%;
+        width: 700px; height: 700px;
+        background: radial-gradient(circle, rgba(6,182,212,0.18), transparent 60%);
+        filter: blur(80px);
+        pointer-events: none;
+      }
+      .lp-meetings-layout {
+        position: relative;
+        display: grid; grid-template-columns: 1fr 1.05fr; gap: 64px;
+        align-items: center;
+      }
+      .lp-meeting-card {
+        background: rgba(20,22,33,0.85);
+        border: 1px solid var(--lp-border-strong);
+        border-radius: 20px;
+        overflow: hidden;
+        backdrop-filter: blur(20px);
+        box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+      }
+      .lp-meeting-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 20px;
+        background: rgba(255,255,255,0.02);
+        border-bottom: 1px solid var(--lp-border);
+      }
+      .lp-meeting-gcal {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-size: 13px; font-weight: 600;
+        color: var(--lp-text);
+      }
+      .lp-meeting-status {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 11.5px; color: var(--lp-text-dim);
+      }
+      .lp-meeting-body { padding: 22px; }
+      .lp-meeting-title { font-size: 18px; font-weight: 800; letter-spacing: -0.015em; margin-bottom: 8px; color: #fff; }
+      .lp-meeting-when {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-size: 13px; color: var(--lp-text-dim);
+        padding: 6px 12px;
+        background: rgba(99,102,241,0.10);
+        border: 1px solid rgba(99,102,241,0.22);
+        border-radius: 999px;
+        margin-bottom: 18px;
+      }
+      .lp-meeting-meet {
+        display: flex; align-items: center; gap: 12px;
+        padding: 13px 14px;
+        background: rgba(26, 115, 232, 0.08);
+        border: 1px solid rgba(26, 115, 232, 0.25);
+        border-radius: 12px;
+        margin-bottom: 16px;
+      }
+      .lp-meet-icon {
+        width: 36px; height: 36px;
+        border-radius: 9px;
+        background: #1a73e8;
+        color: #fff;
+        display: grid; place-items: center;
+      }
+      .lp-meet-info { flex: 1; min-width: 0; }
+      .lp-meet-label { font-size: 11px; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+      .lp-meet-link { font-size: 13px; color: var(--lp-text); font-family: 'SF Mono', Menlo, monospace; word-break: break-all; }
+      .lp-meet-join {
+        padding: 8px 16px;
+        background: #1a73e8;
+        color: #fff;
+        border: none; border-radius: 8px;
+        font-size: 12.5px; font-weight: 700;
+        cursor: pointer;
+        font-family: inherit;
+        box-shadow: 0 4px 12px rgba(26,115,232,0.4);
+      }
+
+      .lp-meeting-attendees {
+        display: flex; flex-direction: column; gap: 6px;
+        padding: 10px 14px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--lp-border);
+        border-radius: 10px;
+        margin-bottom: 16px;
+      }
+      .lp-attendee {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 12.5px; color: var(--lp-text-dim);
+      }
+      .lp-attendee-dot { width: 7px; height: 7px; border-radius: 50%; }
+      .lp-att-host { background: #818cf8; box-shadow: 0 0 6px #818cf8; }
+      .lp-att-guest { background: #34d399; box-shadow: 0 0 6px #34d399; }
+      .lp-attendee-role { margin-left: auto; font-size: 10.5px; color: var(--lp-text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+
+      .lp-meeting-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+      .lp-meeting-action-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 5px 10px;
+        background: rgba(52,211,153,0.08);
+        border: 1px solid rgba(52,211,153,0.22);
+        border-radius: 999px;
+        font-size: 11px; color: #6ee7b7;
+        font-weight: 500;
+      }
+
+      .lp-meetings-text .lp-section-eyebrow { background: rgba(6,182,212,0.1); border-color: rgba(6,182,212,0.25); color: #67e8f9; }
+      .lp-meeting-bullets { display: flex; flex-direction: column; gap: 14px; margin-top: 28px; }
+      .lp-meeting-bullet { display: flex; gap: 14px; align-items: flex-start; }
+      .lp-mb-icon {
+        width: 36px; height: 36px;
+        border-radius: 9px;
+        display: grid; place-items: center;
+        flex-shrink: 0;
+      }
+      .lp-mb-google { background: rgba(26,115,232,0.12); border: 1px solid rgba(26,115,232,0.28); }
+      .lp-mb-calendly { background: rgba(0,107,255,0.12); border: 1px solid rgba(0,107,255,0.28); color: #93c5fd; }
+      .lp-mb-emerald { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.28); color: #6ee7b7; }
+      .lp-mb-title { font-weight: 700; font-size: 14.5px; color: #fff; margin-bottom: 2px; }
+      .lp-mb-desc { font-size: 13px; color: var(--lp-text-muted); line-height: 1.5; }
+
+      /* ============== HUDDLE ============== */
+      .lp-huddle-section { position: relative; }
+      .lp-huddle-layout {
+        display: grid; grid-template-columns: 1fr 1.1fr; gap: 64px;
+        align-items: center;
+      }
+      .lp-huddle-text .lp-section-eyebrow { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.25); color: #86efac; }
+      .lp-huddle-bullets { display: flex; flex-direction: column; gap: 12px; margin-top: 28px; }
+      .lp-huddle-bullet {
+        display: inline-flex; align-items: center; gap: 10px;
+        font-size: 14.5px; color: var(--lp-text-dim);
+      }
+      .lp-huddle-bullet svg { color: #34d399; flex-shrink: 0; }
+
+      .lp-huddle-card {
+        background: rgba(11,13,22,0.95);
+        border: 1px solid var(--lp-border-strong);
+        border-radius: 20px;
+        overflow: hidden;
+        backdrop-filter: blur(20px);
+        box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+      }
+      .lp-huddle-grid {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        padding: 6px;
+        background: #000;
+      }
+      .lp-htile {
+        position: relative;
+        aspect-ratio: 4 / 3;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #0a0c14;
+        border: 1px solid rgba(255,255,255,0.06);
+      }
+      .lp-htile.speaking { border-color: rgba(99,102,241,0.55); box-shadow: 0 0 0 2px rgba(99,102,241,0.25); }
+      .lp-htile-video, .lp-htile-noVideo {
+        position: absolute; inset: 0;
+        display: grid; place-items: center;
+      }
+      .lp-htile-noVideo { background: #14161f; }
+      .lp-htile-avatar {
+        width: 36px; height: 36px;
+        border-radius: 50%;
+        display: grid; place-items: center;
+        color: #fff; font-weight: 700; font-size: 13px;
+      }
+      .lp-htile-avatar.lg { width: 50px; height: 50px; font-size: 16px; }
+      .lp-htile-foot {
+        position: absolute; bottom: 6px; left: 6px;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 3px 9px;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(6px);
+        border-radius: 6px;
+        font-size: 11px; color: #fff;
+      }
+      .lp-htile-mute { color: #f87171; }
+      .lp-htile-pulse {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: #34d399;
+        box-shadow: 0 0 0 0 rgba(52,211,153,0.6);
+        animation: lp-pulse 1.5s infinite;
+      }
+      .lp-huddle-toolbar {
+        display: flex; justify-content: center; gap: 8px;
+        padding: 14px;
+        background: rgba(255,255,255,0.02);
+        border-top: 1px solid var(--lp-border);
+      }
+      .lp-huddle-btn {
+        width: 38px; height: 38px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.08);
+        color: var(--lp-text);
+        border: 1px solid var(--lp-border);
+        cursor: pointer;
+        display: grid; place-items: center;
+        font-family: inherit;
+      }
+      .lp-huddle-btn:hover { background: rgba(255,255,255,0.14); }
+      .lp-huddle-btn.lp-huddle-end {
+        width: auto;
+        padding: 0 16px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: #fff;
+        font-size: 13px; font-weight: 700;
+        border: none;
+        box-shadow: 0 4px 14px rgba(239,68,68,0.45);
+      }
+
+      /* ============== INTEGRATIONS ============== */
+      .lp-int-section { position: relative; }
+      .lp-int-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 14px;
+      }
+      .lp-int-card {
+        display: flex; align-items: center; gap: 14px;
+        padding: 18px 20px;
+        background: var(--lp-surface);
+        border: 1px solid var(--lp-border);
+        border-radius: 14px;
+        backdrop-filter: blur(20px);
+        transition: all 0.25s;
+      }
+      .lp-int-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--c);
+        box-shadow: 0 12px 28px rgba(0,0,0,0.3), 0 0 18px color-mix(in srgb, var(--c) 25%, transparent);
+      }
+      .lp-int-icon {
+        width: 38px; height: 38px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--c) 13%, transparent);
+        border: 1px solid color-mix(in srgb, var(--c) 32%, transparent);
+        color: var(--c);
+        display: grid; place-items: center;
+        flex-shrink: 0;
+      }
+      .lp-int-name { font-weight: 700; font-size: 14px; color: var(--lp-text); }
+      .lp-int-desc { font-size: 12.5px; color: var(--lp-text-muted); line-height: 1.45; margin-top: 2px; }
+
       /* ============== PLATFORM ============== */
       .lp-platforms-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
       .lp-platform-card {
@@ -1955,6 +2531,8 @@ function GlobalStyles() {
         .lp-preview-chat { border-right: none; border-bottom: 1px solid var(--lp-border); }
         .lp-preview-thread { max-height: 280px; }
         .lp-ai-layout { grid-template-columns: 1fr; gap: 32px; }
+        .lp-meetings-layout { grid-template-columns: 1fr; gap: 32px; }
+        .lp-huddle-layout { grid-template-columns: 1fr; gap: 32px; }
         .lp-team-layout { grid-template-columns: 1fr; gap: 32px; }
         .lp-section-title.left, .lp-section-sub.left { text-align: center; }
         .lp-dash-grid { grid-template-columns: 1fr 1fr; }
