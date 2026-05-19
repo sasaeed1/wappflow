@@ -17,6 +17,7 @@ import { Send as SendIcon } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { useSound, SOUND_KINDS } from '@/lib/sounds';
+import { usePlan } from '@/lib/plan';
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
@@ -909,6 +910,29 @@ function NotificationsTab({ showToast }) {
 //  INTEGRATIONS TAB — Google Calendar + Calendly
 // ════════════════════════════════════════════════════════════
 
+function PlanLockBadge({ feature, requiredPlan, currentPlan }) {
+  return (
+    <div style={{
+      marginTop: 12,
+      padding: '10px 14px',
+      background: 'linear-gradient(135deg, rgba(245,158,11,0.10), rgba(168,85,247,0.08))',
+      border: '1px solid rgba(245,158,11,0.30)',
+      borderRadius: 10,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      fontSize: 13,
+      color: '#fde68a',
+    }}>
+      <Lock size={14} />
+      <span style={{ flex: 1 }}>
+        <strong>{feature}</strong> is part of the {requiredPlan} plan. You&apos;re on {currentPlan}.
+      </span>
+      <a href="/settings?tab=workspace" style={{ color: '#fbbf24', fontWeight: 700, textDecoration: 'none' }}>Upgrade →</a>
+    </div>
+  );
+}
+
 function IntegrationsTab({ showToast }) {
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || 'placeholder'}>
@@ -919,10 +943,14 @@ function IntegrationsTab({ showToast }) {
 
 function IntegrationsContent({ showToast }) {
   const confirm = useConfirm();
+  const plan = usePlan();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [calendlyDraft, setCalendlyDraft] = useState('');
+
+  const gCalUnlocked = plan.hasFeature('google_calendar');
+  const calendlyUnlocked = plan.hasFeature('calendly');
 
   useEffect(() => { reload(); }, []);
 
@@ -1032,6 +1060,10 @@ function IntegrationsContent({ showToast }) {
             </div>
           )}
 
+          {!gCalUnlocked && (
+            <PlanLockBadge feature="Google Calendar" requiredPlan="Growth" currentPlan={plan.planName || 'Free'} />
+          )}
+
           {g.connected ? (
             <div style={{ marginTop: 14, padding: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div>
@@ -1047,9 +1079,10 @@ function IntegrationsContent({ showToast }) {
             </div>
           ) : (
             <div style={{ marginTop: 14 }}>
-              <button onClick={() => googleLogin()} disabled={busy || !g.configured || !GOOGLE_CLIENT_ID}
-                style={{ padding: '11px 18px', background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: (busy || !g.configured) ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 6px 16px rgba(99,102,241,0.35)', opacity: (busy || !g.configured) ? 0.6 : 1 }}>
-                <Link size={14} /> Connect Google Calendar
+              <button onClick={() => googleLogin()} disabled={busy || !g.configured || !GOOGLE_CLIENT_ID || !gCalUnlocked}
+                style={{ padding: '11px 18px', background: gCalUnlocked ? 'linear-gradient(135deg, #6366f1, #a855f7)' : 'rgba(255,255,255,0.06)', color: gCalUnlocked ? '#fff' : 'var(--text-muted)', border: gCalUnlocked ? 'none' : '1px solid var(--border)', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: (busy || !g.configured || !gCalUnlocked) ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: gCalUnlocked ? '0 6px 16px rgba(99,102,241,0.35)' : 'none', opacity: (busy || !g.configured || !gCalUnlocked) ? 0.55 : 1 }}>
+                {gCalUnlocked ? <Link size={14} /> : <Lock size={14} />}
+                {gCalUnlocked ? 'Connect Google Calendar' : 'Upgrade to unlock'}
               </button>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
                 You’ll grant the <code>calendar.events</code> scope. We only create events you trigger from the CRM.
@@ -1079,17 +1112,23 @@ function IntegrationsContent({ showToast }) {
             )}
           </div>
 
+          {!calendlyUnlocked && (
+            <PlanLockBadge feature="Calendly" requiredPlan="Growth" currentPlan={plan.planName || 'Free'} />
+          )}
+
           <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <input
               type="url"
               value={calendlyDraft}
               onChange={(e) => setCalendlyDraft(e.target.value)}
               placeholder="https://calendly.com/your-handle/30min"
-              style={{ flex: 1, minWidth: 240, padding: '11px 14px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text)', fontSize: 13.5, outline: 'none' }}
+              disabled={!calendlyUnlocked}
+              style={{ flex: 1, minWidth: 240, padding: '11px 14px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: 9, color: 'var(--text)', fontSize: 13.5, outline: 'none', opacity: calendlyUnlocked ? 1 : 0.5, cursor: calendlyUnlocked ? 'text' : 'not-allowed' }}
             />
-            <button onClick={handleSaveCalendly} disabled={busy}
-              style={{ padding: '11px 18px', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 6px 16px rgba(16,185,129,0.3)' }}>
-              <Save size={14} /> {c.configured ? 'Update' : 'Save'}
+            <button onClick={handleSaveCalendly} disabled={busy || !calendlyUnlocked}
+              style={{ padding: '11px 18px', background: calendlyUnlocked ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.06)', color: calendlyUnlocked ? '#fff' : 'var(--text-muted)', border: calendlyUnlocked ? 'none' : '1px solid var(--border)', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: (busy || !calendlyUnlocked) ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: calendlyUnlocked ? '0 6px 16px rgba(16,185,129,0.3)' : 'none', opacity: calendlyUnlocked ? 1 : 0.55 }}>
+              {calendlyUnlocked ? <Save size={14} /> : <Lock size={14} />}
+              {calendlyUnlocked ? (c.configured ? 'Update' : 'Save') : 'Locked'}
             </button>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
@@ -1619,11 +1658,12 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
     return () => clearInterval(iv);
   }, [account.id]);
 
-  const handleReconnect = async () => {
+  const handleReconnect = async (force = false) => {
     setReconnecting(true);
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${BASE_URL}/api/whatsapp/accounts/${account.id}/connect`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const url = `${BASE_URL}/api/whatsapp/accounts/${account.id}/connect${force ? '?force=true' : ''}`;
+      await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     } catch {} finally { setReconnecting(false); }
   };
 
@@ -1644,8 +1684,11 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
   };
 
   const isConnected = status?.isReady;
-  const isError = !status || ['disconnected', 'error', 'auth_failed', 'not_initialized'].includes(status?.status);
+  const isError = !status || ['disconnected', 'error', 'auth_failed', 'not_initialized', 'reconnect_failed'].includes(status?.status);
+  const isInitializing = status?.status === 'initializing';
   const isQR = status?.qrCode || status?.status === 'qr_ready';
+  // Stuck-init detector: if init has been running >40s with no QR yet, give user a manual reset option
+  const isStuckInit = isInitializing && (status?.initAgeSeconds || 0) > 40;
 
   return (
     <div style={{ border: `1.5px solid ${isConnected ? '#10b98130' : 'var(--border)'}`, borderRadius: 16, overflow: 'hidden', background: isConnected ? 'rgba(16,185,129,0.10)' : 'var(--surface2)' }}>
@@ -1674,15 +1717,34 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
               </div>
             )}
             <p style={{ fontSize: 12, color: isConnected ? '#10b981' : isError ? '#ef4444' : '#f59e0b', margin: 0, fontWeight: 600 }}>
-              {isConnected ? `Connected — +${status.phoneNumber}` : isError ? 'Disconnected' : 'Connecting...'}
+              {isConnected ? `Connected — +${status.phoneNumber}`
+                : isError ? 'Disconnected'
+                : isQR ? 'Waiting for you to scan the QR'
+                : isStuckInit ? `Taking longer than usual (${status.initAgeSeconds}s)`
+                : 'Connecting…'}
             </p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {(isError || !status?.isReady) && (
-            <button onClick={handleReconnect} disabled={reconnecting} style={{ padding: '7px 14px', background: '#25d366', color: 'white', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Disconnected/errored → "Connect" (force=true since there's nothing running) */}
+          {isError && (
+            <button onClick={() => handleReconnect(true)} disabled={reconnecting} style={{ padding: '7px 14px', background: '#25d366', color: 'white', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               <RefreshCw size={13} style={reconnecting ? { animation: 'spin 1s linear infinite' } : {}} />
-              {reconnecting ? 'Connecting...' : 'Connect'}
+              {reconnecting ? 'Connecting…' : 'Connect'}
+            </button>
+          )}
+          {/* QR is showing → "Refresh QR" (force=true tears down + regenerates) */}
+          {isQR && (
+            <button onClick={() => handleReconnect(true)} disabled={reconnecting} style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #25d366', color: '#25d366', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={13} style={reconnecting ? { animation: 'spin 1s linear infinite' } : {}} />
+              {reconnecting ? 'Refreshing…' : 'Refresh QR'}
+            </button>
+          )}
+          {/* Stuck initializing → offer a reset (force kills any zombie Chrome and starts fresh) */}
+          {isStuckInit && (
+            <button onClick={() => handleReconnect(true)} disabled={reconnecting} style={{ padding: '7px 14px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={13} style={reconnecting ? { animation: 'spin 1s linear infinite' } : {}} />
+              Reset
             </button>
           )}
           {isConnected && (

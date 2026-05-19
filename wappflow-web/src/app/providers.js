@@ -2,12 +2,15 @@
 
 import { ConfirmProvider } from '@/lib/confirm';
 import { SoundProvider } from '@/lib/sounds';
+import { PlanProvider } from '@/lib/plan';
 
 export default function Providers({ children }) {
   return (
     <ConfirmProvider>
       <SoundProvider>
-        {children}
+        <PlanProvider>
+          {children}
+        </PlanProvider>
       </SoundProvider>
     </ConfirmProvider>
   );

@@ -148,6 +148,179 @@ const DEFAULT_ROLE_PERMISSIONS = {
   user:        { view_all_leads: false, create_lead: true, edit_lead: true, delete_lead: false, view_reports: false, manage_settings: false, manage_team: false, manage_invoices: false, manage_whatsapp: false },
 };
 
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PLAN TIERS — single source of truth for limits and feature flags
+// ═══════════════════════════════════════════════════════════════════════════════
+// limits: -1 means unlimited. Frontend reads via GET /api/workspace/plan-info.
+const PLAN_DEFS = {
+  free: {
+    name: 'Free',
+    price: 0,
+    limits: {
+      leads: 50,
+      team_members: 1,
+      whatsapp_accounts: 1,
+      instagram_accounts: 0,
+      facebook_accounts: 0,
+      website_forms: 0,
+    },
+    features: {
+      ai_replies: 'limited',
+      email_integration: false,
+      shared_inbox: false,
+      internal_notes: false,
+      analytics: false,
+      automations: false,
+      google_calendar: false,
+      calendly: false,
+      multi_channel_inbox: false,
+      huddle: false,
+      reports: false,
+    },
+  },
+  starter: {
+    name: 'Starter',
+    price: 19,
+    limits: {
+      leads: 300,
+      team_members: 2,
+      whatsapp_accounts: 1,
+      instagram_accounts: 0,
+      facebook_accounts: 0,
+      website_forms: 0,
+    },
+    features: {
+      ai_replies: true,
+      email_integration: true,
+      shared_inbox: true,
+      internal_notes: true,
+      analytics: 'basic',
+      voice_notes: true,
+      automations: false,
+      google_calendar: false,
+      calendly: false,
+      multi_channel_inbox: false,
+      huddle: false,
+      reports: false,
+    },
+  },
+  growth: {
+    name: 'Growth',
+    price: 49,
+    most_popular: true,
+    limits: {
+      leads: -1,
+      team_members: 5,
+      whatsapp_accounts: 3,
+      instagram_accounts: 3,
+      facebook_accounts: 3,
+      website_forms: 3,
+    },
+    features: {
+      ai_replies: true,
+      email_integration: true,
+      shared_inbox: true,
+      internal_notes: true,
+      analytics: true,
+      voice_notes: true,
+      automations: true,
+      google_calendar: true,
+      calendly: true,
+      multi_channel_inbox: true,
+      huddle: true,
+      reports: true,
+    },
+  },
+  enterprise: {
+    name: 'Enterprise',
+    price: null,
+    limits: {
+      leads: -1,
+      team_members: -1,
+      whatsapp_accounts: -1,
+      instagram_accounts: -1,
+      facebook_accounts: -1,
+      website_forms: -1,
+    },
+    features: {
+      ai_replies: true,
+      email_integration: true,
+      shared_inbox: true,
+      internal_notes: true,
+      analytics: true,
+      voice_notes: true,
+      automations: true,
+      google_calendar: true,
+      calendly: true,
+      multi_channel_inbox: true,
+      huddle: true,
+      reports: true,
+      api_access: true,
+      white_label: true,
+      sso: true,
+      custom_integrations: true,
+      byok_ai: true,
+      dedicated_support: true,
+    },
+  },
+};
+
+function getWorkspacePlan(workspaceId) {
+  let row = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(workspaceId);
+  if (!row) {
+    db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'free')`).run(workspaceId);
+    row = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(workspaceId);
+  }
+  return row;
+}
+
+function getPlanInfo(workspaceId) {
+  const row = getWorkspacePlan(workspaceId);
+  const def = PLAN_DEFS[row.plan] || PLAN_DEFS.free;
+  return { tier: row.plan, ...def, raw: row };
+}
+
+function getWorkspaceUsage(workspaceId) {
+  const safeCount = (sql) => {
+    try { return db.prepare(sql).get(workspaceId).n; } catch { return 0; }
+  };
+  return {
+    leads: safeCount('SELECT COUNT(*) as n FROM leads WHERE workspace_id = ? AND (is_deleted IS NULL OR is_deleted = 0)'),
+    team_members: safeCount("SELECT COUNT(*) as n FROM workspace_members WHERE workspace_id = ? AND (invite_status = 'active' OR invite_status IS NULL)"),
+    whatsapp_accounts: safeCount("SELECT COUNT(*) as n FROM platform_accounts WHERE workspace_id = ? AND platform = 'whatsapp'"),
+    instagram_accounts: safeCount("SELECT COUNT(*) as n FROM platform_accounts WHERE workspace_id = ? AND platform = 'instagram'"),
+    facebook_accounts: safeCount("SELECT COUNT(*) as n FROM platform_accounts WHERE workspace_id = ? AND platform = 'facebook'"),
+    website_forms: safeCount("SELECT COUNT(*) as n FROM platform_accounts WHERE workspace_id = ? AND platform = 'website'"),
+  };
+}
+
+// Returns { ok: true } or { ok: false, code: 'limit_exceeded', limit, usage, plan, message }
+function checkLimit(workspaceId, limitKey) {
+  const info = getPlanInfo(workspaceId);
+  const limit = info.limits[limitKey];
+  if (limit === -1 || limit == null) return { ok: true };
+  const usage = getWorkspaceUsage(workspaceId);
+  const current = usage[limitKey] || 0;
+  if (current >= limit) {
+    const human = limitKey.replace(/_/g, ' ');
+    return {
+      ok: false,
+      code: 'limit_exceeded',
+      limit,
+      usage: current,
+      plan: info.tier,
+      message: `Your ${info.name} plan allows ${limit} ${human}. Upgrade to add more.`,
+    };
+  }
+  return { ok: true };
+}
+
+function checkFeature(workspaceId, featureKey) {
+  const info = getPlanInfo(workspaceId);
+  const v = info.features[featureKey];
+  return { ok: !!v, plan: info.tier, planName: info.name, value: v };
+}
+
 // Auth Middleware — accepts token from Authorization header OR query string (for SSE/EventSource which can't set headers)
 const auth = (req, res, next) => {
   try {
@@ -1396,6 +1569,20 @@ app.post('/api/leads/bulk-upload', auth, (req, res) => {
     if (!Array.isArray(leads) || leads.length === 0)
       return res.status(400).json({ error: 'No leads provided' });
 
+    // Plan enforcement — block upload if current usage + new leads would exceed limit
+    const info = getPlanInfo(req.workspaceId);
+    const limit = info.limits.leads;
+    if (limit !== -1) {
+      const currentCount = db.prepare('SELECT COUNT(*) as n FROM leads WHERE workspace_id = ? AND (is_deleted IS NULL OR is_deleted = 0)').get(req.workspaceId).n;
+      if (currentCount + leads.length > limit) {
+        const remaining = Math.max(0, limit - currentCount);
+        return res.status(403).json({
+          error: `Your ${info.name} plan allows ${limit} leads. You have ${currentCount} and tried to add ${leads.length}. ${remaining} slots remaining. Upgrade to Growth for unlimited leads.`,
+          code: 'plan_limit',
+        });
+      }
+    }
+
     let created = 0, skipped = 0;
     const insertLead = db.transaction((leadsArr) => {
       leadsArr.forEach(l => {
@@ -1668,6 +1855,10 @@ app.get('/api/leads/:id', auth, (req, res) => {
 
 app.post('/api/leads', auth, (req, res) => {
   try {
+    // Plan enforcement — leads limit (Free: 50, Starter: 300, Growth/Enterprise: unlimited)
+    const limitCheck = checkLimit(req.workspaceId, 'leads');
+    if (!limitCheck.ok) return res.status(403).json({ error: limitCheck.message, code: 'plan_limit', ...limitCheck });
+
     const { customer_name, customer_phone, status, first_message, estimated_value, email, address, date_of_birth, lead_source } = req.body;
 
     // Duplicate check — digit-normalised so "+92 310 154 7564" matches "+923101547564"
@@ -2270,7 +2461,11 @@ app.get('/api/whatsapp/accounts/:id/status', auth, (req, res) => {
 app.post('/api/whatsapp/accounts/:id/connect', auth, async (req, res) => {
   const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
   if (!account) return res.status(404).json({ error: 'Account not found' });
-  try { await whatsappService.reconnect(req.params.id); res.json({ ok: true }); }
+  // ?force=true tears down any running Chrome before re-init.
+  // Default (no force) is idempotent — if a healthy QR session already exists, it's a no-op.
+  // Use force when the user explicitly clicks "Refresh QR" or "Reset".
+  const force = req.query.force === 'true' || req.body?.force === true;
+  try { await whatsappService.reconnect(req.params.id, { force }); res.json({ ok: true, forced: force }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2288,8 +2483,9 @@ app.post('/api/whatsapp/disconnect', async (req, res) => {
 
 app.post('/api/whatsapp/reconnect', auth, async (req, res) => {
   try {
-    res.json({ message: 'Reconnecting...' }); // respond immediately
-    await whatsappService.reconnect();         // runs async after response
+    const force = req.query.force === 'true' || req.body?.force === true;
+    res.json({ message: 'Reconnecting...', forced: force }); // respond immediately
+    await whatsappService.reconnect(null, { force });         // runs async after response
   } catch (e) { console.error('Reconnect error:', e.message); }
 });
 
@@ -2530,6 +2726,11 @@ app.put('/api/workspace', auth, (req, res) => {
 app.post('/api/workspace/invite', auth, async (req, res) => {
   try {
     if (!['super_admin', 'admin'].includes(req.userRole)) return res.status(403).json({ error: 'Insufficient permissions' });
+
+    // Plan enforcement — team_members limit
+    const limitCheck = checkLimit(req.workspaceId, 'team_members');
+    if (!limitCheck.ok) return res.status(403).json({ error: limitCheck.message, code: 'plan_limit', ...limitCheck });
+
     const { email, role, full_name } = req.body;
     if (!email || !role) return res.status(400).json({ error: 'Email and role required' });
     if (!['admin', 'manager', 'user'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
@@ -4073,6 +4274,11 @@ app.post('/api/platform-accounts', auth, (req, res) => {
     const { platform, account_name, slot_index } = req.body;
     if (!platform) return res.status(400).json({ error: 'platform required' });
 
+    // Plan enforcement — check feature + per-channel limit
+    const limitKey = `${platform}_accounts`;
+    const limitCheck = checkLimit(req.workspaceId, limitKey);
+    if (!limitCheck.ok) return res.status(403).json({ error: limitCheck.message, code: 'plan_limit', ...limitCheck });
+
     const existing = db.prepare('SELECT COUNT(*) as cnt FROM platform_accounts WHERE workspace_id = ? AND platform = ?').get(req.workspaceId, platform);
     if (existing.cnt >= 5) return res.status(400).json({ error: 'Maximum 5 accounts per platform' });
 
@@ -4427,12 +4633,27 @@ app.get('/api/leads/:leadId/timeline', auth, (req, res) => {
 // GET/PUT /api/workspace/plan — read or update the workspace plan tier
 app.get('/api/workspace/plan', auth, (req, res) => {
   try {
-    let plan = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId);
-    if (!plan) {
-      db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'starter')`).run(req.workspaceId);
-      plan = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId);
-    }
+    const plan = getWorkspacePlan(req.workspaceId);
     res.json({ plan });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/workspace/plan-info — full plan definition + current usage (used by frontend to render lock UI)
+app.get('/api/workspace/plan-info', auth, (req, res) => {
+  try {
+    const info = getPlanInfo(req.workspaceId);
+    const usage = getWorkspaceUsage(req.workspaceId);
+    res.json({
+      plan: info.tier,
+      name: info.name,
+      price: info.price,
+      most_popular: !!info.most_popular,
+      limits: info.limits,
+      features: info.features,
+      usage,
+      // All plan tiers (for the pricing comparison UI)
+      all_plans: Object.entries(PLAN_DEFS).map(([id, d]) => ({ id, ...d })),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -4725,6 +4946,10 @@ app.get('/api/integrations/status', auth, (req, res) => {
 // PUT /api/integrations/calendly — save / update Calendly URL
 app.put('/api/integrations/calendly', auth, (req, res) => {
   try {
+    // Plan enforcement — Calendly is Growth+ only
+    const feat = checkFeature(req.workspaceId, 'calendly');
+    if (!feat.ok) return res.status(403).json({ error: `Calendly integration is not available on the ${feat.planName} plan. Upgrade to Growth.`, code: 'plan_feature' });
+
     const { url } = req.body || {};
     if (url && !/^https?:\/\/(?:www\.)?calendly\.com\//i.test(String(url).trim())) {
       return res.status(400).json({ error: 'URL must be a Calendly link (https://calendly.com/...)' });
@@ -4739,6 +4964,10 @@ app.put('/api/integrations/calendly', auth, (req, res) => {
 // POST /api/integrations/google-calendar/connect — exchange auth code for refresh token
 app.post('/api/integrations/google-calendar/connect', auth, async (req, res) => {
   try {
+    // Plan enforcement — Google Calendar is Growth+ only
+    const feat = checkFeature(req.workspaceId, 'google_calendar');
+    if (!feat.ok) return res.status(403).json({ error: `Google Calendar integration is not available on the ${feat.planName} plan. Upgrade to Growth.`, code: 'plan_feature' });
+
     const { code } = req.body || {};
     if (!code) return res.status(400).json({ error: 'Authorization code required' });
 

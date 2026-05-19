@@ -12,6 +12,7 @@ class WhatsAppService {
     this.sessionName = sessionName; // LocalAuth clientId (undefined = legacy session)
     this.client = null;
     this.qrCode = null;
+    this.qrTimestamp = null; // ms epoch when QR was last refreshed
     this.status = 'disconnected';
     this.isReady = false;
     this.phoneNumber = null;
@@ -23,6 +24,10 @@ class WhatsAppService {
     this.heartbeatTimer = null;
     this.heartbeatFailCount = 0;
     this.userLoggedOut = false; // set true on intentional logout — prevents auto-reconnect loops
+    // Init watchdog — if status stays in `initializing` too long, surface as `error`
+    this.initWatchdogTimer = null;
+    this.initStartedAt = null;
+    this.browserPid = null; // tracked puppeteer chrome PID, set in initialize()
   }
 
   generateId() {
@@ -33,8 +38,15 @@ class WhatsAppService {
   }
 
   // ── Kill orphaned Chromium processes using our profile, then remove lock files ──
+  // This is the single most important reliability primitive — when a previous Chrome
+  // session lingers (Singleton lock held, zombie process), the next initialize() will
+  // hang forever in 'initializing'. We aggressively clear that state here.
   _cleanLocks() {
-    // Windows only: kill orphaned Chromium processes via wmic/taskkill
+    const authBase2 = process.env.NODE_ENV === 'production' ? '/data/.wwebjs_auth' : './.wwebjs_auth';
+    const sessionDir = this.sessionName ? `session-${this.sessionName}` : 'session';
+    const profilePath = `${authBase2}/${sessionDir}`;
+
+    // Windows: kill orphaned Chromium processes via wmic/taskkill (legacy session only)
     if (process.platform === 'win32' && !this.sessionName) {
       try {
         const out = execSync(
@@ -56,13 +68,35 @@ class WhatsAppService {
       }
     }
 
-    // Remove lock files
-    const authBase2 = process.env.NODE_ENV === 'production' ? '/data/.wwebjs_auth' : './.wwebjs_auth';
-    const sessionDir = this.sessionName ? `session-${this.sessionName}` : 'session';
+    // Linux: find any chromium/chrome processes whose --user-data-dir matches OUR profile
+    // (so we don't kill other sessions' Chromes). Uses pgrep -af.
+    if (process.platform !== 'win32') {
+      try {
+        const out = execSync(`pgrep -af "user-data-dir=${profilePath}" || true`, { timeout: 5000 }).toString();
+        const pids = out.split('\n').map(l => l.trim()).filter(Boolean).map(l => l.split(/\s+/)[0]).filter(Boolean);
+        // Also include the tracked browserPid if it's not already in the list
+        if (this.browserPid && !pids.includes(String(this.browserPid))) pids.push(String(this.browserPid));
+        if (pids.length > 0) {
+          console.log(`🔫 Killing ${pids.length} lingering Chromium PID(s) for ${sessionDir}: ${pids.join(', ')}`);
+          for (const pid of pids) {
+            try { execSync(`kill -9 ${pid} 2>/dev/null || true`, { timeout: 2000 }); } catch {}
+          }
+          // Give kernel a moment to reap the processes before we touch the profile dir
+          execSync('sleep 0.5');
+        }
+      } catch (e) {
+        console.log('⚠️ Linux Chromium cleanup skipped:', e.message);
+      }
+      this.browserPid = null;
+    }
+
+    // Remove lock files (covers Singleton* on all platforms + Linux-specific .lock)
     for (const p of [
-      `${authBase2}/${sessionDir}/SingletonLock`,
-      `${authBase2}/${sessionDir}/SingletonCookie`,
-      `${authBase2}/${sessionDir}/SingletonSocket`,
+      `${profilePath}/SingletonLock`,
+      `${profilePath}/SingletonCookie`,
+      `${profilePath}/SingletonSocket`,
+      `${profilePath}/.lock`,
+      `${profilePath}/lockfile`,
     ]) {
       try { if (fs.existsSync(p)) { fs.unlinkSync(p); console.log(`🔓 Removed stale lock: ${p}`); } } catch {}
     }
@@ -74,6 +108,9 @@ class WhatsAppService {
     this.status = 'initializing';
     this.isReady = false;
     this.qrCode = null;
+    this.qrTimestamp = null;
+    this.initStartedAt = Date.now();
+    this._startInitWatchdog();
 
     this._cleanLocks();
 
@@ -99,8 +136,14 @@ class WhatsAppService {
     this.client.on('qr', async (qr) => {
       console.log('📱 QR Code received! Scan with WhatsApp mobile app.');
       this.status = 'qr_ready';
+      this._stopInitWatchdog(); // QR appeared — initialize succeeded
       try {
         this.qrCode = await qrcode.toDataURL(qr);
+        this.qrTimestamp = Date.now();
+        // Try to capture the browser PID once we have a live client (Linux only)
+        if (process.platform !== 'win32' && this.client && this.client.pupBrowser) {
+          try { this.browserPid = this.client.pupBrowser.process()?.pid || null; } catch {}
+        }
         console.log('✅ QR Code generated successfully');
       } catch (err) {
         console.error('❌ QR Code generation failed:', err);
@@ -112,6 +155,8 @@ class WhatsAppService {
       this.isReady = true;
       this.status = 'connected';
       this.qrCode = null;
+      this.qrTimestamp = null;
+      this._stopInitWatchdog();
       this.phoneNumber = this.client.info.wid.user;
       this.reconnectAttempts = 0; // reset backoff counter on successful connect
       this.heartbeatFailCount = 0;
@@ -322,22 +367,69 @@ class WhatsAppService {
   }
 
   // ── Properly destroy old client then start fresh ──
-  async reconnect() {
+  // Idempotent: if we're already in a healthy "waiting for QR" state with a fresh
+  // QR (< 45s old), this is a no-op — re-tearing-down the running Chrome is the
+  // exact bug that traps the next init in 'initializing' forever.
+  async reconnect({ force = false } = {}) {
+    // Idempotency guard — don't touch a working QR session
+    if (!force && this.status === 'qr_ready' && this.qrCode && this.qrTimestamp && (Date.now() - this.qrTimestamp < 45000)) {
+      console.log('↩️  reconnect() called but QR session is healthy — no-op');
+      return;
+    }
+    if (!force && this.status === 'initializing' && this.initStartedAt && (Date.now() - this.initStartedAt < 20000)) {
+      console.log('↩️  reconnect() called but init already in progress — no-op');
+      return;
+    }
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this._stopHeartbeat();
+    this._stopInitWatchdog();
     if (this.client) {
       console.log('🔌 Tearing down existing client for reconnect...');
       const old = this.client;
+      const oldPid = (() => {
+        try { return old.pupBrowser?.process()?.pid || null; } catch { return null; }
+      })();
       this.client = null;
       this.status = 'initializing';
       this.isReady = false;
       this.qrCode = null;
+      this.qrTimestamp = null;
       try { old.removeAllListeners(); } catch {}  // prevents disconnected event from running
       try { await old.destroy(); } catch {}
-      // Give Chrome 1.5 s to fully exit before starting a new instance
-      await new Promise(r => setTimeout(r, 1500));
+      // Force-kill the browser PID if puppeteer didn't reap it cleanly (Linux)
+      if (oldPid && process.platform !== 'win32') {
+        try { process.kill(oldPid, 'SIGKILL'); console.log(`🔫 Force-killed lingering Chrome PID ${oldPid}`); } catch {}
+      }
+      // Give Chrome 3s to fully exit before starting a new instance (was 1.5s — too short under load)
+      await new Promise(r => setTimeout(r, 3000));
     }
     this.initialize();
+  }
+
+  // ── Init watchdog ──
+  // If the client can't reach qr_ready or connected within 60s, mark status as
+  // 'error' so the user can retry. Prevents the "stuck on Connecting forever" UX.
+  _startInitWatchdog() {
+    this._stopInitWatchdog();
+    this.initWatchdogTimer = setTimeout(() => {
+      if (this.status === 'initializing') {
+        console.error('⏰ Init watchdog: still initializing after 60s — marking as error');
+        this.status = 'error';
+        this.isReady = false;
+        this.qrCode = null;
+        // Tear down so next /connect can start fresh
+        if (this.client) {
+          const old = this.client;
+          this.client = null;
+          try { old.removeAllListeners(); } catch {}
+          try { old.destroy().catch(() => {}); } catch {}
+        }
+      }
+    }, 60000);
+  }
+
+  _stopInitWatchdog() {
+    if (this.initWatchdogTimer) { clearTimeout(this.initWatchdogTimer); this.initWatchdogTimer = null; }
   }
 
   // ── Auto-reconnect with exponential backoff ──
@@ -446,7 +538,12 @@ class WhatsAppService {
       status: this.status,
       isReady: this.isReady,
       qrCode: this.qrCode,
-      phoneNumber: this.phoneNumber
+      qrTimestamp: this.qrTimestamp,
+      qrAgeSeconds: this.qrTimestamp ? Math.floor((Date.now() - this.qrTimestamp) / 1000) : null,
+      phoneNumber: this.phoneNumber,
+      initAgeSeconds: this.initStartedAt && this.status === 'initializing'
+        ? Math.floor((Date.now() - this.initStartedAt) / 1000)
+        : null,
     };
   }
 
@@ -454,14 +551,22 @@ class WhatsAppService {
     this.userLoggedOut = true; // prevents auto-reconnect from firing
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this._stopHeartbeat();
+    this._stopInitWatchdog();
     if (this.client) {
       const old = this.client;
+      const oldPid = (() => {
+        try { return old.pupBrowser?.process()?.pid || null; } catch { return null; }
+      })();
       this.client = null;
       try { old.removeAllListeners(); } catch {}
       try { await old.destroy(); } catch {}
+      if (oldPid && process.platform !== 'win32') {
+        try { process.kill(oldPid, 'SIGKILL'); } catch {}
+      }
       this.isReady = false;
       this.status = 'disconnected';
       this.qrCode = null;
+      this.qrTimestamp = null;
       this.phoneNumber = null;
       console.log('🔌 WhatsApp disconnected');
     }
@@ -876,11 +981,11 @@ class WhatsAppManager {
     return first ? first.getStatus() : { status: 'disconnected', isReady: false };
   }
 
-  async reconnect(accountId) {
+  async reconnect(accountId, opts = {}) {
     const key = accountId || '__legacy__';
     const service = this.instances.get(key);
     if (service) {
-      await service.reconnect();
+      await service.reconnect(opts);
     } else if (accountId) {
       const account = this.db.prepare('SELECT * FROM platform_accounts WHERE id = ?').get(accountId);
       if (account) this._startAccount(accountId, account.slot_index);

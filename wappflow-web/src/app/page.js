@@ -142,7 +142,7 @@ function Hero({ authed }) {
         <Reveal>
           <div className="lp-badge">
             <Sparkles size={13} />
-            <span>Now with Google Meet · Calendly · Huddles</span>
+            <span>AI-powered multi-channel customer operations</span>
             <span className="lp-badge-dot" />
             <span className="lp-badge-pulse">Live</span>
           </div>
@@ -1236,70 +1236,123 @@ function Pricing({ authed }) {
         </Reveal>
         <Reveal delay={80}>
           <h2 className="lp-section-title">
-            One plan. <span className="lp-gradient">Everything included.</span>
+            Plans that scale with <span className="lp-gradient">your team</span>.
           </h2>
         </Reveal>
         <Reveal delay={140}>
           <p className="lp-section-sub">
-            {`No usage tiers. No "AI add-on". No per-seat gotchas. Just one price for the whole platform.`}
+            Start free. Upgrade when you outgrow it. No per-seat gotchas, no AI add-ons, no surprise bills.
           </p>
         </Reveal>
 
-        <div className="lp-pricing-grid">
-          <Reveal delay={120}>
+        <div className="lp-pricing-grid lp-pricing-4col">
+          {/* FREE */}
+          <Reveal delay={80}>
             <div className="lp-price-card">
-              <div className="lp-price-tier">Starter</div>
-              <div className="lp-price-amount">Free</div>
-              <div className="lp-price-period">for early access</div>
+              <div className="lp-price-tier">Free</div>
+              <div className="lp-price-amount">$0<span>/mo</span></div>
+              <div className="lp-price-period">Solo users testing WappFlow</div>
               <PriceList items={[
-                'Up to 3 team members',
-                '1 WhatsApp account',
-                'Full AI suite',
-                'Unlimited leads',
-                'Self-hosted',
+                { text: '1 WhatsApp account' },
+                { text: '1 user only' },
+                { text: '50 leads max' },
+                { text: 'Basic inbox & CRM' },
+                { text: 'Limited AI replies' },
+                { text: 'Instagram inbox', locked: true },
+                { text: 'Facebook inbox', locked: true },
+                { text: 'Email integration', locked: true },
+                { text: 'Automations', locked: true },
+                { text: 'Google Calendar + Meet', locked: true },
+                { text: 'Calendly', locked: true },
+                { text: 'Team collaboration', locked: true },
               ]} />
               <Link href="/signup" className="lp-btn lp-btn-glass lp-btn-block">Start free</Link>
             </div>
           </Reveal>
 
+          {/* STARTER */}
+          <Reveal delay={140}>
+            <div className="lp-price-card">
+              <div className="lp-price-tier">Starter</div>
+              <div className="lp-price-amount">$19<span>/mo</span></div>
+              <div className="lp-price-period">Small businesses getting started</div>
+              <PriceList items={[
+                { text: '1 WhatsApp account' },
+                { text: 'Email integration' },
+                { text: 'Up to 2 users' },
+                { text: '300 leads max' },
+                { text: 'AI assistant' },
+                { text: 'Shared inbox + internal notes' },
+                { text: 'Voice notes & media' },
+                { text: 'Basic analytics' },
+                { text: 'Priority email support' },
+                { text: 'Instagram / Facebook inbox', locked: true },
+                { text: 'Workflow automations', locked: true },
+                { text: 'Google Calendar / Calendly', locked: true },
+              ]} />
+              <Link href={authed ? '/dashboard' : '/signup'} className="lp-btn lp-btn-glass lp-btn-block">
+                Upgrade to Starter
+              </Link>
+            </div>
+          </Reveal>
+
+          {/* GROWTH (Most Popular) */}
           <Reveal delay={200}>
             <div className="lp-price-card lp-price-featured">
               <div className="lp-price-ribbon">Most popular</div>
               <div className="lp-price-tier">Growth</div>
               <div className="lp-price-amount">$49<span>/mo</span></div>
-              <div className="lp-price-period">billed monthly · cancel anytime</div>
+              <div className="lp-price-period">Growing teams at scale</div>
               <PriceList items={[
-                'Unlimited team members',
-                'Unlimited WhatsApp accounts',
-                'Multi-platform inbox',
-                'Full AI engine + knowledge base',
-                'Invoicing + reports',
-                'Email integrations (SMTP/IMAP)',
-                'Priority support',
+                { text: 'Unified inbox: WhatsApp + IG + FB' },
+                { text: 'Website-to-CRM capture' },
+                { text: 'Email integration' },
+                { text: 'Up to 5 team members' },
+                { text: 'Unlimited leads' },
+                { text: 'AI assistant + smart summaries' },
+                { text: 'Team collaboration' },
+                { text: 'Google Calendar + Meet' },
+                { text: 'Calendly integration' },
+                { text: 'Workflow automations' },
+                { text: 'Reports & analytics' },
+                { text: 'Multi-pipeline support' },
+                { text: 'Priority support' },
               ]} />
               <Link href={authed ? '/dashboard' : '/signup'} className="lp-btn lp-btn-primary lp-btn-block">
-                {authed ? 'Open Dashboard' : 'Start 14-day trial'} <ArrowRight size={16} />
+                {authed ? 'Open Dashboard' : 'Upgrade to Growth'} <ArrowRight size={16} />
               </Link>
             </div>
           </Reveal>
 
-          <Reveal delay={280}>
+          {/* ENTERPRISE */}
+          <Reveal delay={260}>
             <div className="lp-price-card">
               <div className="lp-price-tier">Enterprise</div>
               <div className="lp-price-amount">Custom</div>
-              <div className="lp-price-period">for 25+ agents</div>
+              <div className="lp-price-period">Agencies & high-volume teams</div>
               <PriceList items={[
-                'Everything in Growth',
-                'Dedicated infrastructure',
-                'SSO + advanced security',
-                'Custom integrations',
-                'SLA + onboarding',
-                'Bring your own LLM keys',
+                { text: 'Unlimited channels' },
+                { text: 'Unlimited team members' },
+                { text: 'White-label support' },
+                { text: 'Dedicated infrastructure' },
+                { text: 'Advanced AI workflows' },
+                { text: 'Custom integrations' },
+                { text: 'API access' },
+                { text: 'SLA onboarding & support' },
+                { text: 'Role-based permissions' },
+                { text: 'Bring your own AI keys' },
+                { text: 'Dedicated account manager' },
               ]} />
               <a href="mailto:sales@wappflow.app" className="lp-btn lp-btn-glass lp-btn-block">Talk to sales</a>
             </div>
           </Reveal>
         </div>
+
+        <Reveal delay={320}>
+          <div className="lp-price-foot">
+            All paid plans include WhatsApp, AI replies, audit logs, and self-hosted data ownership. Upgrade or downgrade anytime.
+          </div>
+        </Reveal>
       </div>
     </section>
   );
@@ -1308,9 +1361,16 @@ function Pricing({ authed }) {
 function PriceList({ items }) {
   return (
     <ul className="lp-price-list">
-      {items.map((it, i) => (
-        <li key={i}><Check size={14} /> {it}</li>
-      ))}
+      {items.map((it, i) => {
+        // Backward-compat: items may be strings or { text, locked }
+        const obj = typeof it === 'string' ? { text: it } : it;
+        return (
+          <li key={i} className={obj.locked ? 'lp-price-li-locked' : ''}>
+            {obj.locked ? <Lock size={13} /> : <Check size={14} />}
+            {obj.text}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -2423,7 +2483,13 @@ function GlobalStyles() {
       .lp-test-name { font-size: 13px; color: var(--lp-text-muted); }
 
       /* ============== PRICING ============== */
-      .lp-pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+      .lp-pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+      .lp-pricing-4col { grid-template-columns: repeat(4, 1fr); gap: 16px; }
+      @media (max-width: 1180px) { .lp-pricing-4col { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 620px)  { .lp-pricing-4col { grid-template-columns: 1fr; } }
+      .lp-price-foot { text-align: center; font-size: 13px; color: var(--lp-text-muted); margin-top: 32px; max-width: 620px; margin-left: auto; margin-right: auto; }
+      .lp-price-li-locked { opacity: 0.55; text-decoration: line-through; }
+      .lp-price-li-locked svg { color: var(--lp-text-muted) !important; }
       .lp-price-card {
         padding: 36px 28px;
         background: var(--lp-surface);
