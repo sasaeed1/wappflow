@@ -17,13 +17,87 @@ import {
 import {
   leadsAPI, presetsAPI, tagsAPI, emailTemplatesAPI,
   invoicesAPI, emailWorkflowsAPI, teamAPI, settingsAPI,
-  leadEmailsAPI, leadChannelsAPI, leadRelationsAPI, timelineAPI, aiAPI,
+  leadEmailsAPI, leadChannelsAPI, leadRelationsAPI, timelineAPI, aiAPI, lostReasonsAPI,
   displayPhone, formatCurrency, BASE_URL,
 } from '../../../lib/api';
+import { formatSmart, formatDateTime, formatRelative, formatFull, formatDate, formatTime } from '../../../lib/datetime';
+import { markLeadSeen } from '../../../lib/unread';
 import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
 import NavBar from '../../../components/NavBar';
+
+// Click-to-edit field — any lead detail can be edited in place (item 26):
+// click the value, it becomes an input/select, saves on blur/Enter, Esc cancels.
+function InlineEditField({ icon: Icon, color, bg, label, value, display, type = 'text', selectOptions, placeholder, onSave, heading }) {
+  const norm = (v) => (type === 'date' && v ? String(v).slice(0, 10) : (v ?? ''));
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(norm(value));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!editing) setDraft(norm(value)); }, [value]);
+
+  const commitValue = async (val) => {
+    if (String(val) === String(norm(value))) { setEditing(false); return; }
+    setSaving(true);
+    try { await onSave(val); setEditing(false); }
+    catch (e) { /* keep the field open so the user can retry */ }
+    finally { setSaving(false); }
+  };
+  const cancel = () => { setDraft(norm(value)); setEditing(false); };
+
+  if (editing) {
+    const fieldStyle = { padding: '6px 9px', border: `1.5px solid ${color || 'var(--accent)'}`, borderRadius: 8, fontSize: 13, outline: 'none', background: 'var(--surface)', color: 'var(--text)', boxSizing: 'border-box' };
+    const field = type === 'select' ? (
+      <select autoFocus value={draft} disabled={saving}
+        onChange={e => { setDraft(e.target.value); commitValue(e.target.value); }}
+        onKeyDown={e => { if (e.key === 'Escape') cancel(); }}
+        style={{ ...fieldStyle, flex: 1, minWidth: 0 }}>
+        {(selectOptions || []).map(o => <option key={String(o.value)} value={o.value}>{o.label}</option>)}
+      </select>
+    ) : (
+      <input autoFocus type={type} value={draft} placeholder={placeholder || label} disabled={saving}
+        onChange={e => setDraft(e.target.value)} onBlur={() => commitValue(draft)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } else if (e.key === 'Escape') cancel(); }}
+        style={{ ...fieldStyle, flex: 1, minWidth: 0, textAlign: heading ? 'center' : 'left', fontWeight: heading ? 800 : 400, fontSize: heading ? 16 : 13 }} />
+    );
+    if (heading) return <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginBottom: 8 }}>{field}</div>;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 30, height: 30, borderRadius: 8, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon size={13} color={color} />
+        </div>
+        {field}
+        {saving && <div style={{ width: 14, height: 14, border: '2px solid var(--border)', borderTopColor: color, borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />}
+      </div>
+    );
+  }
+
+  if (heading) {
+    return (
+      <h2 onClick={() => setEditing(true)} title="Click to edit name"
+        style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: '0 0 8px', cursor: 'pointer', borderRadius: 6, padding: '2px 8px', transition: 'background 0.12s' }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+        {value || 'Unknown'}
+      </h2>
+    );
+  }
+
+  return (
+    <div onClick={() => setEditing(true)} title={`Click to edit ${label.toLowerCase()}`}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', borderRadius: 8, padding: 3, margin: -3, transition: 'background 0.12s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+      <div style={{ width: 30, height: 30, borderRadius: 8, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={13} color={color} />
+      </div>
+      {value
+        ? <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, wordBreak: 'break-word', flex: 1, minWidth: 0 }}>{display ?? value}</span>
+        : <span style={{ fontSize: 13, color: 'var(--text-dim)', fontStyle: 'italic', flex: 1, minWidth: 0 }}>Add {label.toLowerCase()}</span>}
+      <Edit2 size={11} color="var(--text-dim)" style={{ flexShrink: 0, opacity: 0.55 }} />
+    </div>
+  );
+}
 
 const STATUS_META = {
   'New':           { dot: '#6366f1', bg: 'rgba(99,102,241,0.15)',  text: '#818cf8', label: 'New' },
@@ -172,7 +246,16 @@ function WonModal({ name, onConfirm, onCancel, loading, currencySymbol }) {
 }
 
 function LostModal({ name, onConfirm, onCancel, loading }) {
-  const [reason, setReason] = useState(LOST_REASONS[0]);
+  const [reasons, setReasons] = useState(LOST_REASONS);
+  const [reason, setReason] = useState(LOST_REASONS[0] || '');
+  useEffect(() => {
+    lostReasonsAPI.getAll()
+      .then(res => {
+        const custom = (res.data?.reasons || []).map(r => r.reason).filter(Boolean);
+        if (custom.length) { setReasons(custom); setReason(custom[0]); }
+      })
+      .catch(() => {});
+  }, []);
   return (
     <Modal>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
@@ -186,7 +269,7 @@ function LostModal({ name, onConfirm, onCancel, loading }) {
       </div>
       <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 10 }}>Reason</label>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
-        {LOST_REASONS.map(r => (
+        {reasons.map(r => (
           <button key={r} onClick={() => setReason(r)} style={{ padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${reason === r ? '#ef4444' : 'var(--border)'}`, background: reason === r ? 'rgba(239,68,68,0.12)' : 'var(--surface)', color: reason === r ? '#ef4444' : 'var(--text-muted)', fontWeight: reason === r ? 700 : 500, cursor: 'pointer', fontSize: 12, textAlign: 'left' }}>{r}</button>
         ))}
       </div>
@@ -741,6 +824,9 @@ const [aiError, setAiError] = useState('');
     if (activePlatform && leadId) fetchMessages(activePlatform);
   }, [activePlatform]);
 
+  // Mark this lead as seen so its unread badge clears across the lead views (item 4)
+  useEffect(() => { if (leadId) markLeadSeen(leadId); }, [leadId, messages]);
+
   const handleSaveEdit = async () => {
     try {
       setActionLoading(true);
@@ -748,6 +834,24 @@ const [aiError, setAiError] = useState('');
       await fetchAll();
       setEditing(false);
     } catch (e) { console.error(e); } finally { setActionLoading(false); }
+  };
+
+  // Inline single-field save (item 26) — sends the full record with one field
+  // changed so nothing else is clobbered, then refreshes.
+  const saveField = async (field, value) => {
+    await leadsAPI.update(leadId, {
+      customer_name: lead.customer_name || '',
+      customer_phone: lead.customer_phone || '',
+      email: lead.email || '',
+      address: lead.address || '',
+      date_of_birth: lead.date_of_birth || '',
+      lead_source: lead.lead_source || '',
+      assigned_to: lead.assigned_to || '',
+      estimated_value: lead.estimated_value || '',
+      actual_sale: lead.actual_sale || '',
+      [field]: value,
+    });
+    await fetchAll();
   };
 
   const handleDelete = async () => {
@@ -1202,118 +1306,62 @@ useEffect(() => {
           <div style={{ background: 'var(--surface)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
 
             <div style={{ background: `linear-gradient(135deg, ${sc.dot}20, ${sc.dot}08)`, padding: '24px 22px 18px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-                {!editing ? (
-                  <button onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                    <Edit2 size={12} /> Edit
-                  </button>
-                ) : (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={handleSaveEdit} disabled={actionLoading} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: '#10b981', color: 'white', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                      <Save size={12} /> Save
-                    </button>
-                    <button onClick={() => setEditing(false)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
-                  </div>
-                )}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Edit2 size={10} /> Tap any field to edit
+                </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
                 <div style={{ width: 68, height: 68, borderRadius: 22, marginBottom: 10, background: `linear-gradient(135deg, ${sc.dot}, ${sc.dot}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 900, color: 'white', boxShadow: `0 8px 24px ${sc.dot}44` }}>
                   {lead.customer_name?.[0]?.toUpperCase() || '?'}
                 </div>
-                {editing ? (
-                  <input value={editForm.customer_name} onChange={e => setEditForm(p => ({ ...p, customer_name: e.target.value }))}
-                    style={{ textAlign: 'center', fontSize: 17, fontWeight: 800, border: 'none', borderBottom: `2px solid ${sc.dot}`, outline: 'none', background: 'transparent', width: '100%', marginBottom: 8 }} />
-                ) : (
-                  <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: '0 0 8px' }}>{lead.customer_name || 'Unknown'}</h2>
-                )}
+                <InlineEditField heading color={sc.dot} label="Name" value={lead.customer_name}
+                  onSave={(v) => saveField('customer_name', v)} />
                 <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 14px', borderRadius: 20, background: sc.bg, color: sc.text }}>{sc.label}</span>
               </div>
             </div>
 
             {/* Contact details */}
             <div style={{ padding: '18px 20px' }}>
-              {editing ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {[
-                    { label: 'Phone', field: 'customer_phone', icon: Phone, type: 'tel' },
-                    { label: 'Email', field: 'email', icon: Mail, type: 'email' },
-                    { label: 'Date of Birth', field: 'date_of_birth', icon: Calendar, type: 'date' },
-                    { label: 'Address', field: 'address', icon: MapPin, type: 'text' },
-                    { label: 'Lead Source', field: 'lead_source', icon: Globe, type: 'select' },
-                    { label: 'Est. Value', field: 'estimated_value', icon: DollarSign, type: 'number' },
-                  ].map(({ label, field, icon: Icon, type }) => (
-                    <div key={field}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</label>
-                      {type === 'select' ? (
-                        <select value={editForm[field]} onChange={e => setEditForm(p => ({ ...p, [field]: e.target.value }))}
-                          style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)' }}>
-                          <option value="">Select source</option>
-                          {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      ) : (
-                        <input type={type} value={editForm[field]} onChange={e => setEditForm(p => ({ ...p, [field]: e.target.value }))}
-                          style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-                      )}
-                    </div>
-                  ))}
-                  <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Assigned To</label>
-                    <select value={editForm.assigned_to} onChange={e => setEditForm(p => ({ ...p, assigned_to: e.target.value }))}
-                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)' }}>
-                      <option value="">Unassigned</option>
-                      {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <InlineEditField icon={Phone} color="#10b981" bg="rgba(16,185,129,0.12)" label="Phone"
+                  value={lead.customer_phone} display={displayPhone(lead.customer_phone, lead.platform_source)}
+                  type="tel" onSave={(v) => saveField('customer_phone', v)} />
+                <InlineEditField icon={Mail} color="#6366f1" bg="rgba(99,102,241,0.12)" label="Email"
+                  value={lead.email} type="email" onSave={(v) => saveField('email', v)} />
+                <InlineEditField icon={MapPin} color="#f97316" bg="rgba(249,115,22,0.10)" label="Address"
+                  value={lead.address} type="text" onSave={(v) => saveField('address', v)} />
+                <InlineEditField icon={Calendar} color="#a855f7" bg="rgba(168,85,247,0.10)" label="Date of Birth"
+                  value={lead.date_of_birth} display={lead.date_of_birth ? formatDate(lead.date_of_birth) : null}
+                  type="date" onSave={(v) => saveField('date_of_birth', v)} />
+                <InlineEditField icon={Globe} color="#06b6d4" bg="rgba(6,182,212,0.10)" label="Lead Source"
+                  value={lead.lead_source} type="select"
+                  selectOptions={[{ value: '', label: 'Select source' }, ...LEAD_SOURCES.map(s => ({ value: s, label: s }))]}
+                  onSave={(v) => saveField('lead_source', v)} />
+                <InlineEditField icon={UserCheck} color="#10b981" bg="rgba(16,185,129,0.12)" label="Assigned To"
+                  value={lead.assigned_to}
+                  display={teamMembers.find(m => m.id === lead.assigned_to)?.name || null}
+                  type="select"
+                  selectOptions={[{ value: '', label: 'Unassigned' }, ...teamMembers.map(m => ({ value: m.id, label: m.name }))]}
+                  onSave={(v) => saveField('assigned_to', v)} />
+
+                <div style={{ height: 1, background: 'var(--surface2)', margin: '6px 0 2px' }} />
+                <InlineEditField icon={DollarSign} color={sc.dot} bg={sc.bg} label="Deal Value"
+                  value={lead.actual_sale || lead.estimated_value || ''}
+                  display={(lead.actual_sale || lead.estimated_value)
+                    ? `${sym}${Number(lead.actual_sale || lead.estimated_value).toLocaleString()}` : null}
+                  type="number"
+                  onSave={(v) => saveField(lead.status === 'Closed - Won' ? 'actual_sale' : 'estimated_value', v)} />
+
+                <div style={{ height: 1, background: 'var(--surface2)', margin: '6px 0 2px' }} />
+                <div>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Tags</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    {(lead.tags || []).map(tag => <TagChip key={tag.id} tag={tag} onRemove={() => handleToggleTag(tag, true)} />)}
+                    <TagPicker leadId={leadId} assignedTags={lead.tags || []} allTags={allTags} onToggle={handleToggleTag} />
                   </div>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {[
-                    { value: displayPhone(lead.customer_phone, lead.platform_source), icon: Phone, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-                    { value: lead.email, icon: Mail, color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
-                    { value: lead.address, icon: MapPin, color: '#f97316', bg: 'rgba(249,115,22,0.10)' },
-                    { value: lead.date_of_birth ? new Date(lead.date_of_birth).toLocaleDateString() : null, icon: Calendar, color: '#a855f7', bg: 'rgba(168,85,247,0.10)' },
-                    { value: lead.lead_source, icon: Globe, color: '#06b6d4', bg: 'rgba(6,182,212,0.10)' },
-                  ].filter(x => x.value).map(({ value, icon: Icon, color, bg }, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 8, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Icon size={13} color={color} />
-                      </div>
-                      <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, wordBreak: 'break-word' }}>{value}</span>
-                    </div>
-                  ))}
-
-                  {/* Assigned */}
-                  {lead.assigned_to && (() => {
-                    const m = teamMembers.find(tm => tm.id === lead.assigned_to);
-                    return m ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(16,185,129,0.10)', borderRadius: 10, border: '1.5px solid #bbf7d0' }}>
-                        <div style={{ width: 26, height: 26, borderRadius: 8, background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'white' }}>
-                          {m.name?.[0]?.toUpperCase()}
-                        </div>
-                        <div>
-                          <p style={{ fontSize: 12, fontWeight: 700, color: '#065f46', margin: 0 }}>{m.name}</p>
-                          <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Assigned</p>
-                        </div>
-                      </div>
-                    ) : null;
-                  })()}
-
-                  <div style={{ height: 1, background: 'var(--surface2)', margin: '4px 0' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 12, color: 'var(--text-dim)', fontWeight: 600 }}>Deal Value</span>
-                    <span style={{ fontSize: 18, fontWeight: 900, color: sc.dot }}>{sym}{(lead.actual_sale || lead.estimated_value || 0).toLocaleString()}</span>
-                  </div>
-
-                  <div style={{ height: 1, background: 'var(--surface2)', margin: '4px 0' }} />
-                  <div>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Tags</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                      {(lead.tags || []).map(tag => <TagChip key={tag.id} tag={tag} onRemove={() => handleToggleTag(tag, true)} />)}
-                      <TagPicker leadId={leadId} assignedTags={lead.tags || []} allTags={allTags} onToggle={handleToggleTag} />
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </div>
 
@@ -1403,7 +1451,7 @@ useEffect(() => {
                 )}
                 {lead.ai_last_analyzed_at && (
                   <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: '10px 0 0' }}>
-                    Last analyzed {new Date(lead.ai_last_analyzed_at).toLocaleString()}
+                    Last analyzed {formatSmart(lead.ai_last_analyzed_at)}
                   </p>
                 )}
               </div>
@@ -1415,8 +1463,8 @@ useEffect(() => {
             <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Activity</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
-                { label: 'Lead Created', value: new Date(lead.created_at).toLocaleDateString() },
-                { label: 'Last Message', value: lead.last_message_at ? new Date(lead.last_message_at).toLocaleDateString() : '—' },
+                { label: 'Lead Created', value: formatSmart(lead.created_at) },
+                { label: 'Last Message', value: lead.last_message_at ? formatSmart(lead.last_message_at) : '—' },
                 { label: 'Messages', value: messages.length },
                 { label: 'Notes', value: notes.length },
                 { label: 'Reminders', value: reminders.length },
@@ -1661,7 +1709,7 @@ useEffect(() => {
                 const showDateBreak = !prev || curDay !== prevDay;
                 const today = new Date().toDateString();
                 const yesterday = new Date(Date.now() - 86400000).toDateString();
-                const dayLabel = curDay === today ? 'Today' : curDay === yesterday ? 'Yesterday' : new Date(msg.timestamp).toLocaleDateString();
+                const dayLabel = curDay === today ? 'Today' : curDay === yesterday ? 'Yesterday' : formatDate(msg.timestamp);
                 return (
                   <div key={msg.id}>
                     {showDateBreak && (
@@ -1714,7 +1762,7 @@ useEffect(() => {
                         <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif' }}>{msg.body}</p>
                       )}
                       <p style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 3, textAlign: 'right', margin: 0, marginTop: 3 }}>
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatTime(msg.timestamp)}
                         {msg.from_me && <span style={{ color: '#34b7f1', marginLeft: 4 }}>✓✓</span>}
                       </p>
                     </div>
@@ -1954,7 +2002,7 @@ useEffect(() => {
                   ) : notes.map(note => (
                     <div key={note.id} style={{ padding: '14px 16px', background: 'rgba(245,158,11,0.12)', borderRadius: 12, border: '1.5px solid #fef3c7', marginBottom: 10 }}>
                       <p style={{ fontSize: 14, color: 'var(--text)', margin: '0 0 6px', lineHeight: 1.6 }}>{note.content}</p>
-                      <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{new Date(note.created_at).toLocaleString()}</p>
+                      <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{formatSmart(note.created_at)}</p>
                     </div>
                   ))}
                 </div>
@@ -1997,7 +2045,7 @@ useEffect(() => {
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                             <Clock size={13} color="#8b5cf6" />
-                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{new Date(r.reminder_date || r.due_date).toLocaleString()}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{formatSmart(r.reminder_date || r.due_date)}</span>
                           </div>
                           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{r.message || r.title || 'No note'}</p>
                         </div>
@@ -2032,7 +2080,7 @@ useEffect(() => {
                             </div>
                             <div style={{ flex: 1, paddingTop: 4 }}>
                               <p style={{ fontSize: 13, color: 'var(--text)', margin: '0 0 3px', fontWeight: 500 }}>{h.description}</p>
-                              <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{new Date(h.created_at).toLocaleString()}</p>
+                              <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{formatSmart(h.created_at)}</p>
                             </div>
                           </div>
                         );
@@ -2065,7 +2113,7 @@ useEffect(() => {
                           <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{inv.invoice_number}</p>
                           <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: inv.status === 'paid' ? 'rgba(16,185,129,0.15)' : inv.status === 'sent' ? 'rgba(59,130,246,0.10)' : 'rgba(245,158,11,0.18)', color: inv.status === 'paid' ? '#15803d' : inv.status === 'sent' ? '#1d4ed8' : '#92400e' }}>{inv.status}</span>
                         </div>
-                        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>{new Date(inv.created_at).toLocaleDateString()}{inv.due_date ? ` · Due ${new Date(inv.due_date).toLocaleDateString()}` : ''}</p>
+                        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>{formatDate(inv.created_at)}{inv.due_date ? ` · Due ${formatDate(inv.due_date)}` : ''}</p>
                       </div>
                       <p style={{ fontSize: 18, fontWeight: 900, color: '#10b981', margin: 0 }}>{sym}{parseFloat(inv.total).toLocaleString()}</p>
                     </div>
@@ -2113,7 +2161,7 @@ useEffect(() => {
                             <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: em.direction === 'sent' ? '#10b98125' : '#6366f125', color: em.direction === 'sent' ? '#10b981' : '#6366f1', flexShrink: 0 }}>
                               {em.direction === 'sent' ? '↑ Sent' : '↓ Received'}
                             </span>
-                            <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>{new Date(em.created_at).toLocaleString()}</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>{formatSmart(em.created_at)}</span>
                           </div>
                           <EmailBodyRow em={em} />
                         </div>
@@ -2152,8 +2200,8 @@ useEffect(() => {
                           </div>
                           {wf.template_subject && <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 4px' }}>Subject: {wf.template_subject}</p>}
                           <div style={{ display: 'flex', gap: 12 }}>
-                            {wf.scheduled_at && <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Scheduled: {new Date(wf.scheduled_at).toLocaleString()}</p>}
-                            {wf.sent_at && <p style={{ fontSize: 11, color: '#10b981', margin: 0 }}>Sent: {new Date(wf.sent_at).toLocaleString()}</p>}
+                            {wf.scheduled_at && <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Scheduled: {formatSmart(wf.scheduled_at)}</p>}
+                            {wf.sent_at && <p style={{ fontSize: 11, color: '#10b981', margin: 0 }}>Sent: {formatSmart(wf.sent_at)}</p>}
                           </div>
                         </div>
                         {wf.status === 'pending' && (
@@ -2563,7 +2611,7 @@ useEffect(() => {
                                 </div>
                                 {item.title && <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: '0 0 2px' }}>{item.title}</p>}
                                 {item.body && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>{item.body?.slice(0, 120)}{item.body?.length > 120 ? '…' : ''}</p>}
-                                <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: '4px 0 0' }}>{new Date(item.created_at).toLocaleString()}</p>
+                                <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: '4px 0 0' }}>{formatSmart(item.created_at)}</p>
                               </div>
                             </div>
                           );

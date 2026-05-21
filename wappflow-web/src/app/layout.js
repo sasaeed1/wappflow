@@ -3,7 +3,7 @@ import Providers from './providers'
 
 export const metadata = {
   title: {
-    default: 'WappFlow — AI-powered multi-channel customer operations',
+    default: 'WappFlow',
     template: '%s · WappFlow',
   },
   description: 'AI-powered customer operations platform for teams that close deals on WhatsApp, Instagram, Facebook, and the web. Unified inbox, Google Meet scheduling, team huddles.',
@@ -33,6 +33,15 @@ export default function RootLayout({ children }) {
           try {
             var t = localStorage.getItem('theme') || 'dark';
             document.documentElement.classList.toggle('light', t === 'light');
+          } catch(e) {}
+          try {
+            if (localStorage.getItem('wf_persist') === 'session' && !sessionStorage.getItem('wf_alive')) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+              localStorage.removeItem('workspace');
+              localStorage.removeItem('wf_persist');
+            }
+            sessionStorage.setItem('wf_alive', '1');
           } catch(e) {}
         ` }} />
       </head>

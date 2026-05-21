@@ -11,6 +11,8 @@ import {
   Trash2, UsersRound, Image as ImageIcon, AlertTriangle
 } from 'lucide-react';
 import { leadsAPI, tagsAPI, workspaceAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI } from '../../lib/api';
+import { isLeadUnread } from '../../lib/unread';
+import { formatDate } from '../../lib/datetime';
 import NavBar from '../../components/NavBar';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import AddLeadModal from '../../components/AddLeadModal';
@@ -932,7 +934,7 @@ export default function LeadsListPage() {
                           </span>
                         );
                       })()}
-                      <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{new Date(lead.last_message_at).toLocaleDateString()}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{formatDate(lead.last_message_at)}</span>
                     </div>
                   </div>
                 </div>
@@ -1003,6 +1005,11 @@ export default function LeadsListPage() {
                   {value ? `Rs ${value.toLocaleString()}` : '—'}
                 </span>
 
+                {isLeadUnread(lead) && (
+                  <div className="wf-unread-bell" title="New / unread messages" style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <MessageSquare size={12} color="#ef4444" />
+                  </div>
+                )}
                 <ChevronRight size={15} color="#d1d5db" />
               </div>
             );

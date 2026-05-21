@@ -12,7 +12,7 @@ import {
   Link, Unlink, Copy, Wifi, WifiOff, Layers, QrCode, Key,
   Plug, Calendar, Video, Volume2, Play
 } from 'lucide-react';
-import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, BASE_URL } from '../../lib/api';
+import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, BASE_URL } from '../../lib/api';
 import { Send as SendIcon } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
@@ -64,6 +64,7 @@ const TABS = [
   { id: 'email_receiving', label: 'Email Receiving', icon: Mail, color: '#06b6d4' },
   { id: 'autoreply', label: 'Auto-Reply Rules', icon: Bot, color: '#8b5cf6' },
   { id: 'tags', label: 'Tags', icon: Tag, color: '#ec4899' },
+  { id: 'lost-reasons', label: 'Lost Reasons', icon: AlertCircle, color: '#ef4444' },
   { id: 'notifications', label: 'Notifications', icon: Bell, color: '#ef4444' },
   { id: 'integrations', label: 'Integrations', icon: Plug, color: '#22c55e' },
   { id: 'workspace', label: 'Workspace', icon: Users, color: '#8b5cf6' },
@@ -362,7 +363,7 @@ function PresetsTab({ showToast }) {
       </div>
 
       {showForm && (
-        <div style={{ background: '#f0f9ff', border: '2px solid #06b6d4', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+        <div style={{ background: 'rgba(6,182,212,0.08)', border: '2px solid #06b6d4', borderRadius: 16, padding: 20, marginBottom: 16 }}>
           <Input label="Preset Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Follow Up, Welcome, Pricing..." />
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Message Body</label>
@@ -388,7 +389,7 @@ function PresetsTab({ showToast }) {
         </div>
       ) : (
         presets.map(p => (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderBottom: '1px solid #f3f4f6' }}>
+          <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(6,182,212,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <MessageSquare size={15} color="#06b6d4" />
             </div>
@@ -402,6 +403,80 @@ function PresetsTab({ showToast }) {
             </div>
           </div>
         ))
+      )}
+    </SectionCard>
+  );
+}
+
+// ── Lost Reasons Tab ──────────────────────────────────────────────────────────
+function LostReasonsTab({ showToast }) {
+  const confirm = useConfirm();
+  const [reasons, setReasons] = useState([]);
+  const [newReason, setNewReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { fetchReasons(); }, []);
+  const fetchReasons = async () => {
+    try { const res = await lostReasonsAPI.getAll(); setReasons(res.data.reasons || []); }
+    catch { setReasons([]); }
+  };
+
+  const handleAdd = async () => {
+    const text = newReason.trim();
+    if (!text) return;
+    setSaving(true);
+    try {
+      await lostReasonsAPI.create(text);
+      setNewReason('');
+      await fetchReasons();
+      showToast('Lost reason added!');
+    } catch { showToast('Error adding reason', 'error'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id) => {
+    const ok = await confirm({ title: 'Delete this reason?', message: 'It will no longer appear when marking leads as lost.', confirmLabel: 'Delete', tone: 'danger' });
+    if (!ok) return;
+    await lostReasonsAPI.delete(id);
+    showToast('Reason deleted.');
+    fetchReasons();
+  };
+
+  return (
+    <SectionCard icon={AlertCircle} title="Lost Reasons" subtitle="Predefined reasons shown when a lead is marked as Closed - Lost" color="#ef4444">
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
+        <input value={newReason} onChange={e => setNewReason(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+          placeholder="e.g. Too expensive, Went with competitor, No budget…"
+          style={{ flex: 1, padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+          onFocus={e => e.target.style.borderColor = '#ef4444'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
+        <button onClick={handleAdd} disabled={saving || !newReason.trim()} style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px',
+          background: newReason.trim() ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'var(--surface2)',
+          border: 'none', borderRadius: 10, color: newReason.trim() ? 'white' : 'var(--text-dim)',
+          fontSize: 13, fontWeight: 700, cursor: newReason.trim() ? 'pointer' : 'default', flexShrink: 0,
+        }}>
+          <Plus size={15} /> {saving ? 'Adding…' : 'Add'}
+        </button>
+      </div>
+      {reasons.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>
+          <AlertCircle size={36} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
+          <p style={{ fontWeight: 700, marginBottom: 4 }}>No lost reasons yet</p>
+          <p style={{ fontSize: 13 }}>Add reasons above — they&apos;ll appear when you close a lead as lost.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {reasons.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', background: 'var(--surface2)', borderRadius: 10, border: '1px solid var(--border)' }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <AlertCircle size={14} color="#ef4444" />
+              </div>
+              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{r.reason}</span>
+              <button onClick={() => handleDelete(r.id)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Delete</button>
+            </div>
+          ))}
+        </div>
       )}
     </SectionCard>
   );
@@ -2245,6 +2320,7 @@ export default function SettingsPage() {
               {activeTab === 'email_receiving' && <EmailReceivingTab showToast={showToast} />}
               {activeTab === 'autoreply' && <AutoReplyTab showToast={showToast} />}
               {activeTab === 'tags' && <TagsTab showToast={showToast} />}
+              {activeTab === 'lost-reasons' && <LostReasonsTab showToast={showToast} />}
               {activeTab === 'notifications' && <NotificationsTab showToast={showToast} />}
               {activeTab === 'integrations' && <IntegrationsTab showToast={showToast} />}
               {activeTab === 'workspace' && <WorkspaceTab showToast={showToast} router={router} />}

@@ -10,8 +10,10 @@ import {
   Camera, Globe, MonitorSmartphone, Layers
 } from 'lucide-react';
 import { leadsAPI, remindersAPI, displayPhone, BASE_URL, platformAccountsAPI } from '../lib/api';
+import { toDate, formatRelative, formatFull } from '../lib/datetime';
 import FloatingChat from './FloatingChat';
 import AICommandCenter from './AICommandCenter';
+import SidePanel from './SidePanel';
 import { usePlan } from '@/lib/plan';
 import { PlanBanner, PlanChip } from './PlanLock';
 
@@ -33,7 +35,7 @@ function countLockedFeatures(plan) {
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Leads',     icon: Users,           path: '/leads-list' },
-  { label: 'Inbox',     icon: Inbox,           path: '/chat' },
+  { label: 'Team Chat', icon: Inbox,           path: '/chat' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports' },
 ];
@@ -667,8 +669,16 @@ export default function NavBar({ children }) {
         {children}
       </div>
 
-      <AICommandCenter enabled={true} />
-      <FloatingChat />
+      {/* Floating widgets — hidden on pages with their own bottom message composer (item 19) */}
+      {pathname !== '/chat' && !pathname?.startsWith('/leads/') && (
+        <>
+          <AICommandCenter enabled={true} />
+          <FloatingChat />
+        </>
+      )}
+
+      {/* Right-side productivity dock — Calendar / Tasks / Notes (item 23) */}
+      <SidePanel />
 
       <style>{`
         @keyframes navFadeIn    { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
@@ -691,16 +701,18 @@ function MiniNotifPanel({ todayLeads, reminders, onClose, onNavigate, onMarkAllR
       id: `lead-${l.id}`, type: 'lead',
       title: `New lead: ${l.customer_name || 'Unknown'}`,
       sub: displayPhone(l.customer_phone, l.platform_source),
+      time: l.created_at,
       color: '#6366f1', bg: 'rgba(99,102,241,0.12)',
       href: `/leads/${l.id}`,
     })),
     ...reminders.map(r => {
-      const due     = new Date(r.due_date || r.reminder_date);
-      const overdue = due < now;
+      const ts      = r.due_date || r.reminder_date;
+      const overdue = (toDate(ts) || now) < now;
       return {
         id: `rem-${r.id}`, type: 'reminder',
         title: r.title || r.message || 'Reminder',
-        sub: overdue ? `Overdue — ${due.toLocaleTimeString()}` : `Due ${due.toLocaleString()}`,
+        sub: overdue ? 'Overdue' : 'Upcoming reminder',
+        time: ts,
         color: overdue ? '#ef4444' : '#f59e0b',
         bg:    overdue ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
         href: null,
@@ -755,6 +767,11 @@ function MiniNotifPanel({ todayLeads, reminders, onClose, onNavigate, onMarkAllR
               <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</p>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>{item.sub}</p>
             </div>
+            {item.time && (
+              <span title={formatFull(item.time)} style={{ fontSize: 10, color: 'var(--text-dim)', whiteSpace: 'nowrap', flexShrink: 0, marginTop: 1 }}>
+                {formatRelative(item.time)}
+              </span>
+            )}
           </div>
         ))}
       </div>

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, X, Minus, Maximize2, Send, Paperclip, Phone, ChevronDown, Smile, Search } from 'lucide-react';
 import { leadsAPI, BASE_URL, displayPhone } from '../lib/api';
 import { useConfirm } from '@/lib/confirm';
+import { formatTime } from '../lib/datetime';
 
 const EMOJI_LIST = ['😊','😂','❤️','👍','👋','🙏','✅','🔥','🎉','💯','😎','🤝','💪','📞','💰','🚀'];
 
@@ -135,12 +136,6 @@ export default function FloatingChat() {
       await fetchMessages(activeLead.id);
     } catch { await confirm({ title: 'Upload failed', message: 'Could not send that file.', alertOnly: true, tone: 'danger' }); }
     e.target.value = '';
-  };
-
-  const formatTime = (ts) => {
-    if (!ts) return '';
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   // ─── Minimized bubble ────────────────────────────────────────────────────

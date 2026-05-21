@@ -786,6 +786,38 @@ safeAlter('ALTER TABLE platform_accounts ADD COLUMN nickname TEXT');
 safeAlter('ALTER TABLE platform_accounts ADD COLUMN account_handle TEXT');
 safeAlter('ALTER TABLE platform_accounts ADD COLUMN slot_index INTEGER DEFAULT 0');
 
+// ── Lost-reason presets (item 5) — workspace-defined reasons for Closed-Lost leads.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lost_reasons (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+// ── Personal productivity panel (item 23) — per-user tasks + quick notes (Keep).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_tasks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    workspace_id TEXT,
+    title TEXT NOT NULL,
+    done INTEGER DEFAULT 0,
+    due_date TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS quick_notes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    workspace_id TEXT,
+    content TEXT,
+    color TEXT DEFAULT 'yellow',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // ── Reminders schema drift fix: older DBs created the table BEFORE these columns existed.
 // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so add the columns explicitly.
 safeAlter("ALTER TABLE reminders ADD COLUMN title TEXT");
@@ -1111,6 +1143,10 @@ whatsappService.loadAccounts();
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, businessName } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters and include an uppercase letter and a special character.' });
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = generateId();
     const workspaceId = generateId();
@@ -1209,6 +1245,9 @@ app.post('/api/auth/accept-invite', async (req, res) => {
     const member = db.prepare('SELECT * FROM workspace_members WHERE invite_token = ? AND invite_status = ?').get(token, 'pending');
     if (!member) return res.status(404).json({ error: 'Invalid or expired invite' });
 
+    if (!password || password.length < 8 || !/[A-Z]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters and include an uppercase letter and a special character.' });
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
     let userId = member.user_id;
 
@@ -1976,6 +2015,116 @@ app.delete('/api/leads/trash/cleanup', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// DELETE /api/leads/trash/empty — permanently delete EVERY trashed lead (item 25)
+app.delete('/api/leads/trash/empty', auth, (req, res) => {
+  try {
+    const ids = db.prepare('SELECT id FROM leads WHERE workspace_id = ? AND is_deleted = 1').all(req.workspaceId).map(r => r.id);
+    let removed = 0;
+    const purge = db.transaction((leadIds) => {
+      for (const lid of leadIds) {
+        db.prepare('DELETE FROM notes WHERE lead_id = ?').run(lid);
+        db.prepare('DELETE FROM reminders WHERE lead_id = ?').run(lid);
+        db.prepare('DELETE FROM messages WHERE lead_id = ?').run(lid);
+        db.prepare('DELETE FROM contact_history WHERE lead_id = ?').run(lid);
+        db.prepare('DELETE FROM invoices WHERE lead_id = ?').run(lid);
+        removed += db.prepare('DELETE FROM leads WHERE id = ? AND workspace_id = ?').run(lid, req.workspaceId).changes;
+      }
+    });
+    purge(ids);
+    res.json({ message: 'Trash emptied', deleted: removed });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Lost-reason presets (item 5) ──────────────────────────────────────────────
+app.get('/api/lost-reasons', auth, (req, res) => {
+  try {
+    const reasons = db.prepare('SELECT * FROM lost_reasons WHERE workspace_id = ? ORDER BY created_at ASC').all(req.workspaceId);
+    res.json({ reasons });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/lost-reasons', auth, (req, res) => {
+  try {
+    const reason = (req.body.reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Reason text is required' });
+    const id = generateId();
+    db.prepare('INSERT INTO lost_reasons (id, workspace_id, reason) VALUES (?, ?, ?)').run(id, req.workspaceId, reason);
+    res.status(201).json(db.prepare('SELECT * FROM lost_reasons WHERE id = ?').get(id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/lost-reasons/:id', auth, (req, res) => {
+  try {
+    db.prepare('DELETE FROM lost_reasons WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
+    res.json({ message: 'Deleted' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Personal tasks — side panel (item 23) ─────────────────────────────────────
+app.get('/api/my/tasks', auth, (req, res) => {
+  try {
+    res.json({ tasks: db.prepare('SELECT * FROM user_tasks WHERE user_id = ? ORDER BY done ASC, created_at DESC').all(req.userId) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/my/tasks', auth, (req, res) => {
+  try {
+    const title = (req.body.title || '').trim();
+    if (!title) return res.status(400).json({ error: 'Task title is required' });
+    const id = generateId();
+    db.prepare('INSERT INTO user_tasks (id, user_id, workspace_id, title, due_date) VALUES (?, ?, ?, ?, ?)')
+      .run(id, req.userId, req.workspaceId, title, req.body.due_date || null);
+    res.status(201).json(db.prepare('SELECT * FROM user_tasks WHERE id = ?').get(id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/my/tasks/:id', auth, (req, res) => {
+  try {
+    const t = db.prepare('SELECT * FROM user_tasks WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+    if (!t) return res.status(404).json({ error: 'Task not found' });
+    db.prepare('UPDATE user_tasks SET title = ?, done = ?, due_date = ? WHERE id = ? AND user_id = ?').run(
+      req.body.title != null ? req.body.title : t.title,
+      req.body.done != null ? (req.body.done ? 1 : 0) : t.done,
+      req.body.due_date !== undefined ? req.body.due_date : t.due_date,
+      req.params.id, req.userId);
+    res.json(db.prepare('SELECT * FROM user_tasks WHERE id = ?').get(req.params.id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/my/tasks/:id', auth, (req, res) => {
+  try {
+    db.prepare('DELETE FROM user_tasks WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
+    res.json({ message: 'Deleted' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Personal quick notes / Keep — side panel (item 23) ────────────────────────
+app.get('/api/my/notes', auth, (req, res) => {
+  try {
+    res.json({ notes: db.prepare('SELECT * FROM quick_notes WHERE user_id = ? ORDER BY updated_at DESC').all(req.userId) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/my/notes', auth, (req, res) => {
+  try {
+    const id = generateId();
+    db.prepare('INSERT INTO quick_notes (id, user_id, workspace_id, content, color) VALUES (?, ?, ?, ?, ?)')
+      .run(id, req.userId, req.workspaceId, req.body.content || '', req.body.color || 'yellow');
+    res.status(201).json(db.prepare('SELECT * FROM quick_notes WHERE id = ?').get(id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/my/notes/:id', auth, (req, res) => {
+  try {
+    const n = db.prepare('SELECT * FROM quick_notes WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+    if (!n) return res.status(404).json({ error: 'Note not found' });
+    db.prepare('UPDATE quick_notes SET content = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').run(
+      req.body.content != null ? req.body.content : n.content,
+      req.body.color != null ? req.body.color : n.color,
+      req.params.id, req.userId);
+    res.json(db.prepare('SELECT * FROM quick_notes WHERE id = ?').get(req.params.id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/my/notes/:id', auth, (req, res) => {
+  try {
+    db.prepare('DELETE FROM quick_notes WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
+    res.json({ message: 'Deleted' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ════════════════════════════════════════════════════════════
 //  NOTES & REMINDERS
 // ════════════════════════════════════════════════════════════
@@ -2175,6 +2324,141 @@ app.delete('/api/invoices/:id', auth, (req, res) => {
     db.prepare('DELETE FROM invoices WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
     res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Premium invoice HTML (used for emailed invoices) ──────────────────────────
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function buildInvoiceHtml(inv, company, introMessage) {
+  const accent = '#6366f1';
+  const sym = (company && company.currency_symbol) || (inv && inv.currency_symbol) || '$';
+  const money = (n) => sym + (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtDate = (d) => {
+    if (!d) return '—';
+    const s = String(d);
+    const dt = new Date(s.replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? '' : 'Z'));
+    return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+  let items = inv && inv.items;
+  if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+  items = Array.isArray(items) ? items : [];
+
+  const statusColors = { paid: '#10b981', pending: '#f59e0b', overdue: '#ef4444', draft: '#94a3b8' };
+  const sc = statusColors[inv && inv.status] || statusColors.draft;
+  const c = company || {};
+  const logoBlock = c.company_logo
+    ? `<img src="https://api.remoteops.co${escapeHtml(c.company_logo)}" alt="${escapeHtml(c.company_name || '')}" style="max-height:54px;max-width:210px;object-fit:contain;display:block;margin-bottom:10px" />`
+    : `<div style="font-size:23px;font-weight:800;color:${accent};margin-bottom:10px">${escapeHtml(c.company_name || 'WappFlow')}</div>`;
+  const companyLines = [
+    c.company_logo ? c.company_name : '',
+    c.company_address, c.company_email, c.company_phone, c.company_website,
+  ].filter(Boolean).map(l => `<div style="font-size:12px;color:#64748b;line-height:1.7">${escapeHtml(l)}</div>`).join('');
+  const itemRows = items.length ? items.map((it, i) => `
+    <tr style="background:${i % 2 ? '#f8fafc' : '#ffffff'}">
+      <td style="padding:11px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #eef2f6">${escapeHtml(it.description || '—')}</td>
+      <td style="padding:11px 16px;font-size:13px;color:#475569;text-align:center;border-bottom:1px solid #eef2f6">${escapeHtml(it.qty || 1)}</td>
+      <td style="padding:11px 16px;font-size:13px;color:#475569;text-align:right;border-bottom:1px solid #eef2f6">${money(it.rate)}</td>
+      <td style="padding:11px 16px;font-size:13px;color:#1e293b;font-weight:700;text-align:right;border-bottom:1px solid #eef2f6">${money(it.amount != null ? it.amount : (it.qty || 1) * (it.rate || 0))}</td>
+    </tr>`).join('') : `<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No line items</td></tr>`;
+  const taxLabel = (c.tax_name || 'Tax') + ((inv && inv.tax_rate) ? ` (${inv.tax_rate}%)` : '');
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Invoice ${escapeHtml((inv && (inv.invoice_number || inv.id)) || '')}</title></head>
+<body style="margin:0;padding:0;background:#eef1f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<div style="max-width:680px;margin:0 auto;padding:28px 16px">
+  ${introMessage ? `<div style="background:#fff;border:1px solid #e6e9f0;border-radius:14px;padding:18px 22px;margin-bottom:18px;font-size:14px;color:#334155;line-height:1.6">${escapeHtml(introMessage).replace(/\n/g, '<br>')}</div>` : ''}
+  <div style="background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e6e9f0;box-shadow:0 8px 30px rgba(15,23,42,0.06)">
+    <div style="height:6px;background:linear-gradient(90deg,${accent},#8b5cf6)"></div>
+    <div style="padding:32px 34px">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="vertical-align:top">${logoBlock}${companyLines}</td>
+        <td style="vertical-align:top;text-align:right">
+          <div style="font-size:30px;font-weight:800;letter-spacing:1px;color:#0f172a">INVOICE</div>
+          <div style="font-size:13px;color:#64748b;margin-top:6px"><strong style="color:#0f172a">${escapeHtml((inv && (inv.invoice_number || ('#' + inv.id))) || '')}</strong></div>
+          <div style="font-size:12px;color:#64748b;margin-top:3px">Issued ${fmtDate(inv && inv.created_at)}</div>
+          ${(inv && inv.due_date) ? `<div style="font-size:12px;color:#64748b;margin-top:2px">Due ${fmtDate(inv.due_date)}</div>` : ''}
+          <div style="display:inline-block;margin-top:10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:4px 12px;border-radius:20px;background:${sc}22;color:${sc}">${escapeHtml((inv && inv.status) || 'draft')}</div>
+        </td>
+      </tr></table>
+      <div style="margin-top:30px;padding:16px 18px;background:#f8fafc;border-radius:12px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px">Billed To</div>
+        <div style="font-size:16px;font-weight:700;color:#0f172a">${escapeHtml((inv && inv.customer_name) || '—')}</div>
+        ${(inv && inv.customer_email) ? `<div style="font-size:12px;color:#64748b;margin-top:2px">${escapeHtml(inv.customer_email)}</div>` : ''}
+        ${(inv && inv.customer_phone) ? `<div style="font-size:12px;color:#64748b;margin-top:1px">${escapeHtml(inv.customer_phone)}</div>` : ''}
+        ${(inv && inv.customer_address) ? `<div style="font-size:12px;color:#64748b;margin-top:1px">${escapeHtml(inv.customer_address)}</div>` : ''}
+      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;border-collapse:collapse">
+        <thead><tr style="background:#0f172a">
+          <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#cbd5e1">Description</th>
+          <th style="padding:10px 16px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#cbd5e1">Qty</th>
+          <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#cbd5e1">Rate</th>
+          <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#cbd5e1">Amount</th>
+        </tr></thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px"><tr>
+        <td style="width:52%"></td>
+        <td style="width:48%">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr><td style="padding:6px 2px;font-size:13px;color:#64748b">Subtotal</td><td style="padding:6px 2px;font-size:13px;color:#1e293b;text-align:right">${money(inv && inv.subtotal)}</td></tr>
+            ${(inv && inv.discount) ? `<tr><td style="padding:6px 2px;font-size:13px;color:#64748b">Discount</td><td style="padding:6px 2px;font-size:13px;color:#1e293b;text-align:right">-${money(inv.discount)}</td></tr>` : ''}
+            <tr><td style="padding:6px 2px;font-size:13px;color:#64748b">${escapeHtml(taxLabel)}</td><td style="padding:6px 2px;font-size:13px;color:#1e293b;text-align:right">${money(inv && inv.tax_amount)}</td></tr>
+          </table>
+          <div style="margin-top:8px;background:${accent};border-radius:10px;padding:13px 18px">
+            <table width="100%"><tr>
+              <td style="font-size:13px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px">Total Due</td>
+              <td style="font-size:21px;font-weight:800;color:#fff;text-align:right">${money(inv && inv.total)}</td>
+            </tr></table>
+          </div>
+        </td>
+      </tr></table>
+      ${(inv && inv.notes) ? `<div style="margin-top:24px;padding:14px 18px;background:#f8fafc;border-left:3px solid ${accent};border-radius:6px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:4px">Notes</div><div style="font-size:13px;color:#475569;line-height:1.6">${escapeHtml(inv.notes).replace(/\n/g, '<br>')}</div></div>` : ''}
+      <div style="margin-top:32px;padding-top:20px;border-top:1px solid #eef2f6;text-align:center">
+        <div style="font-size:13px;font-weight:700;color:#0f172a">Thank you for your business</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:4px">${escapeHtml(c.company_name || 'WappFlow')}${c.company_email ? ' · ' + escapeHtml(c.company_email) : ''}</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+}
+
+// POST /api/invoices/:id/email — email a premium invoice to the customer (item 2)
+app.post('/api/invoices/:id/email', auth, async (req, res) => {
+  try {
+    const row = db.prepare('SELECT * FROM invoices WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId);
+    if (!row) return res.status(404).json({ error: 'Invoice not found' });
+    const inv = parseInvoice(row);
+    const to = (req.body.to || inv.customer_email || '').trim();
+    if (!to) return res.status(400).json({ error: 'No recipient email — add the customer email first.' });
+
+    const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(req.workspaceOwnerId);
+    if (!smtpRow || !smtpRow.smtp_host) return res.status(400).json({ error: 'SMTP not configured. Set up email sending in Settings → Email Sending.' });
+
+    const company = db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId) || {};
+    const subject = (req.body.subject || '').trim() || `Invoice ${inv.invoice_number || ''} from ${company.company_name || 'WappFlow'}`.trim();
+    const html = buildInvoiceHtml(inv, company, req.body.message);
+
+    const transporter = nodemailer.createTransport({
+      host: smtpRow.smtp_host, port: smtpRow.smtp_port, secure: !!smtpRow.smtp_secure,
+      auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass }
+    });
+    const result = await transporter.sendMail({
+      from: `"${smtpRow.from_name || company.company_name || 'WappFlow'}" <${smtpRow.from_email || smtpRow.smtp_user}>`,
+      to, subject, html,
+    });
+
+    // A draft invoice that's been sent is now pending payment.
+    db.prepare("UPDATE invoices SET status = 'pending' WHERE id = ? AND user_id = ? AND status = 'draft'")
+      .run(inv.id, req.workspaceOwnerId);
+    if (inv.lead_id) addContactHistory(inv.lead_id, req.userId, 'invoice', `Invoice ${inv.invoice_number} emailed to ${to}`);
+    logAudit(req.workspaceId, req.userId, 'invoice_emailed', 'invoice', inv.id, { to });
+    res.json({ message: 'Invoice sent', to, messageId: result.messageId });
+  } catch (e) {
+    console.error('Invoice email error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -3259,6 +3543,53 @@ console.log('✅ Cron jobs started');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
+// ── Auto lead analysis (item 16) ──────────────────────────────────────────────
+// Every lead that lands gets an AI "mark" (score / sentiment / urgency) shortly
+// after it arrives — without anyone opening it. Runs a small, rate-limit-friendly
+// batch on a timer so it covers leads from every inbound channel.
+let _autoAnalyzeRunning = false;
+async function autoAnalyzePendingLeads() {
+  if (_autoAnalyzeRunning) return;
+  _autoAnalyzeRunning = true;
+  try {
+    const pending = db.prepare(`
+      SELECT * FROM leads
+      WHERE (is_deleted = 0 OR is_deleted IS NULL)
+        AND total_messages > 0
+        AND (ai_last_analyzed_at IS NULL
+             OR (last_message_at IS NOT NULL AND ai_last_analyzed_at < last_message_at))
+      ORDER BY last_message_at DESC
+      LIMIT 4
+    `).all();
+    for (const lead of pending) {
+      try {
+        const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC LIMIT 30').all(lead.id);
+        if (!messages.length) {
+          db.prepare('UPDATE leads SET ai_last_analyzed_at = CURRENT_TIMESTAMP WHERE id = ?').run(lead.id);
+          continue;
+        }
+        const memoryContext = getMemoryContext(lead.workspace_id);
+        const analysis = await aiEngine.analyzeLeadIntelligence(messages, lead, memoryContext);
+        db.prepare(`UPDATE leads SET lead_score = COALESCE(?, lead_score), sentiment = ?, urgency = ?,
+          intent_category = ?, ai_last_analyzed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
+          analysis.lead_score ?? null, analysis.sentiment || null, analysis.urgency || null,
+          analysis.intent_category || null, lead.id);
+      } catch (e) {
+        console.log(`auto-analyze: lead ${lead.id} skipped — ${e.message}`);
+        // Mark it analyzed so the batch moves on; the next inbound message re-queues it.
+        try { db.prepare('UPDATE leads SET ai_last_analyzed_at = CURRENT_TIMESTAMP WHERE id = ?').run(lead.id); } catch {}
+      }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  } catch (e) {
+    console.log('auto-analyze batch error:', e.message);
+  } finally {
+    _autoAnalyzeRunning = false;
+  }
+}
+setInterval(autoAnalyzePendingLeads, 90 * 1000);
+setTimeout(autoAnalyzePendingLeads, 15000);
+
 async function callGemini(prompt, maxTokens = 2048) {
   // Delegates to the centralized AI engine — provider-aware (Cerebras / Groq /
   // OpenAI / Anthropic) with automatic rate-limit retry + backoff. The legacy
@@ -3304,7 +3635,7 @@ app.post('/api/leads/:id/ai/summary', auth, async (req, res) => {
   try {
     const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
-    const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC').all(req.params.id);
+    const messages = db.prepare('SELECT * FROM (SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp DESC LIMIT 40) ORDER BY timestamp ASC').all(req.params.id);
 
     const context = buildConversationContext(messages, lead);
     const memoryContext = getMemoryContext(req.workspaceId);
@@ -3587,6 +3918,18 @@ async function extractTextFromFile(filePath, mimeType, originalName) {
 }
 
 // Helper: extract memories from text using AI
+// Dedup guard (item 24) — true when an equivalent memory already exists for the
+// workspace, so re-crawling a site / re-uploading a doc / re-learning chats only
+// ever adds genuinely new knowledge.
+function memoryIsDuplicate(workspaceId, value) {
+  const v = String(value == null ? '' : value).trim();
+  if (!v) return true;
+  try {
+    return !!db.prepare('SELECT 1 FROM ai_memories WHERE workspace_id = ? AND lower(trim(value)) = ? LIMIT 1')
+      .get(workspaceId, v.toLowerCase());
+  } catch { return false; }
+}
+
 async function extractMemoriesFromText(text, workspaceId) {
   if (!text || text.length < 50) return [];
   const truncated = text.substring(0, 4000);
@@ -3763,24 +4106,27 @@ app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (r
         const text = await extractTextFromFile(filePath, mimeType, fileName);
         const memories = await extractMemoriesFromText(text, req.workspaceId);
 
-        // Save extracted text
-        db.prepare(`
-          UPDATE knowledge_documents SET extracted_text=?, memory_count=?, processed=1 WHERE id=?
-        `).run(text.substring(0, 10000), memories.length, docId);
-
-        // Save memories
+        // Save memories — skipping any that already exist (item 24 dedup)
         const insertMemory = db.prepare(`
           INSERT OR REPLACE INTO ai_memories (id, workspace_id, memory_type, key, value, confidence, source, document_id)
           VALUES (?, ?, ?, ?, ?, ?, 'document', ?)
         `);
         const insertAll = db.transaction((mems) => {
+          let n = 0;
           mems.forEach(m => {
-            if (m.key && m.value) {
+            if (m.key && m.value && !memoryIsDuplicate(req.workspaceId, m.value)) {
               insertMemory.run(generateId(), req.workspaceId, m.memory_type || 'other', m.key, m.value, m.confidence || 80, docId);
+              n++;
             }
           });
+          return n;
         });
-        insertAll(memories);
+        const inserted = insertAll(memories);
+
+        // Save extracted text + the count of genuinely new memories
+        db.prepare(`
+          UPDATE knowledge_documents SET extracted_text=?, memory_count=?, processed=1 WHERE id=?
+        `).run(text.substring(0, 10000), inserted, docId);
 
         console.log(`✅ Knowledge doc processed: ${fileName} → ${memories.length} memories extracted`);
       } catch (e) {
@@ -3943,17 +4289,20 @@ app.post('/api/knowledge/crawl', auth, (req, res) => {
           VALUES (?, ?, ?, ?, ?, ?, 'website', ?)
         `);
         const insertAll = db.transaction((mems) => {
+          let n = 0;
           mems.forEach(m => {
-            if (m.key && m.value) {
+            if (m.key && m.value && !memoryIsDuplicate(workspaceId, m.value)) {
               insertMemory.run(generateId(), workspaceId, m.memory_type || 'other',
                 String(m.key).slice(0, 200), String(m.value).slice(0, 2000), m.confidence || 75, docId);
+              n++;
             }
           });
+          return n;
         });
-        insertAll(memories);
+        const inserted = insertAll(memories);
 
         db.prepare('UPDATE knowledge_documents SET memory_count = ?, extracted_text = ?, processed = ? WHERE id = ?')
-          .run(memories.length, `Crawled ${pagesProcessed} page(s) from ${domain}`, pagesProcessed > 0 ? 1 : 2, docId);
+          .run(inserted, `Crawled ${pagesProcessed} page(s) from ${domain}`, pagesProcessed > 0 ? 1 : 2, docId);
         console.log(`✅ Website crawl done: ${domain} → ${pagesProcessed} pages, ${memories.length} memories`);
       } catch (e) {
         console.error('Website crawl error:', e.message);
@@ -4025,7 +4374,7 @@ app.post('/api/knowledge/learn-from-messages', auth, async (req, res) => {
     `);
     const insertAll = db.transaction((mems) => {
       mems.forEach(m => {
-        if (m.key && m.value) {
+        if (m.key && m.value && !memoryIsDuplicate(req.workspaceId, m.value)) {
           insertMemory.run(generateId(), req.workspaceId, m.memory_type || 'other', m.key, m.value, m.confidence || 70);
           learned++;
         }

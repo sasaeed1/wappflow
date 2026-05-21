@@ -132,7 +132,7 @@ export default function AICommandCenter({ enabled = true }) {
         <div style={{
           position: 'fixed', bottom: 155, right: 24, zIndex: 999,
           width: 420, maxHeight: '70vh',
-          background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(20px)',
+          background: 'var(--glass)', backdropFilter: 'blur(20px)',
           border: '1.5px solid rgba(99,102,241,0.2)',
           borderRadius: 24, boxShadow: '0 32px 80px rgba(0,0,0,0.2)',
           display: 'flex', flexDirection: 'column',
@@ -143,7 +143,7 @@ export default function AICommandCenter({ enabled = true }) {
           {/* Header */}
           <div style={{
             padding: '16px 18px 12px',
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            borderBottom: '1px solid var(--border)',
             background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.05))',
             flexShrink: 0,
           }}>
@@ -162,7 +162,7 @@ export default function AICommandCenter({ enabled = true }) {
 
             {/* Input */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid #e5e7eb', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                 <Search size={14} color="#9ca3af" />
                 <input
                   ref={inputRef}
@@ -191,9 +191,9 @@ export default function AICommandCenter({ enabled = true }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
                   {QUICK_COMMANDS.map(qc => (
                     <button key={qc.command} onClick={() => handleCommand(qc.command)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 12, border: '1.5px solid #f3f4f6', background: 'var(--surface)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
                       onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.background = 'rgba(139,92,246,0.10)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--surface2)'; e.currentTarget.style.background = 'white'; }}>
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}>
                       <span style={{ fontSize: 16 }}>{qc.icon}</span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{qc.label}</span>
                     </button>
@@ -239,14 +239,14 @@ export default function AICommandCenter({ enabled = true }) {
 
                 {/* Error */}
                 {result.type === 'error' && (
-                  <div style={{ padding: '12px 14px', background: 'rgba(239,68,68,0.12)', borderRadius: 12, border: '1.5px solid #fecaca' }}>
-                    <p style={{ fontSize: 13, color: '#b91c1c', margin: 0 }}>⚠️ {result.message}</p>
+                  <div style={{ padding: '12px 14px', background: 'var(--danger-bg)', borderRadius: 12, border: '1.5px solid var(--danger-border)' }}>
+                    <p style={{ fontSize: 13, color: 'var(--danger)', margin: 0 }}>⚠️ {result.message}</p>
                   </div>
                 )}
 
                 {/* AI Answer */}
                 {result.type === 'ai_answer' && (
-                  <div style={{ padding: '14px 16px', background: 'linear-gradient(135deg, #faf5ff, #eef2ff)', borderRadius: 14, border: '1.5px solid #c4b5fd' }}>
+                  <div style={{ padding: '14px 16px', background: 'rgba(99,102,241,0.10)', borderRadius: 14, border: '1.5px solid rgba(139,92,246,0.35)' }}>
                     <p style={{ fontSize: 13, color: 'var(--text)', margin: 0, lineHeight: 1.7 }}>{result.message}</p>
                   </div>
                 )}
@@ -261,7 +261,7 @@ export default function AICommandCenter({ enabled = true }) {
                         { label: 'Hot Leads', value: result.data.stats.hot, color: '#ef4444', icon: '🔥' },
                         { label: 'Won Deals', value: result.data.stats.won, color: '#10b981', icon: '🏆' },
                       ].map(s => (
-                        <div key={s.label} style={{ padding: '12px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid #f3f4f6', textAlign: 'center' }}>
+                        <div key={s.label} style={{ padding: '12px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid var(--border)', textAlign: 'center' }}>
                           <p style={{ fontSize: 20, margin: '0 0 2px' }}>{s.icon}</p>
                           <p style={{ fontSize: 22, fontWeight: 900, color: s.color, margin: 0, lineHeight: 1 }}>{s.value}</p>
                           <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: '3px 0 0' }}>{s.label}</p>
@@ -269,7 +269,7 @@ export default function AICommandCenter({ enabled = true }) {
                       ))}
                     </div>
                     {result.data.summary && (
-                      <div style={{ padding: '12px 14px', background: 'rgba(16,185,129,0.10)', borderRadius: 12, border: '1.5px solid #bbf7d0' }}>
+                      <div style={{ padding: '12px 14px', background: 'rgba(16,185,129,0.10)', borderRadius: 12, border: '1.5px solid rgba(16,185,129,0.35)' }}>
                         <p style={{ fontSize: 13, color: 'var(--text)', margin: 0, lineHeight: 1.6 }}>{result.data.summary}</p>
                       </div>
                     )}
@@ -286,9 +286,9 @@ export default function AICommandCenter({ enabled = true }) {
                     ) : result.data.leads.map(lead => (
                       <div key={lead.id}
                         onClick={() => { router.push(`/leads/${lead.id}`); setOpen(false); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid #f3f4f6', cursor: 'pointer', transition: 'all 0.15s' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid var(--border)', cursor: 'pointer', transition: 'all 0.15s' }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.background = 'rgba(139,92,246,0.10)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--surface2)'; e.currentTarget.style.background = 'white'; }}>
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}>
                         <div style={{ width: 36, height: 36, borderRadius: 11, background: `linear-gradient(135deg, ${STATUS_COLORS[lead.status] || '#6366f1'}, ${STATUS_COLORS[lead.status] || '#6366f1'}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: 'white', flexShrink: 0 }}>
                           {lead.customer_name?.[0]?.toUpperCase() || '?'}
                         </div>
@@ -313,7 +313,7 @@ export default function AICommandCenter({ enabled = true }) {
                         <p style={{ fontSize: 13, margin: 0 }}>No upcoming reminders</p>
                       </div>
                     ) : result.data.reminders.map(r => (
-                      <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', background: 'rgba(139,92,246,0.10)', borderRadius: 12, border: '1.5px solid #e9d5ff' }}>
+                      <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', background: 'rgba(139,92,246,0.10)', borderRadius: 12, border: '1.5px solid rgba(139,92,246,0.35)' }}>
                         <Bell size={14} color="#8b5cf6" style={{ marginTop: 2, flexShrink: 0 }} />
                         <div style={{ flex: 1 }}>
                           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{r.title || r.message || 'Reminder'}</p>
@@ -327,16 +327,16 @@ export default function AICommandCenter({ enabled = true }) {
                 {/* Today summary */}
                 {result.type === 'summarize_today' && result.data?.summary && (
                   <div>
-                    <div style={{ padding: '14px 16px', background: 'linear-gradient(135deg, #ecfdf5, #eff6ff)', borderRadius: 14, border: '1.5px solid #a7f3d0', marginBottom: 12 }}>
+                    <div style={{ padding: '14px 16px', background: 'rgba(16,185,129,0.12)', borderRadius: 14, border: '1.5px solid rgba(16,185,129,0.35)', marginBottom: 12 }}>
                       <p style={{ fontSize: 13, color: 'var(--text)', margin: 0, lineHeight: 1.7 }}>{result.data.summary}</p>
                     </div>
                     {result.data.todayLeads?.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {result.data.todayLeads.map(lead => (
                           <div key={lead.id} onClick={() => { router.push(`/leads/${lead.id}`); setOpen(false); }}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface)', borderRadius: 10, border: '1.5px solid #f3f4f6', cursor: 'pointer' }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface)', borderRadius: 10, border: '1.5px solid var(--border)', cursor: 'pointer' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'white'}>
+                            onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}>
                             <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#6366f1' }}>
                               {lead.customer_name?.[0]?.toUpperCase()}
                             </div>
@@ -360,7 +360,7 @@ export default function AICommandCenter({ enabled = true }) {
           </div>
 
           {/* Footer */}
-          <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(0,0,0,0.06)', background: 'rgba(249,250,251,0.8)', flexShrink: 0 }}>
+          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', flexShrink: 0 }}>
             <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0, textAlign: 'center' }}>
               Press <kbd style={{ background: 'var(--surface2)', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Enter</kbd> to run · <kbd style={{ background: 'var(--surface2)', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Esc</kbd> to close
             </p>

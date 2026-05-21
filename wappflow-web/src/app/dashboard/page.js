@@ -17,6 +17,7 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_URL, platformAccountsAPI } from '../../lib/api';
+import { isLeadUnread } from '../../lib/unread';
 import AddLeadModal from '../../components/AddLeadModal';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import NavBar from '../../components/NavBar';
@@ -335,7 +336,14 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew }) {
                   {isNew && <span style={{ fontSize: 10, fontWeight: 700, color: sc.dot, background: sc.bg, padding: '1px 6px', borderRadius: 8 }}>NEW</span>}
                 </div>
               </div>
-              <ChevronRight style={{ width: 14, height: 14, color: 'var(--border)', flexShrink: 0, opacity: 0 }} className="group-hover:opacity-100" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                {isLeadUnread(lead) && (
+                  <div className="wf-unread-bell" title="New / unread messages" style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <MessageSquare style={{ width: 12, height: 12 }} color="#ef4444" />
+                  </div>
+                )}
+                <ChevronRight style={{ width: 14, height: 14, color: 'var(--border)', opacity: 0 }} className="group-hover:opacity-100" />
+              </div>
             </div>
 
             {/* Platform · account chip — always visible so the source is unambiguous */}
@@ -434,8 +442,8 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew }) {
 // ── Kanban Column ─────────────────────────────────────────────────────────────
 function KanbanColumn({ column, leads, onLeadClick, allTags, onTagToggle, newLeadIds }) {
   return (
-    <div style={{ flexShrink: 0, width: 220 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, padding: '0 2px' }}>
+    <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'sticky', top: 117, zIndex: 30, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '6px 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: column.color, boxShadow: `0 0 6px ${column.color}66` }} />
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{column.label}</span>
@@ -447,7 +455,7 @@ function KanbanColumn({ column, leads, onLeadClick, allTags, onTagToggle, newLea
       <Droppable droppableId={column.id}>
         {(provided, snapshot) => (
           <div ref={provided.innerRef} {...provided.droppableProps} style={{
-            minHeight: 400, borderRadius: 16, padding: 10,
+            minHeight: 400, flex: 1, borderRadius: 16, padding: 10,
             background: snapshot.isDraggingOver ? column.light : 'var(--surface)',
             border: `2px solid ${snapshot.isDraggingOver ? column.color : 'var(--border)'}`,
             borderTop: `3px solid ${column.color}`,
@@ -1234,7 +1242,7 @@ export default function DashboardPage() {
         {/* ── KANBAN ── */}
         {viewMode === 'kanban' && (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 20 }}>
+            <div style={{ display: 'flex', gap: 12, paddingBottom: 20, alignItems: 'stretch' }}>
               {COLUMNS.map(col => (
                 <KanbanColumn key={col.id} column={col} leads={getLeadsByStatus(col.id)} onLeadClick={id => router.push(`/leads/${id}`)} allTags={allTags} onTagToggle={handleTagToggle} newLeadIds={newLeadIds} />
               ))}
@@ -1294,6 +1302,11 @@ export default function DashboardPage() {
                     <span style={{ fontSize: 14, fontWeight: 800, color: sc.dot, flexShrink: 0 }}>
                       Rs {(lead.actual_sale || lead.estimated_value)?.toLocaleString()}
                     </span>
+                  )}
+                  {isLeadUnread(lead) && (
+                    <div className="wf-unread-bell" title="New / unread messages" style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <MessageSquare style={{ width: 12, height: 12 }} color="#ef4444" />
+                    </div>
                   )}
                   <ChevronRight style={{ width: 16, height: 16, color: 'var(--border)', flexShrink: 0 }} />
                 </div>

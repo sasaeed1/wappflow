@@ -27,16 +27,21 @@ function SignupContent() {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     if (data.workspace) localStorage.setItem('workspace', JSON.stringify(data.workspace));
+    // New account — keep them signed in on this device
+    localStorage.setItem('wf_persist', 'forever');
+    try { sessionStorage.setItem('wf_alive', '1'); } catch {}
     // Triggers the per-tier welcome modal on the next page after signup
     try { sessionStorage.setItem('wf_just_logged_in', '1'); } catch {}
-    router.push('/dashboard');
+    // Full navigation so plan context + all state initialize for the new account
+    window.location.replace('/dashboard');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+    const pwd = formData.password;
+    if (pwd.length < 8 || !/[A-Z]/.test(pwd) || !/[^A-Za-z0-9]/.test(pwd)) {
+      setError('Password must be at least 8 characters and include an uppercase letter and a special character.');
       return;
     }
     setLoading(true);
@@ -203,16 +208,23 @@ function SignupContent() {
                 <input
                   type={showPwd ? 'text' : 'password'}
                   required
-                  minLength={6}
+                  minLength={8}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="At least 6 characters"
+                  placeholder="Min 8 chars · 1 uppercase · 1 special"
                   autoComplete="new-password"
                 />
                 <button type="button" onClick={() => setShowPwd(s => !s)} className="auth-eye" aria-label="Toggle password visibility">
                   {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              {formData.password && (
+                <div className="auth-pwd-reqs">
+                  <PwdReq ok={formData.password.length >= 8} text="At least 8 characters" />
+                  <PwdReq ok={/[A-Z]/.test(formData.password)} text="One uppercase letter" />
+                  <PwdReq ok={/[^A-Za-z0-9]/.test(formData.password)} text="One special character" />
+                </div>
+              )}
             </div>
 
             <div className="auth-checks">
@@ -231,7 +243,7 @@ function SignupContent() {
           </form>
 
           <p className="auth-legal">
-            By creating an account you agree to our <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.
+            By creating an account you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.
           </p>
         </div>
       </main>
@@ -243,6 +255,15 @@ function SmallCheck({ text }) {
   return (
     <div className="auth-small-check">
       <CheckCircle2 size={14} />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function PwdReq({ ok, text }) {
+  return (
+    <div className={'auth-pwd-req' + (ok ? ' ok' : '')}>
+      {ok ? <CheckCircle2 size={13} /> : <span className="auth-pwd-dot" />}
       <span>{text}</span>
     </div>
   );
@@ -557,6 +578,20 @@ function AuthStyles() {
         color: var(--auth-text-muted);
       }
       .auth-small-check svg { color: #34d399; flex-shrink: 0; }
+
+      .auth-pwd-reqs { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
+      .auth-pwd-req {
+        display: flex; align-items: center; gap: 7px;
+        font-size: 12px; color: var(--auth-text-muted);
+        transition: color 0.15s;
+      }
+      .auth-pwd-req.ok { color: #34d399; }
+      .auth-pwd-req svg { flex-shrink: 0; }
+      .auth-pwd-dot {
+        width: 13px; height: 13px; border-radius: 50%;
+        border: 1.5px solid currentColor; opacity: 0.45;
+        flex-shrink: 0;
+      }
 
       .auth-submit {
         margin-top: 6px;

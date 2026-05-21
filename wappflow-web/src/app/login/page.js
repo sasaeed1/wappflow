@@ -18,14 +18,19 @@ function LoginContent() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
+  const [remember, setRemember] = useState(false);
 
-  const saveAuthData = (data) => {
+  const saveAuthData = (data, remember) => {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     if (data.workspace) localStorage.setItem('workspace', JSON.stringify(data.workspace));
+    // "Remember me": persist forever, otherwise clear when the browser session ends
+    localStorage.setItem('wf_persist', remember ? 'forever' : 'session');
+    try { sessionStorage.setItem('wf_alive', '1'); } catch {}
     // Triggers the per-tier welcome modal on the next page after login
     try { sessionStorage.setItem('wf_just_logged_in', '1'); } catch {}
-    router.push('/dashboard');
+    // Full navigation so plan context + all state re-initialize for this account
+    window.location.replace('/dashboard');
   };
 
   const handleSubmit = async (e) => {
@@ -34,7 +39,7 @@ function LoginContent() {
     setLoading(true);
     try {
       const response = await authAPI.login(formData);
-      saveAuthData(response.data);
+      saveAuthData(response.data, remember);
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
     } finally {
@@ -47,7 +52,7 @@ function LoginContent() {
     setLoading(true);
     try {
       const response = await authAPI.google({ credential: credentialResponse.credential });
-      saveAuthData(response.data);
+      saveAuthData(response.data, remember);
     } catch (err) {
       setError(err.response?.data?.error || 'Google sign-in failed');
     } finally {
@@ -191,6 +196,11 @@ function LoginContent() {
               </div>
             </div>
 
+            <label className="auth-remember">
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <span>Remember me on this device</span>
+            </label>
+
             <button type="submit" disabled={loading} className="auth-submit">
               {loading ? (
                 <><span className="auth-spinner" /> Signing in…</>
@@ -206,7 +216,7 @@ function LoginContent() {
           </p>
 
           <p className="auth-legal">
-            By signing in, you agree to our <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.
+            By signing in, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.
           </p>
         </div>
       </main>
@@ -548,6 +558,18 @@ function AuthStyles() {
         animation: auth-spin 0.8s linear infinite;
       }
       @keyframes auth-spin { to { transform: rotate(360deg); } }
+
+      .auth-remember {
+        display: flex; align-items: center; gap: 9px;
+        font-size: 13px; color: var(--auth-text-dim);
+        cursor: pointer; user-select: none;
+        margin-top: 2px;
+      }
+      .auth-remember input {
+        width: 16px; height: 16px;
+        accent-color: var(--auth-accent);
+        cursor: pointer; flex-shrink: 0;
+      }
 
       .auth-bottom {
         text-align: center;

@@ -56,6 +56,17 @@ function _isRateLimit(e) {
 // ── Low-level LLM call — provider abstraction with automatic failover ──
 async function callLLM(prompt, opts = {}) {
   const { maxTokens = 2048, temperature = 0.3, system = null, provider } = opts;
+
+  // Hard prompt-size cap — keeps every request inside the smallest free-tier
+  // window (Groq ~6K tokens/min). Oversized prompts get their middle trimmed so
+  // the instructions (start) and the latest context (end) both survive.
+  const MAX_PROMPT_CHARS = 12000;
+  if (typeof prompt === 'string' && prompt.length > MAX_PROMPT_CHARS) {
+    const head = prompt.slice(0, 2600);
+    const tail = prompt.slice(prompt.length - (MAX_PROMPT_CHARS - 2800));
+    prompt = head + '\n\n…[earlier conversation trimmed to fit AI limits]…\n\n' + tail;
+  }
+
   // Candidate list: an explicit provider first (if given), then the chain —
   // deduped, and only those that actually have an API key configured.
   const candidates = (provider ? [provider, ...PROVIDER_CHAIN] : [...PROVIDER_CHAIN])
@@ -121,7 +132,10 @@ async function _callOpenRouter(prompt, system, maxTokens, temperature) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || err.message || `OpenRouter error ${res.status}`);
+    const detail = err.error?.message || err.message || 'request failed';
+    // Include the HTTP status so callLLM's rate-limit detector classifies 429s
+    // correctly and fails over instead of surfacing a vague error.
+    throw new Error(`OpenRouter ${res.status}: ${detail}`);
   }
   const data = await res.json();
   return data.choices?.[0]?.message?.content || '';

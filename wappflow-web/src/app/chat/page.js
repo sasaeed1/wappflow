@@ -11,6 +11,7 @@ import {
   List, ListOrdered, Quote, Strikethrough, Underline as UnderlineIcon
 } from 'lucide-react';
 import { chatAPI, BASE_URL } from '../../lib/api';
+import { formatTime, formatDate } from '../../lib/datetime';
 import NavBar from '../../components/NavBar';
 import HuddleModal from '@/components/HuddleModal';
 import { useConfirm } from '@/lib/confirm';
@@ -176,7 +177,7 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo }) {
   const [showActions, setShowActions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const isMe = msg.user_id === currentUserId;
-  const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const time = formatTime(msg.created_at);
 
   // Group reactions
   const reactionGroups = (msg.reactions || []).reduce((acc, r) => {
@@ -483,7 +484,7 @@ export default function ChatPage() {
 
   // Group messages by date
   const groupedMessages = messages.reduce((acc, msg) => {
-    const date = new Date(msg.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const date = formatDate(msg.created_at);
     if (!acc[date]) acc[date] = [];
     acc[date].push(msg);
     return acc;
