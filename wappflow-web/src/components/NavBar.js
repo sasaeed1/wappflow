@@ -12,6 +12,8 @@ import {
 import { leadsAPI, remindersAPI, displayPhone, BASE_URL, platformAccountsAPI } from '../lib/api';
 import FloatingChat from './FloatingChat';
 import AICommandCenter from './AICommandCenter';
+import { usePlan } from '@/lib/plan';
+import { PlanBanner, PlanChip } from './PlanLock';
 
 const PLATFORM_META = {
   whatsapp:  { label: 'WhatsApp',  color: '#25d366', icon: MessageCircle },
@@ -19,6 +21,14 @@ const PLATFORM_META = {
   facebook:  { label: 'Facebook',  color: '#1877f2', icon: MonitorSmartphone },
   website:   { label: 'Website',   color: '#6366f1', icon: Globe },
 };
+
+function countLockedFeatures(plan) {
+  // Returns the number of major gated features that are NOT in the user's current plan.
+  // Used to populate "{n} features locked" on the persistent banner.
+  if (!plan?.features) return 0;
+  const gated = ['email_integration', 'multi_channel_inbox', 'google_calendar', 'calendly', 'automations', 'huddle', 'reports', 'analytics'];
+  return gated.filter(k => !plan.features[k]).length;
+}
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
@@ -37,6 +47,7 @@ const MORE_ITEMS = [
 export default function NavBar({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
+  const plan     = usePlan();
   const notifRef   = useRef(null);
   const moreRef    = useRef(null);
   const platformRef = useRef(null);
@@ -377,6 +388,16 @@ export default function NavBar({ children }) {
             <Settings size={17} />
           </button>
 
+          {/* Plan chip — shows current tier + lead usage */}
+          {plan.plan && (
+            <PlanChip
+              plan={plan.plan}
+              planName={plan.planName}
+              usage={plan.usage}
+              limits={plan.limits}
+            />
+          )}
+
           {/* Notifications */}
           <div ref={notifRef} style={{ position: 'relative' }}>
             <button
@@ -635,6 +656,14 @@ export default function NavBar({ children }) {
 
       {/* Page content — offset below the fixed nav */}
       <div style={{ paddingTop: 60, minHeight: '100vh', background: 'var(--bg)' }}>
+        {/* Plan banner — sticky-ish (renders for Free/Starter only, dismissable for 24h) */}
+        <PlanBanner
+          plan={plan.plan}
+          planName={plan.planName}
+          usage={plan.usage}
+          limits={plan.limits}
+          lockedCount={countLockedFeatures(plan)}
+        />
         {children}
       </div>
 

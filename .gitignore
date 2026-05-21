@@ -73,3 +73,9 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# WappFlow — operational deployment/diagnostic scripts (not app code)
+/*.py
+
+# Sensitive — demo account credentials, never commit
+demo_accounts.txt

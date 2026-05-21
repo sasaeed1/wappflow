@@ -10,6 +10,7 @@ import {
 import { workspaceAPI, auditAPI } from '../../lib/api';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
+import { usePlan } from '@/lib/plan';
 
 const ROLES = [
   { value: 'super_admin', label: 'Super Admin', color: '#f59e0b', icon: Crown,     desc: 'Full access · Workspace owner' },
@@ -454,6 +455,7 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
 export default function TeamPage() {
   const router = useRouter();
   const confirm = useConfirm();
+  const plan = usePlan();
   const [workspace, setWorkspace] = useState(null);
   const [members, setMembers] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -574,11 +576,26 @@ export default function TeamPage() {
           <button onClick={fetchAll} style={{ padding:'6px 12px', borderRadius:9, border:'1.5px solid var(--border)', background:'var(--surface)', color:'var(--text-muted)', cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', gap:5 }}>
             <RefreshCw size={12} /> Refresh
           </button>
-          {canManage && (
-            <button onClick={()=>setShowInvite(true)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#6366f1,#4f46e5)', color:'white', fontWeight:700, cursor:'pointer', fontSize:13, boxShadow:'0 4px 14px rgba(99,102,241,0.35)' }}>
-              <Plus size={14} /> Invite Member
-            </button>
-          )}
+          {canManage && (() => {
+            const limit = plan.limits?.team_members;
+            const used = members.length;
+            const atLimit = limit && limit !== -1 && used >= limit;
+            if (atLimit) {
+              return (
+                <button onClick={() => router.push('/settings?tab=workspace')}
+                  title={`Plan limit: ${used}/${limit} team members`}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'1.5px solid rgba(245,158,11,0.4)', background:'rgba(245,158,11,0.10)', color:'#fbbf24', fontWeight:700, cursor:'pointer', fontSize:13 }}>
+                  <Lock size={14} /> {used}/{limit} · Upgrade for more
+                </button>
+              );
+            }
+            return (
+              <button onClick={()=>setShowInvite(true)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#6366f1,#4f46e5)', color:'white', fontWeight:700, cursor:'pointer', fontSize:13, boxShadow:'0 4px 14px rgba(99,102,241,0.35)' }}>
+                <Plus size={14} /> Invite Member
+                {limit && limit !== -1 && <span style={{ opacity: 0.85, fontSize: 11, marginLeft: 4 }}>({used}/{limit})</span>}
+              </button>
+            );
+          })()}
         </div>
         <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px', display:'flex', gap:4 }}>
           {[{ id:'members', label:'Team Members' }, { id:'permissions', label:'Roles & Permissions' }, { id:'logs', label:'Activity Logs' }].map(t => (

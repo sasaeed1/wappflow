@@ -509,6 +509,11 @@ const [aiError, setAiError] = useState('');
   // Active chat platform — defaults to the lead's source. The 4 platform tabs above the chat
   // box switch which platform's conversation is displayed and which platform messages go to.
   const [activePlatform, setActivePlatform] = useState(null); // set after lead loads
+  // Keep a live ref to activePlatform — the SSE effect only re-runs on leadId,
+  // so its handler closure would otherwise read a stale (null) activePlatform
+  // and never refresh the thread.
+  const activePlatformRef = useRef(activePlatform);
+  activePlatformRef.current = activePlatform;
   const [platformCounts, setPlatformCounts] = useState({});   // { whatsapp: 23, instagram: 4, ... }
   const [unreadByPlatform, setUnreadByPlatform] = useState({}); // bumped via SSE when a non-active platform gets a message
 
@@ -583,10 +588,12 @@ const [aiError, setAiError] = useState('');
         const data = JSON.parse(e.data);
         if (data.lead_id !== leadId) return; // ignore other leads
         const incomingPlatform = (data.message?.platform || 'whatsapp').toLowerCase();
-        // If the message arrived on the platform the user is currently viewing, refresh inline.
-        // Otherwise just bump the unread counter so the tab shows a "(1)" badge.
-        if (incomingPlatform === activePlatform) {
-          fetchMessages();
+        const viewing = activePlatformRef.current;
+        // If the message arrived on the platform the user is currently viewing
+        // (or the platform isn't set yet), refresh inline. Otherwise bump the
+        // unread counter so the tab shows a "(1)" badge.
+        if (!viewing || incomingPlatform === viewing) {
+          fetchMessages(viewing || undefined);
         } else {
           setUnreadByPlatform(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
           // Also bump the total count so the tab number stays accurate
@@ -605,6 +612,18 @@ const [aiError, setAiError] = useState('');
     es.addEventListener('new_message', onNewMessage);
     es.addEventListener('lead_updated', onLeadUpdated);
     return () => { es.close(); };
+  }, [leadId]);
+
+  // ── Polling fallback — guarantees the thread auto-refreshes even if the SSE
+  // stream drops or is buffered by a proxy. Only polls while the tab is visible.
+  useEffect(() => {
+    if (!leadId) return;
+    const iv = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchMessages(activePlatformRef.current || undefined);
+      }
+    }, 8000);
+    return () => clearInterval(iv);
   }, [leadId]);
 
   // Track whether the user has scrolled away from the bottom — used to show a "jump to latest" pill

@@ -28,6 +28,11 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
+// Behind the nginx reverse proxy — trust the first proxy hop so req.ip resolves
+// to the real client IP (from X-Forwarded-For). Without this, express-rate-limit
+// keys every request to the proxy IP and buckets ALL users into one shared limit,
+// and emits ERR_ERL_UNEXPECTED_X_FORWARDED_FOR validation errors.
+app.set('trust proxy', 1);
 const DATA_DIR = process.env.NODE_ENV === 'production' ? '/data' : require('path').join(__dirname);
 const db = new Database(require('path').join(DATA_DIR, 'wappflow.db'));
 
@@ -55,14 +60,19 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// Rate limiter — exempt the /uploads static path so loading a chat full of images
-// doesn't trip the per-IP limit and start returning 429s for legitimate media.
+// Rate limiter — per real client IP (trust proxy is set above).
+// 3000 req / 15 min comfortably covers a heavy CRM user (status polling, SSE,
+// dashboard refreshes) while still blocking genuine abuse. Static /uploads is
+// exempt so an image-heavy chat doesn't trip the limit. A 429 returns a JSON
+// { error } body so the frontend can surface a clear message instead of a
+// generic failure.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 500,
+  max: 3000,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/uploads/'),
+  message: { error: 'Too many requests — please wait a minute and try again.' },
 });
 app.use(limiter);
 
@@ -3250,25 +3260,10 @@ console.log('✅ Cron jobs started');
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 async function callGemini(prompt, maxTokens = 2048) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-      max_tokens: maxTokens
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Groq API error ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  // Delegates to the centralized AI engine — provider-aware (Cerebras / Groq /
+  // OpenAI / Anthropic) with automatic rate-limit retry + backoff. The legacy
+  // name is kept so existing callers don't need to change.
+  return aiEngine.callLLM(prompt, { maxTokens });
 }
 
 // Strip markdown code fences and extract a JSON array or object from raw AI output
@@ -3797,6 +3792,177 @@ app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (r
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ════════════════════════════════════════════════════════════
+//  WEBSITE CRAWLER — knowledge base learns from a whole site
+// ════════════════════════════════════════════════════════════
+
+const CRAWL_MAX_PAGES = 40;       // hard cap on pages per crawl
+const CRAWL_MAX_DEPTH = 3;        // link-follow depth from the root
+const CRAWL_FETCH_TIMEOUT = 12000;
+
+// Normalize user input into a URL object (adds https:// if missing).
+function _normalizeCrawlUrl(input) {
+  let u = String(input || '').trim();
+  if (!u) return null;
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  try {
+    const parsed = new URL(u);
+    return /^https?:$/.test(parsed.protocol) ? parsed : null;
+  } catch { return null; }
+}
+
+// Strip HTML down to readable text.
+function _htmlToText(html) {
+  let t = html || '';
+  t = t.replace(/<script[\s\S]*?<\/script>/gi, ' ')
+       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+       .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+       .replace(/<!--[\s\S]*?-->/g, ' ')
+       .replace(/<head[\s\S]*?<\/head>/gi, ' ');
+  t = t.replace(/<\/(p|div|li|h[1-6]|tr|section|article)\s*>/gi, '\n')
+       .replace(/<br\s*\/?>/gi, '\n');
+  t = t.replace(/<[^>]+>/g, ' ');
+  t = t.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+       .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#0?39;/gi, "'")
+       .replace(/&#x27;/gi, "'").replace(/&rsquo;|&lsquo;/gi, "'").replace(/&[a-z]+;/gi, ' ');
+  return t.replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+}
+
+// Find same-domain, page-like links in an HTML document.
+function _extractCrawlLinks(html, pageUrl, rootHost) {
+  const links = new Set();
+  const re = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    let href = (m[1] || '').trim();
+    if (!href || /^(mailto:|tel:|javascript:|data:)/i.test(href)) continue;
+    let abs;
+    try { abs = new URL(href, pageUrl); } catch { continue; }
+    if (!/^https?:$/.test(abs.protocol)) continue;
+    if (abs.hostname.replace(/^www\./, '') !== rootHost) continue;
+    if (/\.(pdf|jpe?g|png|gif|svg|webp|zip|rar|mp4|mp3|avi|mov|css|js|ico|woff2?|ttf|xml)(\?|$)/i.test(abs.pathname)) continue;
+    abs.hash = '';
+    links.add(abs.toString());
+  }
+  return [...links];
+}
+
+// Fetch a single page; returns HTML string or null.
+async function _fetchCrawlPage(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CRAWL_FETCH_TIMEOUT);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WappFlowBot/1.0)' },
+    });
+    if (!res.ok) return null;
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (!ct.includes('html')) return null;
+    return await res.text();
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
+
+// BFS-crawl a site and extract memories from each page.
+async function crawlWebsiteForMemories(startUrl, workspaceId, docId) {
+  const root = _normalizeCrawlUrl(startUrl);
+  const rootHost = root.hostname.replace(/^www\./, '');
+  const queue = [{ url: root.toString(), depth: 0 }];
+  const visited = new Set();
+  const seenKeys = new Set();
+  const memories = [];
+  let pagesProcessed = 0;
+
+  const canon = (u) => u.replace(/#.*$/, '').replace(/\/+$/, '');
+
+  while (queue.length && pagesProcessed < CRAWL_MAX_PAGES) {
+    const { url, depth } = queue.shift();
+    if (visited.has(canon(url))) continue;
+    visited.add(canon(url));
+
+    const html = await _fetchCrawlPage(url);
+    if (!html) continue;
+    pagesProcessed++;
+
+    if (depth < CRAWL_MAX_DEPTH) {
+      for (const link of _extractCrawlLinks(html, url, rootHost)) {
+        if (!visited.has(canon(link))) queue.push({ url: link, depth: depth + 1 });
+      }
+    }
+
+    const text = _htmlToText(html);
+    if (text.length < 120) continue;
+
+    let pageMems = [];
+    try { pageMems = await extractMemoriesFromText(text, workspaceId); }
+    catch (e) { console.log('⚠️ Crawl page extract failed:', e.message); }
+
+    for (const mem of (pageMems || [])) {
+      if (!mem || !mem.key || !mem.value) continue;
+      const k = String(mem.key).toLowerCase().trim();
+      if (seenKeys.has(k)) continue;          // dedupe across the whole crawl
+      seenKeys.add(k);
+      memories.push(mem);
+    }
+
+    try { db.prepare('UPDATE knowledge_documents SET memory_count = ? WHERE id = ?').run(memories.length, docId); } catch {}
+    await new Promise(r => setTimeout(r, 200)); // gentle pacing
+  }
+
+  return { pagesProcessed, memories };
+}
+
+// POST /api/knowledge/crawl — crawl a website + its sub-pages for memories
+app.post('/api/knowledge/crawl', auth, (req, res) => {
+  try {
+    const root = _normalizeCrawlUrl(req.body && req.body.url);
+    if (!root) return res.status(400).json({ error: 'Enter a valid website URL (e.g. www.example.com)' });
+
+    const docId = generateId();
+    const domain = root.hostname.replace(/^www\./, '');
+    db.prepare(`
+      INSERT INTO knowledge_documents (id, workspace_id, document_name, file_path, file_type, processed)
+      VALUES (?, ?, ?, ?, 'website', 0)
+    `).run(docId, req.workspaceId, domain, root.toString());
+
+    res.status(201).json({
+      document: db.prepare('SELECT * FROM knowledge_documents WHERE id = ?').get(docId),
+      message: 'Crawl started — extracting knowledge in the background...'
+    });
+
+    // Crawl in the background — don't block the response.
+    const workspaceId = req.workspaceId;
+    setImmediate(async () => {
+      try {
+        const { pagesProcessed, memories } = await crawlWebsiteForMemories(root.toString(), workspaceId, docId);
+
+        const insertMemory = db.prepare(`
+          INSERT OR REPLACE INTO ai_memories (id, workspace_id, memory_type, key, value, confidence, source, document_id)
+          VALUES (?, ?, ?, ?, ?, ?, 'website', ?)
+        `);
+        const insertAll = db.transaction((mems) => {
+          mems.forEach(m => {
+            if (m.key && m.value) {
+              insertMemory.run(generateId(), workspaceId, m.memory_type || 'other',
+                String(m.key).slice(0, 200), String(m.value).slice(0, 2000), m.confidence || 75, docId);
+            }
+          });
+        });
+        insertAll(memories);
+
+        db.prepare('UPDATE knowledge_documents SET memory_count = ?, extracted_text = ?, processed = ? WHERE id = ?')
+          .run(memories.length, `Crawled ${pagesProcessed} page(s) from ${domain}`, pagesProcessed > 0 ? 1 : 2, docId);
+        console.log(`✅ Website crawl done: ${domain} → ${pagesProcessed} pages, ${memories.length} memories`);
+      } catch (e) {
+        console.error('Website crawl error:', e.message);
+        db.prepare('UPDATE knowledge_documents SET processed = 2 WHERE id = ?').run(docId);
+      }
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // DELETE /api/knowledge/:id — delete document + its memories
 app.delete('/api/knowledge/:id', auth, (req, res) => {
   try {
@@ -4271,7 +4437,7 @@ app.get('/api/platform-accounts', auth, (req, res) => {
 
 app.post('/api/platform-accounts', auth, (req, res) => {
   try {
-    const { platform, account_name, slot_index } = req.body;
+    const { platform, account_name } = req.body;
     if (!platform) return res.status(400).json({ error: 'platform required' });
 
     // Plan enforcement — check feature + per-channel limit
@@ -4279,20 +4445,27 @@ app.post('/api/platform-accounts', auth, (req, res) => {
     const limitCheck = checkLimit(req.workspaceId, limitKey);
     if (!limitCheck.ok) return res.status(403).json({ error: limitCheck.message, code: 'plan_limit', ...limitCheck });
 
-    const existing = db.prepare('SELECT COUNT(*) as cnt FROM platform_accounts WHERE workspace_id = ? AND platform = ?').get(req.workspaceId, platform);
-    if (existing.cnt >= 5) return res.status(400).json({ error: 'Maximum 5 accounts per platform' });
+    // Server-authoritatively assign the slot index — NEVER trust a client-supplied
+    // value. A duplicate slot makes two WhatsApp accounts collide on the same
+    // Chromium session dir ("browser is already running for session-wf-N").
+    // Pick the lowest free slot 0..4 for this workspace+platform.
+    const usedSlots = db.prepare('SELECT slot_index FROM platform_accounts WHERE workspace_id = ? AND platform = ?')
+      .all(req.workspaceId, platform).map(r => r.slot_index);
+    if (usedSlots.length >= 5) return res.status(400).json({ error: 'Maximum 5 accounts per platform' });
+    let assignedSlot = 0;
+    while (usedSlots.includes(assignedSlot)) assignedSlot++;
 
     const id = generateId();
     const verifyToken = generateId().replace(/-/g, '').slice(0, 24);
     db.prepare(`
       INSERT INTO platform_accounts (id, workspace_id, platform, account_name, webhook_verify_token, slot_index)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, req.workspaceId, platform, account_name || `Account ${(slot_index || 0) + 1}`, verifyToken, slot_index || 0);
+    `).run(id, req.workspaceId, platform, account_name || `Account ${assignedSlot + 1}`, verifyToken, assignedSlot);
 
     const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ?').get(id);
     // Auto-start WhatsApp session when a whatsapp account slot is created
     if (platform === 'whatsapp') {
-      whatsappService.addAccount(id, slot_index || 0);
+      whatsappService.addAccount(id, assignedSlot);
     }
     res.json({ account: { ...account, credentials: {} } });
   } catch (e) { res.status(500).json({ error: e.message }); }

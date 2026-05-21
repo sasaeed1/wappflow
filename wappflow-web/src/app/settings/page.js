@@ -18,6 +18,17 @@ import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { useSound, SOUND_KINDS } from '@/lib/sounds';
 import { usePlan } from '@/lib/plan';
+import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
+
+// Map of settings tab → required feature flag + required plan name.
+// If the user's plan doesn't have the feature, the tab is shown locked.
+const TAB_GATING = {
+  email:             { feature: 'email_integration', plan: 'Starter', perks: ['Reusable email templates', 'Variable substitution', 'Send templated replies in one click'] },
+  email_sending:     { feature: 'email_integration', plan: 'Starter', perks: ['Send emails from your own domain', 'Use any SMTP provider', 'Reply to leads via email'] },
+  email_receiving:   { feature: 'email_integration', plan: 'Starter', perks: ['IMAP inbound polling', 'Inbound replies threaded to leads', 'Multi-mailbox support'] },
+  autoreply:         { feature: 'automations',       plan: 'Growth',  perks: ['Keyword-triggered auto-responses', 'Multi-step drip sequences', 'Save your team from typing the same reply 100×'] },
+  integrations:      { feature: 'google_calendar',   plan: 'Growth',  perks: ['Google Meet + Calendar scheduling', 'Calendly link sharing', 'One-click meetings from any lead'] },
+};
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
@@ -1500,11 +1511,26 @@ const PLATFORM_DEFS = [
 
 function ConnectionsTab({ showToast }) {
   const confirm = useConfirm();
+  const plan = usePlan();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePlatform, setActivePlatform] = useState('whatsapp');
   const [editingAccount, setEditingAccount] = useState(null);
   const [creating, setCreating] = useState(false);
+
+  // Plan-derived limits for each platform.
+  // A platform is "locked" if the limit is 0 (Free/Starter for IG/FB/Web).
+  const platformLimit = (pid) => plan.limits[`${pid === 'website' ? 'website_forms' : pid + '_accounts'}`];
+  const platformLocked = (pid) => {
+    const l = platformLimit(pid);
+    return l === 0;
+  };
+  const platformAtLimit = (pid) => {
+    const l = platformLimit(pid);
+    if (l === -1 || l == null) return false;
+    const used = accounts.filter(a => a.platform === pid).length;
+    return used >= l;
+  };
 
   useEffect(() => { loadAccounts(); }, []);
 
@@ -1564,6 +1590,7 @@ function ConnectionsTab({ showToast }) {
           const Icon = p.icon;
           const count = accounts.filter(a => a.platform === p.id && a.status === 'connected').length;
           const active = activePlatform === p.id;
+          const locked = platformLocked(p.id);
           return (
             <button key={p.id} onClick={() => setActivePlatform(p.id)} style={{
               display: 'flex', alignItems: 'center', gap: 9, padding: '10px 18px',
@@ -1571,21 +1598,54 @@ function ConnectionsTab({ showToast }) {
               background: active ? p.color + '12' : 'var(--surface)',
               color: active ? p.color : 'var(--text-muted)',
               fontWeight: active ? 700 : 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s',
+              opacity: locked ? 0.6 : 1,
+              position: 'relative',
             }}>
               <Icon size={15} />
               {p.label}
-              {count > 0 && (
+              {count > 0 && !locked && (
                 <span style={{ fontSize: 10, background: p.color, color: 'white', padding: '1px 6px', borderRadius: 8, fontWeight: 800 }}>{count}</span>
               )}
+              {locked && <LockBadge requiredPlan="Growth" size="sm" />}
             </button>
           );
         })}
       </div>
 
       {/* Platform section */}
-      {activeDef && (
+      {activeDef && platformLocked(activeDef.id) ? (
+        <LockedOverlay
+          feature={`${activeDef.label} integration`}
+          requiredPlan="Growth"
+          currentPlan={plan.planName || 'Free'}
+          description={`${activeDef.label} is a multi-channel feature available on the Growth plan and above. Unify all your customer conversations in one inbox.`}
+          perks={[
+            'Unified inbox across WhatsApp + IG + FB + Website',
+            'Auto-create leads from every channel',
+            'AI-scored across all platforms',
+            'Multi-account per platform',
+          ]}
+        />
+      ) : activeDef && (
         <SectionCard icon={activeDef.icon} title={`${activeDef.label} Connections`} subtitle={activeDef.description} color={activeDef.color}>
-          {/* All platforms — account slots (WhatsApp uses QR cards, others use credential cards) */}
+          {/* Plan usage indicator (shown for limited plans) */}
+          {(() => {
+            const limit = platformLimit(activeDef.id);
+            if (limit === -1 || limit == null) return null;
+            const used = platformAccounts.length;
+            const atLimit = used >= limit;
+            return (
+              <div style={{ marginBottom: 16, padding: '10px 14px', background: atLimit ? 'rgba(245,158,11,0.08)' : 'rgba(99,102,241,0.06)', border: `1px solid ${atLimit ? 'rgba(245,158,11,0.3)' : 'rgba(99,102,241,0.25)'}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 13, color: atLimit ? '#fde68a' : 'var(--text-dim)', fontWeight: 600 }}>
+                  {atLimit ? '⚠ ' : ''}You&apos;ve used <strong style={{ color: 'var(--text)' }}>{used} of {limit}</strong> {activeDef.label} account{limit === 1 ? '' : 's'} on the {plan.planName || 'Free'} plan.
+                </div>
+                {atLimit && plan.plan !== 'enterprise' && (
+                  <UpgradeCta planName={plan.plan === 'growth' ? 'Enterprise' : 'Growth'} size="sm" label="Upgrade for more" />
+                )}
+              </div>
+            );
+          })()}
+
           {loading ? (
             <div style={{ color: 'var(--text-muted)', padding: '20px 0' }}>Loading accounts...</div>
           ) : platformAccounts.length === 0 ? (
@@ -1595,10 +1655,11 @@ function ConnectionsTab({ showToast }) {
               </div>
               <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>No {activeDef.label} accounts yet</p>
               <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-                {activeDef.id === 'whatsapp' ? 'Link up to 5 WhatsApp numbers. Each gets its own QR code.' : `Add up to 5 accounts to capture leads from ${activeDef.label}`}
+                {activeDef.id === 'whatsapp' ? `Link up to ${platformLimit(activeDef.id) === -1 ? '5' : platformLimit(activeDef.id)} WhatsApp number${platformLimit(activeDef.id) === 1 ? '' : 's'}. Each gets its own QR code.` : `Add up to ${platformLimit(activeDef.id)} accounts to capture leads from ${activeDef.label}`}
               </p>
-              <button onClick={() => handleAddAccount(activeDef.id)} disabled={creating} style={{ padding: '10px 22px', background: activeDef.color, color: 'white', border: 'none', borderRadius: 11, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-                <Plus size={14} /> Add {activeDef.label} Account
+              <button onClick={() => handleAddAccount(activeDef.id)} disabled={creating || platformAtLimit(activeDef.id)} style={{ padding: '10px 22px', background: platformAtLimit(activeDef.id) ? 'rgba(255,255,255,0.06)' : activeDef.color, color: platformAtLimit(activeDef.id) ? 'var(--text-muted)' : 'white', border: platformAtLimit(activeDef.id) ? '1px solid var(--border)' : 'none', borderRadius: 11, fontWeight: 700, fontSize: 13, cursor: platformAtLimit(activeDef.id) ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                {platformAtLimit(activeDef.id) ? <Lock size={14} /> : <Plus size={14} />}
+                {platformAtLimit(activeDef.id) ? 'Plan limit reached' : `Add ${activeDef.label} Account`}
               </button>
             </div>
           ) : (
@@ -1618,11 +1679,26 @@ function ConnectionsTab({ showToast }) {
                       showToast={showToast}
                     />
               ))}
-              {platformAccounts.length < 5 && (
-                <button onClick={() => handleAddAccount(activeDef.id)} disabled={creating} style={{ padding: '10px', border: `2px dashed ${activeDef.color}40`, borderRadius: 12, background: 'transparent', color: activeDef.color, fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, transition: 'all 0.15s' }}>
-                  <Plus size={14} /> Add Another Account ({platformAccounts.length}/5)
-                </button>
-              )}
+              {(() => {
+                const limit = platformLimit(activeDef.id);
+                const atLimit = limit !== -1 && limit != null && platformAccounts.length >= limit;
+                if (atLimit) {
+                  return (
+                    <div style={{ padding: '14px 18px', border: '2px dashed rgba(245,158,11,0.35)', borderRadius: 12, background: 'rgba(245,158,11,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, color: '#fde68a', fontWeight: 600 }}>
+                        <Lock size={12} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />
+                        Plan limit — you can add up to {limit} {activeDef.label} account{limit === 1 ? '' : 's'} on {plan.planName}.
+                      </span>
+                      {plan.plan !== 'enterprise' && <UpgradeCta planName={plan.plan === 'growth' ? 'Enterprise' : 'Growth'} size="sm" />}
+                    </div>
+                  );
+                }
+                return platformAccounts.length < 5 ? (
+                  <button onClick={() => handleAddAccount(activeDef.id)} disabled={creating} style={{ padding: '10px', border: `2px dashed ${activeDef.color}40`, borderRadius: 12, background: 'transparent', color: activeDef.color, fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, transition: 'all 0.15s' }}>
+                    <Plus size={14} /> Add Another Account ({platformAccounts.length}/{limit === -1 ? '5' : limit})
+                  </button>
+                ) : null;
+              })()}
             </div>
           )}
         </SectionCard>
@@ -2043,11 +2119,17 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
 
 export default function SettingsPage() {
   const router = useRouter();
+  const plan = usePlan();
   const [activeTab, setActiveTab] = useState('connections');
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+
+  // Resolve whether the active tab is gated on the current plan.
+  const activeGate = TAB_GATING[activeTab];
+  const activeTabLocked = activeGate && !plan.hasFeature(activeGate.feature);
+  const activeTabMeta = TABS.find(t => t.id === activeTab);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) { router.push('/login'); return; }
@@ -2095,17 +2177,22 @@ export default function SettingsPage() {
           <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 10, boxShadow: 'var(--shadow)', position: 'sticky', top: 24 }}>
             {TABS.map(tab => {
               const active = activeTab === tab.id;
+              const gate = TAB_GATING[tab.id];
+              const locked = gate && !plan.hasFeature(gate.feature);
               return (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
                   borderRadius: 12, border: 'none', background: active ? tab.color + '18' : 'transparent',
-                  color: active ? tab.color : 'var(--text-muted)', fontWeight: active ? 700 : 600, fontSize: 13,
-                  cursor: 'pointer', textAlign: 'left', marginBottom: 2, transition: 'all 0.15s'
+                  color: active ? tab.color : (locked ? 'var(--text-muted)' : 'var(--text-muted)'), fontWeight: active ? 700 : 600, fontSize: 13,
+                  cursor: 'pointer', textAlign: 'left', marginBottom: 2, transition: 'all 0.15s',
+                  opacity: locked ? 0.7 : 1,
+                  position: 'relative',
                 }}
-                  onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text)'; } }}
+                  onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'var(--surface2)'; if (!locked) e.currentTarget.style.color = 'var(--text)'; } }}
                   onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; } }}>
                   <tab.icon size={16} />
-                  {tab.label}
+                  <span style={{ flex: 1 }}>{tab.label}</span>
+                  {locked && <LockBadge requiredPlan={gate.plan} size="sm" />}
                 </button>
               );
             })}
@@ -2138,6 +2225,14 @@ export default function SettingsPage() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {loading ? (
             <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>Loading settings...</div>
+          ) : activeTabLocked ? (
+            <LockedOverlay
+              feature={activeTabMeta?.label || 'This feature'}
+              requiredPlan={activeGate.plan}
+              currentPlan={plan.planName || 'Free'}
+              description={`${activeTabMeta?.label} is available on the ${activeGate.plan} plan and above. Upgrade to unlock this and other team-grade features.`}
+              perks={activeGate.perks}
+            />
           ) : (
             <>
               {activeTab === 'connections' && <ConnectionsTab showToast={showToast} />}

@@ -15,6 +15,9 @@ import NavBar from '../../components/NavBar';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import AddLeadModal from '../../components/AddLeadModal';
 import { useConfirm } from '@/lib/confirm';
+import { usePlan } from '@/lib/plan';
+import { UpgradeCta } from '@/components/PlanLock';
+import { Lock } from 'lucide-react';
 
 const STATUS_META = {
   'New':           { dot: '#6366f1', bg: 'rgba(99,102,241,0.12)',  text: '#4338ca' },
@@ -555,6 +558,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
 // ── Main Page ───────────────────────────────────────────────────────────────
 export default function LeadsListPage() {
   const router = useRouter();
+  const plan = usePlan();
   const [leads, setLeads] = useState([]);
   const [allLeads, setAllLeads] = useState([]);
   const [allTags, setAllTags] = useState([]);
@@ -726,9 +730,25 @@ export default function LeadsListPage() {
           >
             <Download style={{ width: 14, height: 14 }} /> Export CSV {leads.length > 0 && `(${leads.length})`}
           </button>
-          <button onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 10, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
-            <Plus style={{ width: 15, height: 15 }} /> New Lead
-          </button>
+          {(() => {
+            const limit = plan.limits?.leads;
+            const usage = plan.usage?.leads || allLeads.length;
+            const atLimit = limit && limit !== -1 && usage >= limit;
+            if (atLimit) {
+              return (
+                <button onClick={() => router.push('/settings?tab=workspace')} title={`Plan limit reached: ${usage}/${limit} leads`}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: 'rgba(245,158,11,0.10)', border: '1.5px solid rgba(245,158,11,0.4)', borderRadius: 10, color: '#fbbf24', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  <Lock style={{ width: 14, height: 14 }} /> {usage}/{limit} · Upgrade
+                </button>
+              );
+            }
+            return (
+              <button onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 10, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
+                <Plus style={{ width: 15, height: 15 }} /> New Lead
+                {limit && limit !== -1 && <span style={{ opacity: 0.85, fontSize: 11, marginLeft: 4 }}>({usage}/{limit})</span>}
+              </button>
+            );
+          })()}
         </div>
       </div>
 

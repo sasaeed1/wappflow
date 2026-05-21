@@ -23,6 +23,8 @@ function LoginContent() {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     if (data.workspace) localStorage.setItem('workspace', JSON.stringify(data.workspace));
+    // Triggers the per-tier welcome modal on the next page after login
+    try { sessionStorage.setItem('wf_just_logged_in', '1'); } catch {}
     router.push('/dashboard');
   };
 

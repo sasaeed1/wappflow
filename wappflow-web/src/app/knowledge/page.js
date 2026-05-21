@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Brain, Upload, FileText, Trash2, Plus, X, Edit2, Save,
   ChevronDown, ChevronUp, RefreshCw, CheckCircle, AlertCircle,
-  BookOpen, Sparkles, Database, File, MessageSquare, Tag
+  BookOpen, Sparkles, Database, File, MessageSquare, Tag, Globe
 } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
@@ -57,6 +57,8 @@ export default function KnowledgePage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [learning, setLearning] = useState(false);
+  const [crawlUrl, setCrawlUrl] = useState('');
+  const [crawling, setCrawling] = useState(false);
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('documents');
   const [expandedDoc, setExpandedDoc] = useState(null);
@@ -95,6 +97,33 @@ export default function KnowledgePage() {
       setMemories(memsData.memories || []);
     } catch (e) { showToast('Failed to load data', 'error'); }
     finally { setLoading(false); }
+  };
+
+  // Auto-refresh while anything (a doc upload or a website crawl) is still
+  // processing — so the UI updates from "⏳ Crawling…" to the memory count
+  // without the user having to reload the page.
+  useEffect(() => {
+    if (!documents.some(d => d.processed === 0)) return;
+    const iv = setInterval(fetchAll, 5000);
+    return () => clearInterval(iv);
+  }, [documents]);
+
+  const handleCrawl = async () => {
+    const url = crawlUrl.trim();
+    if (!url) { showToast('Enter a website URL', 'error'); return; }
+    setCrawling(true);
+    try {
+      const res = await fetch(`${API}/api/knowledge/crawl`, {
+        method: 'POST',
+        headers: { ...authHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      showToast('Crawl started — the AI is reading the website. This can take a few minutes.');
+      setCrawlUrl('');
+      fetchAll();
+    } catch (e) { showToast(e.message || 'Crawl failed', 'error'); }
+    finally { setCrawling(false); }
   };
 
   const handleFileUpload = async (e) => {
@@ -266,6 +295,33 @@ export default function KnowledgePage() {
             ))}
           </div>
 
+          {/* Website crawler */}
+          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: '16px 20px', border: '1.5px solid #e5e7eb', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(34,197,94,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Globe size={20} color="#22c55e" />
+            </div>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Learn from a website</p>
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: '2px 0 0' }}>The AI crawls the site + its sub-pages and extracts pricing, services, policies &amp; more.</p>
+            </div>
+            <input
+              type="text"
+              value={crawlUrl}
+              onChange={e => setCrawlUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleCrawl(); }}
+              placeholder="www.aitech.edu.pk"
+              style={{ flex: 1, minWidth: 220, padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 13, color: 'var(--text)', background: 'var(--surface)', outline: 'none' }}
+            />
+            <button onClick={handleCrawl} disabled={crawling} style={{
+              display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 10, border: 'none',
+              background: 'linear-gradient(135deg, #22c55e, #10b981)', color: 'white', fontWeight: 700,
+              cursor: crawling ? 'not-allowed' : 'pointer', fontSize: 13, whiteSpace: 'nowrap'
+            }}>
+              {crawling ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Globe size={14} />}
+              {crawling ? 'Starting...' : 'Crawl Website'}
+            </button>
+          </div>
+
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 4, background: 'var(--surface)', borderRadius: 14, padding: 5, border: '1.5px solid #e5e7eb', marginBottom: 20, width: 'fit-content' }}>
             {[
@@ -311,14 +367,16 @@ export default function KnowledgePage() {
                       {documents.map(doc => (
                         <div key={doc.id} style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid #e5e7eb', overflow: 'hidden' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px' }}>
-                            <div style={{ width: 44, height: 44, borderRadius: 14, background: doc.file_type?.includes('pdf') ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <File size={20} color={doc.file_type?.includes('pdf') ? '#ef4444' : '#3b82f6'} />
+                            <div style={{ width: 44, height: 44, borderRadius: 14, background: doc.file_type === 'website' ? 'rgba(34,197,94,0.10)' : doc.file_type?.includes('pdf') ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              {doc.file_type === 'website'
+                                ? <Globe size={20} color="#22c55e" />
+                                : <File size={20} color={doc.file_type?.includes('pdf') ? '#ef4444' : '#3b82f6'} />}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.document_name}</p>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{new Date(doc.uploaded_at).toLocaleDateString()}</span>
-                                {doc.processed === 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.10)', padding: '2px 8px', borderRadius: 6, animation: 'pulse 1.5s infinite' }}>⏳ Processing...</span>}
+                                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{doc.file_type === 'website' ? '🌐 Website' : new Date(doc.uploaded_at).toLocaleDateString()}</span>
+                                {doc.processed === 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.10)', padding: '2px 8px', borderRadius: 6, animation: 'pulse 1.5s infinite' }}>{doc.file_type === 'website' ? '⏳ Crawling…' : '⏳ Processing...'}</span>}
                                 {doc.processed === 1 && <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.10)', padding: '2px 8px', borderRadius: 6 }}>✅ {doc.memory_count} memories extracted</span>}
                                 {doc.processed === 2 && <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '2px 8px', borderRadius: 6 }}>❌ Processing failed</span>}
                               </div>

@@ -5,21 +5,143 @@
 // Existing server.js routes can migrate to use these functions over time;
 // new AI features should be added here, not inline in server.js.
 
-const DEFAULT_PROVIDER = process.env.AI_PROVIDER || 'groq';
+const DEFAULT_PROVIDER = process.env.AI_PROVIDER || 'cerebras';
 const GROQ_KEY = process.env.GROQ_API_KEY;
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
+const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || 'llama3.1-8b';
+const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
 
-// ── Low-level LLM call — provider abstraction ──
-async function callLLM(prompt, { maxTokens = 2048, temperature = 0.3, system = null, provider } = {}) {
-  const p = provider || DEFAULT_PROVIDER;
-  if (p === 'openai' && OPENAI_KEY) return _callOpenAI(prompt, system, maxTokens, temperature);
-  if (p === 'anthropic' && ANTHROPIC_KEY) return _callAnthropic(prompt, system, maxTokens, temperature);
-  if (!GROQ_KEY) throw new Error('No AI provider configured — set GROQ_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY');
-  return _callGroq(prompt, system, maxTokens, temperature);
+const _sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// ── Provider fallback chain ─────────────────────────────────────────────────
+// AI_PROVIDERS is an ordered, comma-separated list. callLLM tries each in turn;
+// when one rate-limits it fails over to the next and puts the exhausted one on
+// a short cooldown — pooling the free-tier quotas of every configured provider.
+const PROVIDER_CHAIN = (process.env.AI_PROVIDERS || `${DEFAULT_PROVIDER},cerebras,groq,openrouter`)
+  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  .filter((v, i, a) => a.indexOf(v) === i);
+const COOLDOWN_MS = 60000;
+const _cooldownUntil = {}; // provider -> epoch ms until which it is skipped
+
+function _hasKey(p) {
+  return (p === 'cerebras'   && !!CEREBRAS_KEY)
+      || (p === 'groq'       && !!GROQ_KEY)
+      || (p === 'openai'     && !!OPENAI_KEY)
+      || (p === 'anthropic'  && !!ANTHROPIC_KEY)
+      || (p === 'openrouter' && !!OPENROUTER_KEY);
+}
+
+function _callProvider(p, prompt, system, maxTokens, temperature) {
+  if (p === 'cerebras')   return _callCerebras(prompt, system, maxTokens, temperature);
+  if (p === 'groq')       return _callGroq(prompt, system, maxTokens, temperature);
+  if (p === 'openai')     return _callOpenAI(prompt, system, maxTokens, temperature);
+  if (p === 'anthropic')  return _callAnthropic(prompt, system, maxTokens, temperature);
+  if (p === 'openrouter') return _callOpenRouter(prompt, system, maxTokens, temperature);
+  throw new Error('Unknown AI provider: ' + p);
+}
+
+function _isRateLimit(e) {
+  const m = String((e && e.message) || e).toLowerCase();
+  return m.includes('rate limit') || m.includes('429') || m.includes('tokens per minute')
+    || m.includes('quota') || m.includes('too many requests')
+    || m.includes('capacity') || m.includes('overloaded');
+}
+
+// ── Low-level LLM call — provider abstraction with automatic failover ──
+async function callLLM(prompt, opts = {}) {
+  const { maxTokens = 2048, temperature = 0.3, system = null, provider } = opts;
+  // Candidate list: an explicit provider first (if given), then the chain —
+  // deduped, and only those that actually have an API key configured.
+  const candidates = (provider ? [provider, ...PROVIDER_CHAIN] : [...PROVIDER_CHAIN])
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .filter(_hasKey);
+  if (candidates.length === 0) {
+    throw new Error('No AI provider configured — set CEREBRAS_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY');
+  }
+
+  let lastErr;
+
+  // Pass 1 — try each provider that is not currently cooling down.
+  for (const p of candidates) {
+    if (_cooldownUntil[p] && Date.now() < _cooldownUntil[p]) continue;
+    try {
+      const out = await _callProvider(p, prompt, system, maxTokens, temperature);
+      _cooldownUntil[p] = 0;
+      return out;
+    } catch (e) {
+      lastErr = e;
+      if (_isRateLimit(e)) {
+        _cooldownUntil[p] = Date.now() + COOLDOWN_MS;
+        console.log(`⏳ ${p} rate-limited — cooling down ${COOLDOWN_MS / 1000}s, failing over`);
+      } else {
+        console.log(`⚠️ ${p} failed (${(e && e.message) || e}) — trying next provider`);
+      }
+    }
+  }
+
+  // Pass 2 — everything was cooled-down or failing. Back off, retry the chain.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const wait = Math.min(2000 * Math.pow(2, attempt), 20000);
+    console.log(`⏳ all AI providers busy — waiting ${wait}ms then retrying the chain`);
+    await _sleep(wait);
+    for (const p of candidates) {
+      try {
+        const out = await _callProvider(p, prompt, system, maxTokens, temperature);
+        _cooldownUntil[p] = 0;
+        return out;
+      } catch (e) {
+        lastErr = e;
+        if (_isRateLimit(e)) _cooldownUntil[p] = Date.now() + COOLDOWN_MS;
+      }
+    }
+  }
+
+  throw lastErr || new Error('All AI providers failed');
+}
+
+// OpenRouter — OpenAI-compatible aggregator (free model variants available).
+async function _callOpenRouter(prompt, system, maxTokens, temperature) {
+  const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
+                          : [{ role: 'user', content: prompt }];
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENROUTER_KEY}`,
+      'HTTP-Referer': 'https://wappflow.remoteops.co',
+      'X-Title': 'WappFlow CRM',
+    },
+    body: JSON.stringify({ model: OPENROUTER_MODEL, messages, temperature, max_tokens: maxTokens })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || err.message || `OpenRouter error ${res.status}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+// Cerebras — OpenAI-compatible chat completions API.
+async function _callCerebras(prompt, system, maxTokens, temperature) {
+  const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
+                          : [{ role: 'user', content: prompt }];
+  const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CEREBRAS_KEY}` },
+    body: JSON.stringify({ model: CEREBRAS_MODEL, messages, temperature, max_tokens: maxTokens })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || err.message || `Cerebras error ${res.status}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
 }
 
 async function _callGroq(prompt, system, maxTokens, temperature) {

@@ -15,6 +15,8 @@ import {
 } from 'recharts';
 import { analyticsAPI } from '../../lib/api';
 import NavBar from '../../components/NavBar';
+import { usePlan } from '@/lib/plan';
+import { LockedOverlay } from '@/components/PlanLock';
 
 const COLORS = ['#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#f97316', '#ec4899'];
 
@@ -79,6 +81,8 @@ function exportToCSV(filename, headers, rows) {
 
 export default function ReportsPage() {
   const router = useRouter();
+  const plan = usePlan();
+  const reportsLocked = !plan.loading && !plan.hasFeature('reports') && !plan.hasFeature('analytics');
   const [data, setData] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [period, setPeriod] = useState('30');
@@ -227,6 +231,31 @@ export default function ReportsPage() {
     { id: 'revenue', label: 'Revenue' },
     { id: 'team', label: 'Team Performance' },
   ];
+
+  if (reportsLocked) {
+    return (
+      <NavBar>
+        <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 24px' }}>
+          <div style={{ maxWidth: 720, margin: '40px auto' }}>
+            <LockedOverlay
+              feature="Reports & Analytics"
+              requiredPlan="Starter"
+              currentPlan={plan.planName || 'Free'}
+              description="Get the data behind every conversation — revenue trends, conversion funnels, per-rep performance, lead source breakdowns."
+              perks={[
+                'Revenue trend line chart (daily/weekly/monthly)',
+                'Lead status distribution pie chart',
+                'Conversion funnel visualization',
+                'Per-rep performance breakdown',
+                'CSV export of all raw data',
+                'Advanced analytics on Growth+',
+              ]}
+            />
+          </div>
+        </div>
+      </NavBar>
+    );
+  }
 
   return (
     <NavBar>

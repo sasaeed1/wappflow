@@ -1,7 +1,7 @@
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFile } = require('child_process');
 const qrcode = require('qrcode');
 
 class WhatsAppService {
@@ -35,6 +35,28 @@ class WhatsAppService {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     });
+  }
+
+  // ── Resolve the owning workspace for THIS WhatsApp account ──
+  // Multi-tenant correctness: an inbound message must create its lead in the
+  // workspace whose connected account received it — NOT "the oldest user".
+  // Returns { id, workspace_id } (a user row), or null.
+  _resolveOwner() {
+    if (this.accountId) {
+      try {
+        const acct = this.db.prepare('SELECT workspace_id FROM platform_accounts WHERE id = ?').get(this.accountId);
+        if (acct && acct.workspace_id) {
+          const owner = this.db.prepare(
+            'SELECT id, workspace_id FROM users WHERE workspace_id = ? ORDER BY created_at ASC LIMIT 1'
+          ).get(acct.workspace_id);
+          if (owner) return owner;
+        }
+      } catch (e) { console.log('⚠️ _resolveOwner lookup failed:', e.message); }
+    }
+    // Legacy session (no accountId) — fall back to the first user's workspace.
+    return this.db.prepare(
+      `SELECT u.id, u.workspace_id FROM users u WHERE u.workspace_id IS NOT NULL ORDER BY u.created_at ASC LIMIT 1`
+    ).get() || null;
   }
 
   // ── Kill orphaned Chromium processes using our profile, then remove lock files ──
@@ -72,8 +94,21 @@ class WhatsAppService {
     // (so we don't kill other sessions' Chromes). Uses pgrep -af.
     if (process.platform !== 'win32') {
       try {
+        // pgrep gives candidate PIDs, but its substring match is unsafe here:
+        // 'session' is a PREFIX of 'session-wf-1', so cleaning the legacy/slot-0
+        // session would otherwise kill every other account's Chromium too.
+        // So we re-read each candidate's /proc/PID/cmdline and keep ONLY the
+        // processes whose --user-data-dir arg EXACTLY equals our profile.
         const out = execSync(`pgrep -af "user-data-dir=${profilePath}" || true`, { timeout: 5000 }).toString();
-        const pids = out.split('\n').map(l => l.trim()).filter(Boolean).map(l => l.split(/\s+/)[0]).filter(Boolean);
+        const candidates = out.split('\n').map(l => l.trim()).filter(Boolean)
+          .map(l => l.split(/\s+/)[0]).filter(Boolean);
+        const pids = [];
+        for (const pid of candidates) {
+          try {
+            const args = fs.readFileSync(`/proc/${pid}/cmdline`).toString().split('\0');
+            if (args.includes(`--user-data-dir=${profilePath}`)) pids.push(pid);
+          } catch { /* process already gone or unreadable — skip */ }
+        }
         // Also include the tracked browserPid if it's not already in the list
         if (this.browserPid && !pids.includes(String(this.browserPid))) pids.push(String(this.browserPid));
         if (pids.length > 0) {
@@ -221,9 +256,8 @@ class WhatsAppService {
         const msgType = message.type; // 'chat', 'ptt', 'audio', 'image', 'video', 'document', etc.
         console.log(`📨 New message from ${customerPhone} [${msgType}]: ${message.body || '[media]'}`);
 
-        const user = this.db.prepare(
-          `SELECT u.id, u.workspace_id FROM users u WHERE u.workspace_id IS NOT NULL ORDER BY u.created_at ASC LIMIT 1`
-        ).get();
+        // Attribute the lead to the workspace that owns THIS connected account.
+        const user = this._resolveOwner();
         if (!user) { console.log('⚠️ No user with workspace found'); return; }
 
         const workspaceId = user.workspace_id;
@@ -572,64 +606,78 @@ class WhatsAppService {
     }
   }
 
+  // Resolve a phone/JID to a whatsapp-web.js chat id WITHOUT calling
+  // getNumberId(). getNumberId queries WhatsApp's servers from inside the
+  // browser page and intermittently hangs ("Runtime.callFunctionOn timed out"),
+  // which wedges the whole request. For a normal number the chat id is simply
+  // `<digits>@c.us` — construct it directly. Already-formed JIDs pass through.
+  _resolveChatId(phone) {
+    const p = String(phone || '').trim();
+    if (p.includes('@lid') || p.includes('@c.us') || p.includes('@s.whatsapp.net') || p.includes('@g.us')) {
+      return p;
+    }
+    return `${p.replace(/\D/g, '')}@c.us`;
+  }
+
   async sendMessage(phone, message) {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
-    if (phone.includes('@lid')) {
-      const chat = await this.client.getChatById(phone);
-      await chat.sendMessage(message);
-      return;
-    }
-    const cleanPhone = phone.replace(/\D/g, '');
-    const numberId = await this.client.getNumberId(cleanPhone);
-    if (!numberId) throw new Error(`Number ${cleanPhone} is not registered on WhatsApp`);
-    await this.client.sendMessage(numberId._serialized, message);
+    await this.client.sendMessage(this._resolveChatId(phone), message);
   }
 
   async sendMedia(phone, filePath, mimetype, filename, caption = '') {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
     const data = fs.readFileSync(filePath).toString('base64');
     const media = new MessageMedia(mimetype, data, filename);
-    if (phone.includes('@lid')) {
-      const chat = await this.client.getChatById(phone);
-      await chat.sendMessage(media, { caption });
-      return;
-    }
-    const cleanPhone = phone.replace(/\D/g, '');
-    const numberId = await this.client.getNumberId(cleanPhone);
-    if (!numberId) throw new Error(`Number ${cleanPhone} is not on WhatsApp`);
-    await this.client.sendMessage(numberId._serialized, media, { caption });
+    await this.client.sendMessage(this._resolveChatId(phone), media, caption ? { caption } : {});
   }
 
   async sendVoiceNote(phone, filePath, mimetype) {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
-    const data = fs.readFileSync(filePath).toString('base64');
-    // Pick the right mime based on the actual file. WhatsApp PTT only renders as a voice bubble
-    // when sendAudioAsVoice is set AND the codec is ogg/opus — for webm we still send it but
-    // it may render as a regular audio attachment on the recipient side.
-    const ext = (filePath.split('.').pop() || '').toLowerCase();
-    const mt = (mimetype || '').toLowerCase();
+
+    // Transcode browser-recorded webm/opus → ogg/opus with ffmpeg.
+    // ASYNC (execFile) — never use execSync in a request path, it blocks the
+    // entire Node event loop and freezes every other API call.
+    let sendPath = filePath;
+    const srcExt = (filePath.split('.').pop() || '').toLowerCase();
+    const srcMt = (mimetype || '').toLowerCase();
+    if (srcExt !== 'ogg' && !srcMt.includes('ogg')) {
+      const oggPath = filePath.replace(/\.[^.]+$/, '') + '-conv.ogg';
+      try {
+        await new Promise((resolve, reject) => {
+          execFile('ffmpeg',
+            ['-y', '-i', filePath, '-vn', '-c:a', 'libopus', '-b:a', '32k', '-ar', '48000', '-ac', '1', oggPath],
+            { timeout: 25000 },
+            (err) => (err ? reject(err) : resolve()));
+        });
+        if (fs.existsSync(oggPath) && fs.statSync(oggPath).size > 0) {
+          sendPath = oggPath;
+        } else {
+          console.log('⚠️ Voice transcode produced no output — sending original');
+        }
+      } catch (e) {
+        console.log('⚠️ Voice transcode (ffmpeg) failed — sending original:', e.message);
+      }
+    }
+
+    const data = fs.readFileSync(sendPath).toString('base64');
+    const ext = (sendPath.split('.').pop() || '').toLowerCase();
     let mime = 'audio/ogg; codecs=opus';
     let filename = 'voice.ogg';
-    if (mt.includes('webm') || ext === 'webm') {
-      mime = 'audio/webm; codecs=opus';
-      filename = 'voice.webm';
-    } else if (mt.includes('mp4') || ext === 'm4a' || ext === 'mp4') {
-      mime = 'audio/mp4';
-      filename = 'voice.m4a';
-    } else if (mt.includes('mpeg') || ext === 'mp3') {
-      mime = 'audio/mpeg';
-      filename = 'voice.mp3';
-    }
+    if (ext === 'webm')      { mime = 'audio/webm; codecs=opus'; filename = 'voice.webm'; }
+    else if (ext === 'm4a' || ext === 'mp4') { mime = 'audio/mp4'; filename = 'voice.m4a'; }
+    else if (ext === 'mp3')  { mime = 'audio/mpeg'; filename = 'voice.mp3'; }
+
     const media = new MessageMedia(mime, data, filename);
-    if (phone.includes('@lid')) {
-      const chat = await this.client.getChatById(phone);
-      await chat.sendMessage(media, { sendAudioAsVoice: true });
-      return;
-    }
-    const cleanPhone = phone.replace(/\D/g, '');
-    const numberId = await this.client.getNumberId(cleanPhone);
-    if (!numberId) throw new Error(`Number ${cleanPhone} is not on WhatsApp`);
-    await this.client.sendMessage(numberId._serialized, media, { sendAudioAsVoice: true });
+
+    // Resolve the chat target directly — no getNumberId() (it hangs).
+    const target = this._resolveChatId(phone);
+
+    // Send as a plain audio message. We deliberately do NOT pass
+    // sendAudioAsVoice:true — the PTT path on this whatsapp-web.js version
+    // wedges the WhatsApp Web page, which then breaks every other send
+    // (text included) on the account. A plain audio attachment delivers
+    // reliably and still plays for the recipient.
+    await this.client.sendMessage(target, media);
   }
 
   // ── Group creation & editing ─────────────────────────────────
@@ -762,10 +810,8 @@ class WhatsAppService {
   async syncMissedMessages() {
     if (!this.isReady) return;
     try {
-      // Get workspace owner
-      const user = this.db.prepare(
-        `SELECT u.id, u.workspace_id FROM users u WHERE u.workspace_id IS NOT NULL ORDER BY u.created_at ASC LIMIT 1`
-      ).get();
+      // Get the workspace that owns THIS connected account (not "the oldest user").
+      const user = this._resolveOwner();
       if (!user) return;
 
       // Find last imported message timestamp (stored as SQLite datetime text)
@@ -929,9 +975,16 @@ class WhatsAppManager {
     const accounts = this.db.prepare(
       `SELECT * FROM platform_accounts WHERE platform = 'whatsapp' ORDER BY slot_index ASC`
     ).all();
-    for (const account of accounts) {
-      this._startAccount(account.id, account.slot_index);
-    }
+    // Stagger startup. Launching every account's Chromium at the same instant
+    // thrashes CPU/RAM and trips "browser is already running" races where a
+    // slow-to-start browser collides with a watchdog-triggered re-init. Spacing
+    // each launch ~12s apart lets every session reach QR/ready before the next.
+    accounts.forEach((account, i) => {
+      setTimeout(() => {
+        try { this._startAccount(account.id, account.slot_index); }
+        catch (e) { console.error('⚠️ Staggered account start failed:', e.message); }
+      }, i * 12000);
+    });
     // If no DB accounts exist, start legacy session (backward compat)
     if (accounts.length === 0) {
       this._startLegacy();
@@ -948,8 +1001,12 @@ class WhatsAppManager {
 
   _startAccount(accountId, slotIndex) {
     if (this.instances.has(accountId)) return this.instances.get(accountId);
-    // slot 0 reuses the legacy session path (no clientId) for backward compat
-    const sessionName = slotIndex === 0 ? undefined : `wf-${slotIndex}`;
+    // Key the WhatsApp session by the globally-unique account id. slot_index is
+    // only unique WITHIN a workspace — two different workspaces' "slot 0"
+    // accounts would otherwise both resolve to the legacy `session` dir and
+    // collide on Chromium ("browser is already running for .../session").
+    // Each account now gets its own isolated `session-acct-<id>` profile.
+    const sessionName = `acct-${accountId}`;
     const service = new WhatsAppService(this.db, this.broadcastToUser, accountId, sessionName);
     this.instances.set(accountId, service);
     service.initialize();
