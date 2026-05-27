@@ -52,7 +52,6 @@ export const leadsAPI = {
   restore: (id) => api.post(`/leads/${id}/restore`),
   permanentDelete: (id) => api.delete(`/leads/${id}/permanent`),
   getTrash: () => api.get('/leads/trash'),
-  emptyTrash: () => api.delete('/leads/trash/empty'),
   bulkUpload: (leads) => api.post('/leads/bulk-upload', { leads }),
   bulkAssign: (lead_ids, assigned_to) => api.post('/leads/bulk-assign', { lead_ids, assigned_to }),
   roundRobin: (lead_ids, user_ids) => api.post('/leads/round-robin', { lead_ids, ...(user_ids ? { user_ids } : {}) }),
@@ -100,26 +99,6 @@ export const presetsAPI = {
   delete: (id) => api.delete(`/presets/${id}`),
 };
 
-export const lostReasonsAPI = {
-  getAll: () => api.get('/lost-reasons'),
-  create: (reason) => api.post('/lost-reasons', { reason }),
-  delete: (id) => api.delete(`/lost-reasons/${id}`),
-};
-
-export const myTasksAPI = {
-  getAll: () => api.get('/my/tasks'),
-  create: (data) => api.post('/my/tasks', data),
-  update: (id, data) => api.put(`/my/tasks/${id}`, data),
-  delete: (id) => api.delete(`/my/tasks/${id}`),
-};
-
-export const quickNotesAPI = {
-  getAll: () => api.get('/my/notes'),
-  create: (data) => api.post('/my/notes', data),
-  update: (id, data) => api.put(`/my/notes/${id}`, data),
-  delete: (id) => api.delete(`/my/notes/${id}`),
-};
-
 export const analyticsAPI = {
   get: () => api.get('/analytics'),
   getReports: (periodOrParams) => {
@@ -161,6 +140,20 @@ export const workspaceAPI = {
   removeMember: (id) => api.delete(`/workspace/members/${id}`),
   getRolePermissions: () => api.get('/workspace/role-permissions'),
   updateRolePermissions: (role, permissions) => api.put('/workspace/role-permissions', { role, permissions }),
+  getPlan: () => api.get('/workspace/plan'),
+};
+
+// Cross-app SSO — mints a Flux session token. Server gates it by plan tier.
+export const ssoAPI = {
+  mintFluxToken: () => api.post('/sso/flux-token'),
+};
+
+// Lost reasons — workspace-scoped list used by settings + leads/[id].
+// Backend endpoints land in a follow-up; clients tolerate 404s gracefully.
+export const lostReasonsAPI = {
+  getAll: () => api.get('/lost-reasons'),
+  create: (text) => api.post('/lost-reasons', { text }),
+  delete: (id) => api.delete(`/lost-reasons/${id}`),
 };
 
 export const inviteAPI = {
@@ -178,7 +171,6 @@ export const invoicesAPI = {
   create: (data) => api.post('/invoices', data),
   update: (id, data) => api.put(`/invoices/${id}`, data),
   delete: (id) => api.delete(`/invoices/${id}`),
-  sendEmail: (id, data) => api.post(`/invoices/${id}/email`, data),
 };
 
 export const emailTemplatesAPI = {

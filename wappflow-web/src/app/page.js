@@ -7,10 +7,13 @@ import {
   BarChart3, Shield, Globe, Bot, Send, Mic, Image as ImageIcon,
   FileText, Bell, Workflow, Star, ChevronDown, Menu, X, Play,
   Inbox, Tag, Calendar, CreditCard, Layers, Rocket, Lock, TrendingUp,
-  Phone, Instagram, Facebook, Mail, Database, Activity, Target,
+  Phone, Camera, MessageSquare, Mail, Database, Activity, Target,
   Languages, Wand2, GitBranch, CheckCircle2, Video, Plug, Volume2,
-  Clock, ExternalLink, MapPin, Headphones,
+  Clock, ExternalLink, MapPin, Headphones, Palette, Hash, Images, Crown,
 } from 'lucide-react';
+
+// Flux — sibling AI Instagram content engine. Lives at its own URL.
+const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 
 /* ========================================================================== */
 /* LANDING PAGE — WappFlow                                                    */
@@ -20,6 +23,10 @@ export default function Landing() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authed, setAuthed] = useState(false);
+  // Current workspace plan tier — used to make every pricing CTA tier-aware
+  // ("Your plan", "Upgrade to Growth", etc.) and to render the user's badge
+  // at the top of the pricing section. Null until we've checked auth/plan.
+  const [currentPlan, setCurrentPlan] = useState(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -31,7 +38,19 @@ export default function Landing() {
   useEffect(() => {
     try {
       const t = localStorage.getItem('token');
-      if (t) setAuthed(true);
+      if (!t) return;
+      setAuthed(true);
+      // Fetch plan in the background — non-blocking, falls back gracefully.
+      const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+      fetch(`${API}/workspace/plan`, {
+        headers: { Authorization: `Bearer ${t}` },
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const p = (d?.plan?.plan || d?.plan || '').toString().toLowerCase();
+          if (p) setCurrentPlan(p);
+        })
+        .catch(() => {});
     } catch {}
   }, []);
 
@@ -46,6 +65,7 @@ export default function Landing() {
         <Problem />
         <FeatureGrid />
         <AISection />
+        <FluxSection />
         <MeetingsSection />
         <HuddleSection />
         <PlatformSection />
@@ -54,7 +74,7 @@ export default function Landing() {
         <DashboardShowcase />
         <TeamSection />
         <Testimonials />
-        <Pricing authed={authed} />
+        <Pricing authed={authed} currentPlan={currentPlan} />
         <FAQ />
         <FinalCTA authed={authed} />
       </main>
@@ -81,6 +101,9 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
         <nav className="lp-nav-links">
           <a href="#features">Features</a>
           <a href="#ai">AI</a>
+          <a href="#flux" className="lp-nav-flux">
+            Flux <span className="lp-nav-flux-pill">NEW</span>
+          </a>
           <a href="#meetings">Meetings</a>
           <a href="#platforms">Channels</a>
           <a href="#pricing">Pricing</a>
@@ -111,6 +134,9 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
         <div className="lp-mobile-menu">
           <a href="#features" onClick={() => setMobileOpen(false)}>Features</a>
           <a href="#ai" onClick={() => setMobileOpen(false)}>AI</a>
+          <a href="#flux" onClick={() => setMobileOpen(false)} className="lp-nav-flux">
+            Flux <span className="lp-nav-flux-pill">NEW</span>
+          </a>
           <a href="#meetings" onClick={() => setMobileOpen(false)}>Meetings</a>
           <a href="#platforms" onClick={() => setMobileOpen(false)}>Channels</a>
           <a href="#pricing" onClick={() => setMobileOpen(false)}>Pricing</a>
@@ -625,6 +651,273 @@ function SuggestionRow({ text }) {
 }
 
 /* ========================================================================== */
+/* FLUX SECTION — AI Instagram content engine (sibling app)                   */
+/* ========================================================================== */
+
+function FluxSection() {
+  const pillars = [
+    {
+      icon: <Wand2 size={16} />,
+      label: 'Topic → Carousel',
+      desc: 'Pick a topic. Flux researches, scripts, designs, captions, and queues — in minutes.',
+    },
+    {
+      icon: <Brain size={16} />,
+      label: 'Brand-aware AI',
+      desc: 'Your tone, niche, do-not-use words, voice keywords. Every post sounds unmistakably you.',
+    },
+    {
+      icon: <Palette size={16} />,
+      label: 'On-brand visuals',
+      desc: 'Nine theme presets, your colors, your typography. Slides rendered server-side in HTML+Chrome.',
+    },
+    {
+      icon: <Send size={16} />,
+      label: 'Approve & schedule',
+      desc: 'Review in the library, hit approve, Flux queues to Instagram with caption + hashtags.',
+    },
+  ];
+
+  return (
+    <section id="flux" className="lp-section lp-flux-section">
+      <div className="lp-flux-aurora" aria-hidden>
+        <div className="lp-flux-blob lp-flux-blob-1" />
+        <div className="lp-flux-blob lp-flux-blob-2" />
+        <div className="lp-flux-blob lp-flux-blob-3" />
+        <div className="lp-flux-grid" />
+      </div>
+
+      <div className="lp-container lp-flux-layout">
+        <div className="lp-flux-text">
+          <Reveal>
+            <div className="lp-flux-eyebrow">
+              <span className="lp-flux-eyebrow-dot" />
+              <Sparkles size={12} />
+              <span>Flux · New product</span>
+              <span className="lp-flux-eyebrow-pill">Beta</span>
+            </div>
+          </Reveal>
+
+          <Reveal delay={80}>
+            <h2 className="lp-section-title left lp-flux-title">
+              Your content engine.<br />
+              <span className="lp-flux-gradient">On autopilot.</span>
+            </h2>
+          </Reveal>
+
+          <Reveal delay={140}>
+            <p className="lp-section-sub left lp-flux-sub">
+              Same CRM. Brand-new superpower. <strong>Flux</strong> turns one topic into a finished,
+              on-brand Instagram carousel — researched, written, designed, captioned, and queued.
+              One platform. Zero designers.
+            </p>
+          </Reveal>
+
+          <div className="lp-flux-pillars">
+            {pillars.map((p, i) => (
+              <Reveal key={i} delay={i * 70}>
+                <div className="lp-flux-pillar">
+                  <div className="lp-flux-pillar-icon">{p.icon}</div>
+                  <div>
+                    <div className="lp-flux-pillar-label">{p.label}</div>
+                    <div className="lp-flux-pillar-desc">{p.desc}</div>
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          <Reveal delay={360}>
+            <div className="lp-flux-cta-row">
+              <a
+                href={FLUX_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="lp-flux-btn lp-flux-btn-primary"
+              >
+                Launch Flux <ExternalLink size={15} />
+              </a>
+              <a href="#flux" className="lp-flux-btn lp-flux-btn-ghost">
+                <Play size={14} /> See how it works
+              </a>
+            </div>
+          </Reveal>
+
+          <Reveal delay={420}>
+            <div className="lp-flux-microproof">
+              <CheckRow>One Groq key. Free tier covers thousands of posts/month.</CheckRow>
+              <CheckRow>Built on the same multi-tenant engine as WappFlow.</CheckRow>
+              <CheckRow>Self-hosted on your VPS. Your brand never leaves.</CheckRow>
+            </div>
+          </Reveal>
+        </div>
+
+        <Reveal delay={200}>
+          <div className="lp-flux-preview">
+            <div className="lp-flux-preview-glow" aria-hidden />
+
+            <div className="lp-flux-slide lp-flux-slide-3">
+              <div className="lp-flux-slide-tag">Slide 3 · CTA</div>
+              <div className="lp-flux-slide-inner" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)' }}>
+                <div className="lp-flux-slide-eyebrow">Save this for later</div>
+                <div className="lp-flux-slide-cta">
+                  Follow for more<br />
+                  <span className="lp-flux-slide-cta-handle">@your.brand</span>
+                </div>
+                <div className="lp-flux-slide-foot">
+                  <Hash size={11} /> #content #ai #automation
+                </div>
+              </div>
+            </div>
+
+            <div className="lp-flux-slide lp-flux-slide-2">
+              <div className="lp-flux-slide-tag">Slide 2 · Body</div>
+              <div className="lp-flux-slide-inner" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
+                <div className="lp-flux-slide-eyebrow">The shift</div>
+                <ol className="lp-flux-slide-list">
+                  <li><span>1</span> AI does the research</li>
+                  <li><span>2</span> Writes in your voice</li>
+                  <li><span>3</span> Renders the slides</li>
+                  <li><span>4</span> Queues to Instagram</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="lp-flux-slide lp-flux-slide-1">
+              <div className="lp-flux-slide-tag">Slide 1 · Hook</div>
+              <div className="lp-flux-slide-inner lp-flux-slide-hook">
+                <div className="lp-flux-slide-eyebrow lp-flux-slide-eyebrow-hook">Content automation</div>
+                <h3 className="lp-flux-slide-hook-title">
+                  Why your brand still doesn&apos;t post daily.
+                </h3>
+                <div className="lp-flux-slide-foot lp-flux-slide-foot-hook">
+                  <Sparkles size={11} /> Generated by Flux
+                </div>
+              </div>
+            </div>
+
+            <div className="lp-flux-float lp-flux-float-tl">
+              <div className="lp-flux-float-icon" style={{ background: 'rgba(167,139,250,0.18)' }}>
+                <Brain size={12} color="#A78BFA" />
+              </div>
+              <div>
+                <div className="lp-flux-float-label">AI script</div>
+                <div className="lp-flux-float-meta">1.4s · Groq</div>
+              </div>
+            </div>
+
+            <div className="lp-flux-float lp-flux-float-br">
+              <div className="lp-flux-float-icon" style={{ background: 'rgba(34,211,238,0.18)' }}>
+                <Images size={12} color="#22D3EE" />
+              </div>
+              <div>
+                <div className="lp-flux-float-label">5 slides rendered</div>
+                <div className="lp-flux-float-meta">ready to publish</div>
+              </div>
+            </div>
+
+            <div className="lp-flux-float lp-flux-float-bl">
+              <div className="lp-flux-float-icon" style={{ background: 'rgba(236,72,153,0.18)' }}>
+                <Calendar size={12} color="#EC4899" />
+              </div>
+              <div>
+                <div className="lp-flux-float-label">Scheduled</div>
+                <div className="lp-flux-float-meta">Tomorrow · 9:00 AM</div>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+
+      <style>{`
+        .lp-flux-section { position: relative; overflow: hidden; padding-top: 110px !important; padding-bottom: 120px !important; }
+        .lp-flux-aurora { position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+        .lp-flux-aurora .lp-flux-blob { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.45; animation: fluxFloat 22s ease-in-out infinite; }
+        .lp-flux-blob-1 { width: 560px; height: 560px; background: #A78BFA; top: -100px; left: -120px; }
+        .lp-flux-blob-2 { width: 520px; height: 520px; background: #22D3EE; top: 200px; right: -120px; opacity: 0.35; animation-delay: -7s; }
+        .lp-flux-blob-3 { width: 480px; height: 480px; background: #EC4899; bottom: -120px; left: 30%; opacity: 0.28; animation-delay: -14s; }
+        .lp-flux-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px); background-size: 56px 56px; mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, #000 30%, transparent 80%); -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, #000 30%, transparent 80%); }
+        @keyframes fluxFloat { 0%, 100% { transform: translate(0,0) rotate(0deg); } 33% { transform: translate(40px, -30px) rotate(40deg); } 66% { transform: translate(-30px, 20px) rotate(-25deg); } }
+
+        .lp-flux-layout { position: relative; z-index: 1; display: grid; grid-template-columns: 1.05fr 1fr; gap: 64px; align-items: center; }
+        @media (max-width: 960px) { .lp-flux-layout { grid-template-columns: 1fr; gap: 56px; } }
+
+        .lp-flux-text { position: relative; }
+        .lp-flux-eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 10px; border-radius: 999px; background: linear-gradient(135deg, rgba(167,139,250,0.14) 0%, rgba(34,211,238,0.14) 50%, rgba(236,72,153,0.14) 100%); border: 1px solid rgba(34,211,238,0.30); color: var(--lp-text); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; backdrop-filter: blur(8px); }
+        .lp-flux-eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: #22D3EE; box-shadow: 0 0 8px #22D3EE; animation: fluxPulse 2.5s ease-in-out infinite; }
+        @keyframes fluxPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.3); } }
+        .lp-flux-eyebrow-pill { margin-left: 4px; font-size: 9px; font-weight: 900; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 5px; background: linear-gradient(135deg, #A78BFA, #EC4899); color: white; }
+
+        .lp-flux-title { margin-top: 22px; font-size: clamp(38px, 5.5vw, 64px); line-height: 1.04; letter-spacing: -0.025em; font-weight: 800; }
+        .lp-flux-gradient { background: linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%); background-size: 200% 200%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: fluxShift 8s ease infinite; }
+        @keyframes fluxShift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+        .lp-flux-sub { margin-top: 20px; font-size: 17px; line-height: 1.65; color: var(--lp-text-dim); max-width: 540px; }
+        .lp-flux-sub strong { color: var(--lp-text); background: linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 700; }
+
+        .lp-flux-pillars { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 540px) { .lp-flux-pillars { grid-template-columns: 1fr; } }
+        .lp-flux-pillar { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 14px; background: rgba(20, 22, 33, 0.55); border: 1px solid rgba(255,255,255,0.06); backdrop-filter: blur(10px); transition: all 0.2s ease; }
+        .lp-flux-pillar:hover { border-color: rgba(34,211,238,0.35); transform: translateY(-2px); box-shadow: 0 18px 40px -16px rgba(34,211,238,0.18); }
+        .lp-flux-pillar-icon { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; box-shadow: 0 4px 14px -2px rgba(34,211,238,0.5); }
+        .lp-flux-pillar-label { font-size: 13.5px; font-weight: 800; color: var(--lp-text); letter-spacing: -0.01em; }
+        .lp-flux-pillar-desc { margin-top: 2px; font-size: 12.5px; line-height: 1.5; color: var(--lp-text-dim); }
+
+        .lp-flux-cta-row { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 12px; }
+        .lp-flux-btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border-radius: 12px; font-size: 14.5px; font-weight: 700; letter-spacing: -0.005em; transition: all 0.2s ease; cursor: pointer; border: none; }
+        .lp-flux-btn-primary { background: linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%); background-size: 200% 200%; color: #0a0a13; box-shadow: 0 10px 36px -10px rgba(34,211,238,0.55); }
+        .lp-flux-btn-primary:hover { background-position: 100% 50%; transform: translateY(-2px); box-shadow: 0 14px 44px -10px rgba(236,72,153,0.55); }
+        .lp-flux-btn-ghost { background: rgba(255,255,255,0.04); color: var(--lp-text); border: 1px solid var(--lp-border); }
+        .lp-flux-btn-ghost:hover { background: rgba(255,255,255,0.08); border-color: rgba(34,211,238,0.4); }
+        .lp-flux-microproof { margin-top: 28px; display: flex; flex-direction: column; gap: 10px; }
+
+        .lp-flux-preview { position: relative; height: 540px; perspective: 1400px; }
+        @media (max-width: 960px) { .lp-flux-preview { height: 460px; margin-top: 20px; } }
+        @media (max-width: 540px) { .lp-flux-preview { height: 400px; } }
+        .lp-flux-preview-glow { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, rgba(34,211,238,0.25), transparent 65%); filter: blur(40px); }
+
+        .lp-flux-slide { position: absolute; width: 280px; height: 360px; left: 50%; top: 50%; border-radius: 24px; overflow: hidden; transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: 0 30px 80px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); }
+        @media (max-width: 540px) { .lp-flux-slide { width: 220px; height: 290px; } }
+        .lp-flux-slide-1 { transform: translate(-50%, -50%) rotate(-3deg); z-index: 3; }
+        .lp-flux-slide-2 { transform: translate(calc(-50% + 56px), calc(-50% - 12px)) rotate(6deg); z-index: 2; opacity: 0.95; }
+        .lp-flux-slide-3 { transform: translate(calc(-50% - 56px), calc(-50% + 14px)) rotate(-9deg); z-index: 1; opacity: 0.85; }
+        .lp-flux-preview:hover .lp-flux-slide-1 { transform: translate(-50%, calc(-50% - 10px)) rotate(-2deg); }
+        .lp-flux-preview:hover .lp-flux-slide-2 { transform: translate(calc(-50% + 80px), calc(-50% - 28px)) rotate(8deg); }
+        .lp-flux-preview:hover .lp-flux-slide-3 { transform: translate(calc(-50% - 80px), calc(-50% + 32px)) rotate(-11deg); }
+
+        .lp-flux-slide-tag { position: absolute; top: 12px; left: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(0,0,0,0.55); backdrop-filter: blur(10px); color: white; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; z-index: 5; }
+        .lp-flux-slide-inner { position: relative; width: 100%; height: 100%; padding: 28px 26px; display: flex; flex-direction: column; justify-content: space-between; color: white; }
+        .lp-flux-slide-hook { background: linear-gradient(135deg, #0c0c1a 0%, #18162e 60%, #1e1239 100%) !important; }
+        .lp-flux-slide-hook::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 25% 0%, rgba(167,139,250,0.32), transparent 50%), radial-gradient(circle at 80% 100%, rgba(236,72,153,0.28), transparent 55%); }
+        .lp-flux-slide-eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255,255,255,0.6); }
+        .lp-flux-slide-eyebrow-hook { color: #22D3EE; position: relative; }
+        .lp-flux-slide-hook-title { position: relative; font-size: 28px; font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; margin: 0; background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .lp-flux-slide-foot { font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,0.55); display: flex; align-items: center; gap: 6px; }
+        .lp-flux-slide-foot-hook { position: relative; color: rgba(255,255,255,0.7); }
+        .lp-flux-slide-list { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-direction: column; gap: 11px; }
+        .lp-flux-slide-list li { display: flex; align-items: center; gap: 11px; font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.92); }
+        .lp-flux-slide-list li span { width: 24px; height: 24px; border-radius: 7px; background: linear-gradient(135deg, #A78BFA, #22D3EE); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #0a0a13; flex-shrink: 0; }
+        .lp-flux-slide-cta { font-size: 22px; font-weight: 800; line-height: 1.15; color: white; }
+        .lp-flux-slide-cta-handle { display: inline-block; margin-top: 6px; font-size: 14px; font-weight: 600; background: linear-gradient(135deg, #A78BFA, #22D3EE); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+        .lp-flux-float { position: absolute; display: flex; align-items: center; gap: 9px; padding: 10px 14px 10px 10px; border-radius: 14px; background: rgba(13, 14, 22, 0.88); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 40px -12px rgba(0,0,0,0.6); z-index: 10; animation: fluxBob 6s ease-in-out infinite; }
+        .lp-flux-float-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .lp-flux-float-label { font-size: 11.5px; font-weight: 700; color: var(--lp-text); letter-spacing: -0.005em; }
+        .lp-flux-float-meta { font-size: 10px; font-weight: 600; color: var(--lp-text-muted); margin-top: 1px; }
+        .lp-flux-float-tl { top: 26px;  left: -10px; animation-delay: -2s; }
+        .lp-flux-float-br { bottom: 60px; right: -8px; animation-delay: -4s; }
+        .lp-flux-float-bl { bottom: 20px; left: 8px;  animation-delay: -1s; }
+        @media (max-width: 540px) { .lp-flux-float-tl { top: 6px; left: -4px; } .lp-flux-float-br { bottom: 30px; right: -4px; } .lp-flux-float-bl { bottom: 0; left: 4px; } }
+        @keyframes fluxBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+        .lp-nav-flux { position: relative; display: inline-flex !important; align-items: center; gap: 6px; }
+        .lp-nav-flux-pill { font-size: 9px; font-weight: 900; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px; background: linear-gradient(135deg, #A78BFA, #EC4899); color: white; }
+      `}</style>
+    </section>
+  );
+}
+
+/* ========================================================================== */
 /* PLATFORM SECTION                                                           */
 /* ========================================================================== */
 
@@ -918,8 +1211,8 @@ function IntegrationsSection() {
 function PlatformSection() {
   const platforms = [
     { icon: <MessageCircle size={22} />, name: 'WhatsApp',  desc: 'Multi-account, voice notes, media, groups.', color: '#25D366' },
-    { icon: <Instagram size={22} />,     name: 'Instagram', desc: 'DMs and comments via webhook.',             color: '#E1306C' },
-    { icon: <Facebook size={22} />,      name: 'Facebook',  desc: 'Messenger + lead form submissions.',         color: '#1877F2' },
+    { icon: <Camera size={22} />,        name: 'Instagram', desc: 'DMs and comments via webhook.',             color: '#E1306C' },
+    { icon: <MessageSquare size={22} />, name: 'Facebook',  desc: 'Messenger + lead form submissions.',         color: '#1877F2' },
     { icon: <Globe size={22} />,         name: 'Website',   desc: 'Custom form widget → instant lead.',         color: '#6366f1' },
     { icon: <Mail size={22} />,          name: 'Email',     desc: 'SMTP outbound + IMAP polling.',              color: '#F59E0B' },
     { icon: <Bell size={22} />,          name: 'Push',      desc: 'Browser notifications for every event.',     color: '#06B6D4' },
@@ -1227,7 +1520,138 @@ function Testimonials() {
 /* PRICING                                                                    */
 /* ========================================================================== */
 
-function Pricing({ authed }) {
+// Plan tier priority — lower number = lower tier. Used to decide whether
+// the CTA on a card should say "Upgrade", "Your plan", or "Downgrade".
+const TIER_RANK = { free: 0, starter: 1, growth: 2, enterprise: 3 };
+
+function planCta(tierKey, tierLabel, currentPlan, authed) {
+  if (!authed) {
+    // Marketing copy when nobody's signed in.
+    if (tierKey === 'free') return { text: 'Start free', tone: 'glass' };
+    if (tierKey === 'enterprise') return { text: 'Talk to sales', tone: 'glass' };
+    return { text: `Upgrade to ${tierLabel}`, tone: tierKey === 'growth' ? 'primary' : 'glass' };
+  }
+  // Authed: compare against the user's tier.
+  const cur = (currentPlan || 'free').toLowerCase();
+  const curRank = TIER_RANK[cur] ?? 0;
+  const tierRank = TIER_RANK[tierKey] ?? 0;
+
+  if (curRank === tierRank) {
+    return { text: '✓ Your current plan', tone: 'current' };
+  }
+  if (tierRank > curRank) {
+    if (tierKey === 'enterprise') return { text: 'Talk to sales', tone: 'glass' };
+    return {
+      text: `Upgrade to ${tierLabel}`,
+      tone: tierKey === 'growth' ? 'primary' : 'glass',
+    };
+  }
+  // Lower than current.
+  return { text: `Switch to ${tierLabel}`, tone: 'glass-quiet' };
+}
+
+function Pricing({ authed, currentPlan }) {
+  const cur = (currentPlan || '').toLowerCase();
+
+  const tiers = [
+    {
+      key: 'free',
+      label: 'Free',
+      price: '$0',
+      cadence: '/mo',
+      tagline: 'Solo users testing WappFlow',
+      items: [
+        { text: '1 WhatsApp account' },
+        { text: '1 user only' },
+        { text: '50 leads max' },
+        { text: 'Basic inbox & CRM' },
+        { text: 'Limited AI replies' },
+        { text: 'Instagram inbox', locked: true, requiredPlan: 'Growth' },
+        { text: 'Facebook inbox', locked: true, requiredPlan: 'Growth' },
+        { text: 'Email integration', locked: true, requiredPlan: 'Starter' },
+        { text: 'Automations', locked: true, requiredPlan: 'Growth' },
+        { text: 'Google Calendar + Meet', locked: true, requiredPlan: 'Growth' },
+        { text: 'Calendly', locked: true, requiredPlan: 'Growth' },
+        { text: 'Team collaboration', locked: true, requiredPlan: 'Growth' },
+        { text: 'Flux — AI Instagram content', locked: true, requiredPlan: 'Growth' },
+      ],
+      href: '/signup',
+    },
+    {
+      key: 'starter',
+      label: 'Starter',
+      price: '$19',
+      cadence: '/mo',
+      tagline: 'Small businesses getting started',
+      items: [
+        { text: '1 WhatsApp account' },
+        { text: 'Email integration' },
+        { text: 'Up to 2 users' },
+        { text: '300 leads max' },
+        { text: 'AI assistant' },
+        { text: 'Shared inbox + internal notes' },
+        { text: 'Voice notes & media' },
+        { text: 'Basic analytics' },
+        { text: 'Priority email support' },
+        { text: 'Instagram / Facebook inbox', locked: true, requiredPlan: 'Growth' },
+        { text: 'Workflow automations', locked: true, requiredPlan: 'Growth' },
+        { text: 'Google Calendar / Calendly', locked: true, requiredPlan: 'Growth' },
+        { text: 'Flux — AI Instagram content', locked: true, requiredPlan: 'Growth' },
+      ],
+      href: authed ? '/settings?tab=billing' : '/signup',
+    },
+    {
+      key: 'growth',
+      label: 'Growth',
+      price: '$49',
+      cadence: '/mo',
+      tagline: 'Growing teams at scale',
+      featured: true,
+      items: [
+        { text: 'Flux — AI Instagram content engine', highlight: true },
+        { text: 'Unified inbox: WhatsApp + IG + FB' },
+        { text: 'Website-to-CRM capture' },
+        { text: 'Email integration' },
+        { text: 'Up to 5 team members' },
+        { text: 'Unlimited leads' },
+        { text: 'AI assistant + smart summaries' },
+        { text: 'Team collaboration' },
+        { text: 'Google Calendar + Meet' },
+        { text: 'Calendly integration' },
+        { text: 'Workflow automations' },
+        { text: 'Reports & analytics' },
+        { text: 'Multi-pipeline support' },
+        { text: 'Priority support' },
+      ],
+      href: authed ? '/settings?tab=billing' : '/signup',
+    },
+    {
+      key: 'enterprise',
+      label: 'Enterprise',
+      price: 'Custom',
+      cadence: '',
+      tagline: 'Agencies & high-volume teams',
+      items: [
+        { text: 'Flux unlimited — multi-brand content', highlight: true },
+        { text: 'Unlimited channels' },
+        { text: 'Unlimited team members' },
+        { text: 'White-label support' },
+        { text: 'Dedicated infrastructure' },
+        { text: 'Advanced AI workflows' },
+        { text: 'Custom integrations' },
+        { text: 'API access' },
+        { text: 'SLA onboarding & support' },
+        { text: 'Role-based permissions' },
+        { text: 'Bring your own AI keys' },
+        { text: 'Dedicated account manager' },
+      ],
+      href: 'mailto:sales@wappflow.app',
+      external: true,
+    },
+  ];
+
+  const currentTierLabel = cur ? cur.charAt(0).toUpperCase() + cur.slice(1) : null;
+
   return (
     <section id="pricing" className="lp-section lp-pricing">
       <div className="lp-container">
@@ -1245,110 +1669,75 @@ function Pricing({ authed }) {
           </p>
         </Reveal>
 
+        {/* Authed user's plan banner — gives them an immediate "you are here" anchor */}
+        {authed && currentTierLabel && (
+          <Reveal delay={180}>
+            <div className="lp-current-plan-banner">
+              <Crown size={14} />
+              <span>
+                You&apos;re on the <strong>{currentTierLabel}</strong> plan
+              </span>
+              <Link href="/settings?tab=billing" className="lp-current-plan-link">
+                Manage billing <ArrowRight size={12} />
+              </Link>
+            </div>
+          </Reveal>
+        )}
+
         <div className="lp-pricing-grid lp-pricing-4col">
-          {/* FREE */}
-          <Reveal delay={80}>
-            <div className="lp-price-card">
-              <div className="lp-price-tier">Free</div>
-              <div className="lp-price-amount">$0<span>/mo</span></div>
-              <div className="lp-price-period">Solo users testing WappFlow</div>
-              <PriceList items={[
-                { text: '1 WhatsApp account' },
-                { text: '1 user only' },
-                { text: '50 leads max' },
-                { text: 'Basic inbox & CRM' },
-                { text: 'Limited AI replies' },
-                { text: 'Instagram inbox', locked: true },
-                { text: 'Facebook inbox', locked: true },
-                { text: 'Email integration', locked: true },
-                { text: 'Automations', locked: true },
-                { text: 'Google Calendar + Meet', locked: true },
-                { text: 'Calendly', locked: true },
-                { text: 'Team collaboration', locked: true },
-              ]} />
-              <Link href="/signup" className="lp-btn lp-btn-glass lp-btn-block">Start free</Link>
-            </div>
-          </Reveal>
+          {tiers.map((t, idx) => {
+            const isCurrent = authed && cur === t.key;
+            const cta = planCta(t.key, t.label, cur, authed);
+            const cardClass = [
+              'lp-price-card',
+              t.featured && 'lp-price-featured',
+              isCurrent && 'lp-price-current',
+            ].filter(Boolean).join(' ');
+            const btnClass = [
+              'lp-btn',
+              'lp-btn-block',
+              cta.tone === 'primary' && 'lp-btn-primary',
+              cta.tone === 'glass' && 'lp-btn-glass',
+              cta.tone === 'glass-quiet' && 'lp-btn-glass-quiet',
+              cta.tone === 'current' && 'lp-btn-current',
+            ].filter(Boolean).join(' ');
 
-          {/* STARTER */}
-          <Reveal delay={140}>
-            <div className="lp-price-card">
-              <div className="lp-price-tier">Starter</div>
-              <div className="lp-price-amount">$19<span>/mo</span></div>
-              <div className="lp-price-period">Small businesses getting started</div>
-              <PriceList items={[
-                { text: '1 WhatsApp account' },
-                { text: 'Email integration' },
-                { text: 'Up to 2 users' },
-                { text: '300 leads max' },
-                { text: 'AI assistant' },
-                { text: 'Shared inbox + internal notes' },
-                { text: 'Voice notes & media' },
-                { text: 'Basic analytics' },
-                { text: 'Priority email support' },
-                { text: 'Instagram / Facebook inbox', locked: true },
-                { text: 'Workflow automations', locked: true },
-                { text: 'Google Calendar / Calendly', locked: true },
-              ]} />
-              <Link href={authed ? '/dashboard' : '/signup'} className="lp-btn lp-btn-glass lp-btn-block">
-                Upgrade to Starter
-              </Link>
-            </div>
-          </Reveal>
-
-          {/* GROWTH (Most Popular) */}
-          <Reveal delay={200}>
-            <div className="lp-price-card lp-price-featured">
-              <div className="lp-price-ribbon">Most popular</div>
-              <div className="lp-price-tier">Growth</div>
-              <div className="lp-price-amount">$49<span>/mo</span></div>
-              <div className="lp-price-period">Growing teams at scale</div>
-              <PriceList items={[
-                { text: 'Unified inbox: WhatsApp + IG + FB' },
-                { text: 'Website-to-CRM capture' },
-                { text: 'Email integration' },
-                { text: 'Up to 5 team members' },
-                { text: 'Unlimited leads' },
-                { text: 'AI assistant + smart summaries' },
-                { text: 'Team collaboration' },
-                { text: 'Google Calendar + Meet' },
-                { text: 'Calendly integration' },
-                { text: 'Workflow automations' },
-                { text: 'Reports & analytics' },
-                { text: 'Multi-pipeline support' },
-                { text: 'Priority support' },
-              ]} />
-              <Link href={authed ? '/dashboard' : '/signup'} className="lp-btn lp-btn-primary lp-btn-block">
-                {authed ? 'Open Dashboard' : 'Upgrade to Growth'} <ArrowRight size={16} />
-              </Link>
-            </div>
-          </Reveal>
-
-          {/* ENTERPRISE */}
-          <Reveal delay={260}>
-            <div className="lp-price-card">
-              <div className="lp-price-tier">Enterprise</div>
-              <div className="lp-price-amount">Custom</div>
-              <div className="lp-price-period">Agencies & high-volume teams</div>
-              <PriceList items={[
-                { text: 'Unlimited channels' },
-                { text: 'Unlimited team members' },
-                { text: 'White-label support' },
-                { text: 'Dedicated infrastructure' },
-                { text: 'Advanced AI workflows' },
-                { text: 'Custom integrations' },
-                { text: 'API access' },
-                { text: 'SLA onboarding & support' },
-                { text: 'Role-based permissions' },
-                { text: 'Bring your own AI keys' },
-                { text: 'Dedicated account manager' },
-              ]} />
-              <a href="mailto:sales@wappflow.app" className="lp-btn lp-btn-glass lp-btn-block">Talk to sales</a>
-            </div>
-          </Reveal>
+            return (
+              <Reveal key={t.key} delay={80 + idx * 60}>
+                <div className={cardClass}>
+                  {t.featured && <div className="lp-price-ribbon">Most popular</div>}
+                  {isCurrent && (
+                    <div className="lp-price-current-badge">
+                      <Crown size={11} /> Your plan
+                    </div>
+                  )}
+                  <div className="lp-price-tier">{t.label}</div>
+                  <div className="lp-price-amount">
+                    {t.price}
+                    {t.cadence && <span>{t.cadence}</span>}
+                  </div>
+                  <div className="lp-price-period">{t.tagline}</div>
+                  <PriceList items={t.items} />
+                  {cta.tone === 'current' ? (
+                    <div className={btnClass}>{cta.text}</div>
+                  ) : t.external ? (
+                    <a href={t.href} className={btnClass}>
+                      {cta.text}
+                      {cta.tone === 'primary' && <ArrowRight size={16} />}
+                    </a>
+                  ) : (
+                    <Link href={t.href} className={btnClass}>
+                      {cta.text}
+                      {cta.tone === 'primary' && <ArrowRight size={16} />}
+                    </Link>
+                  )}
+                </div>
+              </Reveal>
+            );
+          })}
         </div>
 
-        <Reveal delay={320}>
+        <Reveal delay={360}>
           <div className="lp-price-foot">
             All paid plans include WhatsApp, AI replies, audit logs, and self-hosted data ownership. Upgrade or downgrade anytime.
           </div>
@@ -1362,12 +1751,25 @@ function PriceList({ items }) {
   return (
     <ul className="lp-price-list">
       {items.map((it, i) => {
-        // Backward-compat: items may be strings or { text, locked }
+        // Backward-compat: items may be strings or { text, locked, highlight, requiredPlan }
         const obj = typeof it === 'string' ? { text: it } : it;
+        const cls = [
+          obj.locked && 'lp-price-li-locked',
+          obj.highlight && 'lp-price-li-highlight',
+        ].filter(Boolean).join(' ');
         return (
-          <li key={i} className={obj.locked ? 'lp-price-li-locked' : ''}>
-            {obj.locked ? <Lock size={13} /> : <Check size={14} />}
-            {obj.text}
+          <li key={i} className={cls}>
+            {obj.locked ? (
+              <Lock size={13} className="lp-price-li-lock-icon" />
+            ) : obj.highlight ? (
+              <Sparkles size={14} />
+            ) : (
+              <Check size={14} />
+            )}
+            <span className="lp-price-li-text">{obj.text}</span>
+            {obj.locked && obj.requiredPlan && (
+              <span className="lp-price-li-plan-pill">{obj.requiredPlan}+</span>
+            )}
           </li>
         );
       })}
@@ -2488,8 +2890,170 @@ function GlobalStyles() {
       @media (max-width: 1180px) { .lp-pricing-4col { grid-template-columns: repeat(2, 1fr); } }
       @media (max-width: 620px)  { .lp-pricing-4col { grid-template-columns: 1fr; } }
       .lp-price-foot { text-align: center; font-size: 13px; color: var(--lp-text-muted); margin-top: 32px; max-width: 620px; margin-left: auto; margin-right: auto; }
-      .lp-price-li-locked { opacity: 0.55; text-decoration: line-through; }
-      .lp-price-li-locked svg { color: var(--lp-text-muted) !important; }
+      /* LOCKED ROW — visually dominant. Red-tint, sharp lock icon, plan pill on the right. */
+      .lp-price-li-locked {
+        position: relative;
+        padding: 7px 12px 7px 10px;
+        margin-left: -12px;
+        margin-right: -12px;
+        border-radius: 8px;
+        background: linear-gradient(90deg, rgba(239,68,68,0.06) 0%, rgba(239,68,68,0.02) 70%, transparent 100%);
+        border: 1px solid rgba(239,68,68,0.18);
+        color: rgba(255,255,255,0.55);
+        cursor: help;
+        transition: all 0.18s ease;
+        gap: 9px !important;
+      }
+      .lp-price-li-locked .lp-price-li-text {
+        text-decoration: line-through;
+        text-decoration-color: rgba(239,68,68,0.45);
+        text-decoration-thickness: 1.5px;
+      }
+      .lp-price-li-locked .lp-price-li-lock-icon {
+        color: #ef4444 !important;
+        flex-shrink: 0;
+      }
+      .lp-price-li-locked:hover {
+        background: linear-gradient(90deg, rgba(239,68,68,0.14) 0%, rgba(239,68,68,0.06) 100%);
+        border-color: rgba(239,68,68,0.35);
+        color: var(--lp-text);
+      }
+      .lp-price-li-locked:hover .lp-price-li-text { text-decoration-color: rgba(239,68,68,0.7); }
+      .lp-price-li-plan-pill {
+        margin-left: auto;
+        font-size: 9.5px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        padding: 3px 8px;
+        border-radius: 5px;
+        background: linear-gradient(135deg, #A78BFA 0%, #EC4899 100%);
+        color: white;
+        text-transform: uppercase;
+        white-space: nowrap;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px -2px rgba(167,139,250,0.5);
+      }
+      .lp-price-li-text { flex: 1; }
+      .lp-price-list li { gap: 10px; }
+      /* HIGHLIGHTED ROW — the Flux feature on Growth/Enterprise. */
+      .lp-price-li-highlight {
+        position: relative;
+        font-weight: 700;
+        padding: 8px 12px 8px 10px;
+        margin-left: -12px;
+        margin-right: -12px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, rgba(167,139,250,0.10) 0%, rgba(34,211,238,0.08) 50%, rgba(236,72,153,0.10) 100%);
+        border: 1px solid rgba(34,211,238,0.20);
+        background-clip: padding-box;
+      }
+      .lp-price-li-highlight svg {
+        color: #22D3EE !important;
+        filter: drop-shadow(0 0 4px rgba(34,211,238,0.5));
+      }
+      .lp-price-li-highlight .lp-price-li-text { flex: 1; }
+      .lp-price-li-highlight::after {
+        content: 'NEW';
+        margin-left: auto;
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: linear-gradient(135deg, #A78BFA, #EC4899);
+        color: white;
+      }
+
+      /* CURRENT PLAN — card emphasis when the authed user is on this tier. */
+      .lp-price-current {
+        border-color: rgba(34,197,94,0.45) !important;
+        box-shadow: 0 0 0 1px rgba(34,197,94,0.35), 0 18px 50px -22px rgba(34,197,94,0.35);
+      }
+      .lp-price-current-badge {
+        position: absolute;
+        top: -12px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 12px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        background: linear-gradient(135deg, #16a34a, #22c55e);
+        color: white;
+        border-radius: 999px;
+        box-shadow: 0 8px 22px -6px rgba(34,197,94,0.55);
+        z-index: 2;
+      }
+      .lp-btn-current {
+        background: rgba(34,197,94,0.14);
+        color: #4ade80;
+        border: 1px solid rgba(34,197,94,0.4);
+        font-weight: 700;
+        cursor: default;
+        text-align: center;
+        justify-content: center;
+      }
+      .lp-btn-glass-quiet {
+        background: rgba(255,255,255,0.03);
+        color: var(--lp-text-dim);
+        border: 1px solid rgba(255,255,255,0.06);
+      }
+      .lp-btn-glass-quiet:hover {
+        background: rgba(255,255,255,0.06);
+        color: var(--lp-text);
+        border-color: rgba(255,255,255,0.12);
+      }
+
+      /* "You're on the X plan" banner above the pricing grid */
+      .lp-current-plan-banner {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        margin: 0 auto 32px;
+        background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(34,197,94,0.04));
+        border: 1px solid rgba(34,197,94,0.32);
+        border-radius: 999px;
+        color: var(--lp-text);
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .lp-current-plan-banner svg { color: #4ade80; }
+      .lp-current-plan-banner strong {
+        font-weight: 800;
+        background: linear-gradient(135deg, #4ade80, #22c55e);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .lp-current-plan-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-left: 4px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.06);
+        color: var(--lp-text);
+        font-size: 11.5px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: background 0.15s;
+      }
+      .lp-current-plan-link:hover { background: rgba(255,255,255,0.12); }
+
+      /* center the banner via its parent — wrap in a flex row */
+      .lp-pricing > .lp-container > .lp-current-plan-banner,
+      .lp-pricing .lp-current-plan-banner {
+        display: flex;
+        width: fit-content;
+        margin-left: auto;
+        margin-right: auto;
+      }
       .lp-price-card {
         padding: 36px 28px;
         background: var(--lp-surface);

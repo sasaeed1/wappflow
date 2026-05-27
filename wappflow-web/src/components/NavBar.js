@@ -5,17 +5,96 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Zap, LayoutDashboard, Users, BarChart2, UserCheck,
   HelpCircle, Settings, Bell, LogOut, MessageSquare,
-  MessageCircle, X, Clock, CheckCircle, Brain,
+  MessageCircle, X, Clock, CheckCircle, CheckCircle2, Brain,
   FileText, Inbox, Menu, ChevronDown, ChevronRight,
-  Camera, Globe, MonitorSmartphone, Layers
+  Camera, Globe, MonitorSmartphone, Layers, Sparkles,
+  ExternalLink, Crown
 } from 'lucide-react';
-import { leadsAPI, remindersAPI, displayPhone, BASE_URL, platformAccountsAPI } from '../lib/api';
-import { toDate, formatRelative, formatFull } from '../lib/datetime';
+
+// Flux — sibling AI content engine. Opens in a new tab.
+const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
+import { leadsAPI, remindersAPI, displayPhone, BASE_URL, platformAccountsAPI, ssoAPI } from '../lib/api';
+import { usePlan } from '@/lib/plan';
 import FloatingChat from './FloatingChat';
 import AICommandCenter from './AICommandCenter';
-import SidePanel from './SidePanel';
-import { usePlan } from '@/lib/plan';
-import { PlanBanner, PlanChip } from './PlanLock';
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PlanBadge — visible tier indicator that lives between the More dropdown
+//  and the right-side action icons. Click it to land on Settings → billing.
+//  Styled per-tier so a user can tell at a glance what they're paying for.
+// ─────────────────────────────────────────────────────────────────────────────
+function PlanBadge() {
+  const { plan, planName, loading } = usePlan();
+  const router = useRouter();
+  if (loading || !plan) return null;
+
+  const TIER_STYLE = {
+    free: {
+      bg: 'rgba(148,163,184,0.12)',
+      border: 'rgba(148,163,184,0.32)',
+      color: '#cbd5e1',
+      crown: false,
+    },
+    starter: {
+      bg: 'linear-gradient(135deg, rgba(96,165,250,0.18), rgba(99,102,241,0.18))',
+      border: 'rgba(99,102,241,0.45)',
+      color: '#a5b4fc',
+      crown: false,
+    },
+    growth: {
+      bg: 'linear-gradient(135deg, rgba(167,139,250,0.20), rgba(236,72,153,0.20))',
+      border: 'rgba(167,139,250,0.55)',
+      color: '#e9d5ff',
+      crown: true,
+    },
+    enterprise: {
+      bg: 'linear-gradient(135deg, rgba(250,204,21,0.20), rgba(245,158,11,0.20))',
+      border: 'rgba(250,204,21,0.55)',
+      color: '#fde68a',
+      crown: true,
+    },
+  };
+  const style = TIER_STYLE[plan] || TIER_STYLE.free;
+  const label = (planName || plan).toUpperCase();
+
+  return (
+    <button
+      type="button"
+      onClick={() => router.push('/settings?tab=billing')}
+      title={`You're on the ${planName || plan} plan. Click to manage billing.`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        height: 30,
+        padding: '0 12px',
+        marginRight: 4,
+        borderRadius: 999,
+        background: style.bg,
+        border: `1px solid ${style.border}`,
+        color: style.color,
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: '0.08em',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.filter = 'brightness(1.15)';
+        e.currentTarget.style.transform = 'translateY(-1px)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.filter = 'none';
+        e.currentTarget.style.transform = 'translateY(0)';
+      }}
+    >
+      {style.crown && <Crown size={12} />}
+      {label}
+    </button>
+  );
+}
 
 const PLATFORM_META = {
   whatsapp:  { label: 'WhatsApp',  color: '#25d366', icon: MessageCircle },
@@ -24,18 +103,10 @@ const PLATFORM_META = {
   website:   { label: 'Website',   color: '#6366f1', icon: Globe },
 };
 
-function countLockedFeatures(plan) {
-  // Returns the number of major gated features that are NOT in the user's current plan.
-  // Used to populate "{n} features locked" on the persistent banner.
-  if (!plan?.features) return 0;
-  const gated = ['email_integration', 'multi_channel_inbox', 'google_calendar', 'calendly', 'automations', 'huddle', 'reports', 'analytics'];
-  return gated.filter(k => !plan.features[k]).length;
-}
-
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Leads',     icon: Users,           path: '/leads-list' },
-  { label: 'Team Chat', icon: Inbox,           path: '/chat' },
+  { label: 'Inbox',     icon: Inbox,           path: '/chat' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports' },
 ];
@@ -43,13 +114,20 @@ const NAV_ITEMS = [
 const MORE_ITEMS = [
   { label: 'Team',      icon: UserCheck,       path: '/team' },
   { label: 'Knowledge', icon: Brain,           path: '/knowledge' },
+  {
+    label: 'Flux',
+    icon: Sparkles,
+    href: FLUX_URL,
+    external: true,
+    badge: 'NEW',
+    description: 'AI Instagram content engine',
+  },
   { label: 'Help',      icon: HelpCircle,      path: '/help' },
 ];
 
 export default function NavBar({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
-  const plan     = usePlan();
   const notifRef   = useRef(null);
   const moreRef    = useRef(null);
   const platformRef = useRef(null);
@@ -67,6 +145,34 @@ export default function NavBar({ children }) {
   const [showPlatform, setShowPlatform]     = useState(false);
   const [platformAccounts, setPlatformAccounts] = useState([]);
   const [expandedPlatform, setExpandedPlatform] = useState(null);
+  const [fluxLoading, setFluxLoading]       = useState(false);
+  const [fluxUpgrade, setFluxUpgrade]       = useState(null); // { plan } when locked
+
+  // Click handler for Flux nav entry — fetches signed SSO token, opens Flux
+  // in a new tab, or surfaces an upgrade prompt if plan tier doesn't include it.
+  const handleFluxClick = async () => {
+    if (fluxLoading) return;
+    setFluxLoading(true);
+    try {
+      const res = await ssoAPI.mintFluxToken();
+      const { ssoUrl, unlocked, plan } = res.data || {};
+      if (!unlocked) {
+        setFluxUpgrade({ plan: plan || 'free' });
+        setShowMore(false);
+        return;
+      }
+      // Open in a new tab. We can't use window.open after an async tick
+      // without losing the user gesture context on Safari — but Chrome is fine.
+      window.open(ssoUrl, '_blank', 'noopener,noreferrer');
+      setShowMore(false);
+    } catch (err) {
+      console.error('Flux SSO failed:', err);
+      // Fall back to opening Flux landing (user will see the public site).
+      window.open(FLUX_URL, '_blank', 'noopener,noreferrer');
+    } finally {
+      setFluxLoading(false);
+    }
+  };
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -321,13 +427,13 @@ export default function NavBar({ children }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '7px 11px', borderRadius: 9, border: 'none',
-                background: MORE_ITEMS.some(i => isActive(i.path)) ? 'var(--accent-light)' : 'transparent',
-                color: MORE_ITEMS.some(i => isActive(i.path)) ? 'var(--accent)' : 'var(--text-muted)',
+                background: MORE_ITEMS.some(i => i.path && isActive(i.path)) ? 'var(--accent-light)' : 'transparent',
+                color: MORE_ITEMS.some(i => i.path && isActive(i.path)) ? 'var(--accent)' : 'var(--text-muted)',
                 fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.12s',
               }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text)'; }}
               onMouseLeave={e => {
-                const anyActive = MORE_ITEMS.some(i => isActive(i.path));
+                const anyActive = MORE_ITEMS.some(i => i.path && isActive(i.path));
                 e.currentTarget.style.background = anyActive ? 'var(--accent-light)' : 'transparent';
                 e.currentTarget.style.color = anyActive ? 'var(--accent)' : 'var(--text-muted)';
               }}
@@ -336,13 +442,74 @@ export default function NavBar({ children }) {
             </button>
             {showMore && (
               <div style={{
-                position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 160,
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 220,
                 background: 'var(--surface)', border: '1px solid var(--border)',
                 borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
                 zIndex: 300, overflow: 'hidden', animation: 'navFadeIn 0.12s ease',
               }}>
                 {MORE_ITEMS.map(item => {
-                  const active = isActive(item.path);
+                  const active = item.path ? isActive(item.path) : false;
+                  const ItemIcon = item.icon;
+
+                  if (item.external) {
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={handleFluxClick}
+                        disabled={fluxLoading}
+                        style={{
+                          position: 'relative',
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '12px 16px', textDecoration: 'none', border: 'none',
+                          background: 'linear-gradient(135deg, rgba(167,139,250,0.10) 0%, rgba(34,211,238,0.08) 50%, rgba(236,72,153,0.10) 100%)',
+                          color: 'var(--text)',
+                          fontSize: 13, fontWeight: 600,
+                          cursor: fluxLoading ? 'wait' : 'pointer', textAlign: 'left',
+                          borderTop: '1px solid var(--border)',
+                          borderBottom: '1px solid var(--border)',
+                          transition: 'all 0.15s',
+                          opacity: fluxLoading ? 0.6 : 1,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.15)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
+                      >
+                        <div style={{
+                          width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+                          background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 4px 14px -2px rgba(34,211,238,0.5)',
+                        }}>
+                          <ItemIcon size={14} color="white" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{
+                              fontWeight: 800, fontSize: 13,
+                              background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',
+                              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                              backgroundClip: 'text',
+                            }}>{item.label}</span>
+                            {item.badge && (
+                              <span style={{
+                                fontSize: 8.5, fontWeight: 900, letterSpacing: '0.05em',
+                                padding: '1.5px 5px', borderRadius: 4,
+                                background: 'linear-gradient(135deg, #A78BFA, #EC4899)',
+                                color: 'white',
+                              }}>{item.badge}</span>
+                            )}
+                          </div>
+                          {item.description && (
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+                              {fluxLoading ? 'Opening Flux…' : item.description}
+                            </div>
+                          )}
+                        </div>
+                        <ExternalLink size={12} color="var(--text-muted)" />
+                      </button>
+                    );
+                  }
+
                   return (
                     <button key={item.path}
                       onClick={() => { router.push(item.path); setShowMore(false); }}
@@ -357,7 +524,7 @@ export default function NavBar({ children }) {
                       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface2)'; }}
                       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
                     >
-                      <item.icon size={14} />
+                      <ItemIcon size={14} />
                       {item.label}
                     </button>
                   );
@@ -369,6 +536,9 @@ export default function NavBar({ children }) {
 
         {/* Right side */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+
+          {/* Plan tier badge — between More and Settings */}
+          <PlanBadge />
 
           {/* Settings */}
           <button
@@ -389,16 +559,6 @@ export default function NavBar({ children }) {
           >
             <Settings size={17} />
           </button>
-
-          {/* Plan chip — shows current tier + lead usage */}
-          {plan.plan && (
-            <PlanChip
-              plan={plan.plan}
-              planName={plan.planName}
-              usage={plan.usage}
-              limits={plan.limits}
-            />
-          )}
 
           {/* Notifications */}
           <div ref={notifRef} style={{ position: 'relative' }}>
@@ -623,22 +783,74 @@ export default function NavBar({ children }) {
               })}
 
               <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
-              {MORE_ITEMS.map(item => (
-                <button key={item.path}
-                  onClick={() => { router.push(item.path); setMobileOpen(false); }}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '11px 14px', borderRadius: 10, border: 'none',
-                    background: isActive(item.path) ? 'var(--accent-light)' : 'transparent',
-                    color: isActive(item.path) ? 'var(--accent)' : 'var(--text)',
-                    fontSize: 14, fontWeight: isActive(item.path) ? 700 : 500,
-                    cursor: 'pointer', textAlign: 'left', marginBottom: 2,
-                  }}
-                >
-                  <item.icon size={16} />
-                  {item.label}
-                </button>
-              ))}
+              {MORE_ITEMS.map(item => {
+                const ItemIcon = item.icon;
+                if (item.external) {
+                  return (
+                    <a
+                      key={item.label}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setMobileOpen(false)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '11px 14px', borderRadius: 10, marginBottom: 2,
+                        background: 'linear-gradient(135deg, rgba(167,139,250,0.10), rgba(34,211,238,0.08), rgba(236,72,153,0.10))',
+                        textDecoration: 'none',
+                        boxShadow: 'inset 0 0 0 1px rgba(34,211,238,0.18)',
+                      }}
+                    >
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 8,
+                        background: 'linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <ItemIcon size={14} color="white" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{
+                            fontSize: 14, fontWeight: 800,
+                            background: 'linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899)',
+                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                            backgroundClip: 'text',
+                          }}>{item.label}</span>
+                          {item.badge && (
+                            <span style={{
+                              fontSize: 8.5, fontWeight: 900, letterSpacing: '0.05em',
+                              padding: '1.5px 5px', borderRadius: 4,
+                              background: 'linear-gradient(135deg, #A78BFA, #EC4899)', color: 'white',
+                            }}>{item.badge}</span>
+                          )}
+                        </div>
+                        {item.description && (
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+                            {item.description}
+                          </div>
+                        )}
+                      </div>
+                      <ExternalLink size={13} color="var(--text-muted)" />
+                    </a>
+                  );
+                }
+                return (
+                  <button key={item.path}
+                    onClick={() => { router.push(item.path); setMobileOpen(false); }}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '11px 14px', borderRadius: 10, border: 'none',
+                      background: isActive(item.path) ? 'var(--accent-light)' : 'transparent',
+                      color: isActive(item.path) ? 'var(--accent)' : 'var(--text)',
+                      fontSize: 14, fontWeight: isActive(item.path) ? 700 : 500,
+                      cursor: 'pointer', textAlign: 'left', marginBottom: 2,
+                    }}
+                  >
+                    <ItemIcon size={16} />
+                    {item.label}
+                  </button>
+                );
+              })}
             </div>
             <div style={{ padding: 16, borderTop: '1px solid var(--border)' }}>
               <button onClick={handleLogout}
@@ -658,27 +870,135 @@ export default function NavBar({ children }) {
 
       {/* Page content — offset below the fixed nav */}
       <div style={{ paddingTop: 60, minHeight: '100vh', background: 'var(--bg)' }}>
-        {/* Plan banner — sticky-ish (renders for Free/Starter only, dismissable for 24h) */}
-        <PlanBanner
-          plan={plan.plan}
-          planName={plan.planName}
-          usage={plan.usage}
-          limits={plan.limits}
-          lockedCount={countLockedFeatures(plan)}
-        />
         {children}
       </div>
 
-      {/* Floating widgets — hidden on pages with their own bottom message composer (item 19) */}
-      {pathname !== '/chat' && !pathname?.startsWith('/leads/') && (
-        <>
-          <AICommandCenter enabled={true} />
-          <FloatingChat />
-        </>
-      )}
+      <AICommandCenter enabled={true} />
+      <FloatingChat />
 
-      {/* Right-side productivity dock — Calendar / Tasks / Notes (item 23) */}
-      <SidePanel />
+      {/* Flux upgrade modal — shown when the user's plan tier doesn't include Flux. */}
+      {fluxUpgrade && (
+        <div
+          onClick={() => setFluxUpgrade(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20, animation: 'navFadeIn 0.18s ease',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 460, width: '100%',
+              background: 'linear-gradient(180deg, rgba(20,22,33,0.98) 0%, rgba(12,14,22,0.98) 100%)',
+              border: '1px solid rgba(167,139,250,0.25)',
+              borderRadius: 18, padding: 28,
+              boxShadow: '0 30px 80px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
+              position: 'relative', overflow: 'hidden',
+            }}
+          >
+            {/* aurora glow */}
+            <div aria-hidden style={{
+              position: 'absolute', inset: 0,
+              background: 'radial-gradient(circle at 20% 0%, rgba(167,139,250,0.18), transparent 50%), radial-gradient(circle at 80% 100%, rgba(34,211,238,0.14), transparent 55%)',
+              pointerEvents: 'none',
+            }} />
+
+            <div style={{ position: 'relative' }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 14,
+                background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 8px 24px -4px rgba(34,211,238,0.5)',
+              }}>
+                <Sparkles size={22} color="white" />
+              </div>
+
+              <h2 style={{
+                margin: '20px 0 6px', fontSize: 22, fontWeight: 800, color: 'var(--text)',
+                letterSpacing: '-0.02em', lineHeight: 1.2,
+              }}>
+                Flux is on the Growth plan.
+              </h2>
+              <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                Your workspace is on <strong style={{ color: 'var(--text)' }}>{fluxUpgrade.plan}</strong>.
+                Upgrade to <strong style={{
+                  background: 'linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899)',
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                  fontWeight: 800,
+                }}>Growth</strong> or <strong style={{
+                  background: 'linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899)',
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                  fontWeight: 800,
+                }}>Enterprise</strong> to unlock the AI Instagram content engine.
+              </p>
+
+              <div style={{
+                marginTop: 18, padding: '14px 16px', borderRadius: 12,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.14em', color: 'var(--text-muted)', marginBottom: 8 }}>
+                  WHAT YOU GET WITH FLUX
+                </div>
+                <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {[
+                    'Topic → finished carousel in minutes',
+                    'On-brand AI captions + hashtags',
+                    '9 theme presets + brand color overrides',
+                    'Auto-schedule to Instagram',
+                  ].map(t => (
+                    <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)' }}>
+                      <CheckCircle2 size={14} color="#22D3EE" />
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => { router.push('/settings?tab=billing'); setFluxUpgrade(null); }}
+                  style={{
+                    flex: 1, padding: '12px 16px', borderRadius: 11, border: 'none',
+                    background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',
+                    color: '#0a0a13', fontWeight: 800, fontSize: 14, cursor: 'pointer',
+                    boxShadow: '0 10px 28px -8px rgba(34,211,238,0.5)',
+                  }}
+                >
+                  Upgrade plan
+                </button>
+                <button
+                  onClick={() => { window.open(FLUX_URL, '_blank', 'noopener,noreferrer'); setFluxUpgrade(null); }}
+                  style={{
+                    padding: '12px 16px', borderRadius: 11,
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                  }}
+                >
+                  Preview Flux
+                </button>
+              </div>
+
+              <button
+                onClick={() => setFluxUpgrade(null)}
+                aria-label="Close"
+                style={{
+                  position: 'absolute', top: -10, right: -10,
+                  width: 28, height: 28, borderRadius: 8,
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                  color: 'var(--text-muted)', fontSize: 14, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes navFadeIn    { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
@@ -701,18 +1021,16 @@ function MiniNotifPanel({ todayLeads, reminders, onClose, onNavigate, onMarkAllR
       id: `lead-${l.id}`, type: 'lead',
       title: `New lead: ${l.customer_name || 'Unknown'}`,
       sub: displayPhone(l.customer_phone, l.platform_source),
-      time: l.created_at,
       color: '#6366f1', bg: 'rgba(99,102,241,0.12)',
       href: `/leads/${l.id}`,
     })),
     ...reminders.map(r => {
-      const ts      = r.due_date || r.reminder_date;
-      const overdue = (toDate(ts) || now) < now;
+      const due     = new Date(r.due_date || r.reminder_date);
+      const overdue = due < now;
       return {
         id: `rem-${r.id}`, type: 'reminder',
         title: r.title || r.message || 'Reminder',
-        sub: overdue ? 'Overdue' : 'Upcoming reminder',
-        time: ts,
+        sub: overdue ? `Overdue — ${due.toLocaleTimeString()}` : `Due ${due.toLocaleString()}`,
         color: overdue ? '#ef4444' : '#f59e0b',
         bg:    overdue ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
         href: null,
@@ -767,11 +1085,6 @@ function MiniNotifPanel({ todayLeads, reminders, onClose, onNavigate, onMarkAllR
               <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</p>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>{item.sub}</p>
             </div>
-            {item.time && (
-              <span title={formatFull(item.time)} style={{ fontSize: 10, color: 'var(--text-dim)', whiteSpace: 'nowrap', flexShrink: 0, marginTop: 1 }}>
-                {formatRelative(item.time)}
-              </span>
-            )}
           </div>
         ))}
       </div>

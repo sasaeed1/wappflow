@@ -28,11 +28,6 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
-// Behind the nginx reverse proxy — trust the first proxy hop so req.ip resolves
-// to the real client IP (from X-Forwarded-For). Without this, express-rate-limit
-// keys every request to the proxy IP and buckets ALL users into one shared limit,
-// and emits ERR_ERL_UNEXPECTED_X_FORWARDED_FOR validation errors.
-app.set('trust proxy', 1);
 const DATA_DIR = process.env.NODE_ENV === 'production' ? '/data' : require('path').join(__dirname);
 const db = new Database(require('path').join(DATA_DIR, 'wappflow.db'));
 
@@ -60,19 +55,14 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// Rate limiter — per real client IP (trust proxy is set above).
-// 3000 req / 15 min comfortably covers a heavy CRM user (status polling, SSE,
-// dashboard refreshes) while still blocking genuine abuse. Static /uploads is
-// exempt so an image-heavy chat doesn't trip the limit. A 429 returns a JSON
-// { error } body so the frontend can surface a clear message instead of a
-// generic failure.
+// Rate limiter — exempt the /uploads static path so loading a chat full of images
+// doesn't trip the per-IP limit and start returning 429s for legitimate media.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 3000,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/uploads/'),
-  message: { error: 'Too many requests — please wait a minute and try again.' },
 });
 app.use(limiter);
 
@@ -157,179 +147,6 @@ const DEFAULT_ROLE_PERMISSIONS = {
   manager:     { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: false, view_reports: true, manage_settings: false, manage_team: false, manage_invoices: true, manage_whatsapp: false },
   user:        { view_all_leads: false, create_lead: true, edit_lead: true, delete_lead: false, view_reports: false, manage_settings: false, manage_team: false, manage_invoices: false, manage_whatsapp: false },
 };
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  PLAN TIERS — single source of truth for limits and feature flags
-// ═══════════════════════════════════════════════════════════════════════════════
-// limits: -1 means unlimited. Frontend reads via GET /api/workspace/plan-info.
-const PLAN_DEFS = {
-  free: {
-    name: 'Free',
-    price: 0,
-    limits: {
-      leads: 50,
-      team_members: 1,
-      whatsapp_accounts: 1,
-      instagram_accounts: 0,
-      facebook_accounts: 0,
-      website_forms: 0,
-    },
-    features: {
-      ai_replies: 'limited',
-      email_integration: false,
-      shared_inbox: false,
-      internal_notes: false,
-      analytics: false,
-      automations: false,
-      google_calendar: false,
-      calendly: false,
-      multi_channel_inbox: false,
-      huddle: false,
-      reports: false,
-    },
-  },
-  starter: {
-    name: 'Starter',
-    price: 19,
-    limits: {
-      leads: 300,
-      team_members: 2,
-      whatsapp_accounts: 1,
-      instagram_accounts: 0,
-      facebook_accounts: 0,
-      website_forms: 0,
-    },
-    features: {
-      ai_replies: true,
-      email_integration: true,
-      shared_inbox: true,
-      internal_notes: true,
-      analytics: 'basic',
-      voice_notes: true,
-      automations: false,
-      google_calendar: false,
-      calendly: false,
-      multi_channel_inbox: false,
-      huddle: false,
-      reports: false,
-    },
-  },
-  growth: {
-    name: 'Growth',
-    price: 49,
-    most_popular: true,
-    limits: {
-      leads: -1,
-      team_members: 5,
-      whatsapp_accounts: 3,
-      instagram_accounts: 3,
-      facebook_accounts: 3,
-      website_forms: 3,
-    },
-    features: {
-      ai_replies: true,
-      email_integration: true,
-      shared_inbox: true,
-      internal_notes: true,
-      analytics: true,
-      voice_notes: true,
-      automations: true,
-      google_calendar: true,
-      calendly: true,
-      multi_channel_inbox: true,
-      huddle: true,
-      reports: true,
-    },
-  },
-  enterprise: {
-    name: 'Enterprise',
-    price: null,
-    limits: {
-      leads: -1,
-      team_members: -1,
-      whatsapp_accounts: -1,
-      instagram_accounts: -1,
-      facebook_accounts: -1,
-      website_forms: -1,
-    },
-    features: {
-      ai_replies: true,
-      email_integration: true,
-      shared_inbox: true,
-      internal_notes: true,
-      analytics: true,
-      voice_notes: true,
-      automations: true,
-      google_calendar: true,
-      calendly: true,
-      multi_channel_inbox: true,
-      huddle: true,
-      reports: true,
-      api_access: true,
-      white_label: true,
-      sso: true,
-      custom_integrations: true,
-      byok_ai: true,
-      dedicated_support: true,
-    },
-  },
-};
-
-function getWorkspacePlan(workspaceId) {
-  let row = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(workspaceId);
-  if (!row) {
-    db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'free')`).run(workspaceId);
-    row = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(workspaceId);
-  }
-  return row;
-}
-
-function getPlanInfo(workspaceId) {
-  const row = getWorkspacePlan(workspaceId);
-  const def = PLAN_DEFS[row.plan] || PLAN_DEFS.free;
-  return { tier: row.plan, ...def, raw: row };
-}
-
-function getWorkspaceUsage(workspaceId) {
-  const safeCount = (sql) => {
-    try { return db.prepare(sql).get(workspaceId).n; } catch { return 0; }
-  };
-  return {
-    leads: safeCount('SELECT COUNT(*) as n FROM leads WHERE workspace_id = ? AND (is_deleted IS NULL OR is_deleted = 0)'),
-    team_members: safeCount("SELECT COUNT(*) as n FROM workspace_members WHERE workspace_id = ? AND (invite_status = 'active' OR invite_status IS NULL)"),
-    whatsapp_accounts: safeCount("SELECT COUNT(*) as n FROM platform_accounts WHERE workspace_id = ? AND platform = 'whatsapp'"),
-    instagram_accounts: safeCount("SELECT COUNT(*) as n FROM platform_accounts WHERE workspace_id = ? AND platform = 'instagram'"),
-    facebook_accounts: safeCount("SELECT COUNT(*) as n FROM platform_accounts WHERE workspace_id = ? AND platform = 'facebook'"),
-    website_forms: safeCount("SELECT COUNT(*) as n FROM platform_accounts WHERE workspace_id = ? AND platform = 'website'"),
-  };
-}
-
-// Returns { ok: true } or { ok: false, code: 'limit_exceeded', limit, usage, plan, message }
-function checkLimit(workspaceId, limitKey) {
-  const info = getPlanInfo(workspaceId);
-  const limit = info.limits[limitKey];
-  if (limit === -1 || limit == null) return { ok: true };
-  const usage = getWorkspaceUsage(workspaceId);
-  const current = usage[limitKey] || 0;
-  if (current >= limit) {
-    const human = limitKey.replace(/_/g, ' ');
-    return {
-      ok: false,
-      code: 'limit_exceeded',
-      limit,
-      usage: current,
-      plan: info.tier,
-      message: `Your ${info.name} plan allows ${limit} ${human}. Upgrade to add more.`,
-    };
-  }
-  return { ok: true };
-}
-
-function checkFeature(workspaceId, featureKey) {
-  const info = getPlanInfo(workspaceId);
-  const v = info.features[featureKey];
-  return { ok: !!v, plan: info.tier, planName: info.name, value: v };
-}
 
 // Auth Middleware — accepts token from Authorization header OR query string (for SSE/EventSource which can't set headers)
 const auth = (req, res, next) => {
@@ -786,38 +603,6 @@ safeAlter('ALTER TABLE platform_accounts ADD COLUMN nickname TEXT');
 safeAlter('ALTER TABLE platform_accounts ADD COLUMN account_handle TEXT');
 safeAlter('ALTER TABLE platform_accounts ADD COLUMN slot_index INTEGER DEFAULT 0');
 
-// ── Lost-reason presets (item 5) — workspace-defined reasons for Closed-Lost leads.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS lost_reasons (
-    id TEXT PRIMARY KEY,
-    workspace_id TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
-`);
-
-// ── Personal productivity panel (item 23) — per-user tasks + quick notes (Keep).
-db.exec(`
-  CREATE TABLE IF NOT EXISTS user_tasks (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    workspace_id TEXT,
-    title TEXT NOT NULL,
-    done INTEGER DEFAULT 0,
-    due_date TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
-  CREATE TABLE IF NOT EXISTS quick_notes (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    workspace_id TEXT,
-    content TEXT,
-    color TEXT DEFAULT 'yellow',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
-`);
-
 // ── Reminders schema drift fix: older DBs created the table BEFORE these columns existed.
 // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so add the columns explicitly.
 safeAlter("ALTER TABLE reminders ADD COLUMN title TEXT");
@@ -1143,10 +928,6 @@ whatsappService.loadAccounts();
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, businessName } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
-    if (password.length < 8 || !/[A-Z]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters and include an uppercase letter and a special character.' });
-    }
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = generateId();
     const workspaceId = generateId();
@@ -1245,9 +1026,6 @@ app.post('/api/auth/accept-invite', async (req, res) => {
     const member = db.prepare('SELECT * FROM workspace_members WHERE invite_token = ? AND invite_status = ?').get(token, 'pending');
     if (!member) return res.status(404).json({ error: 'Invalid or expired invite' });
 
-    if (!password || password.length < 8 || !/[A-Z]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters and include an uppercase letter and a special character.' });
-    }
     const hashedPassword = await bcrypt.hash(password, 10);
     let userId = member.user_id;
 
@@ -1334,6 +1112,64 @@ app.post('/api/auth/google', async (req, res) => {
   } catch (e) {
     console.error('Google auth error:', e.message);
     res.status(400).json({ error: 'Google authentication failed' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+//  FLUX SSO — issue a short-lived signed token for the Flux content engine.
+//  Authenticated users with Growth/Enterprise plans get a token that Flux's
+//  web app exchanges for a workspace session. Other tiers can still SSO
+//  but land on the Flux Free tier.
+// ════════════════════════════════════════════════════════════
+
+// HS256 helpers — kept inline to avoid a new dep. Mirrors src/lib/sso.ts in flux.
+const crypto = require('crypto');
+function _ssoB64url(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function _ssoSign(payload) {
+  const secret = process.env.FLUX_SSO_SECRET;
+  if (!secret || secret.length < 16) {
+    throw new Error('FLUX_SSO_SECRET is not configured (need ≥16 chars).');
+  }
+  const header = _ssoB64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const body = _ssoB64url(JSON.stringify(payload));
+  const sig = _ssoB64url(crypto.createHmac('sha256', secret).update(`${header}.${body}`).digest());
+  return `${header}.${body}.${sig}`;
+}
+
+// POST /api/sso/flux-token — returns { token, ssoUrl, plan, unlocked }
+// Frontend opens ssoUrl in a new tab when unlocked is true.
+app.post('/api/sso/flux-token', auth, (req, res) => {
+  try {
+    const user = db.prepare('SELECT id, email, full_name, business_name FROM users WHERE id = ?').get(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const planRow = db.prepare('SELECT plan FROM workspace_plan WHERE workspace_id = ?').get(req.workspaceId);
+    const plan = (planRow?.plan || 'free').toLowerCase();
+    const unlockedTiers = new Set(['growth', 'enterprise', 'pro', 'business']);
+    const unlocked = unlockedTiers.has(plan);
+
+    const now = Math.floor(Date.now() / 1000);
+    const ttl = 60; // seconds
+    const payload = {
+      iss: 'wappflow',
+      aud: 'flux',
+      wf_workspace_id: req.workspaceId,
+      wf_user_id: req.userId,
+      email: user.email,
+      name: user.full_name || user.business_name || null,
+      plan,
+      iat: now,
+      exp: now + ttl,
+    };
+    const token = _ssoSign(payload);
+    const fluxBase = process.env.FLUX_URL || 'https://flux.remoteops.co';
+    const ssoUrl = `${fluxBase}/auth/sso?token=${encodeURIComponent(token)}`;
+    res.json({ ok: true, token, ssoUrl, plan, unlocked });
+  } catch (e) {
+    console.error('Flux SSO mint error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -1618,20 +1454,6 @@ app.post('/api/leads/bulk-upload', auth, (req, res) => {
     if (!Array.isArray(leads) || leads.length === 0)
       return res.status(400).json({ error: 'No leads provided' });
 
-    // Plan enforcement — block upload if current usage + new leads would exceed limit
-    const info = getPlanInfo(req.workspaceId);
-    const limit = info.limits.leads;
-    if (limit !== -1) {
-      const currentCount = db.prepare('SELECT COUNT(*) as n FROM leads WHERE workspace_id = ? AND (is_deleted IS NULL OR is_deleted = 0)').get(req.workspaceId).n;
-      if (currentCount + leads.length > limit) {
-        const remaining = Math.max(0, limit - currentCount);
-        return res.status(403).json({
-          error: `Your ${info.name} plan allows ${limit} leads. You have ${currentCount} and tried to add ${leads.length}. ${remaining} slots remaining. Upgrade to Growth for unlimited leads.`,
-          code: 'plan_limit',
-        });
-      }
-    }
-
     let created = 0, skipped = 0;
     const insertLead = db.transaction((leadsArr) => {
       leadsArr.forEach(l => {
@@ -1904,10 +1726,6 @@ app.get('/api/leads/:id', auth, (req, res) => {
 
 app.post('/api/leads', auth, (req, res) => {
   try {
-    // Plan enforcement — leads limit (Free: 50, Starter: 300, Growth/Enterprise: unlimited)
-    const limitCheck = checkLimit(req.workspaceId, 'leads');
-    if (!limitCheck.ok) return res.status(403).json({ error: limitCheck.message, code: 'plan_limit', ...limitCheck });
-
     const { customer_name, customer_phone, status, first_message, estimated_value, email, address, date_of_birth, lead_source } = req.body;
 
     // Duplicate check — digit-normalised so "+92 310 154 7564" matches "+923101547564"
@@ -2012,116 +1830,6 @@ app.delete('/api/leads/trash/cleanup', auth, (req, res) => {
   try {
     const result = db.prepare(`DELETE FROM leads WHERE workspace_id = ? AND is_deleted = 1 AND deleted_at < datetime('now', '-90 days')`).run(req.workspaceId);
     res.json({ message: 'Cleanup done', deleted: result.changes });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// DELETE /api/leads/trash/empty — permanently delete EVERY trashed lead (item 25)
-app.delete('/api/leads/trash/empty', auth, (req, res) => {
-  try {
-    const ids = db.prepare('SELECT id FROM leads WHERE workspace_id = ? AND is_deleted = 1').all(req.workspaceId).map(r => r.id);
-    let removed = 0;
-    const purge = db.transaction((leadIds) => {
-      for (const lid of leadIds) {
-        db.prepare('DELETE FROM notes WHERE lead_id = ?').run(lid);
-        db.prepare('DELETE FROM reminders WHERE lead_id = ?').run(lid);
-        db.prepare('DELETE FROM messages WHERE lead_id = ?').run(lid);
-        db.prepare('DELETE FROM contact_history WHERE lead_id = ?').run(lid);
-        db.prepare('DELETE FROM invoices WHERE lead_id = ?').run(lid);
-        removed += db.prepare('DELETE FROM leads WHERE id = ? AND workspace_id = ?').run(lid, req.workspaceId).changes;
-      }
-    });
-    purge(ids);
-    res.json({ message: 'Trash emptied', deleted: removed });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── Lost-reason presets (item 5) ──────────────────────────────────────────────
-app.get('/api/lost-reasons', auth, (req, res) => {
-  try {
-    const reasons = db.prepare('SELECT * FROM lost_reasons WHERE workspace_id = ? ORDER BY created_at ASC').all(req.workspaceId);
-    res.json({ reasons });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.post('/api/lost-reasons', auth, (req, res) => {
-  try {
-    const reason = (req.body.reason || '').trim();
-    if (!reason) return res.status(400).json({ error: 'Reason text is required' });
-    const id = generateId();
-    db.prepare('INSERT INTO lost_reasons (id, workspace_id, reason) VALUES (?, ?, ?)').run(id, req.workspaceId, reason);
-    res.status(201).json(db.prepare('SELECT * FROM lost_reasons WHERE id = ?').get(id));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.delete('/api/lost-reasons/:id', auth, (req, res) => {
-  try {
-    db.prepare('DELETE FROM lost_reasons WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
-    res.json({ message: 'Deleted' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── Personal tasks — side panel (item 23) ─────────────────────────────────────
-app.get('/api/my/tasks', auth, (req, res) => {
-  try {
-    res.json({ tasks: db.prepare('SELECT * FROM user_tasks WHERE user_id = ? ORDER BY done ASC, created_at DESC').all(req.userId) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.post('/api/my/tasks', auth, (req, res) => {
-  try {
-    const title = (req.body.title || '').trim();
-    if (!title) return res.status(400).json({ error: 'Task title is required' });
-    const id = generateId();
-    db.prepare('INSERT INTO user_tasks (id, user_id, workspace_id, title, due_date) VALUES (?, ?, ?, ?, ?)')
-      .run(id, req.userId, req.workspaceId, title, req.body.due_date || null);
-    res.status(201).json(db.prepare('SELECT * FROM user_tasks WHERE id = ?').get(id));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.put('/api/my/tasks/:id', auth, (req, res) => {
-  try {
-    const t = db.prepare('SELECT * FROM user_tasks WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
-    if (!t) return res.status(404).json({ error: 'Task not found' });
-    db.prepare('UPDATE user_tasks SET title = ?, done = ?, due_date = ? WHERE id = ? AND user_id = ?').run(
-      req.body.title != null ? req.body.title : t.title,
-      req.body.done != null ? (req.body.done ? 1 : 0) : t.done,
-      req.body.due_date !== undefined ? req.body.due_date : t.due_date,
-      req.params.id, req.userId);
-    res.json(db.prepare('SELECT * FROM user_tasks WHERE id = ?').get(req.params.id));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.delete('/api/my/tasks/:id', auth, (req, res) => {
-  try {
-    db.prepare('DELETE FROM user_tasks WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
-    res.json({ message: 'Deleted' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── Personal quick notes / Keep — side panel (item 23) ────────────────────────
-app.get('/api/my/notes', auth, (req, res) => {
-  try {
-    res.json({ notes: db.prepare('SELECT * FROM quick_notes WHERE user_id = ? ORDER BY updated_at DESC').all(req.userId) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.post('/api/my/notes', auth, (req, res) => {
-  try {
-    const id = generateId();
-    db.prepare('INSERT INTO quick_notes (id, user_id, workspace_id, content, color) VALUES (?, ?, ?, ?, ?)')
-      .run(id, req.userId, req.workspaceId, req.body.content || '', req.body.color || 'yellow');
-    res.status(201).json(db.prepare('SELECT * FROM quick_notes WHERE id = ?').get(id));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.put('/api/my/notes/:id', auth, (req, res) => {
-  try {
-    const n = db.prepare('SELECT * FROM quick_notes WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
-    if (!n) return res.status(404).json({ error: 'Note not found' });
-    db.prepare('UPDATE quick_notes SET content = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').run(
-      req.body.content != null ? req.body.content : n.content,
-      req.body.color != null ? req.body.color : n.color,
-      req.params.id, req.userId);
-    res.json(db.prepare('SELECT * FROM quick_notes WHERE id = ?').get(req.params.id));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.delete('/api/my/notes/:id', auth, (req, res) => {
-  try {
-    db.prepare('DELETE FROM quick_notes WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
-    res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2324,141 +2032,6 @@ app.delete('/api/invoices/:id', auth, (req, res) => {
     db.prepare('DELETE FROM invoices WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
     res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── Premium invoice HTML (used for emailed invoices) ──────────────────────────
-function escapeHtml(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-function buildInvoiceHtml(inv, company, introMessage) {
-  const accent = '#6366f1';
-  const sym = (company && company.currency_symbol) || (inv && inv.currency_symbol) || '$';
-  const money = (n) => sym + (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const fmtDate = (d) => {
-    if (!d) return '—';
-    const s = String(d);
-    const dt = new Date(s.replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? '' : 'Z'));
-    return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  };
-  let items = inv && inv.items;
-  if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
-  items = Array.isArray(items) ? items : [];
-
-  const statusColors = { paid: '#10b981', pending: '#f59e0b', overdue: '#ef4444', draft: '#94a3b8' };
-  const sc = statusColors[inv && inv.status] || statusColors.draft;
-  const c = company || {};
-  const logoBlock = c.company_logo
-    ? `<img src="https://api.remoteops.co${escapeHtml(c.company_logo)}" alt="${escapeHtml(c.company_name || '')}" style="max-height:54px;max-width:210px;object-fit:contain;display:block;margin-bottom:10px" />`
-    : `<div style="font-size:23px;font-weight:800;color:${accent};margin-bottom:10px">${escapeHtml(c.company_name || 'WappFlow')}</div>`;
-  const companyLines = [
-    c.company_logo ? c.company_name : '',
-    c.company_address, c.company_email, c.company_phone, c.company_website,
-  ].filter(Boolean).map(l => `<div style="font-size:12px;color:#64748b;line-height:1.7">${escapeHtml(l)}</div>`).join('');
-  const itemRows = items.length ? items.map((it, i) => `
-    <tr style="background:${i % 2 ? '#f8fafc' : '#ffffff'}">
-      <td style="padding:11px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #eef2f6">${escapeHtml(it.description || '—')}</td>
-      <td style="padding:11px 16px;font-size:13px;color:#475569;text-align:center;border-bottom:1px solid #eef2f6">${escapeHtml(it.qty || 1)}</td>
-      <td style="padding:11px 16px;font-size:13px;color:#475569;text-align:right;border-bottom:1px solid #eef2f6">${money(it.rate)}</td>
-      <td style="padding:11px 16px;font-size:13px;color:#1e293b;font-weight:700;text-align:right;border-bottom:1px solid #eef2f6">${money(it.amount != null ? it.amount : (it.qty || 1) * (it.rate || 0))}</td>
-    </tr>`).join('') : `<tr><td colspan="4" style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No line items</td></tr>`;
-  const taxLabel = (c.tax_name || 'Tax') + ((inv && inv.tax_rate) ? ` (${inv.tax_rate}%)` : '');
-
-  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Invoice ${escapeHtml((inv && (inv.invoice_number || inv.id)) || '')}</title></head>
-<body style="margin:0;padding:0;background:#eef1f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-<div style="max-width:680px;margin:0 auto;padding:28px 16px">
-  ${introMessage ? `<div style="background:#fff;border:1px solid #e6e9f0;border-radius:14px;padding:18px 22px;margin-bottom:18px;font-size:14px;color:#334155;line-height:1.6">${escapeHtml(introMessage).replace(/\n/g, '<br>')}</div>` : ''}
-  <div style="background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e6e9f0;box-shadow:0 8px 30px rgba(15,23,42,0.06)">
-    <div style="height:6px;background:linear-gradient(90deg,${accent},#8b5cf6)"></div>
-    <div style="padding:32px 34px">
-      <table width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td style="vertical-align:top">${logoBlock}${companyLines}</td>
-        <td style="vertical-align:top;text-align:right">
-          <div style="font-size:30px;font-weight:800;letter-spacing:1px;color:#0f172a">INVOICE</div>
-          <div style="font-size:13px;color:#64748b;margin-top:6px"><strong style="color:#0f172a">${escapeHtml((inv && (inv.invoice_number || ('#' + inv.id))) || '')}</strong></div>
-          <div style="font-size:12px;color:#64748b;margin-top:3px">Issued ${fmtDate(inv && inv.created_at)}</div>
-          ${(inv && inv.due_date) ? `<div style="font-size:12px;color:#64748b;margin-top:2px">Due ${fmtDate(inv.due_date)}</div>` : ''}
-          <div style="display:inline-block;margin-top:10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:4px 12px;border-radius:20px;background:${sc}22;color:${sc}">${escapeHtml((inv && inv.status) || 'draft')}</div>
-        </td>
-      </tr></table>
-      <div style="margin-top:30px;padding:16px 18px;background:#f8fafc;border-radius:12px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:6px">Billed To</div>
-        <div style="font-size:16px;font-weight:700;color:#0f172a">${escapeHtml((inv && inv.customer_name) || '—')}</div>
-        ${(inv && inv.customer_email) ? `<div style="font-size:12px;color:#64748b;margin-top:2px">${escapeHtml(inv.customer_email)}</div>` : ''}
-        ${(inv && inv.customer_phone) ? `<div style="font-size:12px;color:#64748b;margin-top:1px">${escapeHtml(inv.customer_phone)}</div>` : ''}
-        ${(inv && inv.customer_address) ? `<div style="font-size:12px;color:#64748b;margin-top:1px">${escapeHtml(inv.customer_address)}</div>` : ''}
-      </div>
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;border-collapse:collapse">
-        <thead><tr style="background:#0f172a">
-          <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#cbd5e1">Description</th>
-          <th style="padding:10px 16px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#cbd5e1">Qty</th>
-          <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#cbd5e1">Rate</th>
-          <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#cbd5e1">Amount</th>
-        </tr></thead>
-        <tbody>${itemRows}</tbody>
-      </table>
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px"><tr>
-        <td style="width:52%"></td>
-        <td style="width:48%">
-          <table width="100%" cellpadding="0" cellspacing="0">
-            <tr><td style="padding:6px 2px;font-size:13px;color:#64748b">Subtotal</td><td style="padding:6px 2px;font-size:13px;color:#1e293b;text-align:right">${money(inv && inv.subtotal)}</td></tr>
-            ${(inv && inv.discount) ? `<tr><td style="padding:6px 2px;font-size:13px;color:#64748b">Discount</td><td style="padding:6px 2px;font-size:13px;color:#1e293b;text-align:right">-${money(inv.discount)}</td></tr>` : ''}
-            <tr><td style="padding:6px 2px;font-size:13px;color:#64748b">${escapeHtml(taxLabel)}</td><td style="padding:6px 2px;font-size:13px;color:#1e293b;text-align:right">${money(inv && inv.tax_amount)}</td></tr>
-          </table>
-          <div style="margin-top:8px;background:${accent};border-radius:10px;padding:13px 18px">
-            <table width="100%"><tr>
-              <td style="font-size:13px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px">Total Due</td>
-              <td style="font-size:21px;font-weight:800;color:#fff;text-align:right">${money(inv && inv.total)}</td>
-            </tr></table>
-          </div>
-        </td>
-      </tr></table>
-      ${(inv && inv.notes) ? `<div style="margin-top:24px;padding:14px 18px;background:#f8fafc;border-left:3px solid ${accent};border-radius:6px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:4px">Notes</div><div style="font-size:13px;color:#475569;line-height:1.6">${escapeHtml(inv.notes).replace(/\n/g, '<br>')}</div></div>` : ''}
-      <div style="margin-top:32px;padding-top:20px;border-top:1px solid #eef2f6;text-align:center">
-        <div style="font-size:13px;font-weight:700;color:#0f172a">Thank you for your business</div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:4px">${escapeHtml(c.company_name || 'WappFlow')}${c.company_email ? ' · ' + escapeHtml(c.company_email) : ''}</div>
-      </div>
-    </div>
-  </div>
-</div>
-</body></html>`;
-}
-
-// POST /api/invoices/:id/email — email a premium invoice to the customer (item 2)
-app.post('/api/invoices/:id/email', auth, async (req, res) => {
-  try {
-    const row = db.prepare('SELECT * FROM invoices WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId);
-    if (!row) return res.status(404).json({ error: 'Invoice not found' });
-    const inv = parseInvoice(row);
-    const to = (req.body.to || inv.customer_email || '').trim();
-    if (!to) return res.status(400).json({ error: 'No recipient email — add the customer email first.' });
-
-    const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(req.workspaceOwnerId);
-    if (!smtpRow || !smtpRow.smtp_host) return res.status(400).json({ error: 'SMTP not configured. Set up email sending in Settings → Email Sending.' });
-
-    const company = db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId) || {};
-    const subject = (req.body.subject || '').trim() || `Invoice ${inv.invoice_number || ''} from ${company.company_name || 'WappFlow'}`.trim();
-    const html = buildInvoiceHtml(inv, company, req.body.message);
-
-    const transporter = nodemailer.createTransport({
-      host: smtpRow.smtp_host, port: smtpRow.smtp_port, secure: !!smtpRow.smtp_secure,
-      auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass }
-    });
-    const result = await transporter.sendMail({
-      from: `"${smtpRow.from_name || company.company_name || 'WappFlow'}" <${smtpRow.from_email || smtpRow.smtp_user}>`,
-      to, subject, html,
-    });
-
-    // A draft invoice that's been sent is now pending payment.
-    db.prepare("UPDATE invoices SET status = 'pending' WHERE id = ? AND user_id = ? AND status = 'draft'")
-      .run(inv.id, req.workspaceOwnerId);
-    if (inv.lead_id) addContactHistory(inv.lead_id, req.userId, 'invoice', `Invoice ${inv.invoice_number} emailed to ${to}`);
-    logAudit(req.workspaceId, req.userId, 'invoice_emailed', 'invoice', inv.id, { to });
-    res.json({ message: 'Invoice sent', to, messageId: result.messageId });
-  } catch (e) {
-    console.error('Invoice email error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -2755,11 +2328,7 @@ app.get('/api/whatsapp/accounts/:id/status', auth, (req, res) => {
 app.post('/api/whatsapp/accounts/:id/connect', auth, async (req, res) => {
   const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
   if (!account) return res.status(404).json({ error: 'Account not found' });
-  // ?force=true tears down any running Chrome before re-init.
-  // Default (no force) is idempotent — if a healthy QR session already exists, it's a no-op.
-  // Use force when the user explicitly clicks "Refresh QR" or "Reset".
-  const force = req.query.force === 'true' || req.body?.force === true;
-  try { await whatsappService.reconnect(req.params.id, { force }); res.json({ ok: true, forced: force }); }
+  try { await whatsappService.reconnect(req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2777,9 +2346,8 @@ app.post('/api/whatsapp/disconnect', async (req, res) => {
 
 app.post('/api/whatsapp/reconnect', auth, async (req, res) => {
   try {
-    const force = req.query.force === 'true' || req.body?.force === true;
-    res.json({ message: 'Reconnecting...', forced: force }); // respond immediately
-    await whatsappService.reconnect(null, { force });         // runs async after response
+    res.json({ message: 'Reconnecting...' }); // respond immediately
+    await whatsappService.reconnect();         // runs async after response
   } catch (e) { console.error('Reconnect error:', e.message); }
 });
 
@@ -3020,11 +2588,6 @@ app.put('/api/workspace', auth, (req, res) => {
 app.post('/api/workspace/invite', auth, async (req, res) => {
   try {
     if (!['super_admin', 'admin'].includes(req.userRole)) return res.status(403).json({ error: 'Insufficient permissions' });
-
-    // Plan enforcement — team_members limit
-    const limitCheck = checkLimit(req.workspaceId, 'team_members');
-    if (!limitCheck.ok) return res.status(403).json({ error: limitCheck.message, code: 'plan_limit', ...limitCheck });
-
     const { email, role, full_name } = req.body;
     if (!email || !role) return res.status(400).json({ error: 'Email and role required' });
     if (!['admin', 'manager', 'user'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
@@ -3543,58 +3106,26 @@ console.log('✅ Cron jobs started');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-// ── Auto lead analysis (item 16) ──────────────────────────────────────────────
-// Every lead that lands gets an AI "mark" (score / sentiment / urgency) shortly
-// after it arrives — without anyone opening it. Runs a small, rate-limit-friendly
-// batch on a timer so it covers leads from every inbound channel.
-let _autoAnalyzeRunning = false;
-async function autoAnalyzePendingLeads() {
-  if (_autoAnalyzeRunning) return;
-  _autoAnalyzeRunning = true;
-  try {
-    const pending = db.prepare(`
-      SELECT * FROM leads
-      WHERE (is_deleted = 0 OR is_deleted IS NULL)
-        AND total_messages > 0
-        AND (ai_last_analyzed_at IS NULL
-             OR (last_message_at IS NOT NULL AND ai_last_analyzed_at < last_message_at))
-      ORDER BY last_message_at DESC
-      LIMIT 4
-    `).all();
-    for (const lead of pending) {
-      try {
-        const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC LIMIT 30').all(lead.id);
-        if (!messages.length) {
-          db.prepare('UPDATE leads SET ai_last_analyzed_at = CURRENT_TIMESTAMP WHERE id = ?').run(lead.id);
-          continue;
-        }
-        const memoryContext = getMemoryContext(lead.workspace_id);
-        const analysis = await aiEngine.analyzeLeadIntelligence(messages, lead, memoryContext);
-        db.prepare(`UPDATE leads SET lead_score = COALESCE(?, lead_score), sentiment = ?, urgency = ?,
-          intent_category = ?, ai_last_analyzed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
-          analysis.lead_score ?? null, analysis.sentiment || null, analysis.urgency || null,
-          analysis.intent_category || null, lead.id);
-      } catch (e) {
-        console.log(`auto-analyze: lead ${lead.id} skipped — ${e.message}`);
-        // Mark it analyzed so the batch moves on; the next inbound message re-queues it.
-        try { db.prepare('UPDATE leads SET ai_last_analyzed_at = CURRENT_TIMESTAMP WHERE id = ?').run(lead.id); } catch {}
-      }
-      await new Promise(r => setTimeout(r, 1500));
-    }
-  } catch (e) {
-    console.log('auto-analyze batch error:', e.message);
-  } finally {
-    _autoAnalyzeRunning = false;
-  }
-}
-setInterval(autoAnalyzePendingLeads, 90 * 1000);
-setTimeout(autoAnalyzePendingLeads, 15000);
-
 async function callGemini(prompt, maxTokens = 2048) {
-  // Delegates to the centralized AI engine — provider-aware (Cerebras / Groq /
-  // OpenAI / Anthropic) with automatic rate-limit retry + backoff. The legacy
-  // name is kept so existing callers don't need to change.
-  return aiEngine.callLLM(prompt, { maxTokens });
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      max_tokens: maxTokens
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Groq API error ${res.status}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
 }
 
 // Strip markdown code fences and extract a JSON array or object from raw AI output
@@ -3635,7 +3166,7 @@ app.post('/api/leads/:id/ai/summary', auth, async (req, res) => {
   try {
     const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
-    const messages = db.prepare('SELECT * FROM (SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp DESC LIMIT 40) ORDER BY timestamp ASC').all(req.params.id);
+    const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC').all(req.params.id);
 
     const context = buildConversationContext(messages, lead);
     const memoryContext = getMemoryContext(req.workspaceId);
@@ -3918,18 +3449,6 @@ async function extractTextFromFile(filePath, mimeType, originalName) {
 }
 
 // Helper: extract memories from text using AI
-// Dedup guard (item 24) — true when an equivalent memory already exists for the
-// workspace, so re-crawling a site / re-uploading a doc / re-learning chats only
-// ever adds genuinely new knowledge.
-function memoryIsDuplicate(workspaceId, value) {
-  const v = String(value == null ? '' : value).trim();
-  if (!v) return true;
-  try {
-    return !!db.prepare('SELECT 1 FROM ai_memories WHERE workspace_id = ? AND lower(trim(value)) = ? LIMIT 1')
-      .get(workspaceId, v.toLowerCase());
-  } catch { return false; }
-}
-
 async function extractMemoriesFromText(text, workspaceId) {
   if (!text || text.length < 50) return [];
   const truncated = text.substring(0, 4000);
@@ -4106,27 +3625,24 @@ app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (r
         const text = await extractTextFromFile(filePath, mimeType, fileName);
         const memories = await extractMemoriesFromText(text, req.workspaceId);
 
-        // Save memories — skipping any that already exist (item 24 dedup)
+        // Save extracted text
+        db.prepare(`
+          UPDATE knowledge_documents SET extracted_text=?, memory_count=?, processed=1 WHERE id=?
+        `).run(text.substring(0, 10000), memories.length, docId);
+
+        // Save memories
         const insertMemory = db.prepare(`
           INSERT OR REPLACE INTO ai_memories (id, workspace_id, memory_type, key, value, confidence, source, document_id)
           VALUES (?, ?, ?, ?, ?, ?, 'document', ?)
         `);
         const insertAll = db.transaction((mems) => {
-          let n = 0;
           mems.forEach(m => {
-            if (m.key && m.value && !memoryIsDuplicate(req.workspaceId, m.value)) {
+            if (m.key && m.value) {
               insertMemory.run(generateId(), req.workspaceId, m.memory_type || 'other', m.key, m.value, m.confidence || 80, docId);
-              n++;
             }
           });
-          return n;
         });
-        const inserted = insertAll(memories);
-
-        // Save extracted text + the count of genuinely new memories
-        db.prepare(`
-          UPDATE knowledge_documents SET extracted_text=?, memory_count=?, processed=1 WHERE id=?
-        `).run(text.substring(0, 10000), inserted, docId);
+        insertAll(memories);
 
         console.log(`✅ Knowledge doc processed: ${fileName} → ${memories.length} memories extracted`);
       } catch (e) {
@@ -4135,180 +3651,6 @@ app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (r
       }
     });
 
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ════════════════════════════════════════════════════════════
-//  WEBSITE CRAWLER — knowledge base learns from a whole site
-// ════════════════════════════════════════════════════════════
-
-const CRAWL_MAX_PAGES = 40;       // hard cap on pages per crawl
-const CRAWL_MAX_DEPTH = 3;        // link-follow depth from the root
-const CRAWL_FETCH_TIMEOUT = 12000;
-
-// Normalize user input into a URL object (adds https:// if missing).
-function _normalizeCrawlUrl(input) {
-  let u = String(input || '').trim();
-  if (!u) return null;
-  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-  try {
-    const parsed = new URL(u);
-    return /^https?:$/.test(parsed.protocol) ? parsed : null;
-  } catch { return null; }
-}
-
-// Strip HTML down to readable text.
-function _htmlToText(html) {
-  let t = html || '';
-  t = t.replace(/<script[\s\S]*?<\/script>/gi, ' ')
-       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-       .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-       .replace(/<!--[\s\S]*?-->/g, ' ')
-       .replace(/<head[\s\S]*?<\/head>/gi, ' ');
-  t = t.replace(/<\/(p|div|li|h[1-6]|tr|section|article)\s*>/gi, '\n')
-       .replace(/<br\s*\/?>/gi, '\n');
-  t = t.replace(/<[^>]+>/g, ' ');
-  t = t.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
-       .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#0?39;/gi, "'")
-       .replace(/&#x27;/gi, "'").replace(/&rsquo;|&lsquo;/gi, "'").replace(/&[a-z]+;/gi, ' ');
-  return t.replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
-}
-
-// Find same-domain, page-like links in an HTML document.
-function _extractCrawlLinks(html, pageUrl, rootHost) {
-  const links = new Set();
-  const re = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    let href = (m[1] || '').trim();
-    if (!href || /^(mailto:|tel:|javascript:|data:)/i.test(href)) continue;
-    let abs;
-    try { abs = new URL(href, pageUrl); } catch { continue; }
-    if (!/^https?:$/.test(abs.protocol)) continue;
-    if (abs.hostname.replace(/^www\./, '') !== rootHost) continue;
-    if (/\.(pdf|jpe?g|png|gif|svg|webp|zip|rar|mp4|mp3|avi|mov|css|js|ico|woff2?|ttf|xml)(\?|$)/i.test(abs.pathname)) continue;
-    abs.hash = '';
-    links.add(abs.toString());
-  }
-  return [...links];
-}
-
-// Fetch a single page; returns HTML string or null.
-async function _fetchCrawlPage(url) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), CRAWL_FETCH_TIMEOUT);
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      redirect: 'follow',
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WappFlowBot/1.0)' },
-    });
-    if (!res.ok) return null;
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
-    if (!ct.includes('html')) return null;
-    return await res.text();
-  } catch { return null; }
-  finally { clearTimeout(timer); }
-}
-
-// BFS-crawl a site and extract memories from each page.
-async function crawlWebsiteForMemories(startUrl, workspaceId, docId) {
-  const root = _normalizeCrawlUrl(startUrl);
-  const rootHost = root.hostname.replace(/^www\./, '');
-  const queue = [{ url: root.toString(), depth: 0 }];
-  const visited = new Set();
-  const seenKeys = new Set();
-  const memories = [];
-  let pagesProcessed = 0;
-
-  const canon = (u) => u.replace(/#.*$/, '').replace(/\/+$/, '');
-
-  while (queue.length && pagesProcessed < CRAWL_MAX_PAGES) {
-    const { url, depth } = queue.shift();
-    if (visited.has(canon(url))) continue;
-    visited.add(canon(url));
-
-    const html = await _fetchCrawlPage(url);
-    if (!html) continue;
-    pagesProcessed++;
-
-    if (depth < CRAWL_MAX_DEPTH) {
-      for (const link of _extractCrawlLinks(html, url, rootHost)) {
-        if (!visited.has(canon(link))) queue.push({ url: link, depth: depth + 1 });
-      }
-    }
-
-    const text = _htmlToText(html);
-    if (text.length < 120) continue;
-
-    let pageMems = [];
-    try { pageMems = await extractMemoriesFromText(text, workspaceId); }
-    catch (e) { console.log('⚠️ Crawl page extract failed:', e.message); }
-
-    for (const mem of (pageMems || [])) {
-      if (!mem || !mem.key || !mem.value) continue;
-      const k = String(mem.key).toLowerCase().trim();
-      if (seenKeys.has(k)) continue;          // dedupe across the whole crawl
-      seenKeys.add(k);
-      memories.push(mem);
-    }
-
-    try { db.prepare('UPDATE knowledge_documents SET memory_count = ? WHERE id = ?').run(memories.length, docId); } catch {}
-    await new Promise(r => setTimeout(r, 200)); // gentle pacing
-  }
-
-  return { pagesProcessed, memories };
-}
-
-// POST /api/knowledge/crawl — crawl a website + its sub-pages for memories
-app.post('/api/knowledge/crawl', auth, (req, res) => {
-  try {
-    const root = _normalizeCrawlUrl(req.body && req.body.url);
-    if (!root) return res.status(400).json({ error: 'Enter a valid website URL (e.g. www.example.com)' });
-
-    const docId = generateId();
-    const domain = root.hostname.replace(/^www\./, '');
-    db.prepare(`
-      INSERT INTO knowledge_documents (id, workspace_id, document_name, file_path, file_type, processed)
-      VALUES (?, ?, ?, ?, 'website', 0)
-    `).run(docId, req.workspaceId, domain, root.toString());
-
-    res.status(201).json({
-      document: db.prepare('SELECT * FROM knowledge_documents WHERE id = ?').get(docId),
-      message: 'Crawl started — extracting knowledge in the background...'
-    });
-
-    // Crawl in the background — don't block the response.
-    const workspaceId = req.workspaceId;
-    setImmediate(async () => {
-      try {
-        const { pagesProcessed, memories } = await crawlWebsiteForMemories(root.toString(), workspaceId, docId);
-
-        const insertMemory = db.prepare(`
-          INSERT OR REPLACE INTO ai_memories (id, workspace_id, memory_type, key, value, confidence, source, document_id)
-          VALUES (?, ?, ?, ?, ?, ?, 'website', ?)
-        `);
-        const insertAll = db.transaction((mems) => {
-          let n = 0;
-          mems.forEach(m => {
-            if (m.key && m.value && !memoryIsDuplicate(workspaceId, m.value)) {
-              insertMemory.run(generateId(), workspaceId, m.memory_type || 'other',
-                String(m.key).slice(0, 200), String(m.value).slice(0, 2000), m.confidence || 75, docId);
-              n++;
-            }
-          });
-          return n;
-        });
-        const inserted = insertAll(memories);
-
-        db.prepare('UPDATE knowledge_documents SET memory_count = ?, extracted_text = ?, processed = ? WHERE id = ?')
-          .run(inserted, `Crawled ${pagesProcessed} page(s) from ${domain}`, pagesProcessed > 0 ? 1 : 2, docId);
-        console.log(`✅ Website crawl done: ${domain} → ${pagesProcessed} pages, ${memories.length} memories`);
-      } catch (e) {
-        console.error('Website crawl error:', e.message);
-        db.prepare('UPDATE knowledge_documents SET processed = 2 WHERE id = ?').run(docId);
-      }
-    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -4374,7 +3716,7 @@ app.post('/api/knowledge/learn-from-messages', auth, async (req, res) => {
     `);
     const insertAll = db.transaction((mems) => {
       mems.forEach(m => {
-        if (m.key && m.value && !memoryIsDuplicate(req.workspaceId, m.value)) {
+        if (m.key && m.value) {
           insertMemory.run(generateId(), req.workspaceId, m.memory_type || 'other', m.key, m.value, m.confidence || 70);
           learned++;
         }
@@ -4786,35 +4128,23 @@ app.get('/api/platform-accounts', auth, (req, res) => {
 
 app.post('/api/platform-accounts', auth, (req, res) => {
   try {
-    const { platform, account_name } = req.body;
+    const { platform, account_name, slot_index } = req.body;
     if (!platform) return res.status(400).json({ error: 'platform required' });
 
-    // Plan enforcement — check feature + per-channel limit
-    const limitKey = `${platform}_accounts`;
-    const limitCheck = checkLimit(req.workspaceId, limitKey);
-    if (!limitCheck.ok) return res.status(403).json({ error: limitCheck.message, code: 'plan_limit', ...limitCheck });
-
-    // Server-authoritatively assign the slot index — NEVER trust a client-supplied
-    // value. A duplicate slot makes two WhatsApp accounts collide on the same
-    // Chromium session dir ("browser is already running for session-wf-N").
-    // Pick the lowest free slot 0..4 for this workspace+platform.
-    const usedSlots = db.prepare('SELECT slot_index FROM platform_accounts WHERE workspace_id = ? AND platform = ?')
-      .all(req.workspaceId, platform).map(r => r.slot_index);
-    if (usedSlots.length >= 5) return res.status(400).json({ error: 'Maximum 5 accounts per platform' });
-    let assignedSlot = 0;
-    while (usedSlots.includes(assignedSlot)) assignedSlot++;
+    const existing = db.prepare('SELECT COUNT(*) as cnt FROM platform_accounts WHERE workspace_id = ? AND platform = ?').get(req.workspaceId, platform);
+    if (existing.cnt >= 5) return res.status(400).json({ error: 'Maximum 5 accounts per platform' });
 
     const id = generateId();
     const verifyToken = generateId().replace(/-/g, '').slice(0, 24);
     db.prepare(`
       INSERT INTO platform_accounts (id, workspace_id, platform, account_name, webhook_verify_token, slot_index)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, req.workspaceId, platform, account_name || `Account ${assignedSlot + 1}`, verifyToken, assignedSlot);
+    `).run(id, req.workspaceId, platform, account_name || `Account ${(slot_index || 0) + 1}`, verifyToken, slot_index || 0);
 
     const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ?').get(id);
     // Auto-start WhatsApp session when a whatsapp account slot is created
     if (platform === 'whatsapp') {
-      whatsappService.addAccount(id, assignedSlot);
+      whatsappService.addAccount(id, slot_index || 0);
     }
     res.json({ account: { ...account, credentials: {} } });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -5155,27 +4485,12 @@ app.get('/api/leads/:leadId/timeline', auth, (req, res) => {
 // GET/PUT /api/workspace/plan — read or update the workspace plan tier
 app.get('/api/workspace/plan', auth, (req, res) => {
   try {
-    const plan = getWorkspacePlan(req.workspaceId);
+    let plan = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId);
+    if (!plan) {
+      db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'starter')`).run(req.workspaceId);
+      plan = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId);
+    }
     res.json({ plan });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// GET /api/workspace/plan-info — full plan definition + current usage (used by frontend to render lock UI)
-app.get('/api/workspace/plan-info', auth, (req, res) => {
-  try {
-    const info = getPlanInfo(req.workspaceId);
-    const usage = getWorkspaceUsage(req.workspaceId);
-    res.json({
-      plan: info.tier,
-      name: info.name,
-      price: info.price,
-      most_popular: !!info.most_popular,
-      limits: info.limits,
-      features: info.features,
-      usage,
-      // All plan tiers (for the pricing comparison UI)
-      all_plans: Object.entries(PLAN_DEFS).map(([id, d]) => ({ id, ...d })),
-    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -5189,6 +4504,164 @@ app.put('/api/workspace/plan', auth, (req, res) => {
     `).run(req.workspaceId, plan || 'starter', features ? JSON.stringify(features) : null, limits ? JSON.stringify(limits) : null, trial_ends_at || null);
     res.json({ plan: db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId) });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+//  GET /api/workspace/plan-info — the rich plan payload used by `usePlan`.
+//
+//  Returns { plan, name, features, limits, usage, all_plans } so the frontend
+//  can decide which features to unlock, what badges to show, and what the
+//  user's current usage looks like vs. their plan's limits.
+// ────────────────────────────────────────────────────────────────────────────
+
+const PLAN_DEFINITIONS = {
+  free: {
+    name: 'Free',
+    features: {
+      whatsapp: true,
+      basic_inbox: true,
+      basic_crm: true,
+      basic_ai: 'limited',
+      // everything else explicitly false
+      email_integration: false,
+      email_templates: false,
+      email_sending: false,
+      email_receiving: false,
+      instagram: false,
+      facebook: false,
+      website_capture: false,
+      auto_reply: false,
+      automations: false,
+      workflows: false,
+      google_calendar: false,
+      calendly: false,
+      team_collaboration: false,
+      shared_inbox: false,
+      analytics: false,
+      reports: false,
+      multi_pipeline: false,
+      flux: false,
+      api_access: false,
+      byok: false,
+      white_label: false,
+    },
+    limits: {
+      whatsapp_accounts: 1, users: 1, leads: 50,
+      brand_profiles: 0, ig_accounts: 0, carousels_monthly: 0,
+    },
+  },
+  starter: {
+    name: 'Starter',
+    features: {
+      whatsapp: true, basic_inbox: true, basic_crm: true, basic_ai: true,
+      email_integration: true,
+      email_templates: true,
+      email_sending: true,
+      email_receiving: true,
+      shared_inbox: true,
+      voice_notes: true,
+      analytics: 'basic',
+      priority_support: 'email',
+      instagram: false, facebook: false, website_capture: false,
+      auto_reply: false, automations: false, workflows: false,
+      google_calendar: false, calendly: false,
+      team_collaboration: false, multi_pipeline: false,
+      flux: false, api_access: false, byok: false, white_label: false,
+    },
+    limits: {
+      whatsapp_accounts: 1, users: 2, leads: 300,
+      brand_profiles: 0, ig_accounts: 0, carousels_monthly: 0,
+    },
+  },
+  growth: {
+    name: 'Growth',
+    features: {
+      whatsapp: true, basic_inbox: true, basic_crm: true, basic_ai: true,
+      email_integration: true, email_templates: true, email_sending: true,
+      email_receiving: true, shared_inbox: true, voice_notes: true,
+      instagram: true, facebook: true, website_capture: true,
+      auto_reply: true, automations: true, workflows: true,
+      google_calendar: true, calendly: true,
+      team_collaboration: true, analytics: true, reports: true,
+      multi_pipeline: true,
+      flux: true,
+      priority_support: true,
+      api_access: false, byok: false, white_label: false,
+    },
+    limits: {
+      whatsapp_accounts: 3, users: 5, leads: -1,
+      brand_profiles: 5, ig_accounts: 5, carousels_monthly: 250,
+    },
+  },
+  enterprise: {
+    name: 'Enterprise',
+    features: {
+      whatsapp: true, basic_inbox: true, basic_crm: true, basic_ai: true,
+      email_integration: true, email_templates: true, email_sending: true,
+      email_receiving: true, shared_inbox: true, voice_notes: true,
+      instagram: true, facebook: true, website_capture: true,
+      auto_reply: true, automations: true, workflows: true,
+      google_calendar: true, calendly: true,
+      team_collaboration: true, analytics: true, reports: true,
+      multi_pipeline: true,
+      flux: true,
+      priority_support: true,
+      api_access: true, byok: true, white_label: true,
+      sso: true, audit_logs: true, dedicated_support: true,
+    },
+    // -1 means unlimited (matches the usePlan hook's interpretation)
+    limits: {
+      whatsapp_accounts: -1, users: -1, leads: -1,
+      brand_profiles: -1, ig_accounts: -1, carousels_monthly: -1,
+    },
+  },
+};
+
+function getPlanInfo(workspaceId) {
+  let row = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(workspaceId);
+  if (!row) {
+    db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'free')`).run(workspaceId);
+    row = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(workspaceId);
+  }
+  const tierKey = (row.plan || 'free').toLowerCase();
+  const def = PLAN_DEFINITIONS[tierKey] || PLAN_DEFINITIONS.free;
+  // Allow per-workspace overrides (already supported by the PUT endpoint).
+  let overrides = {};
+  try { overrides = row.features ? JSON.parse(row.features) : {}; } catch {}
+  let limitOverrides = {};
+  try { limitOverrides = row.limits ? JSON.parse(row.limits) : {}; } catch {}
+  const features = { ...def.features, ...overrides };
+  const limits = { ...def.limits, ...limitOverrides };
+
+  // Live usage counters — cheap aggregate queries scoped to the workspace.
+  let usage = {};
+  try {
+    const leadCount = db.prepare('SELECT COUNT(*) as c FROM leads WHERE workspace_id = ?').get(workspaceId)?.c || 0;
+    const userCount = db.prepare('SELECT COUNT(*) as c FROM workspace_members WHERE workspace_id = ?').get(workspaceId)?.c || 0;
+    const waCount = db.prepare('SELECT COUNT(*) as c FROM platform_accounts WHERE workspace_id = ? AND platform = "whatsapp"').get(workspaceId)?.c || 0;
+    usage = { leads: leadCount, users: userCount, whatsapp_accounts: waCount };
+  } catch { /* tables may differ in dev */ }
+
+  return {
+    plan: tierKey,
+    name: def.name,
+    features,
+    limits,
+    usage,
+    trial_ends_at: row.trial_ends_at || null,
+    all_plans: Object.entries(PLAN_DEFINITIONS).map(([k, v]) => ({
+      key: k, name: v.name, features: v.features, limits: v.limits,
+    })),
+  };
+}
+
+app.get('/api/workspace/plan-info', auth, (req, res) => {
+  try {
+    res.json(getPlanInfo(req.workspaceId));
+  } catch (e) {
+    console.error('plan-info error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET /api/message-queue — outbound queue status
@@ -5468,10 +4941,6 @@ app.get('/api/integrations/status', auth, (req, res) => {
 // PUT /api/integrations/calendly — save / update Calendly URL
 app.put('/api/integrations/calendly', auth, (req, res) => {
   try {
-    // Plan enforcement — Calendly is Growth+ only
-    const feat = checkFeature(req.workspaceId, 'calendly');
-    if (!feat.ok) return res.status(403).json({ error: `Calendly integration is not available on the ${feat.planName} plan. Upgrade to Growth.`, code: 'plan_feature' });
-
     const { url } = req.body || {};
     if (url && !/^https?:\/\/(?:www\.)?calendly\.com\//i.test(String(url).trim())) {
       return res.status(400).json({ error: 'URL must be a Calendly link (https://calendly.com/...)' });
@@ -5486,10 +4955,6 @@ app.put('/api/integrations/calendly', auth, (req, res) => {
 // POST /api/integrations/google-calendar/connect — exchange auth code for refresh token
 app.post('/api/integrations/google-calendar/connect', auth, async (req, res) => {
   try {
-    // Plan enforcement — Google Calendar is Growth+ only
-    const feat = checkFeature(req.workspaceId, 'google_calendar');
-    if (!feat.ok) return res.status(403).json({ error: `Google Calendar integration is not available on the ${feat.planName} plan. Upgrade to Growth.`, code: 'plan_feature' });
-
     const { code } = req.body || {};
     if (!code) return res.status(400).json({ error: 'Authorization code required' });
 

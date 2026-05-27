@@ -4,10 +4,7 @@ wappflow.db
 wappflow.db-shm
 wappflow.db-wal
 .wwebjs_auth/
+.wwebjs_cache/
 uploads/
 data/
 *.log
-node_modules
-.wwebjs_auth
-wappflow.db
-.env
