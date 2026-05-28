@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
+import { usePlan } from '@/lib/plan';
+import { LockedOverlay } from '@/components/PlanLock';
 
 const API = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001';
 const authHeader = () => ({
@@ -51,6 +53,7 @@ export default function KnowledgePage() {
   const router = useRouter();
   const confirm = useConfirm();
   const fileInputRef = useRef();
+  const plan = usePlan();
 
   const [documents, setDocuments] = useState([]);
   const [memories, setMemories] = useState([]);
@@ -228,6 +231,29 @@ export default function KnowledgePage() {
     if (group.length > 0) acc[t.value] = group;
     return acc;
   }, {});
+
+  // Knowledge base is gated on team_collaboration — Growth+ only.
+  const knowledgeLocked = !plan.loading && !plan.hasFeature('team_collaboration');
+  if (knowledgeLocked) {
+    return (
+      <NavBar>
+        <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px' }}>
+          <LockedOverlay
+            feature="Knowledge base"
+            requiredPlan="Growth"
+            currentPlan={(plan.planName || 'Free')}
+            description="Upload PDFs, FAQs, pricing sheets, and brand docs that the AI grounds every reply in."
+            perks={[
+              'Upload PDFs / docs / pasted text',
+              'Crawl your website to ingest content',
+              'AI replies cite your own knowledge first',
+              'Memory categories: pricing, services, policies, FAQ',
+            ]}
+          />
+        </div>
+      </NavBar>
+    );
+  }
 
   return (
     <NavBar>

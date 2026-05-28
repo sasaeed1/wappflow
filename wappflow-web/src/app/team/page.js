@@ -11,6 +11,7 @@ import { workspaceAPI, auditAPI } from '../../lib/api';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
+import { LockedOverlay } from '@/components/PlanLock';
 
 const ROLES = [
   { value: 'super_admin', label: 'Super Admin', color: '#f59e0b', icon: Crown,     desc: 'Full access · Workspace owner' },
@@ -552,6 +553,31 @@ export default function TeamPage() {
   );
 
   const getRoleInfo = (role) => ROLES.find(r => r.value === role) || ROLES[3];
+
+  // Team collaboration is gated behind Growth+. Free + Starter users get a
+  // full-screen lock with the upgrade CTA.
+  const teamLocked = !plan.loading && !plan.hasFeature('team_collaboration');
+
+  if (teamLocked) {
+    return (
+      <NavBar>
+        <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px' }}>
+          <LockedOverlay
+            feature="Team management"
+            requiredPlan="Growth"
+            currentPlan={(plan.planName || 'Free')}
+            description="Invite teammates, assign roles, fine-tune per-user permissions, and see the audit log."
+            perks={[
+              'Up to 5 (Growth) or unlimited (Enterprise) team members',
+              'Per-role permission matrix',
+              'Shared inbox + internal notes',
+              'Workspace audit log',
+            ]}
+          />
+        </div>
+      </NavBar>
+    );
+  }
 
   return (
     <NavBar>

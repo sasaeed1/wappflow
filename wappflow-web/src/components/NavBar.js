@@ -96,6 +96,63 @@ function PlanBadge() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  LeadUsageChip — renders "X / 50" usage on Free/Starter tiers, with the
+//  background going red when the user is ≥80% of their cap. Clicking it
+//  bounces to the leads list. Hidden for unlimited plans (Growth/Enterprise).
+// ─────────────────────────────────────────────────────────────────────────────
+function LeadUsageChip({ planInfo, router }) {
+  if (planInfo.loading) return null;
+  const limit = planInfo.limits?.leads;
+  if (limit == null || limit < 0) return null; // unlimited / unknown
+  const used = planInfo.usage?.leads ?? 0;
+  const ratio = limit > 0 ? used / limit : 0;
+  const atLimit = used >= limit;
+  const nearLimit = ratio >= 0.8;
+  const colors = atLimit
+    ? { bg: 'rgba(239,68,68,0.16)', border: 'rgba(239,68,68,0.55)', fg: '#fca5a5' }
+    : nearLimit
+      ? { bg: 'rgba(245,158,11,0.16)', border: 'rgba(245,158,11,0.50)', fg: '#fbbf24' }
+      : { bg: 'rgba(34,197,94,0.10)', border: 'rgba(34,197,94,0.30)', fg: '#86efac' };
+
+  return (
+    <button
+      type="button"
+      onClick={() => router.push('/leads-list')}
+      title={
+        atLimit
+          ? `Lead cap reached (${used}/${limit}). Upgrade to add more.`
+          : `Leads used: ${used} of ${limit}`
+      }
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        height: 30,
+        padding: '0 10px',
+        marginRight: 4,
+        borderRadius: 999,
+        background: colors.bg,
+        border: `1px solid ${colors.border}`,
+        color: colors.fg,
+        fontSize: 11.5,
+        fontWeight: 800,
+        letterSpacing: '0.02em',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease',
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.15)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+    >
+      <Users size={11} />
+      {used}/{limit}
+      <span style={{ opacity: 0.65, fontWeight: 600, fontSize: 10 }}>leads</span>
+    </button>
+  );
+}
+
 const PLATFORM_META = {
   whatsapp:  { label: 'WhatsApp',  color: '#25d366', icon: MessageCircle },
   instagram: { label: 'Instagram', color: '#e1306c', icon: Camera },
@@ -103,17 +160,23 @@ const PLATFORM_META = {
   website:   { label: 'Website',   color: '#6366f1', icon: Globe },
 };
 
+// Each nav item that requires a paid plan declares `lockFeature` (the key the
+// usePlan().hasFeature() check uses) and `requiredPlan` (the display label
+// shown in the lock badge + upgrade modal).
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Leads',     icon: Users,           path: '/leads-list' },
   { label: 'Inbox',     icon: Inbox,           path: '/chat' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
-  { label: 'Analytics', icon: BarChart2,       path: '/reports' },
+  { label: 'Analytics', icon: BarChart2,       path: '/reports',
+    lockFeature: 'analytics', requiredPlan: 'Growth' },
 ];
 
 const MORE_ITEMS = [
-  { label: 'Team',      icon: UserCheck,       path: '/team' },
-  { label: 'Knowledge', icon: Brain,           path: '/knowledge' },
+  { label: 'Team',      icon: UserCheck,       path: '/team',
+    lockFeature: 'team_collaboration', requiredPlan: 'Growth' },
+  { label: 'Knowledge', icon: Brain,           path: '/knowledge',
+    lockFeature: 'team_collaboration', requiredPlan: 'Growth' },
   {
     label: 'Flux',
     icon: Sparkles,
@@ -121,17 +184,36 @@ const MORE_ITEMS = [
     external: true,
     badge: 'NEW',
     description: 'AI Instagram content engine',
+    lockFeature: 'flux', requiredPlan: 'Growth',
   },
   { label: 'Help',      icon: HelpCircle,      path: '/help' },
 ];
 
+// Per-platform gates for the Platform dropdown. WhatsApp is always allowed.
+const PLATFORM_GATES = {
+  whatsapp:  { feature: null,              requiredPlan: null },
+  instagram: { feature: 'instagram',       requiredPlan: 'Growth' },
+  facebook:  { feature: 'facebook',        requiredPlan: 'Growth' },
+  website:   { feature: 'website_capture', requiredPlan: 'Growth' },
+};
+
 export default function NavBar({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
+  const planInfo = usePlan();
   const notifRef   = useRef(null);
   const moreRef    = useRef(null);
   const platformRef = useRef(null);
   const userMenuRef = useRef(null);
+
+  // Helper: does the current plan have a feature? Defensive — if planInfo
+  // hasn't loaded yet, we show the lock optimistically (better UX than
+  // flashing an unlocked item then snapping locked).
+  const featureLocked = (featureKey) => {
+    if (!featureKey) return false;
+    if (planInfo.loading) return false; // don't show locks until we know
+    return !planInfo.hasFeature(featureKey);
+  };
 
   const [user, setUser]                     = useState(null);
   const [workspace, setWorkspace]           = useState(null);
@@ -147,6 +229,8 @@ export default function NavBar({ children }) {
   const [expandedPlatform, setExpandedPlatform] = useState(null);
   const [fluxLoading, setFluxLoading]       = useState(false);
   const [fluxUpgrade, setFluxUpgrade]       = useState(null); // { plan } when locked
+  // Generic upgrade prompt for ANY locked nav item (Analytics, Team, etc.)
+  const [navUpgrade, setNavUpgrade]         = useState(null); // { label, requiredPlan, feature }
 
   // Click handler for Flux nav entry — fetches signed SSO token, opens Flux
   // in a new tab, or surfaces an upgrade prompt if plan tier doesn't include it.
@@ -236,18 +320,31 @@ export default function NavBar({ children }) {
     return params?.has('platform');
   };
 
-  const NavBtn = ({ label, icon: Icon, path, onClick }) => {
+  const NavBtn = ({ label, icon: Icon, path, onClick, lockFeature, requiredPlan }) => {
     const active = isActive(path);
+    const locked = featureLocked(lockFeature);
+    const handleClick = (e) => {
+      if (locked) {
+        e.preventDefault();
+        setNavUpgrade({ label, requiredPlan: requiredPlan || 'Growth', feature: lockFeature });
+        setMobileOpen(false);
+        return;
+      }
+      if (onClick) onClick();
+      else { router.push(path); setMobileOpen(false); }
+    };
     return (
       <button
-        onClick={onClick || (() => { router.push(path); setMobileOpen(false); })}
+        onClick={handleClick}
         style={{
           display: 'flex', alignItems: 'center', gap: 7,
           padding: '7px 13px', borderRadius: 9, border: 'none',
           background: active ? 'var(--accent-light)' : 'transparent',
-          color: active ? 'var(--accent)' : 'var(--text-muted)',
+          color: active ? 'var(--accent)' : (locked ? 'var(--text-muted)' : 'var(--text-muted)'),
+          opacity: locked ? 0.85 : 1,
           fontSize: 13, fontWeight: active ? 700 : 500,
           cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.12s',
+          position: 'relative',
         }}
         onMouseEnter={e => {
           if (!active) { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text)'; }
@@ -255,9 +352,21 @@ export default function NavBar({ children }) {
         onMouseLeave={e => {
           if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }
         }}
+        title={locked ? `${label} — Upgrade to ${requiredPlan || 'Growth'} to unlock` : label}
       >
         <Icon size={15} />
         {label}
+        {locked && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+            marginLeft: 2, padding: '2px 6px', borderRadius: 5,
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.10))',
+            border: '1px solid rgba(239,68,68,0.40)',
+            color: '#fca5a5', fontSize: 9, fontWeight: 900, letterSpacing: '0.04em',
+          }}>
+            <Lock size={9} />{requiredPlan || 'Growth'}
+          </span>
+        )}
       </button>
     );
   };
@@ -356,11 +465,22 @@ export default function NavBar({ children }) {
                   const accounts = accountsByPlatform[p];
                   const isExpanded = expandedPlatform === p;
                   const isLast = idx === arr.length - 1;
+                  const gate = PLATFORM_GATES[p];
+                  const platformLocked = featureLocked(gate?.feature);
 
                   return (
                     <div key={p}>
                       <button
                         onClick={() => {
+                          if (platformLocked) {
+                            setNavUpgrade({
+                              label: `${meta.label} inbox`,
+                              requiredPlan: gate.requiredPlan || 'Growth',
+                              feature: gate.feature,
+                            });
+                            setShowPlatform(false); setExpandedPlatform(null);
+                            return;
+                          }
                           if (accounts.length === 0) {
                             router.push('/settings?tab=connections');
                             setShowPlatform(false); setExpandedPlatform(null);
@@ -375,21 +495,41 @@ export default function NavBar({ children }) {
                           width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                           padding: '10px 16px', border: 'none',
                           borderRadius: isLast && !isExpanded ? '0 0 14px 14px' : 0,
-                          background: 'transparent', color: 'var(--text)',
+                          background: platformLocked ? 'rgba(239,68,68,0.06)' : 'transparent',
+                          color: 'var(--text)',
                           fontSize: 13, fontWeight: 500, cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
                           borderBottom: isLast && !isExpanded ? 'none' : '1px solid var(--border)',
+                          opacity: platformLocked ? 0.78 : 1,
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        onMouseEnter={e => { e.currentTarget.style.background = platformLocked ? 'rgba(239,68,68,0.12)' : 'var(--surface2)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = platformLocked ? 'rgba(239,68,68,0.06)' : 'transparent'; }}
                       >
-                        <div style={{ width: 26, height: 26, borderRadius: 8, background: meta.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: 26, height: 26, borderRadius: 8, background: meta.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                           <Icon size={13} color={meta.color} />
+                          {platformLocked && (
+                            <div style={{ position: 'absolute', bottom: -3, right: -3, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--surface)' }}>
+                              <Lock size={7} color="white" />
+                            </div>
+                          )}
                         </div>
                         <span style={{ flex: 1 }}>{meta.label}</span>
-                        {accounts.length > 0 && (
-                          <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 6, background: meta.color + '20', color: meta.color }}>{accounts.length}</span>
+                        {platformLocked ? (
+                          <span style={{
+                            fontSize: 9, fontWeight: 900, letterSpacing: '0.05em',
+                            padding: '2px 7px', borderRadius: 5,
+                            background: 'linear-gradient(135deg, #A78BFA, #EC4899)',
+                            color: 'white',
+                          }}>
+                            {(gate.requiredPlan || 'GROWTH').toUpperCase()}
+                          </span>
+                        ) : (
+                          <>
+                            {accounts.length > 0 && (
+                              <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 6, background: meta.color + '20', color: meta.color }}>{accounts.length}</span>
+                            )}
+                            {accounts.length > 1 && <ChevronRight size={12} color="var(--text-muted)" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />}
+                          </>
                         )}
-                        {accounts.length > 1 && <ChevronRight size={12} color="var(--text-muted)" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />}
                       </button>
 
                       {/* Sub-accounts */}
@@ -510,22 +650,45 @@ export default function NavBar({ children }) {
                     );
                   }
 
+                  const itemLocked = featureLocked(item.lockFeature);
                   return (
                     <button key={item.path}
-                      onClick={() => { router.push(item.path); setShowMore(false); }}
+                      onClick={() => {
+                        if (itemLocked) {
+                          setNavUpgrade({
+                            label: item.label,
+                            requiredPlan: item.requiredPlan || 'Growth',
+                            feature: item.lockFeature,
+                          });
+                          setShowMore(false);
+                          return;
+                        }
+                        router.push(item.path);
+                        setShowMore(false);
+                      }}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                         padding: '11px 16px', border: 'none',
-                        background: active ? 'var(--accent-light)' : 'transparent',
+                        background: active ? 'var(--accent-light)' : (itemLocked ? 'rgba(239,68,68,0.06)' : 'transparent'),
                         color: active ? 'var(--accent)' : 'var(--text)',
                         fontSize: 13, fontWeight: active ? 700 : 500,
                         cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
                       }}
-                      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface2)'; }}
-                      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                      onMouseEnter={e => { if (!active) e.currentTarget.style.background = itemLocked ? 'rgba(239,68,68,0.12)' : 'var(--surface2)'; }}
+                      onMouseLeave={e => { if (!active) e.currentTarget.style.background = itemLocked ? 'rgba(239,68,68,0.06)' : 'transparent'; }}
                     >
-                      <ItemIcon size={14} />
-                      {item.label}
+                      <ItemIcon size={14} style={itemLocked ? { color: '#ef4444', opacity: 0.7 } : undefined} />
+                      <span style={{ flex: 1, opacity: itemLocked ? 0.7 : 1 }}>{item.label}</span>
+                      {itemLocked && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 3,
+                          padding: '2px 7px', borderRadius: 5,
+                          background: 'linear-gradient(135deg, #A78BFA, #EC4899)',
+                          color: 'white', fontSize: 9, fontWeight: 900, letterSpacing: '0.05em',
+                        }}>
+                          <Lock size={9} />{(item.requiredPlan || 'GROWTH').toUpperCase()}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -539,6 +702,9 @@ export default function NavBar({ children }) {
 
           {/* Plan tier badge — between More and Settings */}
           <PlanBadge />
+
+          {/* Lead usage chip — only when limit is finite (Free/Starter). Red at ≥80%. */}
+          <LeadUsageChip planInfo={planInfo} router={router} />
 
           {/* Settings */}
           <button
@@ -875,6 +1041,102 @@ export default function NavBar({ children }) {
 
       <AICommandCenter enabled={true} />
       <FloatingChat />
+
+      {/* Generic upgrade modal — for any locked nav item (Analytics / Team / IG / etc.) */}
+      {navUpgrade && (
+        <div
+          onClick={() => setNavUpgrade(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20, animation: 'navFadeIn 0.18s ease',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 460, width: '100%',
+              background: 'linear-gradient(180deg, rgba(20,22,33,0.98) 0%, rgba(12,14,22,0.98) 100%)',
+              border: '1px solid rgba(167,139,250,0.25)',
+              borderRadius: 18, padding: 28,
+              boxShadow: '0 30px 80px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
+              position: 'relative', overflow: 'hidden',
+            }}
+          >
+            <div aria-hidden style={{
+              position: 'absolute', inset: 0,
+              background: 'radial-gradient(circle at 20% 0%, rgba(167,139,250,0.18), transparent 50%), radial-gradient(circle at 80% 100%, rgba(34,211,238,0.14), transparent 55%)',
+              pointerEvents: 'none',
+            }} />
+
+            <div style={{ position: 'relative' }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 14,
+                background: 'linear-gradient(135deg, #ef4444 0%, #f59e0b 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 8px 24px -4px rgba(239,68,68,0.45)',
+              }}>
+                <Lock size={20} color="white" />
+              </div>
+
+              <h2 style={{
+                margin: '20px 0 6px', fontSize: 22, fontWeight: 800, color: 'var(--text)',
+                letterSpacing: '-0.02em', lineHeight: 1.2,
+              }}>
+                {navUpgrade.label} is on the {navUpgrade.requiredPlan} plan.
+              </h2>
+              <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                You&apos;re on <strong style={{ color: 'var(--text)' }}>{(planInfo.plan || 'free').toString().toUpperCase()}</strong>.
+                Upgrade to <strong style={{
+                  background: 'linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899)',
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                  fontWeight: 800,
+                }}>{navUpgrade.requiredPlan}</strong> to unlock {navUpgrade.label.toLowerCase()} and the rest of the team-grade toolkit.
+              </p>
+
+              <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => { router.push('/settings?tab=billing'); setNavUpgrade(null); }}
+                  style={{
+                    flex: 1, padding: '12px 16px', borderRadius: 11, border: 'none',
+                    background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',
+                    color: '#0a0a13', fontWeight: 800, fontSize: 14, cursor: 'pointer',
+                    boxShadow: '0 10px 28px -8px rgba(34,211,238,0.5)',
+                  }}
+                >
+                  Upgrade to {navUpgrade.requiredPlan}
+                </button>
+                <button
+                  onClick={() => { router.push('/#pricing'); setNavUpgrade(null); }}
+                  style={{
+                    padding: '12px 16px', borderRadius: 11,
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                  }}
+                >
+                  Compare plans
+                </button>
+              </div>
+
+              <button
+                onClick={() => setNavUpgrade(null)}
+                aria-label="Close"
+                style={{
+                  position: 'absolute', top: -10, right: -10,
+                  width: 28, height: 28, borderRadius: 8,
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                  color: 'var(--text-muted)', fontSize: 14, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Flux upgrade modal — shown when the user's plan tier doesn't include Flux. */}
       {fluxUpgrade && (
