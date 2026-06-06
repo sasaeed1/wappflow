@@ -275,6 +275,65 @@ export const meetingsAPI = {
   list:   (leadId)       => api.get(`/leads/${leadId}/meetings`),
 };
 
+// Media Studio — projects, library, galleries. Image/thumb URLs come back as
+// /uploads/... paths served by the API host, so prefix them with BASE_URL.
+export const mediaAPI = {
+  overview:        ()            => api.get('/media/overview'),
+  listProjects:    (params)      => api.get('/media/projects', { params }),
+  createProject:   (data)        => api.post('/media/projects', data),
+  getProject:      (id)          => api.get(`/media/projects/${id}`),
+  updateProject:   (id, data)    => api.put(`/media/projects/${id}`, data),
+  archiveProject:  (id)          => api.delete(`/media/projects/${id}`),
+  listAssets:      (id, params)  => api.get(`/media/projects/${id}/assets`, { params }),
+  uploadAssets:    (id, formData)=> api.post(`/media/projects/${id}/assets`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  deleteAsset:     (id)          => api.delete(`/media/assets/${id}`),
+  // culling — the human decision layer
+  cullAsset:       (id, data)    => api.put(`/media/assets/${id}/cull`, data),
+  bulkCull:        (projectId, asset_ids, decision) => api.post(`/media/projects/${projectId}/cull/bulk`, { asset_ids, decision }),
+  cullSummary:     (projectId)   => api.get(`/media/projects/${projectId}/cull/summary`),
+  // galleries
+  listGalleries:   (projectId)   => api.get(`/media/projects/${projectId}/galleries`),
+  createGallery:   (projectId, data) => api.post(`/media/projects/${projectId}/galleries`, data),
+  createGalleryFromCull: (projectId, data) => api.post(`/media/projects/${projectId}/galleries/from-cull`, data),
+  getGallery:      (id)          => api.get(`/media/galleries/${id}`),
+  updateGallery:   (id, data)    => api.put(`/media/galleries/${id}`, data),
+  addGalleryAssets:(id, asset_ids) => api.post(`/media/galleries/${id}/assets`, { asset_ids }),
+  publishGallery:  (id, data)    => api.post(`/media/galleries/${id}/publish`, data || {}),
+  unpublishGallery:(id)          => api.post(`/media/galleries/${id}/unpublish`),
+  exportGallery:   (id, variant) => api.post(`/media/galleries/${id}/export`, { variant }),
+  getExport:       (id)          => api.get(`/media/exports/${id}`),
+  // proofing / selection
+  createProofing:  (galleryId, data) => api.post(`/media/galleries/${galleryId}/proofing`, data),
+  getProofing:     (setId)       => api.get(`/media/proofing/${setId}`),
+  proofingRequestChanges: (setId, note) => api.post(`/media/proofing/${setId}/request-changes`, { note }),
+  proofingApprove: (setId)       => api.post(`/media/proofing/${setId}/approve`),
+  // albums
+  listAlbums:       (projectId)        => api.get(`/media/projects/${projectId}/albums`),
+  createAlbum:      (projectId, data)  => api.post(`/media/projects/${projectId}/albums`, data),
+  getAlbum:         (id)               => api.get(`/media/albums/${id}`),
+  deleteAlbum:      (id)               => api.delete(`/media/albums/${id}`),
+  addAlbumPage:     (id, data)         => api.post(`/media/albums/${id}/pages`, data),
+  updateAlbumPage:  (id, pageId, data) => api.put(`/media/albums/${id}/pages/${pageId}`, data),
+  deleteAlbumPage:  (id, pageId)       => api.delete(`/media/albums/${id}/pages/${pageId}`),
+  reorderAlbumPages:(id, page_ids)     => api.put(`/media/albums/${id}/pages/order`, { page_ids }),
+  autofillAlbum:    (id, decision)     => api.post(`/media/albums/${id}/autofill`, { decision }),
+  exportAlbum:      (id)               => api.post(`/media/albums/${id}/export`),
+  // video clips
+  listVideos:    (projectId)         => api.get(`/media/projects/${projectId}/videos`),
+  setAssetMeta:  (id, data)          => api.put(`/media/assets/${id}/meta`, data),
+  listClips:     (assetId)           => api.get(`/media/assets/${assetId}/clips`),
+  addClip:       (assetId, data)     => api.post(`/media/assets/${assetId}/clips`, data),
+  updateClip:    (clipId, data)      => api.put(`/media/clips/${clipId}`, data),
+  deleteClip:    (clipId)            => api.delete(`/media/clips/${clipId}`),
+  reorderClips:  (assetId, clip_ids) => api.put(`/media/assets/${assetId}/clips/order`, { clip_ids }),
+};
+
+// Resolve an API-relative media path (/uploads/...) to an absolute URL.
+export function mediaUrl(p) {
+  if (!p) return '';
+  return /^https?:\/\//.test(p) ? p : `${BASE_URL}${p}`;
+}
+
 // Returns a human-friendly representation of `phone`. For real phone numbers
 // the raw value (minus WhatsApp suffixes) is returned. For platform user IDs
 // (Instagram/Facebook sender IDs are 13–17 digit integers, NOT phone numbers)
