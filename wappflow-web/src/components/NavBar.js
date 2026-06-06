@@ -167,6 +167,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Leads',     icon: Users,           path: '/leads-list' },
   { label: 'Inbox',     icon: Inbox,           path: '/chat' },
+  { label: 'Studio',    icon: Camera,          path: '/studio' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports',
     lockFeature: 'analytics', requiredPlan: 'Growth' },

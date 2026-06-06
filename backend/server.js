@@ -5085,6 +5085,23 @@ app.get('/api/leads/:leadId/meetings', auth, (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════
+//  MEDIA STUDIO  (additive module — owns the ms_* namespace, touches no core table)
+// ════════════════════════════════════════════════════════════
+require('./media-studio')(app, db, {
+  auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
+  multer, path, fs, uploadsDir,
+  clientBaseUrl: process.env.FRONTEND_URL || '',
+  // Reuse the existing WhatsApp send path so gallery delivery lands in the client's
+  // normal conversation thread (and is saved like any other outgoing message).
+  sendClientMessage: async ({ lead, userId, text }) => {
+    if (!lead || !lead.customer_phone) return { skipped: true };
+    await whatsappService.sendMessage(lead.customer_phone, text);
+    try { whatsappService.saveOutgoingMessage(lead.id, userId, text); } catch {}
+    return { sent: true };
+  },
+});
+
+// ════════════════════════════════════════════════════════════
 //  START SERVER
 // ════════════════════════════════════════════════════════════
 
