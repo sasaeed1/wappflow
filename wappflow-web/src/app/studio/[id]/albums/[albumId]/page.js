@@ -191,5 +191,5 @@ export default function AlbumEditor() {
 }
 
 const ghostBtn = { padding: '8px 13px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' };
-const primaryBtnSm = { padding: '9px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: 'white', fontWeight: 800, fontSize: 13.5 };
+const primaryBtnSm = { padding: '9px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'var(--ms-ink)', color: 'var(--ms-paper)', fontWeight: 800, fontSize: 13.5 };
 const iconBtn = { width: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };

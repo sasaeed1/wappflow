@@ -67,7 +67,7 @@ export default function AlbumsPage() {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
           <h1 style={{ fontSize: 24, fontWeight: 900, color: 'var(--text)', margin: 0 }}>Albums</h1>
-          <button onClick={() => setShowNew(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: 'white', fontWeight: 800, fontSize: 14 }}><Plus size={16} /> New album</button>
+          <button onClick={() => setShowNew(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--ms-ink)', color: 'var(--ms-paper)', fontWeight: 800, fontSize: 14 }}><Plus size={16} /> New album</button>
         </div>
 
         {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading…</p> : albums.length === 0 ? (
@@ -79,7 +79,7 @@ export default function AlbumsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
             {albums.map(a => (
               <div key={a.id} onClick={() => router.push(`/studio/${id}/albums/${a.id}`)} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 18, cursor: 'pointer' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 11, background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><BookOpen size={20} color="white" /></div>
+                <div style={{ width: 44, height: 44, borderRadius: 11, background: 'var(--ms-ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><BookOpen size={20} color="var(--ms-paper)" /></div>
                 <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px' }}>{a.title}</h3>
                 <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0 }}>
                   {a.page_count || 0} page{a.page_count === 1 ? '' : 's'}
@@ -102,4 +102,4 @@ const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', b
 const modalBox = { background: 'var(--surface)', borderRadius: 18, padding: 24, maxWidth: 420, width: '100%', boxShadow: '0 32px 80px rgba(0,0,0,0.25)' };
 const labelStyle = { display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 };
 const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, marginBottom: 16, outline: 'none', boxSizing: 'border-box' };
-const primaryBtn = { width: '100%', padding: '11px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: 'white', fontWeight: 800, fontSize: 14 };
+const primaryBtn = { width: '100%', padding: '11px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--ms-ink)', color: 'var(--ms-paper)', fontWeight: 800, fontSize: 14 };

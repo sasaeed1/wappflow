@@ -123,12 +123,12 @@ export default function ClientGalleryPage() {
     return (
       <Centered>
         <div style={{ textAlign: 'center', maxWidth: 320, width: '100%' }}>
-          <div style={{ width: 56, height: 56, borderRadius: 16, margin: '0 auto 18px', background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Lock size={24} color="white" /></div>
+          <div style={{ width: 56, height: 56, borderRadius: 16, margin: '0 auto 18px', background: '#c2a878', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Lock size={24} color="#14120f" /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: '0 0 8px' }}>Private gallery</h1>
           <p style={{ fontSize: 13.5, color: '#9aa0aa', margin: '0 0 20px' }}>Enter the password your photographer shared.</p>
           <input type="password" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === 'Enter' && load(pw)} placeholder="Password"
             style={{ width: '100%', padding: '12px 14px', borderRadius: 11, border: '1px solid #2a2a33', background: '#15151b', color: '#fff', fontSize: 14, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }} autoFocus />
-          <button onClick={() => load(pw)} style={{ width: '100%', padding: 12, borderRadius: 11, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', fontWeight: 800, fontSize: 14 }}>View gallery</button>
+          <button onClick={() => load(pw)} style={{ width: '100%', padding: 12, borderRadius: 11, border: 'none', cursor: 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 700, fontSize: 14 }}>View gallery</button>
         </div>
       </Centered>
     );
@@ -139,14 +139,14 @@ export default function ClientGalleryPage() {
     <div style={{ minHeight: '100vh', background: '#0b0b0f', color: '#fff' }}>
       {/* header */}
       <header style={{ padding: '46px 24px 30px', textAlign: 'center', borderBottom: '1px solid #1a1a22' }}>
-        <p style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#8b5cf6', margin: '0 0 10px', fontWeight: 700 }}>Your Gallery</p>
-        <h1 style={{ fontSize: 'clamp(26px, 5vw, 44px)', fontWeight: 200, margin: 0, letterSpacing: '-0.01em' }}>{data?.title}</h1>
+        <p style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#c2a878', margin: '0 0 12px', fontWeight: 600 }}>Your Gallery</p>
+        <h1 className="ghero" style={{ fontSize: 'clamp(32px, 5.5vw, 60px)', fontWeight: 400, margin: 0, letterSpacing: '-0.02em', lineHeight: 1.04 }}>{data?.title}</h1>
         <p style={{ fontSize: 13, color: '#71717a', margin: '12px 0 0' }}>{assets.length} photos · tap the heart to mark your favourites</p>
         <div style={{ marginTop: 18, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 }}>
           <input value={contact} onChange={e => saveContact(e.target.value)} placeholder="Your name (optional)"
             style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid #2a2a33', background: '#15151b', color: '#fff', fontSize: 12.5, outline: 'none', width: 200 }} />
           {data?.download_policy !== 'none' && (
-            <button onClick={downloadAll} disabled={dl?.status === 'pending'} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 10, border: 'none', cursor: dl?.status === 'pending' ? 'wait' : 'pointer', background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', fontWeight: 800, fontSize: 13 }}>
+            <button onClick={downloadAll} disabled={dl?.status === 'pending'} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 10, border: 'none', cursor: dl?.status === 'pending' ? 'wait' : 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 700, fontSize: 13 }}>
               <Download size={15} /> {dl?.status === 'pending' ? 'Preparing ZIP…' : dl?.status === 'ready' ? 'Download ready ✓' : dl?.status === 'error' ? 'Try again' : 'Download all'}
             </button>
           )}
@@ -162,7 +162,7 @@ export default function ClientGalleryPage() {
             <>
               <span style={{ fontSize: 13, fontWeight: 800, color: (proof.quota && sel.size > proof.quota) ? '#f59e0b' : '#a5b4fc' }}>{sel.size}{proof.quota ? `/${proof.quota}` : ''} selected</span>
               {proof.status === 'revision' && <span style={{ fontSize: 11.5, color: '#f59e0b' }}>Changes requested — update your picks</span>}
-              <button onClick={submitSelections} disabled={sel.size === 0 || submitting} style={{ padding: '8px 16px', borderRadius: 9, border: 'none', cursor: sel.size === 0 ? 'not-allowed' : 'pointer', background: sel.size === 0 ? '#2a2a33' : 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', fontWeight: 800, fontSize: 12.5, opacity: sel.size === 0 ? 0.6 : 1 }}>
+              <button onClick={submitSelections} disabled={sel.size === 0 || submitting} style={{ padding: '8px 16px', borderRadius: 9, border: 'none', cursor: sel.size === 0 ? 'not-allowed' : 'pointer', background: sel.size === 0 ? '#2a2a33' : '#c2a878', color: sel.size === 0 ? '#7a7a85' : '#14120f', fontWeight: 700, fontSize: 12.5, opacity: sel.size === 0 ? 0.7 : 1 }}>
                 {submitting ? 'Submitting…' : 'Submit selections'}
               </button>
             </>
@@ -187,7 +187,7 @@ export default function ClientGalleryPage() {
               onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <IconCircle onClick={(e) => { e.stopPropagation(); toggleFav(a.asset_id); }} active={faved.has(a.asset_id)}>
-                  <Heart size={16} fill={faved.has(a.asset_id) ? '#ec4899' : 'none'} color={faved.has(a.asset_id) ? '#ec4899' : '#fff'} />
+                  <Heart size={16} fill={faved.has(a.asset_id) ? '#c2a878' : 'none'} color={faved.has(a.asset_id) ? '#c2a878' : '#fff'} />
                   {counts[a.asset_id] > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{counts[a.asset_id]}</span>}
                 </IconCircle>
                 <IconCircle onClick={(e) => { e.stopPropagation(); setCommentFor(a.asset_id); }}><MessageSquare size={15} color="#fff" /></IconCircle>
@@ -215,7 +215,7 @@ export default function ClientGalleryPage() {
       {/* comment modal */}
       {commentFor && <CommentModal onClose={() => setCommentFor(null)} onSend={(b) => sendComment(commentFor, b)} />}
 
-      <style>{`.gspin{animation:gspin 1s linear infinite;color:#8b5cf6}@keyframes gspin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&display=swap');.gspin{animation:gspin 1s linear infinite;color:#c2a878}@keyframes gspin{to{transform:rotate(360deg)}}.ghero{font-family:'Fraunces',Georgia,serif}`}</style>
     </div>
   );
 }
@@ -236,7 +236,7 @@ function CommentModal({ onClose, onSend }) {
         <h3 style={{ fontSize: 16, fontWeight: 800, color: '#fff', margin: '0 0 12px' }}>Leave a note</h3>
         <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Tell your photographer what you think…" rows={3}
           style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid #2a2a33', background: '#0b0b0f', color: '#fff', fontSize: 13.5, outline: 'none', resize: 'vertical', boxSizing: 'border-box', marginBottom: 14 }} autoFocus />
-        <button onClick={() => onSend(body)} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', fontWeight: 800, fontSize: 13.5 }}>Send</button>
+        <button onClick={() => onSend(body)} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', cursor: 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 700, fontSize: 13.5 }}>Send</button>
       </div>
     </div>
   );
