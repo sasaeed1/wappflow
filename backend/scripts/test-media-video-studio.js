@@ -147,6 +147,20 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
       check('[no ffmpeg] error names the missing binary', /ffmpeg/i.test(exp.error_message || ''), exp.error_message);
     }
 
+    // ── templates ──
+    const tpls = await GET('/api/media/video/templates');
+    check('templates listed across categories', tpls.templates.length >= 8 && tpls.templates.some(t => t.category === 'Wedding') && tpls.templates[0].css);
+    // apply auto-fills from project media (we have the uploaded video asset)
+    r = await POST(`/api/media/projects/${PID}/templates/wedding_highlights/apply`, {});
+    check('apply template → 201 new timeline', r.status === 201);
+    const applied = await r.json();
+    check('template timeline is source=template + has clips', applied.source === 'template' && applied.document.tracks[0].clips.length > 0);
+    check('template clips reference real project media', applied.document.tracks[0].clips.every(c => c.assetId === VID));
+    check('apply with bad template → 404', (await POST(`/api/media/projects/${PID}/templates/nope/apply`, {})).status === 404);
+    // a project with no media can't apply
+    const EMPTY_PID = (await (await POST('/api/media/projects', { title: 'No media' })).json()).id;
+    check('apply with no media → 400 with guidance', (await POST(`/api/media/projects/${EMPTY_PID}/templates/social_quick/apply`, {})).status === 400);
+
     // export with no clips → graceful message
     const TL2 = (await (await POST(`/api/media/projects/${PID}/timelines`, { name: 'Empty' })).json()).id;
     const EXP2 = (await (await POST(`/api/media/timelines/${TL2}/export`, { preset: 'ig_reel' })).json()).id;

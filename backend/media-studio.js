@@ -25,6 +25,7 @@
 const createMediaWorker = require('./media-worker');
 const videoEngine = require('./video-engine');
 const videoLuts = require('./video-luts');
+const videoTemplates = require('./video-templates');
 const crypto = require('crypto');
 
 module.exports = function mountMediaStudio(app, db, deps = {}) {
@@ -1536,6 +1537,47 @@ Only suggest actions that make sense for the question. If none make sense, retur
   });
 
   app.get('/api/media/video/luts', auth, (req, res) => res.json({ luts: videoLuts.list() }));
+
+  // Reel templates: list (enriched with the look's CSS hint for card styling).
+  app.get('/api/media/video/templates', auth, (req, res) => {
+    const lutCss = Object.fromEntries(videoLuts.list().map(l => [l.id, l.css]));
+    res.json({ templates: videoTemplates.list().map(t => ({ ...t, css: lutCss[t.lut] || 'none' })) });
+  });
+
+  // Apply a template → builds a real timeline filled with the project's media
+  // (explicit asset_ids, else auto-pick keepers-first). Fully editable after.
+  app.post('/api/media/projects/:id/templates/:templateId/apply', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const tpl = videoTemplates.get(req.params.templateId);
+      if (!tpl) return res.status(404).json({ error: 'Template not found' });
+
+      let media;
+      const ids = Array.isArray(req.body.asset_ids) ? req.body.asset_ids.slice(0, 60) : null;
+      if (ids && ids.length) {
+        const sel = db.prepare("SELECT id, type FROM ms_assets WHERE id = ? AND project_id = ? AND type IN ('photo','video')");
+        media = ids.map(aid => sel.get(aid, project.id)).filter(Boolean);
+      } else {
+        // auto-pick: keepers first, then capture order
+        media = db.prepare(`
+          SELECT a.id, a.type FROM ms_assets a LEFT JOIN ms_cull_decisions c ON c.asset_id = a.id
+          WHERE a.project_id = ? AND a.type IN ('photo','video')
+          ORDER BY (c.decision = 'keep') DESC, a.capture_time IS NULL, a.capture_time, a.created_at
+          LIMIT 40`).all(project.id);
+      }
+      if (!media.length) return res.status(400).json({ error: 'Add photos or clips to this shoot first.' });
+
+      const aspect = videoEngine.ASPECTS[req.body.aspect] ? req.body.aspect : tpl.aspect;
+      const doc = videoEngine.sanitizeTimeline(videoTemplates.buildTimeline(tpl, media, aspect));
+      const id = generateId();
+      db.prepare(`INSERT INTO ms_timelines (id, workspace_id, project_id, name, source, template_id, aspect_ratio, width, height, fps, duration_ms, document, created_by)
+        VALUES (?, ?, ?, ?, 'template', ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, req.workspaceId, project.id, (req.body.name || tpl.name).slice(0, 120), tpl.id, doc.aspect, doc.width, doc.height, doc.fps, doc.duration, JSON.stringify(doc), req.userId);
+      logAudit(req.workspaceId, req.userId, 'apply_template', 'ms_timeline', id, { template: tpl.id, slots: doc.tracks[0].clips.length });
+      res.status(201).json(timelineOut(getTimeline(req.workspaceId, id)));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
 
   app.get('/api/media/projects/:id/timelines', auth, (req, res) => {
     try {

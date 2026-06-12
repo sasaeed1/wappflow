@@ -304,6 +304,8 @@ export const mediaAPI = {
   saveTimeline:    (tlId, data)  => api.put(`/media/timelines/${tlId}`, data),
   deleteTimeline:  (tlId)        => api.delete(`/media/timelines/${tlId}`),
   exportTimeline:  (tlId, body)  => api.post(`/media/timelines/${tlId}/export`, body),
+  videoTemplates:  ()            => api.get('/media/video/templates'),
+  applyTemplate:   (projectId, templateId, body) => api.post(`/media/projects/${projectId}/templates/${templateId}/apply`, body || {}),
   listVideoExports:(tlId)        => api.get(`/media/timelines/${tlId}/exports`),
   getVideoExport:  (exportId)    => api.get(`/media/video/exports/${exportId}`),
   // galleries

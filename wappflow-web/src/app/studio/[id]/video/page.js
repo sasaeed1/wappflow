@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X, LayoutTemplate, Loader } from 'lucide-react';
 import { mediaAPI } from '../../../../lib/api';
 import NavBar from '../../../../components/StudioShell';
 import { ASPECTS, ASPECT_LABELS } from '../../video-constants';
@@ -18,6 +18,7 @@ export default function ReelListPage() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
@@ -53,6 +54,7 @@ export default function ReelListPage() {
             <p className="ms-eyebrow">Video Studio</p>
             <h1 className="ms-h2" style={{ fontSize: 'clamp(20px, 2.4vw, 28px)' }}>Reels{project?.title ? <span style={{ color: 'var(--ms-ink-3)', fontWeight: 400 }}> · {project.title}</span> : ''}</h1>
           </div>
+          <button onClick={() => setShowTemplates(true)} className="ms-btn-ghost"><LayoutTemplate size={15} /> Templates</button>
           <button onClick={() => setShowNew(true)} className="ms-btn-ink"><Plus size={16} /> New reel</button>
         </div>
 
@@ -65,7 +67,10 @@ export default function ReelListPage() {
               <p className="ms-hero-sub" style={{ maxWidth: 440, margin: '12px auto 22px' }}>
                 Drop in photos and clips, set the beat, and export for Instagram, TikTok, or YouTube — without leaving Studio.
               </p>
-              <button onClick={(e) => { e.stopPropagation(); setShowNew(true); }} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10' }}><Plus size={16} /> New reel</button>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button onClick={(e) => { e.stopPropagation(); setShowTemplates(true); }} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10' }}><LayoutTemplate size={15} /> Start from a template</button>
+                <button onClick={(e) => { e.stopPropagation(); setShowNew(true); }} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.4)', color: '#fff' }}><Plus size={16} /> Blank reel</button>
+              </div>
             </div>
           </div>
         ) : (
@@ -104,7 +109,80 @@ export default function ReelListPage() {
       </div>
 
       {showNew && <NewReelModal onClose={() => setShowNew(false)} onPick={create} />}
+      {showTemplates && <TemplateGalleryModal projectId={id} hasMedia={assets.length > 0} onClose={() => setShowTemplates(false)} />}
     </NavBar>
+  );
+}
+
+function TemplateGalleryModal({ projectId, hasMedia, onClose }) {
+  const router = useRouter();
+  const [templates, setTemplates] = useState(null);
+  const [cat, setCat] = useState('All');
+  const [applying, setApplying] = useState(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => { mediaAPI.videoTemplates().then(r => setTemplates(r.data.templates || [])).catch(() => setTemplates([])); }, []);
+
+  const cats = ['All', ...Array.from(new Set((templates || []).map(t => t.category)))];
+  const shown = (templates || []).filter(t => cat === 'All' || t.category === cat);
+
+  const apply = async (t) => {
+    if (applying) return;
+    setApplying(t.id); setErr('');
+    try {
+      const r = await mediaAPI.applyTemplate(projectId, t.id, {});
+      router.push(`/studio/${projectId}/video/${r.data.id}`);
+    } catch (e) { setErr(e.response?.data?.error || 'Could not apply template'); setApplying(null); }
+  };
+
+  return (
+    <div onClick={onClose} className="ms-modal-overlay">
+      <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 720, width: '92vw' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+          <div>
+            <h2>Reel templates</h2>
+            <p className="ms-modal-sub">Pick a look — we’ll drop your {hasMedia ? 'photos & clips' : 'media'} into it. Fully editable after.</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+        </div>
+
+        {!hasMedia && <p style={{ fontSize: 12.5, color: '#d39a3e', margin: '8px 0 0' }}>Upload photos or clips to this shoot first — templates fill from your media.</p>}
+        {err && <p style={{ fontSize: 12.5, color: '#d4564a', margin: '8px 0 0' }}>{err}</p>}
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '16px 0' }}>
+          {cats.map(c => (
+            <button key={c} onClick={() => setCat(c)} className={`ms-chip${cat === c ? ' ms-chip-active' : ''}`} style={{ fontSize: 11.5 }}>{c}</button>
+          ))}
+        </div>
+
+        {templates === null ? (
+          <p className="ms-loading">Loading templates…</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, maxHeight: '52vh', overflowY: 'auto', paddingRight: 4 }}>
+            {shown.map(t => {
+              const [aw, ah] = ASPECTS[t.aspect] || ASPECTS['9:16'];
+              const portrait = ah > aw;
+              return (
+                <button key={t.id} onClick={() => apply(t)} disabled={!hasMedia || !!applying}
+                  style={{ border: '1px solid var(--ms-line)', borderRadius: 12, overflow: 'hidden', cursor: hasMedia ? 'pointer' : 'default', background: 'var(--ms-surface-2)', padding: 0, textAlign: 'left', opacity: !hasMedia ? 0.5 : 1 }}>
+                  <div style={{ position: 'relative', aspectRatio: portrait ? '3 / 4' : '4 / 3', overflow: 'hidden' }}>
+                    <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,#caa37a 0%,#9c7bb0 45%,#6b8aa6 100%)', filter: t.css === 'none' ? undefined : t.css }} />
+                    <span style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 -40px 40px -20px rgba(0,0,0,0.5)' }} />
+                    {applying === t.id && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}><Loader size={20} className="ms-spin" color="#fff" /></span>}
+                    <span style={{ position: 'absolute', top: 7, right: 7, padding: '2px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 9.5, fontWeight: 600 }}>{t.aspect}</span>
+                    <span style={{ position: 'absolute', bottom: 7, left: 8, color: '#fff', fontSize: 9.5, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>{t.slotCount} clips · {Math.round(t.durationMs / 1000)}s</span>
+                  </div>
+                  <div style={{ padding: '8px 10px' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ms-ink)' }}>{t.name}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--ms-ink-3)' }}>{t.category}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
