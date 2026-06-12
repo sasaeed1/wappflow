@@ -26,6 +26,7 @@ const createMediaWorker = require('./media-worker');
 const videoEngine = require('./video-engine');
 const videoLuts = require('./video-luts');
 const videoTemplates = require('./video-templates');
+const videoAiDrafts = require('./video-ai-drafts');
 const crypto = require('crypto');
 
 module.exports = function mountMediaStudio(app, db, deps = {}) {
@@ -407,6 +408,9 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
         }
       });
       tx();
+
+      // New media may improve a reel → flag existing AI drafts as refreshable (never auto-rebuilt).
+      try { db.prepare("UPDATE ms_timelines SET ai_stale = 1 WHERE project_id = ? AND source = 'ai_draft'").run(project.id); } catch {}
 
       emitToLead(project, req, 'media_upload', `${created.length} file(s) added to ${project.title}`, null);
       logAudit(req.workspaceId, req.userId, 'upload', 'ms_project', project.id, { count: created.length });
@@ -1576,6 +1580,67 @@ Only suggest actions that make sense for the question. If none make sense, retur
         .run(id, req.workspaceId, project.id, (req.body.name || tpl.name).slice(0, 120), tpl.id, doc.aspect, doc.width, doc.height, doc.fps, doc.duration, JSON.stringify(doc), req.userId);
       logAudit(req.workspaceId, req.userId, 'apply_template', 'ms_timeline', id, { template: tpl.id, slots: doc.tracks[0].clips.length });
       res.status(201).json(timelineOut(getTimeline(req.workspaceId, id)));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── AI Reel Drafts (control-first, score-driven) ────────────────────────────
+  // Reads the project's media with its advisory CV scores + cull decisions.
+  function scoredProjectMedia(projectId) {
+    return db.prepare(`
+      SELECT a.id, a.type, a.capture_time, a.created_at,
+        (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'quality' LIMIT 1) AS quality,
+        (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'sharpness' LIMIT 1) AS sharpness,
+        (SELECT group_key FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'duplicate_group' LIMIT 1) AS dup_group,
+        c.decision, c.rating
+      FROM ms_assets a LEFT JOIN ms_cull_decisions c ON c.asset_id = a.id
+      WHERE a.project_id = ? AND a.type IN ('photo','video')
+    `).all(projectId);
+  }
+
+  app.get('/api/media/projects/:id/ai-drafts/styles', auth, (req, res) => {
+    const project = getProject(req.workspaceId, req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const lutCss = Object.fromEntries(videoLuts.list().map(l => [l.id, l.css]));
+    res.json({
+      recommended: videoAiDrafts.recommendStyles(project.project_type),
+      styles: videoAiDrafts.styleList().map(s => ({ ...s, css: lutCss[s.lut] || 'none' })),
+    });
+  });
+
+  app.post('/api/media/projects/:id/ai-drafts', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const style = videoAiDrafts.getStyle(req.body.style) || videoAiDrafts.getStyle(videoAiDrafts.recommendStyles(project.project_type)[0]);
+      const ranked = videoAiDrafts.rankMedia(scoredProjectMedia(project.id));
+      if (ranked.length < 2) return res.status(400).json({ error: 'Not enough usable media yet — upload more, or cull a few keepers first.' });
+
+      const media = videoAiDrafts.selectForStyle(ranked, style);
+      const aspect = videoEngine.ASPECTS[req.body.aspect] ? req.body.aspect : style.aspect;
+      const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, aspect));
+      const id = generateId();
+      db.prepare(`INSERT INTO ms_timelines (id, workspace_id, project_id, name, source, aspect_ratio, width, height, fps, duration_ms, document, ai_style, ai_signature, ai_stale, created_by)
+        VALUES (?, ?, ?, ?, 'ai_draft', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`)
+        .run(id, req.workspaceId, project.id, `${style.name} (AI)`, doc.aspect, doc.width, doc.height, doc.fps, doc.duration, JSON.stringify(doc), style.id, videoAiDrafts.signatureOf(media), req.userId);
+      logAudit(req.workspaceId, req.userId, 'ai_draft', 'ms_timeline', id, { style: style.id, shots: media.length });
+      res.status(201).json(timelineOut(getTimeline(req.workspaceId, id)));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Rebuild an AI draft from the current media (same style); clears the stale flag.
+  app.post('/api/media/timelines/:id/refresh', auth, (req, res) => {
+    try {
+      const t = getTimeline(req.workspaceId, req.params.id);
+      if (!t) return res.status(404).json({ error: 'Timeline not found' });
+      if (t.source !== 'ai_draft') return res.status(400).json({ error: 'Only AI drafts can be refreshed' });
+      const style = videoAiDrafts.getStyle(t.ai_style) || videoAiDrafts.DRAFT_STYLES[0];
+      const ranked = videoAiDrafts.rankMedia(scoredProjectMedia(t.project_id));
+      if (ranked.length < 2) return res.status(400).json({ error: 'Not enough usable media to refresh.' });
+      const media = videoAiDrafts.selectForStyle(ranked, style);
+      const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, t.aspect_ratio));
+      db.prepare(`UPDATE ms_timelines SET document = ?, duration_ms = ?, width = ?, height = ?, ai_signature = ?, ai_stale = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(JSON.stringify(doc), doc.duration, doc.width, doc.height, videoAiDrafts.signatureOf(media), t.id);
+      res.json(timelineOut(getTimeline(req.workspaceId, t.id)));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

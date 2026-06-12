@@ -306,6 +306,9 @@ export const mediaAPI = {
   exportTimeline:  (tlId, body)  => api.post(`/media/timelines/${tlId}/export`, body),
   videoTemplates:  ()            => api.get('/media/video/templates'),
   applyTemplate:   (projectId, templateId, body) => api.post(`/media/projects/${projectId}/templates/${templateId}/apply`, body || {}),
+  aiDraftStyles:   (projectId)   => api.get(`/media/projects/${projectId}/ai-drafts/styles`),
+  generateAiDraft: (projectId, body) => api.post(`/media/projects/${projectId}/ai-drafts`, body || {}),
+  refreshTimeline: (tlId)        => api.post(`/media/timelines/${tlId}/refresh`),
   listVideoExports:(tlId)        => api.get(`/media/timelines/${tlId}/exports`),
   getVideoExport:  (exportId)    => api.get(`/media/video/exports/${exportId}`),
   // galleries

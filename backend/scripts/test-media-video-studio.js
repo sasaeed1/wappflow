@@ -161,6 +161,33 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
     const EMPTY_PID = (await (await POST('/api/media/projects', { title: 'No media' })).json()).id;
     check('apply with no media → 400 with guidance', (await POST(`/api/media/projects/${EMPTY_PID}/templates/social_quick/apply`, {})).status === 400);
 
+    // ── AI reel drafts (score-driven, control-first) ──
+    const fd2 = new FormData();
+    fd2.append('files', new Blob([Buffer.from('second-clip')], { type: 'video/mp4' }), 'clip2.mp4');
+    await (await fetch(`${base}/api/media/projects/${PID}/assets`, { method: 'POST', body: fd2 })).json();
+    await drain(worker);
+
+    const styles = await GET(`/api/media/projects/${PID}/ai-drafts/styles`);
+    check('AI-draft styles + project recommendations', styles.styles.length === 6 && styles.recommended.length >= 1 && styles.styles[0].css);
+
+    r = await POST(`/api/media/projects/${PID}/ai-drafts`, { style: 'social_short' });
+    check('generate AI draft → 201', r.status === 201);
+    const draft = await r.json();
+    check('draft is source=ai_draft (style + clips, not stale)', draft.source === 'ai_draft' && draft.ai_style === 'social_short' && draft.document.tracks[0].clips.length >= 2 && draft.ai_stale === 0);
+    check('draft clips reference real media', draft.document.tracks[0].clips.every(c => c.assetId));
+
+    // uploading more media marks the draft refreshable (never auto-rebuilt)
+    const fd3 = new FormData();
+    fd3.append('files', new Blob([Buffer.from('third-clip')], { type: 'video/mp4' }), 'clip3.mp4');
+    await (await fetch(`${base}/api/media/projects/${PID}/assets`, { method: 'POST', body: fd3 })).json();
+    const after = (await GET(`/api/media/projects/${PID}/timelines`)).timelines.find(t => t.id === draft.id);
+    check('new upload flags AI draft as stale', after.ai_stale === 1);
+
+    // refresh rebuilds from current media + clears the flag
+    r = await POST(`/api/media/timelines/${draft.id}/refresh`, {});
+    check('refresh AI draft → 200, stale cleared', r.status === 200 && (await r.json()).ai_stale === 0);
+    check('refresh on a manual timeline → 400', (await POST(`/api/media/timelines/${TL}/refresh`, {})).status === 400);
+
     // export with no clips → graceful message
     const TL2 = (await (await POST(`/api/media/projects/${PID}/timelines`, { name: 'Empty' })).json()).id;
     const EXP2 = (await (await POST(`/api/media/timelines/${TL2}/export`, { preset: 'ig_reel' })).json()).id;
