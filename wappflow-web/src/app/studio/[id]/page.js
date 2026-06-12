@@ -292,7 +292,7 @@ export default function ProjectPage() {
               <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/cull`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><ListChecks size={15} /> Cull</button>}
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><BookOpen size={15} /> Albums</button>}
-              {assets.some(a => a.type === 'video') && <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><Film size={15} /> Video</button>}
+              {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><Film size={15} /> Reels</button>}
               <button onClick={() => fileRef.current?.click()} disabled={uploading} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10' }}>
                 {uploading ? <Loader size={16} className="ms-spin" /> : <Upload size={16} />} {uploading ? 'Uploading…' : 'Upload photos'}
               </button>
