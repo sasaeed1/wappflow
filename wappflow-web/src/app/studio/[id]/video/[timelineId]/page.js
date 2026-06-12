@@ -5,13 +5,13 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Play, Pause, Scissors, Trash2, Copy, Download, Image as ImageIcon, Film,
-  Check, Loader, X, ChevronDown, Wand2, ArrowLeftRight, ZoomIn, ZoomOut,
+  Check, Loader, X, ChevronDown, Wand2, ArrowLeftRight, ZoomIn, ZoomOut, Type, Snowflake,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
 import NavBar from '../../../../../components/StudioShell';
 import {
   ASPECTS, ASPECT_LABELS, EXPORT_PRESETS, QUALITIES, SAFE_AREAS, TRANSITIONS, VIDEO_EFFECTS,
-  DEFAULT_PHOTO_MS, DEFAULT_VIDEO_MS, PX_PER_MS, aspectBox, uid, colorPreviewFilter,
+  TEXT_TYPES, TEXT_ANIM, FONT_FAMILIES, DEFAULT_PHOTO_MS, DEFAULT_VIDEO_MS, PX_PER_MS, aspectBox, uid, colorPreviewFilter,
 } from '../../../video-constants';
 
 const ZERO_COLOR = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0 };
@@ -73,7 +73,9 @@ export default function VideoEditor() {
 
   const spine = doc ? getSpine(doc) : null;
   const duration = spine ? spineEnd(spine) : 0;
-  const selected = spine?.clips.find(c => c.id === selId) || null;
+  const textTrack = doc ? doc.tracks.find(t => t.type === 'text') : null;
+  const selected = doc ? (doc.tracks.flatMap(tr => tr.clips).find(c => c.id === selId) || null) : null;
+  const activeTexts = textTrack ? textTrack.clips.filter(c => playhead >= c.start && playhead < c.end) : [];
 
   // autosave (debounced) on doc/name change
   const markDirty = useCallback(() => {
@@ -159,46 +161,73 @@ export default function VideoEditor() {
       const next = [...cs]; next.splice(i, 1, a, b); return next;
     });
   };
-  const removeClip = (cid) => { mutateSpine(cs => repack(cs.filter(c => c.id !== cid))); if (selId === cid) setSelId(null); };
-  const duplicateClip = (cid) => mutateSpine(cs => {
-    const c = cs.find(x => x.id === cid); if (!c) return cs;
-    return repack([...cs, { ...c, id: uid() }]);
-  });
-  const patchClip = (cid, patch) => mutateSpine(cs => cs.map(c => {
+  // generic, track-aware mutators (work for spine media AND text clips)
+  const removeClip = (cid) => {
+    setDoc(d => ({ ...d, tracks: d.tracks.map(tr => tr.type === 'video' ? { ...tr, clips: repack(tr.clips.filter(c => c.id !== cid)) } : { ...tr, clips: tr.clips.filter(c => c.id !== cid) }) }));
+    if (selId === cid) setSelId(null);
+  };
+  const duplicateClip = (cid) => setDoc(d => ({ ...d, tracks: d.tracks.map(tr => {
+    if (!tr.clips.some(c => c.id === cid)) return tr;
+    const c = tr.clips.find(x => x.id === cid);
+    if (tr.type === 'video') return { ...tr, clips: repack([...tr.clips, { ...c, id: uid() }]) };
+    return { ...tr, clips: [...tr.clips, { ...c, id: uid(), start: c.end, end: c.end + c.duration }] };
+  }) }));
+  const patchClip = (cid, patch) => setDoc(d => ({ ...d, tracks: d.tracks.map(tr => ({ ...tr, clips: tr.clips.map(c => {
     if (c.id !== cid) return c;
     const n = { ...c, ...patch };
     if (patch.transform) n.transform = { ...c.transform, ...patch.transform };
     if (patch.kenBurns) n.kenBurns = { ...c.kenBurns, ...patch.kenBurns };
+    if (patch.text) n.text = { ...c.text, ...patch.text };
     n.end = n.start + n.duration;
     return n;
-  }));
+  }) })) }));
+  const addText = () => {
+    const start = clamp(playhead, 0, Math.max(0, duration - 500)), dur = 2500;
+    const clip = {
+      id: uid(), kind: 'text', start, duration: dur, end: start + dur,
+      text: { content: 'Your text', type: 'heading', font: 'sans', size: 64, weight: 800, color: '#ffffff', opacity: 1, align: 'center', letterSpacing: 0, animation: 'fade' },
+      transform: { x: 0, y: -0.12, scale: 1, opacity: 1 },
+    };
+    setDoc(d => {
+      let tracks = d.tracks;
+      if (!tracks.some(t => t.type === 'text')) tracks = [...tracks, { id: uid('t'), type: 'text', clips: [] }];
+      tracks = tracks.map(t => t.type === 'text' ? { ...t, clips: [...t.clips, clip] } : t);
+      return { ...d, tracks };
+    });
+    setSelId(clip.id);
+  };
 
   const changeAspect = (aspect) => { setDoc(d => ({ ...d, aspect })); setAspectMenu(false); };
+  const uploadLut = async (file) => { try { const r = await mediaAPI.uploadLut(file, file.name); setLuts(ls => [...ls, r.data]); } catch {} };
 
   // ── timeline drag (move / trim) ───────────────────────────────────────────────
   const onClipPointerDown = (e, clip, mode) => {
     e.stopPropagation();
     setSelId(clip.id); setPlaying(false);
-    drag.current = { id: clip.id, mode, startX: e.clientX, orig: { ...clip } };
+    const tt = doc.tracks.find(tr => tr.clips.some(c => c.id === clip.id))?.type || 'video';
+    drag.current = { id: clip.id, mode, startX: e.clientX, orig: { ...clip }, trackType: tt };
     window.addEventListener('pointermove', onDragMove);
     window.addEventListener('pointerup', onDragUp);
   };
   const onDragMove = (e) => {
     const d = drag.current; if (!d) return;
     const dx = (e.clientX - d.startX) / scale; // ms moved
-    mutateSpine(cs => {
-      let next = cs.map(c => {
+    setDoc(doc => ({ ...doc, tracks: doc.tracks.map(tr => {
+      if (!tr.clips.some(c => c.id === d.id)) return tr;
+      let next = tr.clips.map(c => {
         if (c.id !== d.id) return c;
-        if (d.mode === 'move') return { ...c, start: Math.max(0, d.orig.start + dx) };
-        if (d.mode === 'trimR') { const dur = clamp(d.orig.duration + dx, 300, 120000); return { ...c, duration: dur, end: c.start + dur, out: (c.in || 0) + dur * (c.speed || 1) }; }
+        if (d.mode === 'move') return { ...c, start: Math.max(0, d.orig.start + dx), end: Math.max(0, d.orig.start + dx) + c.duration };
+        if (d.mode === 'trimR') { const dur = clamp(d.orig.duration + dx, 300, 120000); return { ...c, duration: dur, end: c.start + dur, ...(c.kind === 'video' && !c.freeze ? { out: (c.in || 0) + dur * (c.speed || 1) } : {}) }; }
         if (d.mode === 'trimL') {
           const dur = clamp(d.orig.duration - dx, 300, 120000); const delta = d.orig.duration - dur;
-          return { ...c, duration: dur, in: Math.max(0, (d.orig.in || 0) + delta * (c.speed || 1)) };
+          if (d.trackType === 'video') return { ...c, duration: dur, end: c.start + dur, in: Math.max(0, (d.orig.in || 0) + delta * (c.speed || 1)) };
+          return { ...c, start: d.orig.start + delta, duration: dur, end: d.orig.start + delta + dur };
         }
         return c;
       });
-      return d.mode === 'move' ? repack(next) : next.map(c => ({ ...c, end: c.start + c.duration }));
-    });
+      if (tr.type === 'video' && d.mode === 'move') next = repack(next);
+      return { ...tr, clips: next };
+    }) }));
   };
   const onDragUp = () => { drag.current = null; window.removeEventListener('pointermove', onDragMove); window.removeEventListener('pointerup', onDragUp); };
 
@@ -235,7 +264,7 @@ export default function VideoEditor() {
     let sc = tf.scale || 1, tx = (tf.x || 0) * 100, ty = (tf.y || 0) * 100;
     if (activeClip.kenBurns) { const k = activeClip.kenBurns; sc *= lerp(k.fromScale, k.toScale, p); tx += lerp(k.fromX, k.toX, p) * 100; ty += lerp(k.fromY, k.toY, p) * 100; }
     const lutCss = activeClip.lut ? (luts.find(l => l.id === activeClip.lut)?.css || '') : '';
-    const filter = [colorPreviewFilter(activeClip.color), lutCss, activeFx.includes('blur') ? 'blur(6px)' : '', activeFx.includes('softFocus') ? 'blur(1.5px)' : ''].filter(Boolean).join(' ');
+    const filter = [colorPreviewFilter(activeClip.color), lutCss, activeFx.includes('blur') ? 'blur(6px)' : '', activeFx.includes('softFocus') ? 'blur(1.5px)' : '', activeFx.includes('glow') ? 'brightness(1.07) contrast(1.03)' : ''].filter(Boolean).join(' ');
     mediaStyle = { ...mediaStyle, transform: `translate(${tx}%, ${ty}%) scale(${sc}) rotate(${tf.rotation || 0}deg)`, opacity: tf.opacity ?? 1, transition: playing ? 'none' : 'transform .12s', filter: filter || undefined };
   }
 
@@ -302,6 +331,8 @@ export default function VideoEditor() {
               {activeFx.includes('vignette') && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: 'inset 0 0 120px 40px rgba(0,0,0,0.55)' }} />}
               {activeFx.includes('letterbox') && <><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '11%', background: '#000', pointerEvents: 'none' }} /><div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '11%', background: '#000', pointerEvents: 'none' }} /></>}
               {activeFx.includes('filmGrain') && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.12, mixBlendMode: 'overlay', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")" }} />}
+              {/* text overlays */}
+              {activeTexts.map(tc => <TextOverlay key={tc.id} clip={tc} stage={stageSize} />)}
               {/* safe-area guides */}
               {safe && (
                 <div className="ms-ve-safe" style={{ top: `${safe.top * 100}%`, bottom: `${safe.bottom * 100}%`, left: `${safe.left * 100}%`, right: `${safe.right * 100}%` }} />
@@ -321,7 +352,9 @@ export default function VideoEditor() {
                 Select a clip to edit it. Click media on the left to add it to the timeline.<br /><br />
                 <b style={{ color: 'var(--ms-ink-2)' }}>Shortcuts</b><br />Space play · S split · Del remove · ←→ nudge
               </div>
-            ) : <Inspector clip={selected} luts={luts} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />}
+            ) : selected.kind === 'text' ? (
+              <TextInspector clip={selected} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />
+            ) : <Inspector clip={selected} luts={luts} onUploadLut={uploadLut} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />}
           </aside>
         </div>
 
@@ -329,6 +362,7 @@ export default function VideoEditor() {
         <div className="ms-ve-timeline">
           <div className="ms-ve-tl-tools">
             <button onClick={splitAtPlayhead} disabled={!activeClip} className="ms-ve-tool" title="Split (S)"><Scissors size={14} /> Split</button>
+            <button onClick={addText} className="ms-ve-tool" title="Add text"><Type size={14} /> Text</button>
             <button onClick={() => selId && duplicateClip(selId)} disabled={!selId} className="ms-ve-tool" title="Duplicate"><Copy size={14} /></button>
             <button onClick={() => selId && removeClip(selId)} disabled={!selId} className="ms-ve-tool" title="Delete (Del)"><Trash2 size={14} /></button>
             <div style={{ flex: 1 }} />
@@ -336,22 +370,37 @@ export default function VideoEditor() {
             <button onClick={() => setScale(s => clamp(s * 1.3, 0.012, 0.4))} className="ms-ve-tool"><ZoomIn size={14} /></button>
           </div>
           <div className="ms-ve-tl-scroll">
-            <div className="ms-ve-tl-track" style={{ width: Math.max(duration * scale + 40, 600) }} onPointerDown={scrubTo}>
-              {spine.clips.map(c => {
-                const a = assetMap[c.assetId];
-                return (
-                  <div key={c.id} onPointerDown={(e) => onClipPointerDown(e, c, 'move')}
-                    className={`ms-ve-clip${selId === c.id ? ' is-sel' : ''}`}
-                    style={{ left: c.start * scale, width: Math.max(c.duration * scale, 18) }}>
-                    {a && <img src={mediaUrl(a.type === 'video' ? (a.poster_url || a.thumb_url) : (a.thumb_url || a.url))} alt="" />}
-                    <span className="ms-ve-clip-label">{c.kind === 'video' ? <Film size={10} /> : <ImageIcon size={10} />}{c.speed !== 1 ? ` ${c.speed}×` : ''}</span>
-                    <span className="ms-ve-handle l" onPointerDown={(e) => onClipPointerDown(e, c, 'trimL')} />
-                    <span className="ms-ve-handle r" onPointerDown={(e) => onClipPointerDown(e, c, 'trimR')} />
-                  </div>
-                );
-              })}
-              {spine.clips.length === 0 && <div className="ms-ve-tl-empty">Click media above to build your reel →</div>}
-              <div className="ms-ve-playhead" style={{ left: playhead * scale }} />
+            <div style={{ position: 'relative', width: Math.max(duration * scale + 40, 600) }} onPointerDown={scrubTo}>
+              <div className="ms-ve-tl-track">
+                {spine.clips.map(c => {
+                  const a = assetMap[c.assetId];
+                  return (
+                    <div key={c.id} onPointerDown={(e) => onClipPointerDown(e, c, 'move')}
+                      className={`ms-ve-clip${selId === c.id ? ' is-sel' : ''}`}
+                      style={{ left: c.start * scale, width: Math.max(c.duration * scale, 18) }}>
+                      {a && <img src={mediaUrl(a.type === 'video' ? (a.poster_url || a.thumb_url) : (a.thumb_url || a.url))} alt="" />}
+                      <span className="ms-ve-clip-label">{c.kind === 'video' ? <Film size={10} /> : <ImageIcon size={10} />}{c.freeze ? ' ❄' : c.speed !== 1 ? ` ${c.speed}×` : ''}</span>
+                      <span className="ms-ve-handle l" onPointerDown={(e) => onClipPointerDown(e, c, 'trimL')} />
+                      <span className="ms-ve-handle r" onPointerDown={(e) => onClipPointerDown(e, c, 'trimR')} />
+                    </div>
+                  );
+                })}
+                {spine.clips.length === 0 && <div className="ms-ve-tl-empty">Click media above to build your reel →</div>}
+              </div>
+              {textTrack && textTrack.clips.length > 0 && (
+                <div className="ms-ve-tl-track ms-ve-tl-text">
+                  {textTrack.clips.map(c => (
+                    <div key={c.id} onPointerDown={(e) => onClipPointerDown(e, c, 'move')}
+                      className={`ms-ve-clip ms-ve-clip-txt${selId === c.id ? ' is-sel' : ''}`}
+                      style={{ left: c.start * scale, width: Math.max(c.duration * scale, 18) }}>
+                      <span className="ms-ve-clip-tlabel"><Type size={9} /> {c.text?.content || 'Text'}</span>
+                      <span className="ms-ve-handle l" onPointerDown={(e) => onClipPointerDown(e, c, 'trimL')} />
+                      <span className="ms-ve-handle r" onPointerDown={(e) => onClipPointerDown(e, c, 'trimR')} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="ms-ve-playhead" style={{ left: playhead * scale, height: textTrack && textTrack.clips.length ? 130 : 92 }} />
             </div>
           </div>
         </div>
@@ -369,7 +418,7 @@ function dipStyle(tr, intensity) {
   return { position: 'absolute', inset: 0, background: white ? '#fff' : '#000', opacity: clamp(intensity, 0, 1), pointerEvents: 'none' };
 }
 
-function Inspector({ clip, luts, patch, onDelete, onDup }) {
+function Inspector({ clip, luts, onUploadLut, patch, onDelete, onDup }) {
   const color = clip.color || ZERO_COLOR;
   const fx = clip.effects || [];
   const setColor = (k, v) => patch({ color: { ...ZERO_COLOR, ...color, [k]: v } });
@@ -397,8 +446,11 @@ function Inspector({ clip, luts, patch, onDelete, onDup }) {
               ))}
             </div>
           </Field>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ms-ink-2)', margin: '4px 0 14px', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ms-ink-2)', margin: '4px 0 8px', cursor: 'pointer' }}>
             <input type="checkbox" checked={!!clip.reverse} onChange={e => patch({ reverse: e.target.checked })} style={{ accentColor: 'var(--ms-accent)' }} /> Reverse playback
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ms-ink-2)', margin: '0 0 14px', cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!clip.freeze} onChange={e => patch({ freeze: e.target.checked })} style={{ accentColor: 'var(--ms-accent)' }} /> <Snowflake size={12} /> Freeze frame
           </label>
         </>
       )}
@@ -429,6 +481,10 @@ function Inspector({ clip, luts, patch, onDelete, onDup }) {
         <Field label="Look">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
             <button onClick={() => patch({ lut: null })} className={`ms-chip${!clip.lut ? ' ms-chip-active' : ''}`} style={{ padding: '7px 4px', fontSize: 10, justifyContent: 'center' }}>None</button>
+            <label className="ms-chip" title="Upload a .cube LUT" style={{ padding: '7px 4px', fontSize: 10, justifyContent: 'center', cursor: 'pointer' }}>
+              + .cube
+              <input type="file" accept=".cube" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onUploadLut(f); e.target.value = ''; }} />
+            </label>
             {luts.map(l => (
               <button key={l.id} onClick={() => patch({ lut: l.id })} title={l.name}
                 className={`ms-chip${clip.lut === l.id ? ' ms-chip-active' : ''}`}
@@ -473,6 +529,102 @@ function TransitionPicker({ value, onChange }) {
         return <button key={t.id} onClick={() => onChange(t.id === 'none' ? null : { type: t.id, duration: 400 })}
           className={`ms-chip${active ? ' ms-chip-active' : ''}`} style={{ padding: '5px 9px', fontSize: 11 }}>{t.label}</button>;
       })}
+    </div>
+  );
+}
+
+function TextOverlay({ clip, stage }) {
+  const t = clip.text || {}, tf = clip.transform || {};
+  const fontPx = Math.max(8, (t.size || 48) * (stage.height / 1080) * (tf.scale || 1));
+  const fam = (FONT_FAMILIES.find(f => f.id === t.font) || FONT_FAMILIES[0]).css;
+  const boxed = ['caption', 'lowerThird', 'cta'].includes(t.type);
+  const left = t.align === 'left' ? `${6 + (tf.x || 0) * 100}%` : t.align === 'right' ? `${94 + (tf.x || 0) * 100}%` : `${50 + (tf.x || 0) * 100}%`;
+  const tx = t.align === 'left' ? '0%' : t.align === 'right' ? '-100%' : '-50%';
+  return (
+    <div style={{
+      position: 'absolute', left, top: `${50 + (tf.y || 0) * 100}%`, transform: `translate(${tx}, -50%)`, maxWidth: '88%', pointerEvents: 'none',
+      fontFamily: fam, fontWeight: t.weight || 700, fontSize: fontPx, lineHeight: 1.12, color: t.color || '#fff', opacity: tf.opacity ?? t.opacity ?? 1,
+      textAlign: t.align || 'center', letterSpacing: (t.letterSpacing || 0) * (stage.height / 1080),
+      background: boxed ? 'rgba(0,0,0,0.35)' : 'transparent', padding: boxed ? `${fontPx * 0.18}px ${fontPx * 0.4}px` : 0, borderRadius: boxed ? 6 : 0,
+      textShadow: boxed ? 'none' : '0 2px 14px rgba(0,0,0,0.5)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+    }}>{t.content || ' '}</div>
+  );
+}
+
+function TextInspector({ clip, patch, onDelete, onDup }) {
+  const t = clip.text || {};
+  const tf = clip.transform || {};
+  const setText = (k, v) => patch({ text: { [k]: v } });
+  const setTf = (k, v) => patch({ transform: { [k]: v } });
+  return (
+    <div style={{ padding: 14, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <span style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--ms-accent)', color: 'var(--ms-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Type size={15} /></span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ms-ink)' }}>Text</span>
+      </div>
+
+      <textarea value={t.content || ''} onChange={e => setText('content', e.target.value)} rows={2} placeholder="Your text"
+        className="ms-input" style={{ width: '100%', resize: 'vertical', marginBottom: 14, fontFamily: 'var(--ms-font-ui)' }} autoFocus />
+
+      <Field label="Style">
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {TEXT_TYPES.map(tt => (
+            <button key={tt.id} onClick={() => patch({ text: { type: tt.id, size: tt.size, weight: tt.weight }, transform: { y: tt.y } })}
+              className={`ms-chip${t.type === tt.id ? ' ms-chip-active' : ''}`} style={{ padding: '5px 9px', fontSize: 11 }}>{tt.label}</button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Font">
+        <div style={{ display: 'flex', gap: 5 }}>
+          {FONT_FAMILIES.map(f => (
+            <button key={f.id} onClick={() => setText('font', f.id)} className={`ms-chip${t.font === f.id ? ' ms-chip-active' : ''}`} style={{ flex: 1, fontFamily: f.css }}>{f.label}</button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label={`Size · ${t.size || 48}`}>
+        <input type="range" min={16} max={160} value={t.size || 48} onChange={e => setText('size', Number(e.target.value))} style={{ width: '100%' }} />
+      </Field>
+
+      <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ms-ink-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>Color</div>
+          <input type="color" value={t.color || '#ffffff'} onChange={e => setText('color', e.target.value)} style={{ width: 44, height: 30, borderRadius: 7, border: '1px solid var(--ms-line)', background: 'none', cursor: 'pointer' }} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ms-ink-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>Align</div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {['left', 'center', 'right'].map(a => (
+              <button key={a} onClick={() => setText('align', a)} className={`ms-chip${(t.align || 'center') === a ? ' ms-chip-active' : ''}`} style={{ flex: 1, padding: '6px 4px', fontSize: 11 }}>{a[0].toUpperCase()}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <Field label="Animation">
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {TEXT_ANIM.map(a => (
+            <button key={a.id} onClick={() => setText('animation', a.id)} className={`ms-chip${(t.animation || 'fade') === a.id ? ' ms-chip-active' : ''}`} style={{ padding: '5px 9px', fontSize: 11 }}>{a.label}</button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Position">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>Horizontal</span></div>
+        <input type="range" min={-45} max={45} value={Math.round((tf.x || 0) * 100)} onChange={e => setTf('x', Number(e.target.value) / 100)} onDoubleClick={() => setTf('x', 0)} style={{ width: '100%', marginBottom: 8 }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>Vertical</span></div>
+        <input type="range" min={-45} max={45} value={Math.round((tf.y || 0) * 100)} onChange={e => setTf('y', Number(e.target.value) / 100)} onDoubleClick={() => setTf('y', 0)} style={{ width: '100%' }} />
+      </Field>
+
+      <Field label={`Duration · ${(clip.duration / 1000).toFixed(1)}s`}>
+        <input type="range" min={500} max={12000} step={100} value={clip.duration} onChange={e => patch({ duration: Number(e.target.value) })} style={{ width: '100%' }} />
+      </Field>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button onClick={onDup} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px' }}><Copy size={13} /> Duplicate</button>
+        <button onClick={onDelete} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', color: '#d4564a' }}><Trash2 size={13} /> Delete</button>
+      </div>
     </div>
   );
 }

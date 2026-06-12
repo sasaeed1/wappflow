@@ -53,13 +53,20 @@ export const TEXT_ANIM = [
   { id: 'scale', label: 'Scale' }, { id: 'typewriter', label: 'Typewriter' }, { id: 'pop', label: 'Pop' }, { id: 'zoom', label: 'Zoom' },
 ];
 
-// Effects the export engine renders today (matches video-engine.fxFilter).
+// Effects the export engine renders today (matches video-engine.fxFilter + glow subgraph).
 export const VIDEO_EFFECTS = [
   { id: 'vignette', label: 'Vignette' },
   { id: 'filmGrain', label: 'Film grain' },
+  { id: 'glow', label: 'Glow' },
   { id: 'blur', label: 'Blur' },
   { id: 'softFocus', label: 'Soft focus' },
   { id: 'letterbox', label: 'Letterbox' },
+];
+
+export const FONT_FAMILIES = [
+  { id: 'sans', label: 'Sans', css: 'system-ui, -apple-system, sans-serif' },
+  { id: 'serif', label: 'Serif', css: 'Georgia, "Times New Roman", serif' },
+  { id: 'mono', label: 'Mono', css: 'ui-monospace, monospace' },
 ];
 
 // CSS approximation of the per-clip colour grade for instant preview (the server

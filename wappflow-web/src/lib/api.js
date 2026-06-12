@@ -306,6 +306,8 @@ export const mediaAPI = {
   exportTimeline:  (tlId, body)  => api.post(`/media/timelines/${tlId}/export`, body),
   videoTemplates:  ()            => api.get('/media/video/templates'),
   applyTemplate:   (projectId, templateId, body) => api.post(`/media/projects/${projectId}/templates/${templateId}/apply`, body || {}),
+  uploadLut:       (file, name) => { const fd = new FormData(); fd.append('file', file); if (name) fd.append('name', name); return api.post('/media/video/luts', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
+  deleteLut:       (lutId)       => api.delete(`/media/video/luts/${lutId}`),
   aiDraftStyles:   (projectId)   => api.get(`/media/projects/${projectId}/ai-drafts/styles`),
   generateAiDraft: (projectId, body) => api.post(`/media/projects/${projectId}/ai-drafts`, body || {}),
   refreshTimeline: (tlId)        => api.post(`/media/timelines/${tlId}/refresh`),

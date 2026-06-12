@@ -47,6 +47,24 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
   const emptyCmd = ve.buildExportCommand({ tracks: [] }, { width: 1080, height: 1920, fps: 30 });
   check('buildExportCommand empty → null args + note', emptyCmd.args === null && emptyCmd.note === 'empty-timeline');
 
+  // text overlays (drawtext) + glow (subgraph) + freeze
+  const rich = ve.sanitizeTimeline({ aspect: '9:16', tracks: [
+    { type: 'video', clips: [
+      { kind: 'photo', assetId: 'p1', start: 0, duration: 3000, effects: ['glow'] },
+      { kind: 'video', assetId: 'v1', start: 3000, duration: 2000, in: 1000, freeze: true },
+    ] },
+    { type: 'text', clips: [{ kind: 'text', start: 400, duration: 2000, text: { content: "Sami & Co", type: 'heading', font: 'sans', size: 64, color: '#ffcc00', align: 'center', animation: 'fade' }, transform: { x: 0, y: -0.12 } }] },
+  ] });
+  const rj = ve.buildExportCommand(rich, { width: 1080, height: 1920, fps: 30 }, () => '/m/a.jpg', () => null, () => '/fonts/sans.ttf').args.join(' ');
+  check('text: drawtext with timing + scaled size', rj.includes('drawtext=fontfile') && rj.includes('between(t,0.40,2.40)') && rj.includes('fontsize=114'));
+  check('text: colour hex → ffmpeg 0x form', rj.includes('fontcolor=0xffcc00'));
+  check('glow: split + screen-blend subgraph', rj.includes('split') && rj.includes('blend=all_mode=screen'));
+  check('freeze: holds a single looped frame', rj.includes('loop=loop=-1:size=1'));
+  check('sanitize preserves freeze + keeps text track', rich.tracks[0].clips[1].freeze === true && rich.tracks.some(t => t.type === 'text' && t.clips.length === 1));
+  const noFont = ve.buildExportCommand(rich, { width: 1080, height: 1920, fps: 30 }, () => '/m/a.jpg', () => null, () => null).args.join(' ');
+  check('no font on box → text skipped, video still renders', !noFont.includes('drawtext') && noFont.includes('concat'));
+  check('detectFonts returns a shape (degrades to null when absent)', typeof ve.detectFonts() === 'object');
+
   const cmd = ve.buildExportCommand(san, { width: 1080, height: 1920, fps: 30 }, (id) => '/m/' + id + '.bin');
   const joined = cmd.args.join(' ');
   check('command: 2 segments concatenated', cmd.segments === 2 && joined.includes('concat=n=2'));
@@ -101,6 +119,21 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
     check('presets: LUT looks listed (8 built-ins)', Array.isArray(presets.luts) && presets.luts.length === 8 && presets.luts[0].css);
     const luts = await GET('/api/media/video/luts');
     check('/video/luts endpoint returns the look library', luts.luts.some(l => l.id === 'wedding_warm'));
+
+    // custom .cube LUT upload (rounds out the look library)
+    const cubeText = 'TITLE "Mine"\nLUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n';
+    const lfd = new FormData();
+    lfd.append('file', new Blob([cubeText], { type: 'application/octet-stream' }), 'mine.cube');
+    lfd.append('name', 'My Look');
+    const lutRes = await (await fetch(`${base}/api/media/video/luts`, { method: 'POST', body: lfd })).json();
+    check('custom .cube upload → stored custom LUT', lutRes.custom === true && lutRes.name === 'My Look');
+    check('custom LUT now appears in the library', (await GET('/api/media/video/luts')).luts.some(l => l.id === lutRes.id));
+    const badLut = new FormData();
+    badLut.append('file', new Blob(['not a cube file'], { type: 'text/plain' }), 'bad.cube');
+    check('non-cube upload rejected (400)', (await fetch(`${base}/api/media/video/luts`, { method: 'POST', body: badLut })).status === 400);
+
+    // text fonts surfaced for the editor
+    check('presets report font availability', typeof presets.fonts === 'object' && Array.isArray(presets.fontFamilies));
     const HAS_FFMPEG = presets.ffmpeg.ffmpeg;
 
     // upload a "video" asset → ingest should queue a probe job

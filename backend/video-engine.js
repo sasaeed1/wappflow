@@ -78,6 +78,7 @@ function sanitizeClip(c, kind) {
     out.out = clamp(c.out, 0, 36e5, out.in + dur);
     out.speed = clamp(c.speed, 0.25, 4, 1);
     out.reverse = !!c.reverse;
+    out.freeze = !!c.freeze; // hold the in-point frame for the whole clip
     if (c.freezeAtMs != null) out.freezeAtMs = clamp(c.freezeAtMs, 0, 36e5, 0);
     const t = c.transform || {};
     out.transform = {
@@ -196,7 +197,7 @@ function parseFfprobe(json) {
 // their duration with an optional Ken Burns push. The first audio track (if any)
 // is mixed under with volume + fades. Returns { args, segments, hasAudio, note }.
 // resolve(assetId) → absolute file path (or null). Stills/missing media degrade.
-function buildExportCommand(timeline, target, resolve = () => null, lutPath = () => null) {
+function buildExportCommand(timeline, target, resolve = () => null, lutPath = () => null, fontFile = () => null) {
   const t = sanitizeTimeline(timeline);
   const W = target.width || t.width, H = target.height || t.height, FPS = target.fps || t.fps;
   const crf = target.crf != null ? target.crf : 20;
@@ -230,6 +231,10 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
       } else {
         atoms.push(`fps=${FPS}`, `trim=duration=${durS}`, 'setsar=1');
       }
+    } else if (c.freeze) {
+      // freeze frame: hold the in-point frame for the whole clip
+      inputs.push('-ss', (c.in / 1000).toFixed(3), '-i', file);
+      atoms.push(scaleCover(W, H), `fps=${FPS}`, 'loop=loop=-1:size=1:start=0', 'setpts=N/FRAME_RATE/TB', `trim=duration=${durS}`, 'setsar=1');
     } else {
       // video: trim source, optional speed/reverse, scale/cover
       const inS = (c.in / 1000).toFixed(3), outS = ((c.in + c.duration * c.speed) / 1000).toFixed(3);
@@ -246,12 +251,24 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
     // per-clip fade transitions (to/from black/white) — simple, reliable
     if (c.transitionIn) atoms.push(`fade=t=in:st=0:d=${(c.transitionIn.duration / 1000).toFixed(3)}${c.transitionIn.type === 'dipToWhite' ? ':color=white' : ''}`);
     if (c.transitionOut) { const d = c.transitionOut.duration / 1000; atoms.push(`fade=t=out:st=${(c.duration / 1000 - d).toFixed(3)}:d=${d.toFixed(3)}${c.transitionOut.type === 'dipToWhite' ? ':color=white' : ''}`); }
-    filters.push(`[${i}:v]${atoms.join(',')}[v${i}]`);
+    // glow needs compositing (split → blur → screen-blend) so it's a small subgraph
+    if ((c.effects || []).includes('glow')) {
+      filters.push(`[${i}:v]${atoms.join(',')}[p${i}];[p${i}]split[ga${i}][gb${i}];[gb${i}]gblur=sigma=18:steps=2[gc${i}];[ga${i}][gc${i}]blend=all_mode=screen:all_opacity=0.45[v${i}]`);
+    } else {
+      filters.push(`[${i}:v]${atoms.join(',')}[v${i}]`);
+    }
     segLabels.push(`[v${i}]`);
   });
 
-  // concat the normalized segments
-  filters.push(`${segLabels.join('')}concat=n=${segLabels.length}:v=1:a=0[vout]`);
+  // concat the normalized segments → [vbase]
+  const textClips = t.tracks.filter(tk => tk.type === 'text').flatMap(tk => tk.clips);
+  const textAtoms = textClips
+    .map(tc => { const fp = tc.text ? fontFile(tc.text.font) : null; return fp ? drawtextAtom(tc, W, H, fp) : null; })
+    .filter(Boolean);
+  const concatOut = textAtoms.length ? 'vbase' : 'vout';
+  filters.push(`${segLabels.join('')}concat=n=${segLabels.length}:v=1:a=0[${concatOut}]`);
+  // overlay text via drawtext (timed with enable=between, fade/slide via alpha/x)
+  if (textAtoms.length) filters.push(`[vbase]${textAtoms.join(',')}[vout]`);
 
   // audio spine (first audio clip of the first audio track)
   let hasAudio = false;
@@ -311,7 +328,59 @@ function fxFilter(fx) {
 // escape a file path for use inside a filtergraph option (Windows drive colons etc.)
 function ffEscape(p) { return p.replace(/\\/g, '/').replace(/:/g, '\\:'); }
 
+// escape user text for drawtext (avoid breaking the filtergraph)
+function escapeDrawtext(s) {
+  return String(s || '')
+    .replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/%/g, '\\%')
+    .replace(/'/g, '’').replace(/[\r\n]+/g, ' ').slice(0, 200);
+}
+function hexToFf(c) {
+  let h = String(c || '#ffffff').replace('#', '');
+  if (h.length === 3) h = h.split('').map(x => x + x).join('');
+  return '0x' + (/^[0-9a-fA-F]{6}$/.test(h) ? h : 'ffffff');
+}
+
+// one drawtext atom for a text clip — positioned, timed, with a fade/slide animation
+function drawtextAtom(tc, W, H, fontPath) {
+  const t = tc.text || {};
+  const size = Math.max(8, Math.round((t.size || 48) * (H / 1080)));
+  const start = tc.start / 1000, end = tc.end / 1000;
+  const tf = tc.transform || {};
+  const tx = tf.x || 0, ty = tf.y || 0, op = tf.opacity != null ? tf.opacity : (t.opacity != null ? t.opacity : 1);
+  let x = `(w-text_w)/2+(${tx})*w`;
+  if (t.align === 'left') x = `0.06*w+(${tx})*w`;
+  else if (t.align === 'right') x = `w-text_w-0.06*w+(${tx})*w`;
+  const y = `(h-text_h)/2+(${ty})*h`;
+  // animation
+  const fd = 0.35;
+  let alpha = `${op}`;
+  const animated = ['fade', 'slide', 'pop', 'zoom', 'typewriter'].includes(t.animation);
+  if (animated) alpha = `if(lt(t,${(start + fd).toFixed(2)}),max(0\\,(t-${start.toFixed(2)})/${fd})*${op},if(gt(t,${(end - fd).toFixed(2)}),max(0\\,(${end.toFixed(2)}-t)/${fd})*${op},${op}))`;
+  let xExpr = x;
+  if (t.animation === 'slide') xExpr = `(${x})+(1-min(1,max(0,(t-${start.toFixed(2)})/0.4)))*0.08*w`;
+  const boxed = ['caption', 'lowerThird', 'cta'].includes(t.type);
+  const box = boxed ? `:box=1:boxcolor=black@0.35:boxborderw=${Math.max(6, Math.round(size * 0.28))}` : '';
+  return `drawtext=fontfile='${ffEscape(fontPath)}':text='${escapeDrawtext(t.content)}':fontsize=${size}:fontcolor=${hexToFf(t.color)}:alpha='${alpha}':x='${xExpr}':y='${y}':enable='between(t,${start.toFixed(2)},${end.toFixed(2)})'${box}`;
+}
+
+// detect usable open fonts on this box (cached). Returns { sans, serif, mono } → path|null.
+let _fonts = null;
+const FONT_CANDIDATES = {
+  sans: [process.env.MS_FONT_SANS, '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'C:/Windows/Fonts/arial.ttf', '/System/Library/Fonts/Supplemental/Arial.ttf'],
+  serif: [process.env.MS_FONT_SERIF, '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf', 'C:/Windows/Fonts/times.ttf', '/System/Library/Fonts/Supplemental/Times New Roman.ttf'],
+  mono: [process.env.MS_FONT_MONO, '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf', '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf', 'C:/Windows/Fonts/consola.ttf'],
+};
+function detectFonts() {
+  if (_fonts) return _fonts;
+  const fs = require('fs');
+  const pick = (list) => (list || []).find(p => p && (() => { try { return fs.existsSync(p); } catch { return false; } })()) || null;
+  _fonts = { sans: pick(FONT_CANDIDATES.sans), serif: pick(FONT_CANDIDATES.serif), mono: pick(FONT_CANDIDATES.mono) };
+  return _fonts;
+}
+function _resetFontsCache() { _fonts = null; }
+
 module.exports = {
   ASPECTS, EXPORT_PRESETS, QUALITIES, TRANSITIONS, EFFECTS, TEXT_TYPES, TEXT_ANIM,
   dimsFor, sanitizeTimeline, sanitizeClip, detectFfmpeg, _resetFfmpegCache, parseFfprobe, buildExportCommand,
+  detectFonts, _resetFontsCache, drawtextAtom,
 };

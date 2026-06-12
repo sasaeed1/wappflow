@@ -557,7 +557,20 @@ module.exports = function createMediaWorker(db, deps = {}) {
       let document = {}; try { document = JSON.parse(t.document || '{}'); } catch {}
       // ensure the built-in LUT .cube files exist on disk, then resolve id → path
       const lutMap = videoLuts.ensureCubeFiles(fs, path, path.join(uploadsDir, 'media', 'luts'));
-      const built = videoEngine.buildExportCommand(document, { width: exp.width, height: exp.height, fps: exp.fps }, resolveAssetPath, (id) => lutMap[id] || null);
+      const customLuts = {};
+      try {
+        for (const row of db.prepare('SELECT id, cube_path FROM ms_luts WHERE workspace_id = ?').all(exp.workspace_id)) {
+          const abs = row.cube_path ? path.join(uploadsDir, row.cube_path) : null;
+          if (abs && fs.existsSync(abs)) customLuts[row.id] = abs;
+        }
+      } catch {}
+      const fonts = videoEngine.detectFonts();
+      const built = videoEngine.buildExportCommand(
+        document, { width: exp.width, height: exp.height, fps: exp.fps },
+        resolveAssetPath,
+        (id) => lutMap[id] || customLuts[id] || null,
+        (fam) => fonts[fam] || fonts.sans || null,
+      );
       if (!built.args) return fail(built.note === 'empty-timeline' ? 'Add at least one clip before exporting.' : built.note);
 
       const exportsDir = path.join(uploadsDir, 'media', 'exports');

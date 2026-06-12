@@ -463,7 +463,11 @@ html[data-ms-theme="airy"] .ms-ve { top: 64px; }
 .ms-ve-clip:hover .ms-ve-handle, .ms-ve-clip.is-sel .ms-ve-handle { opacity: 0.9; }
 .ms-ve-handle.l { left: 0; } .ms-ve-handle.r { right: 0; }
 .ms-ve-tl-empty { position: absolute; top: 28px; left: 8px; color: var(--ms-ink-3); font-size: 12.5px; }
-.ms-ve-playhead { position: absolute; top: -16px; bottom: -16px; width: 2px; background: var(--ms-accent); pointer-events: none; }
+.ms-ve-tl-text { position: relative; height: 30px; margin-top: 8px; }
+.ms-ve-clip-txt { height: 30px; background: var(--ms-accent); display: flex; align-items: center; box-shadow: none; }
+.ms-ve-clip-txt.is-sel { border-color: var(--ms-ink); }
+.ms-ve-clip-tlabel { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; font-size: 10.5px; font-weight: 600; color: var(--ms-on-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.ms-ve-playhead { position: absolute; top: -16px; width: 2px; background: var(--ms-accent); pointer-events: none; }
 .ms-ve-playhead::before { content: ''; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top-color: var(--ms-accent); }
 @media (max-width: 880px) {
   .ms-ve-rail { width: 150px; } .ms-ve-insp { width: 200px; }

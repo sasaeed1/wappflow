@@ -1535,12 +1535,51 @@ Only suggest actions that make sense for the question. If none make sense, retur
       effects: videoEngine.EFFECTS,
       textTypes: videoEngine.TEXT_TYPES,
       textAnimations: videoEngine.TEXT_ANIM,
-      luts: videoLuts.list(),
+      fontFamilies: [{ id: 'sans', label: 'Sans' }, { id: 'serif', label: 'Serif' }, { id: 'mono', label: 'Mono' }],
+      fonts: videoEngine.detectFonts(),
+      luts: allLuts(req.workspaceId),
       ffmpeg: videoEngine.detectFfmpeg(),
     });
   });
 
-  app.get('/api/media/video/luts', auth, (req, res) => res.json({ luts: videoLuts.list() }));
+  function customLuts(workspaceId) {
+    try { return db.prepare("SELECT id, name FROM ms_luts WHERE workspace_id = ?").all(workspaceId).map(r => ({ id: r.id, name: r.name, category: 'Custom', css: 'none', custom: true })); }
+    catch { return []; }
+  }
+  function allLuts(workspaceId) { return [...videoLuts.list(), ...customLuts(workspaceId)]; }
+
+  app.get('/api/media/video/luts', auth, (req, res) => res.json({ luts: allLuts(req.workspaceId) }));
+
+  // Custom .cube LUT upload (rounds out the look library with the user's own packs).
+  const lutDir = path.join(uploadsDir, 'media', 'luts', 'custom');
+  try { fs.mkdirSync(lutDir, { recursive: true }); } catch {}
+  const lutUpload = multer({
+    storage: multer.diskStorage({ destination: lutDir, filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(16).slice(2, 8)}.cube`) }),
+    limits: { fileSize: 8 * 1024 * 1024 },
+  });
+  app.post('/api/media/video/luts', auth, lutUpload.single('file'), (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No .cube file uploaded (field name: file)' });
+      // sanity-check it's actually a cube LUT
+      let head = ''; try { head = fs.readFileSync(req.file.path, 'utf8').slice(0, 600); } catch {}
+      if (!/LUT_3D_SIZE/i.test(head)) { try { fs.unlinkSync(req.file.path); } catch {} return res.status(400).json({ error: 'That file is not a valid .cube LUT.' }); }
+      const name = String(req.body.name || req.file.originalname || 'Custom LUT').replace(/\.cube$/i, '').slice(0, 60);
+      const id = 'lut_' + generateId().slice(0, 10);
+      const rel = `media/luts/custom/${path.basename(req.file.path)}`;
+      db.prepare('INSERT INTO ms_luts (id, workspace_id, name, category, cube_path, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(id, req.workspaceId, name, 'Custom', rel, req.userId);
+      logAudit(req.workspaceId, req.userId, 'upload_lut', 'ms_lut', id, { name });
+      res.status(201).json({ id, name, category: 'Custom', css: 'none', custom: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.delete('/api/media/video/luts/:lutId', auth, (req, res) => {
+    try {
+      const row = db.prepare('SELECT * FROM ms_luts WHERE id = ? AND workspace_id = ?').get(req.params.lutId, req.workspaceId);
+      if (!row) return res.status(404).json({ error: 'LUT not found' });
+      if (row.cube_path) { try { fs.unlinkSync(path.join(uploadsDir, row.cube_path)); } catch {} }
+      db.prepare('DELETE FROM ms_luts WHERE id = ?').run(row.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
 
   // Reel templates: list (enriched with the look's CSS hint for card styling).
   app.get('/api/media/video/templates', auth, (req, res) => {
