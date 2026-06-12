@@ -1,163 +1,140 @@
 'use client';
+/* eslint-disable @next/next/no-img-element -- dynamic /uploads media */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Film, Scissors, Play, Trash2, ChevronUp, ChevronDown, FlagTriangleRight, Sparkles } from 'lucide-react';
-import { mediaAPI, mediaUrl } from '../../../../lib/api';
+import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X } from 'lucide-react';
+import { mediaAPI } from '../../../../lib/api';
 import NavBar from '../../../../components/StudioShell';
+import { ASPECTS, ASPECT_LABELS } from '../../video-constants';
 
-const fmt = (ms) => {
-  const s = Math.max(0, (ms || 0) / 1000);
-  const m = Math.floor(s / 60);
-  return `${m}:${(s % 60).toFixed(1).padStart(4, '0')}`;
-};
+const fmtDur = (ms) => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
-export default function VideoPage() {
+export default function ReelListPage() {
   const router = useRouter();
   const { id } = useParams();
-  const videoRef = useRef(null);
-  const [videos, setVideos] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [clips, setClips] = useState([]);
+  const [project, setProject] = useState(null);
+  const [timelines, setTimelines] = useState([]);
+  const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [curMs, setCurMs] = useState(0);
-  const [markIn, setMarkIn] = useState(null);
-  const [markOut, setMarkOut] = useState(null);
-  const [label, setLabel] = useState('');
-  const [playingOut, setPlayingOut] = useState(null);
-
-  const loadClips = useCallback(async (assetId) => {
-    try { setClips((await mediaAPI.listClips(assetId)).data.clips || []); } catch { setClips([]); }
-  }, []);
+  const [showNew, setShowNew] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
-    mediaAPI.listVideos(id).then(r => {
-      const vids = r.data.videos || [];
-      setVideos(vids);
-      if (vids[0]) { setSelected(vids[0]); loadClips(vids[0].id); }
-    }).catch(() => {}).finally(() => setLoading(false));
+    (async () => {
+      try {
+        const [p, tl, a] = await Promise.all([mediaAPI.getProject(id), mediaAPI.listTimelines(id), mediaAPI.listAssets(id, { limit: 1 })]);
+        setProject(p.data); setTimelines(tl.data.timelines || []); setAssets(a.data.assets || []);
+      } catch { router.push('/studio'); return; }
+      setLoading(false);
+    })();
   }, [id]);
 
-  const pickVideo = (v) => { setSelected(v); setClips([]); setMarkIn(null); setMarkOut(null); setLabel(''); setPlayingOut(null); loadClips(v.id); };
-
-  const onLoadedMeta = async () => {
-    const el = videoRef.current; if (!el || !selected) return;
-    const dur = Math.round(el.duration * 1000);
-    if (dur && !selected.duration_ms) {
-      try { await mediaAPI.setAssetMeta(selected.id, { duration_ms: dur, width: el.videoWidth, height: el.videoHeight }); } catch {}
-      setVideos(vs => vs.map(v => v.id === selected.id ? { ...v, duration_ms: dur } : v));
-      setSelected(s => ({ ...s, duration_ms: dur }));
-    }
-  };
-  const onTimeUpdate = () => {
-    const el = videoRef.current; if (!el) return;
-    const ms = el.currentTime * 1000; setCurMs(ms);
-    if (playingOut != null && ms >= playingOut) { el.pause(); setPlayingOut(null); }
-  };
-
-  const addClip = async () => {
-    if (markIn == null || markOut == null || markOut <= markIn) return;
+  const create = async (aspect) => {
     try {
-      await mediaAPI.addClip(selected.id, { label: label.trim() || undefined, in_ms: Math.round(markIn), out_ms: Math.round(markOut) });
-      setMarkIn(null); setMarkOut(null); setLabel('');
-      await loadClips(selected.id);
-      setVideos(vs => vs.map(v => v.id === selected.id ? { ...v, clip_count: (v.clip_count || 0) + 1 } : v));
+      const r = await mediaAPI.createTimeline(id, { name: 'Untitled reel', aspect_ratio: aspect });
+      router.push(`/studio/${id}/video/${r.data.id}`);
     } catch {}
   };
-  const playClip = (c) => {
-    const el = videoRef.current; if (!el) return;
-    el.currentTime = c.in_ms / 1000; setPlayingOut(c.out_ms); el.play();
-  };
-  const removeClip = async (c) => { await mediaAPI.deleteClip(c.id); await loadClips(selected.id); };
-  const moveClip = async (idx, dir) => {
-    const order = clips.map(c => c.id); const j = idx + dir; if (j < 0 || j >= order.length) return;
-    [order[idx], order[j]] = [order[j], order[idx]];
-    await mediaAPI.reorderClips(selected.id, order); await loadClips(selected.id);
+  const remove = async (tlId, e) => {
+    e.stopPropagation();
+    if (!confirm('Delete this reel? This cannot be undone.')) return;
+    try { await mediaAPI.deleteTimeline(tlId); setTimelines(t => t.filter(x => x.id !== tlId)); } catch {}
   };
 
-  if (loading) return <NavBar><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></NavBar>;
+  if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
 
   return (
     <NavBar>
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '18px 16px 60px' }}>
-        <button onClick={() => router.push(`/studio/${id}`)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer', marginBottom: 12 }}>
-          <ArrowLeft size={15} /> Back to shoot
-        </button>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: 'var(--text)', margin: '0 0 16px' }}>Video — clip selection</h1>
-
-        {videos.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 20px', border: '2px dashed var(--border)', borderRadius: 18 }}>
-            <Film size={30} color="var(--text-muted)" style={{ opacity: 0.5 }} />
-            <p style={{ fontSize: 13.5, color: 'var(--text-muted)', margin: '12px 0 0' }}>No videos in this shoot. Upload some from the shoot page.</p>
+      <div className="ms-page" style={{ paddingTop: 'clamp(16px, 2.4vw, 30px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22, flexWrap: 'wrap' }}>
+          <button onClick={() => router.push(`/studio/${id}`)} className="ms-back" style={{ margin: 0 }}><ArrowLeft size={15} /> Back</button>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <p className="ms-eyebrow">Video Studio</p>
+            <h1 className="ms-h2" style={{ fontSize: 'clamp(20px, 2.4vw, 28px)' }}>Reels{project?.title ? <span style={{ color: 'var(--ms-ink-3)', fontWeight: 400 }}> · {project.title}</span> : ''}</h1>
           </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            {/* video list */}
-            <aside style={{ width: 230, flexShrink: 0 }}>
-              {videos.map(v => (
-                <button key={v.id} onClick={() => pickVideo(v)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, marginBottom: 6, textAlign: 'left', cursor: 'pointer',
-                  border: `1px solid ${selected?.id === v.id ? 'var(--accent)' : 'var(--border)'}`, background: selected?.id === v.id ? 'var(--accent-light)' : 'var(--surface)',
-                }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Film size={16} color="var(--text-muted)" /></div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.filename}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{v.duration_ms ? fmt(v.duration_ms) : '—'} · {v.clip_count || 0} clips</div>
-                  </div>
-                </button>
-              ))}
-            </aside>
+          <button onClick={() => setShowNew(true)} className="ms-btn-ink"><Plus size={16} /> New reel</button>
+        </div>
 
-            {/* player + clips */}
-            <div style={{ flex: 1, minWidth: 300 }}>
-              {selected && (
-                <>
-                  <video ref={videoRef} src={mediaUrl(selected.url)} controls onLoadedMetadata={onLoadedMeta} onTimeUpdate={onTimeUpdate}
-                    style={{ width: '100%', borderRadius: 12, background: '#000', maxHeight: '52vh' }} />
-
-                  {/* mark in/out */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '14px 0' }}>
-                    <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Playhead <strong style={{ color: 'var(--text)' }}>{fmt(curMs)}</strong></span>
-                    <button onClick={() => setMarkIn(curMs)} style={{ ...ghostBtn, display: 'flex', alignItems: 'center', gap: 5 }}><FlagTriangleRight size={13} /> Mark In {markIn != null ? `(${fmt(markIn)})` : ''}</button>
-                    <button onClick={() => setMarkOut(curMs)} style={{ ...ghostBtn, display: 'flex', alignItems: 'center', gap: 5 }}><FlagTriangleRight size={13} style={{ transform: 'scaleX(-1)' }} /> Mark Out {markOut != null ? `(${fmt(markOut)})` : ''}</button>
-                    <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Clip label (optional)" style={{ flex: 1, minWidth: 120, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12.5, outline: 'none' }} />
-                    <button onClick={addClip} disabled={markIn == null || markOut == null || markOut <= markIn} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', cursor: 'pointer', background: (markIn == null || markOut == null || markOut <= markIn) ? 'transparent' : 'var(--ms-ink)', color: (markIn == null || markOut == null || markOut <= markIn) ? 'var(--ms-ink-3)' : 'var(--ms-paper)', fontWeight: 600, fontSize: 12.5, opacity: (markIn == null || markOut == null || markOut <= markIn) ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 5 }}><Scissors size={13} /> Add clip</button>
-                  </div>
-
-                  {/* clip list */}
-                  {clips.length === 0 ? (
-                    <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No clips yet. Scrub the video, Mark In and Mark Out, then Add clip.</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {clips.map((c, idx) => (
-                        <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                          <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-muted)', width: 20 }}>{idx + 1}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{c.label || 'Untitled clip'}</div>
-                            <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{fmt(c.in_ms)} → {fmt(c.out_ms)} · {fmt(c.out_ms - c.in_ms)}</div>
-                          </div>
-                          <button onClick={() => playClip(c)} style={iconBtn} title="Play clip"><Play size={14} /></button>
-                          <button onClick={() => moveClip(idx, -1)} disabled={idx === 0} style={iconBtn} title="Up"><ChevronUp size={14} /></button>
-                          <button onClick={() => moveClip(idx, 1)} disabled={idx === clips.length - 1} style={iconBtn} title="Down"><ChevronDown size={14} /></button>
-                          <button onClick={() => removeClip(c)} style={{ ...iconBtn, color: '#ef4444' }} title="Delete"><Trash2 size={14} /></button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <p style={{ marginTop: 16, fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Sparkles size={12} /> Clips are your manual selections. There’s no auto-reel — any future AI clip scoring will only highlight candidates for you to choose.
-                  </p>
-                </>
-              )}
+        {timelines.length === 0 ? (
+          <div className="ms-hero" onClick={() => setShowNew(true)} style={{ minHeight: '46vh', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <div className="ms-hero-fallback" />
+            <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: 24 }}>
+              <Film size={32} color="#fff" style={{ opacity: 0.9, marginBottom: 12 }} />
+              <h2 className="ms-hero-title" style={{ fontSize: 'clamp(24px, 4vw, 42px)' }}>Make your first reel</h2>
+              <p className="ms-hero-sub" style={{ maxWidth: 440, margin: '12px auto 22px' }}>
+                Drop in photos and clips, set the beat, and export for Instagram, TikTok, or YouTube — without leaving Studio.
+              </p>
+              <button onClick={(e) => { e.stopPropagation(); setShowNew(true); }} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10' }}><Plus size={16} /> New reel</button>
             </div>
           </div>
+        ) : (
+          <div className="ms-collection-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
+            {timelines.map(t => {
+              const [aw, ah] = ASPECTS[t.aspect_ratio] || ASPECTS['9:16'];
+              const portrait = ah > aw;
+              return (
+                <button key={t.id} onClick={() => router.push(`/studio/${id}/video/${t.id}`)} className="ms-covercard"
+                  style={{ aspectRatio: portrait ? '3 / 4' : '4 / 3' }}>
+                  <div className="ms-covercard-ph" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Film size={26} color="var(--ms-ink-3)" />
+                  </div>
+                  <div className="ms-covercard-veil" />
+                  <div className="ms-covercard-body">
+                    <span className="ms-covercard-tag">
+                      {t.source === 'ai_draft' ? <><Sparkles size={9} style={{ verticalAlign: '-1px' }} /> AI draft · </> : ''}
+                      {t.aspect_ratio}{t.ai_stale ? ' · outdated' : ''}
+                    </span>
+                    <h3 className="ms-covercard-title" style={{ fontSize: 16 }}>{t.name}</h3>
+                    <p className="ms-covercard-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={11} /> {fmtDur(t.duration_ms)}</p>
+                  </div>
+                  <span onClick={(e) => remove(t.id, e)} title="Delete reel"
+                    style={{ position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+                    <Trash2 size={13} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {assets.length === 0 && (
+          <p className="ms-note" style={{ marginTop: 22 }}><Sparkles size={12} /> Tip: upload photos &amp; clips to this shoot first — they become the building blocks of your reel.</p>
         )}
       </div>
+
+      {showNew && <NewReelModal onClose={() => setShowNew(false)} onPick={create} />}
     </NavBar>
   );
 }
 
-const ghostBtn = { padding: '8px 13px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' };
-const iconBtn = { width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
+function NewReelModal({ onClose, onPick }) {
+  const order = ['9:16', '1:1', '4:5', '16:9', '21:9', '3:2'];
+  return (
+    <div onClick={onClose} className="ms-modal-overlay">
+      <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 520 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+          <h2>New reel</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+        </div>
+        <p className="ms-modal-sub" style={{ marginBottom: 20 }}>Pick a canvas to start — you can switch aspect ratios any time.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          {order.map(a => {
+            const [aw, ah] = ASPECTS[a];
+            const r = aw / ah;
+            const boxW = r >= 1 ? 76 : 76 * r, boxH = r >= 1 ? 76 / r : 76;
+            return (
+              <button key={a} onClick={() => onPick(a)} className="ms-chip" style={{ flexDirection: 'column', height: 130, justifyContent: 'center', gap: 10, padding: 10 }}>
+                <span style={{ width: boxW, height: boxH, borderRadius: 6, background: 'var(--ms-accent)', opacity: 0.85, display: 'block' }} />
+                <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <b style={{ fontSize: 13, color: 'var(--ms-ink)' }}>{a}</b>
+                  <span style={{ fontSize: 10.5, color: 'var(--ms-ink-3)' }}>{ASPECT_LABELS[a]}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

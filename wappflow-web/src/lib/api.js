@@ -296,6 +296,16 @@ export const mediaAPI = {
   clearEdits:      (assetId)     => api.delete(`/media/assets/${assetId}/edits`),
   batchEdits:      (projectId, asset_ids, edits) => api.post(`/media/projects/${projectId}/edits/batch`, { asset_ids, edits }),
   copilot:         (body)        => api.post('/media/copilot', body),
+  // ── Video Studio (timelines / export) ──
+  videoPresets:    ()            => api.get('/media/video/presets'),
+  listTimelines:   (projectId)   => api.get(`/media/projects/${projectId}/timelines`),
+  createTimeline:  (projectId, data) => api.post(`/media/projects/${projectId}/timelines`, data),
+  getTimeline:     (tlId)        => api.get(`/media/timelines/${tlId}`),
+  saveTimeline:    (tlId, data)  => api.put(`/media/timelines/${tlId}`, data),
+  deleteTimeline:  (tlId)        => api.delete(`/media/timelines/${tlId}`),
+  exportTimeline:  (tlId, body)  => api.post(`/media/timelines/${tlId}/export`, body),
+  listVideoExports:(tlId)        => api.get(`/media/timelines/${tlId}/exports`),
+  getVideoExport:  (exportId)    => api.get(`/media/video/exports/${exportId}`),
   // galleries
   listGalleries:   (projectId)   => api.get(`/media/projects/${projectId}/galleries`),
   createGallery:   (projectId, data) => api.post(`/media/projects/${projectId}/galleries`, data),
