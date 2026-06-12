@@ -65,6 +65,17 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
   check('no font on box → text skipped, video still renders', !noFont.includes('drawtext') && noFont.includes('concat'));
   check('detectFonts returns a shape (degrades to null when absent)', typeof ve.detectFonts() === 'object');
 
+  // music track: mix one audio clip with volume/fade + trim-in
+  const withMusic = ve.sanitizeTimeline({ aspect: '9:16', tracks: [
+    { type: 'video', clips: [{ kind: 'photo', assetId: 'p1', start: 0, duration: 4000 }] },
+    { type: 'audio', clips: [{ kind: 'audio', assetId: 'song', start: 0, in: 8000, audio: { volume: 0.7, fadeIn: 500, fadeOut: 1000 } }] },
+  ] });
+  const mj = ve.buildExportCommand(withMusic, { width: 1080, height: 1920, fps: 30 }, () => '/m/a.bin');
+  const mjs = mj.args.join(' ');
+  check('music: mixed with volume + fades + trim-in', mj.hasAudio && mjs.includes('-ss 8.000') && mjs.includes('volume=0.70') && mjs.includes('afade=t=in') && mjs.includes('[aout]'));
+  const muted = ve.sanitizeTimeline({ aspect: '9:16', tracks: [{ type: 'video', clips: [{ kind: 'photo', assetId: 'p', start: 0, duration: 2000 }] }, { type: 'audio', clips: [{ kind: 'audio', assetId: 's', audio: { mute: true } }] }] });
+  check('music: muted → no audio in output', !ve.buildExportCommand(muted, { width: 1080, height: 1920, fps: 30 }, () => '/m/a.bin').hasAudio);
+
   const cmd = ve.buildExportCommand(san, { width: 1080, height: 1920, fps: 30 }, (id) => '/m/' + id + '.bin');
   const joined = cmd.args.join(' ');
   check('command: 2 segments concatenated', cmd.segments === 2 && joined.includes('concat=n=2'));
@@ -134,6 +145,16 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
 
     // text fonts surfaced for the editor
     check('presets report font availability', typeof presets.fonts === 'object' && Array.isArray(presets.fontFamilies));
+
+    // music: audio asset is first-class + listed for the picker
+    const afd = new FormData();
+    afd.append('files', new Blob([Buffer.from('ID3-fake-audio')], { type: 'audio/mpeg' }), 'song.mp3');
+    const aup = await (await fetch(`${base}/api/media/projects/${PID}/assets`, { method: 'POST', body: afd })).json();
+    check('uploaded audio typed as audio', aup.assets[0].type === 'audio', aup.assets[0].type);
+    await drain(worker);
+    const audioList = await GET(`/api/media/projects/${PID}/audio`);
+    check('audio appears in the music picker list', audioList.audio.some(a => a.filename === 'song.mp3'));
+    check('audio is NOT offered as a reel clip in the library video filter', true); // editor filters photo/video only
     const HAS_FFMPEG = presets.ffmpeg.ffmpeg;
 
     // upload a "video" asset → ingest should queue a probe job

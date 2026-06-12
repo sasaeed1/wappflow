@@ -140,10 +140,10 @@ module.exports = function createMediaWorker(db, deps = {}) {
     if (!Jimp || !isProcessableImage(asset.mime, asset.filename) || !fs.existsSync(absPath)) {
       // RAW/video/missing-lib → keep original as-is, no JS image preview.
       db.prepare("UPDATE ms_assets SET status = 'ready' WHERE id = ?").run(asset.id);
-      // Video assets enter the ffmpeg lane: probe → poster + proxy (degrades w/o ffmpeg).
-      if ((asset.type === 'video') || (asset.mime || '').startsWith('video/')) {
+      // Video + audio assets enter the ffmpeg lane: probe (→ poster/proxy if it has video).
+      if (['video', 'audio'].includes(asset.type) || /^(video|audio)\//.test(asset.mime || '')) {
         enqueue('video_probe', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
-        return { note: 'video-queued' };
+        return { note: 'media-queued' };
       }
       return { note: Jimp ? 'no-preview' : 'degraded-no-jimp' };
     }
@@ -508,9 +508,11 @@ module.exports = function createMediaWorker(db, deps = {}) {
     const meta = videoEngine.parseFfprobe(out);
     db.prepare(`UPDATE ms_assets SET v_duration_ms=?, v_width=?, v_height=?, v_fps=?, v_codec=?, v_has_audio=? WHERE id=?`)
       .run(meta.v_duration_ms || 0, meta.v_width || 0, meta.v_height || 0, meta.v_fps || 0, meta.v_codec || null, meta.v_has_audio || 0, asset.id);
-    // chain the poster + proxy renders
-    enqueue('video_poster', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
-    enqueue('video_proxy', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
+    // only video gets a poster + proxy; audio-only stops at the duration probe
+    if ((meta.v_width || 0) > 0) {
+      enqueue('video_poster', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
+      enqueue('video_proxy', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
+    }
     return { note: 'ok', meta };
   }
 

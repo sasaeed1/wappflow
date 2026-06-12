@@ -275,6 +275,7 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
   const aClip = audioTrack && audioTrack.clips[0];
   const aFile = aClip ? (aClip.assetId ? resolve(aClip.assetId) : null) : null;
   if (aFile && !(aClip.audio && aClip.audio.mute)) {
+    if (aClip.in) inputs.push('-ss', (aClip.in / 1000).toFixed(3)); // music trim-in
     inputs.push('-i', aFile);
     const aIdx = clips.length; // audio is the next input index
     const vol = aClip.audio ? aClip.audio.volume : 1;

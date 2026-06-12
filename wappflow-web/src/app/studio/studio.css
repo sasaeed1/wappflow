@@ -467,6 +467,10 @@ html[data-ms-theme="airy"] .ms-ve { top: 64px; }
 .ms-ve-clip-txt { height: 30px; background: var(--ms-accent); display: flex; align-items: center; box-shadow: none; }
 .ms-ve-clip-txt.is-sel { border-color: var(--ms-ink); }
 .ms-ve-clip-tlabel { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; font-size: 10.5px; font-weight: 600; color: var(--ms-on-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.ms-ve-tl-audio { position: relative; height: 28px; margin-top: 8px; }
+.ms-ve-clip-audio { height: 28px; background: #2f9e6e; display: flex; align-items: center; box-shadow: none; }
+.ms-ve-clip-audio.is-sel { border-color: var(--ms-ink); }
+.ms-ve-clip-audio .ms-ve-clip-tlabel { color: #fff; }
 .ms-ve-playhead { position: absolute; top: -16px; width: 2px; background: var(--ms-accent); pointer-events: none; }
 .ms-ve-playhead::before { content: ''; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top-color: var(--ms-accent); }
 @media (max-width: 880px) {

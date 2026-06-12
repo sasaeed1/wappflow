@@ -175,6 +175,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     if (RAW_EXTS.includes(ext)) return 'raw';
     if (mime.startsWith('image/')) return 'photo';
     if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'].includes(ext)) return 'audio';
     return 'file';
   }
 
@@ -1680,6 +1681,16 @@ Only suggest actions that make sense for the question. If none make sense, retur
       db.prepare(`UPDATE ms_timelines SET document = ?, duration_ms = ?, width = ?, height = ?, ai_signature = ?, ai_stale = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
         .run(JSON.stringify(doc), doc.duration, doc.width, doc.height, videoAiDrafts.signatureOf(media), t.id);
       res.json(timelineOut(getTimeline(req.workspaceId, t.id)));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Audio assets in a shoot (for the Video Studio music picker).
+  app.get('/api/media/projects/:id/audio', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const rows = db.prepare("SELECT id, filename, v_duration_ms, storage_key FROM ms_assets WHERE project_id = ? AND type = 'audio' ORDER BY created_at DESC").all(project.id);
+      res.json({ audio: rows.map(r => ({ id: r.id, filename: r.filename, duration_ms: r.v_duration_ms || 0, url: publicUrl(r.storage_key) })) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

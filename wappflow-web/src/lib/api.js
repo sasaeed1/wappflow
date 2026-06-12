@@ -304,6 +304,8 @@ export const mediaAPI = {
   saveTimeline:    (tlId, data)  => api.put(`/media/timelines/${tlId}`, data),
   deleteTimeline:  (tlId)        => api.delete(`/media/timelines/${tlId}`),
   exportTimeline:  (tlId, body)  => api.post(`/media/timelines/${tlId}/export`, body),
+  listAudio:       (projectId)   => api.get(`/media/projects/${projectId}/audio`),
+  uploadAudio:     (projectId, file) => { const fd = new FormData(); fd.append('files', file); return api.post(`/media/projects/${projectId}/assets`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
   videoTemplates:  ()            => api.get('/media/video/templates'),
   applyTemplate:   (projectId, templateId, body) => api.post(`/media/projects/${projectId}/templates/${templateId}/apply`, body || {}),
   uploadLut:       (file, name) => { const fd = new FormData(); fd.append('file', file); if (name) fd.append('name', name); return api.post('/media/video/luts', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },

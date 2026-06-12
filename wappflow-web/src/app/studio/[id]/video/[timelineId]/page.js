@@ -6,6 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Play, Pause, Scissors, Trash2, Copy, Download, Image as ImageIcon, Film,
   Check, Loader, X, ChevronDown, Wand2, ArrowLeftRight, ZoomIn, ZoomOut, Type, Snowflake,
+  Music, Upload, Volume2,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
 import NavBar from '../../../../../components/StudioShell';
@@ -36,8 +37,10 @@ export default function VideoEditor() {
   const [doc, setDoc] = useState(null);
   const [name, setName] = useState('');
   const [assets, setAssets] = useState([]);
+  const [audioAssets, setAudioAssets] = useState([]);
   const [luts, setLuts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showMusic, setShowMusic] = useState(false);
   const [selId, setSelId] = useState(null);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -49,6 +52,7 @@ export default function VideoEditor() {
 
   const stageWrapRef = useRef(null);
   const videoRef = useRef(null);
+  const audioRef = useRef(null);
   const saveTimer = useRef(null);
   const firstLoad = useRef(true);
   const drag = useRef(null);
@@ -66,6 +70,7 @@ export default function VideoEditor() {
         setDoc(d); setName(t.data.name || 'Untitled reel');
         setAssets((a.data.assets || []).filter(x => x.type === 'photo' || x.type === 'video'));
         if (pr?.data?.luts) setLuts(pr.data.luts);
+        try { setAudioAssets((await mediaAPI.listAudio(id)).data.audio || []); } catch {}
       } catch { router.push(`/studio/${id}/video`); return; }
       setLoading(false);
     })();
@@ -74,6 +79,9 @@ export default function VideoEditor() {
   const spine = doc ? getSpine(doc) : null;
   const duration = spine ? spineEnd(spine) : 0;
   const textTrack = doc ? doc.tracks.find(t => t.type === 'text') : null;
+  const audioTrack = doc ? doc.tracks.find(t => t.type === 'audio') : null;
+  const musicClip = audioTrack?.clips[0] || null;
+  const musicAsset = musicClip ? audioAssets.find(a => a.id === musicClip.assetId) : null;
   const selected = doc ? (doc.tracks.flatMap(tr => tr.clips).find(c => c.id === selId) || null) : null;
   const activeTexts = textTrack ? textTrack.clips.filter(c => playhead >= c.start && playhead < c.end) : [];
 
@@ -132,6 +140,27 @@ export default function VideoEditor() {
     const local = ((playhead - activeClip.start) * (activeClip.speed || 1) + (activeClip.in || 0)) / 1000;
     try { v.currentTime = clamp(local, 0, v.duration || local); } catch {}
   }, [playhead, activeClip?.id]); // eslint-disable-line
+
+  // keep the music <audio> element in sync with the playhead
+  useEffect(() => {
+    const el = audioRef.current; if (!el || !musicClip) return;
+    el.volume = clamp((musicClip.audio?.mute ? 0 : (musicClip.audio?.volume ?? 1)), 0, 1);
+    if (playing) { el.play().catch(() => {}); } else { el.pause(); }
+  }, [playing, musicClip?.id, musicClip?.audio?.volume, musicClip?.audio?.mute]); // eslint-disable-line
+  useEffect(() => {
+    const el = audioRef.current; if (!el || !musicClip || playing) return;
+    try { el.currentTime = (playhead + (musicClip.in || 0)) / 1000; } catch {}
+  }, [playhead, musicClip?.id, musicClip?.in]); // eslint-disable-line
+
+  const setMusic = (asset) => {
+    setDoc(d => {
+      const clip = { id: uid(), kind: 'audio', assetId: asset.id, start: 0, in: 0, audio: { volume: 1, fadeIn: 0, fadeOut: 800, mute: false } };
+      const tracks = [...d.tracks.filter(t => t.type !== 'audio'), { id: uid('t'), type: 'audio', clips: [clip] }];
+      return { ...d, tracks };
+    });
+    setShowMusic(false);
+  };
+  const removeMusic = () => { setDoc(d => ({ ...d, tracks: d.tracks.filter(t => t.type !== 'audio') })); if (musicClip && selId === musicClip.id) setSelId(null); };
 
   // ── editing actions ───────────────────────────────────────────────────────────
   const addAsset = (a) => {
@@ -342,6 +371,7 @@ export default function VideoEditor() {
               <button onClick={() => setPlaying(p => !p)} className="ms-ve-play">{playing ? <Pause size={17} /> : <Play size={17} />}</button>
               <span className="ms-ve-clock">{fmtClock(playhead)} <span style={{ opacity: 0.5 }}>/ {fmtClock(duration)}</span></span>
             </div>
+            {musicAsset && <audio ref={audioRef} key={musicClip.id} src={mediaUrl(musicAsset.url)} preload="auto" />}
           </div>
 
           {/* inspector */}
@@ -354,6 +384,8 @@ export default function VideoEditor() {
               </div>
             ) : selected.kind === 'text' ? (
               <TextInspector clip={selected} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />
+            ) : selected.kind === 'audio' ? (
+              <AudioInspector clip={selected} asset={musicAsset} patch={(p) => patchClip(selected.id, p)} onRemove={removeMusic} onReplace={() => setShowMusic(true)} />
             ) : <Inspector clip={selected} luts={luts} onUploadLut={uploadLut} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />}
           </aside>
         </div>
@@ -363,6 +395,7 @@ export default function VideoEditor() {
           <div className="ms-ve-tl-tools">
             <button onClick={splitAtPlayhead} disabled={!activeClip} className="ms-ve-tool" title="Split (S)"><Scissors size={14} /> Split</button>
             <button onClick={addText} className="ms-ve-tool" title="Add text"><Type size={14} /> Text</button>
+            <button onClick={() => setShowMusic(true)} className="ms-ve-tool" title="Music"><Music size={14} /> Music</button>
             <button onClick={() => selId && duplicateClip(selId)} disabled={!selId} className="ms-ve-tool" title="Duplicate"><Copy size={14} /></button>
             <button onClick={() => selId && removeClip(selId)} disabled={!selId} className="ms-ve-tool" title="Delete (Del)"><Trash2 size={14} /></button>
             <div style={{ flex: 1 }} />
@@ -400,14 +433,122 @@ export default function VideoEditor() {
                   ))}
                 </div>
               )}
-              <div className="ms-ve-playhead" style={{ left: playhead * scale, height: textTrack && textTrack.clips.length ? 130 : 92 }} />
+              {musicClip && (
+                <div className="ms-ve-tl-track ms-ve-tl-audio">
+                  <div onPointerDown={(e) => { e.stopPropagation(); setSelId(musicClip.id); setPlaying(false); }}
+                    className={`ms-ve-clip ms-ve-clip-audio${selId === musicClip.id ? ' is-sel' : ''}`}
+                    style={{ left: 0, width: Math.max(duration * scale, 60) }}>
+                    <span className="ms-ve-clip-tlabel"><Music size={9} /> {musicAsset?.filename || 'Music'}{musicClip.audio?.mute ? ' (muted)' : ''}</span>
+                  </div>
+                </div>
+              )}
+              <div className="ms-ve-playhead" style={{ left: playhead * scale, height: 92 + (textTrack?.clips.length ? 38 : 0) + (musicClip ? 30 : 0) }} />
             </div>
           </div>
         </div>
       </div>
 
       {showExport && <ExportModal timelineId={timelineId} aspect={doc.aspect} duration={duration} onClose={() => setShowExport(false)} />}
+      {showMusic && (
+        <MusicModal projectId={id} audioAssets={audioAssets} current={musicClip?.assetId}
+          onClose={() => setShowMusic(false)} onPick={setMusic}
+          onUploaded={(list) => setAudioAssets(list)} />
+      )}
     </NavBar>
+  );
+}
+
+function AudioInspector({ clip, asset, patch, onRemove, onReplace }) {
+  const a = clip.audio || {};
+  const setA = (k, v) => patch({ audio: { ...a, [k]: v } });
+  return (
+    <div style={{ padding: 14, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <span style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--ms-accent)', color: 'var(--ms-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Music size={15} /></span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ms-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset?.filename || 'Music'}</span>
+      </div>
+
+      <Field label={`Volume · ${Math.round((a.volume ?? 1) * 100)}%`}>
+        <input type="range" min={0} max={150} value={Math.round((a.volume ?? 1) * 100)} onChange={e => setA('volume', Number(e.target.value) / 100)} style={{ width: '100%' }} />
+      </Field>
+      <Field label={`Fade in · ${((a.fadeIn || 0) / 1000).toFixed(1)}s`}>
+        <input type="range" min={0} max={5000} step={100} value={a.fadeIn || 0} onChange={e => setA('fadeIn', Number(e.target.value))} style={{ width: '100%' }} />
+      </Field>
+      <Field label={`Fade out · ${((a.fadeOut || 0) / 1000).toFixed(1)}s`}>
+        <input type="range" min={0} max={5000} step={100} value={a.fadeOut || 0} onChange={e => setA('fadeOut', Number(e.target.value))} style={{ width: '100%' }} />
+      </Field>
+      <Field label={`Start from · ${((clip.in || 0) / 1000).toFixed(1)}s`}>
+        <input type="range" min={0} max={Math.max(1000, (asset?.duration_ms || 30000) - 1000)} step={500} value={clip.in || 0} onChange={e => patch({ in: Number(e.target.value) })} style={{ width: '100%' }} />
+      </Field>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ms-ink-2)', margin: '4px 0 16px', cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!a.mute} onChange={e => setA('mute', e.target.checked)} style={{ accentColor: 'var(--ms-accent)' }} /> Mute
+      </label>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onReplace} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px' }}><Music size={13} /> Replace</button>
+        <button onClick={onRemove} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', color: '#d4564a' }}><Trash2 size={13} /> Remove</button>
+      </div>
+    </div>
+  );
+}
+
+function MusicModal({ projectId, audioAssets, current, onClose, onPick, onUploaded }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [previewId, setPreviewId] = useState(null);
+  const previewRef = useRef(null);
+
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true); setErr('');
+    try {
+      await mediaAPI.uploadAudio(projectId, file);
+      // give the probe a moment, then refresh the list
+      await new Promise(r => setTimeout(r, 1200));
+      const list = (await mediaAPI.listAudio(projectId)).data.audio || [];
+      onUploaded(list);
+    } catch (e) { setErr(e.response?.data?.error || 'Upload failed'); }
+    setBusy(false);
+  };
+  const togglePreview = (a) => {
+    const el = previewRef.current; if (!el) return;
+    if (previewId === a.id) { el.pause(); setPreviewId(null); return; }
+    el.src = mediaUrl(a.url); el.play().catch(() => {}); setPreviewId(a.id);
+  };
+
+  return (
+    <div onClick={onClose} className="ms-modal-overlay">
+      <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 480 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <span style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--ms-accent)', color: 'var(--ms-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Music size={18} /></span>
+            <div><h2>Music</h2><p className="ms-modal-sub">Add a track to your reel.</p></div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+        </div>
+
+        <label className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', cursor: 'pointer', margin: '14px 0' }}>
+          {busy ? <Loader size={15} className="ms-spin" /> : <Upload size={15} />} {busy ? 'Uploading…' : 'Upload a track'}
+          <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac" hidden disabled={busy} onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+        </label>
+        {err && <p style={{ fontSize: 12.5, color: '#d4564a', marginBottom: 10 }}>{err}</p>}
+
+        <div style={{ maxHeight: '46vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {audioAssets.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3)', padding: 8 }}>No tracks yet. Upload one above — your licensed track from Epidemic, Artlist, Uppbeat, etc.</p>}
+          {audioAssets.map(a => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 11, border: `1px solid ${current === a.id ? 'var(--ms-accent)' : 'var(--ms-line)'}`, background: 'var(--ms-surface)' }}>
+              <button onClick={() => togglePreview(a)} className="ms-iconbtn" style={{ width: 30, height: 30, flexShrink: 0 }}>{previewId === a.id ? <Pause size={13} /> : <Play size={13} />}</button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--ms-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.filename}</div>
+                {a.duration_ms > 0 && <div style={{ fontSize: 10.5, color: 'var(--ms-ink-3)' }}>{fmtClock(a.duration_ms)}</div>}
+              </div>
+              <button onClick={() => onPick(a)} className="ms-btn-ink" style={{ padding: '6px 14px', fontSize: 12 }}>{current === a.id ? 'Re-add' : 'Use'}</button>
+            </div>
+          ))}
+        </div>
+        <audio ref={previewRef} onEnded={() => setPreviewId(null)} hidden />
+      </div>
+    </div>
   );
 }
 
