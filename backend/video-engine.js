@@ -196,7 +196,7 @@ function parseFfprobe(json) {
 // their duration with an optional Ken Burns push. The first audio track (if any)
 // is mixed under with volume + fades. Returns { args, segments, hasAudio, note }.
 // resolve(assetId) → absolute file path (or null). Stills/missing media degrade.
-function buildExportCommand(timeline, target, resolve = () => null) {
+function buildExportCommand(timeline, target, resolve = () => null, lutPath = () => null) {
   const t = sanitizeTimeline(timeline);
   const W = target.width || t.width, H = target.height || t.height, FPS = target.fps || t.fps;
   const crf = target.crf != null ? target.crf : 20;
@@ -214,7 +214,7 @@ function buildExportCommand(timeline, target, resolve = () => null) {
   clips.forEach((c, i) => {
     const file = c.assetId ? resolve(c.assetId) : null;
     const durS = (c.duration / 1000).toFixed(3);
-    let label = `v${i}`;
+    const atoms = []; // filter atoms applied in order onto [i:v]
     if (c.kind === 'photo' || !file) {
       // looped still (or a gray placeholder when the file is missing)
       if (file) inputs.push('-loop', '1', '-t', durS, '-i', file);
@@ -224,26 +224,30 @@ function buildExportCommand(timeline, target, resolve = () => null) {
         // zoompan Ken Burns push over the clip's frame count
         const frames = Math.max(1, Math.round((c.duration / 1000) * FPS));
         const zExpr = `min(zoom+${((k.toScale - k.fromScale) / frames).toFixed(6)},${k.toScale})`;
-        filters.push(`[${i}:v]scale=${W * 2}:${H * 2},zoompan=z='${zExpr}':d=${frames}:s=${W}x${H}:fps=${FPS}[${label}]`);
+        atoms.push(`scale=${W * 2}:${H * 2}`, `zoompan=z='${zExpr}':d=${frames}:s=${W}x${H}:fps=${FPS}`, 'setsar=1');
       } else if (file) {
-        filters.push(`[${i}:v]${scaleCover(W, H)},fps=${FPS},trim=duration=${durS},setsar=1[${label}]`);
+        atoms.push(scaleCover(W, H), `fps=${FPS}`, `trim=duration=${durS}`, 'setsar=1');
       } else {
-        filters.push(`[${i}:v]fps=${FPS},trim=duration=${durS},setsar=1[${label}]`);
+        atoms.push(`fps=${FPS}`, `trim=duration=${durS}`, 'setsar=1');
       }
     } else {
-      // video: trim source, optional speed, scale/cover
+      // video: trim source, optional speed/reverse, scale/cover
       const inS = (c.in / 1000).toFixed(3), outS = ((c.in + c.duration * c.speed) / 1000).toFixed(3);
       inputs.push('-ss', inS, '-to', outS, '-i', file);
-      const speedPts = c.speed !== 1 ? `,setpts=${(1 / c.speed).toFixed(4)}*PTS` : '';
-      const rev = c.reverse ? ',reverse' : '';
-      filters.push(`[${i}:v]${scaleCover(W, H)},fps=${FPS}${speedPts}${rev},setsar=1[${label}]`);
+      atoms.push(scaleCover(W, H), `fps=${FPS}`);
+      if (c.speed !== 1) atoms.push(`setpts=${(1 / c.speed).toFixed(4)}*PTS`);
+      if (c.reverse) atoms.push('reverse');
+      atoms.push('setsar=1');
     }
-    // per-clip fade transitions (to/from black) — simple, reliable for MVP
-    const fades = [];
-    if (c.transitionIn) fades.push(`fade=t=in:st=0:d=${(c.transitionIn.duration / 1000).toFixed(3)}`);
-    if (c.transitionOut) { const d = c.transitionOut.duration / 1000; fades.push(`fade=t=out:st=${(c.duration / 1000 - d).toFixed(3)}:d=${d.toFixed(3)}`); }
-    if (fades.length) { filters.push(`[${label}]${fades.join(',')}[${label}f]`); label = `${label}f`; }
-    segLabels.push(`[${label}]`);
+    // grade: color → LUT → effects (the "look" layer)
+    const col = colorAtoms(c.color); if (col) atoms.push(...col);
+    const lp = c.lut ? lutPath(c.lut) : null; if (lp) atoms.push(`lut3d=${ffEscape(lp)}`);
+    for (const fx of (c.effects || [])) { const f = fxFilter(fx); if (f) atoms.push(f); }
+    // per-clip fade transitions (to/from black/white) — simple, reliable
+    if (c.transitionIn) atoms.push(`fade=t=in:st=0:d=${(c.transitionIn.duration / 1000).toFixed(3)}${c.transitionIn.type === 'dipToWhite' ? ':color=white' : ''}`);
+    if (c.transitionOut) { const d = c.transitionOut.duration / 1000; atoms.push(`fade=t=out:st=${(c.duration / 1000 - d).toFixed(3)}:d=${d.toFixed(3)}${c.transitionOut.type === 'dipToWhite' ? ':color=white' : ''}`); }
+    filters.push(`[${i}:v]${atoms.join(',')}[v${i}]`);
+    segLabels.push(`[v${i}]`);
   });
 
   // concat the normalized segments
@@ -279,6 +283,33 @@ function buildExportCommand(timeline, target, resolve = () => null) {
 function scaleCover(W, H) {
   return `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`;
 }
+
+// per-clip colour grade → eq (brightness/contrast/saturation) + colorbalance (temp/tint)
+function colorAtoms(c) {
+  if (!c) return null;
+  const { brightness = 0, contrast = 0, saturation = 0, temperature = 0, tint = 0 } = c;
+  const out = [];
+  if (brightness || contrast || saturation)
+    out.push(`eq=brightness=${(brightness * 0.4).toFixed(3)}:contrast=${(1 + contrast * 0.5).toFixed(3)}:saturation=${(1 + saturation).toFixed(3)}`);
+  if (temperature || tint)
+    out.push(`colorbalance=rm=${(temperature * 0.3).toFixed(3)}:bm=${(-temperature * 0.3).toFixed(3)}:gm=${(-tint * 0.3).toFixed(3)}`);
+  return out.length ? out : null;
+}
+
+// curated effect → ffmpeg filter atom (subset that needs no extra inputs/assets)
+function fxFilter(fx) {
+  switch (fx) {
+    case 'vignette':  return 'vignette=PI/4';
+    case 'filmGrain': return 'noise=alls=16:allf=t+u';
+    case 'blur':      return 'gblur=sigma=12';
+    case 'softFocus': return 'gblur=sigma=3';
+    case 'letterbox': return 'drawbox=x=0:y=0:w=iw:h=ih*0.11:color=black@1:t=fill,drawbox=x=0:y=ih*0.89:w=iw:h=ih*0.11:color=black@1:t=fill';
+    default:          return null; // pan/zoom/shake = Ken Burns; glow/lightLeak = later
+  }
+}
+
+// escape a file path for use inside a filtergraph option (Windows drive colons etc.)
+function ffEscape(p) { return p.replace(/\\/g, '/').replace(/:/g, '\\:'); }
 
 module.exports = {
   ASPECTS, EXPORT_PRESETS, QUALITIES, TRANSITIONS, EFFECTS, TEXT_TYPES, TEXT_ANIM,

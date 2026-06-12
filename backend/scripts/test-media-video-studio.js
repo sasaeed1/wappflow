@@ -17,6 +17,7 @@ const crypto = require('crypto');
 
 const mountMediaStudio = require('../media-studio');
 const ve = require('../video-engine');
+const vl = require('../video-luts');
 
 let passed = 0, failed = 0;
 const check = (n, c, e) => { if (c) { console.log(`  ✅ ${n}`); passed++; } else { console.log(`  ❌ ${n}${e ? ' → ' + e : ''}`); failed++; } };
@@ -54,6 +55,22 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
   check('command: video clip uses setpts (speed)', joined.includes('setpts='));
   check('command: libx264 + faststart output flags', joined.includes('libx264') && joined.includes('+faststart'));
 
+  // look layer — color grade / LUT / effects
+  const graded = ve.sanitizeTimeline({ aspect: '9:16', tracks: [{ type: 'video', clips: [
+    { kind: 'video', assetId: 'v1', start: 0, duration: 4000, color: { contrast: 0.3, saturation: 0.2, temperature: 0.4, tint: -0.1 }, lut: 'wedding_warm', effects: ['vignette', 'filmGrain'] },
+  ] }] });
+  const gj = ve.buildExportCommand(graded, { width: 1080, height: 1920, fps: 30 }, () => '/m/v1.mp4', (id) => '/luts/' + id + '.cube').args.join(' ');
+  check('grade: eq + colorbalance applied', gj.includes('eq=brightness') && gj.includes('colorbalance=rm='));
+  check('grade: LUT3D applied with resolved path', gj.includes('lut3d=/luts/wedding_warm.cube'));
+  check('grade: effects (vignette + grain) applied', gj.includes('vignette=PI/4') && gj.includes('noise=alls='));
+  check('sanitize drops unknown effect, keeps known', (() => { const s = ve.sanitizeTimeline({ tracks: [{ type: 'video', clips: [{ kind: 'photo', start: 0, duration: 1000, effects: ['vignette', 'hackerman'] }] }] }); return JSON.stringify(s.tracks[0].clips[0].effects) === JSON.stringify(['vignette']); })());
+
+  // LUT generation (.cube is plain text; no native deps)
+  const cube = vl.cubeFor(vl.LUTS[0]).trim().split('\n');
+  check('LUT .cube header is valid (LUT_3D_SIZE 17)', cube[1] === 'LUT_3D_SIZE 17');
+  check('LUT .cube body = 17³ rows', cube.length - 2 === 4913);
+  check('LUT list exposes css preview hint', vl.list()[0].css && vl.list().length === 8);
+
   // ── 2. SERVER / DB INTEGRATION ─────────────────────────────────────────────
   console.log('\n— video studio API —');
   const uploadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'msv-'));
@@ -81,6 +98,9 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
     const presets = await GET('/api/media/video/presets');
     check('presets: aspects + export presets listed', presets.aspects.includes('9:16') && presets.presets.some(p => p.id === 'ig_reel'));
     check('presets: ffmpeg availability reported', typeof presets.ffmpeg.ffmpeg === 'boolean');
+    check('presets: LUT looks listed (8 built-ins)', Array.isArray(presets.luts) && presets.luts.length === 8 && presets.luts[0].css);
+    const luts = await GET('/api/media/video/luts');
+    check('/video/luts endpoint returns the look library', luts.luts.some(l => l.id === 'wedding_warm'));
     const HAS_FFMPEG = presets.ffmpeg.ffmpeg;
 
     // upload a "video" asset → ingest should queue a probe job

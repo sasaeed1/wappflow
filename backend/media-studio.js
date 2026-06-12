@@ -24,6 +24,7 @@
 
 const createMediaWorker = require('./media-worker');
 const videoEngine = require('./video-engine');
+const videoLuts = require('./video-luts');
 const crypto = require('crypto');
 
 module.exports = function mountMediaStudio(app, db, deps = {}) {
@@ -1529,9 +1530,12 @@ Only suggest actions that make sense for the question. If none make sense, retur
       effects: videoEngine.EFFECTS,
       textTypes: videoEngine.TEXT_TYPES,
       textAnimations: videoEngine.TEXT_ANIM,
+      luts: videoLuts.list(),
       ffmpeg: videoEngine.detectFfmpeg(),
     });
   });
+
+  app.get('/api/media/video/luts', auth, (req, res) => res.json({ luts: videoLuts.list() }));
 
   app.get('/api/media/projects/:id/timelines', auth, (req, res) => {
     try {

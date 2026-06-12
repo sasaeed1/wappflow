@@ -53,6 +53,29 @@ export const TEXT_ANIM = [
   { id: 'scale', label: 'Scale' }, { id: 'typewriter', label: 'Typewriter' }, { id: 'pop', label: 'Pop' }, { id: 'zoom', label: 'Zoom' },
 ];
 
+// Effects the export engine renders today (matches video-engine.fxFilter).
+export const VIDEO_EFFECTS = [
+  { id: 'vignette', label: 'Vignette' },
+  { id: 'filmGrain', label: 'Film grain' },
+  { id: 'blur', label: 'Blur' },
+  { id: 'softFocus', label: 'Soft focus' },
+  { id: 'letterbox', label: 'Letterbox' },
+];
+
+// CSS approximation of the per-clip colour grade for instant preview (the server
+// render via eq/colorbalance is the source of truth).
+export function colorPreviewFilter(c) {
+  if (!c) return '';
+  const f = [];
+  if (c.brightness) f.push(`brightness(${(1 + c.brightness * 0.4).toFixed(2)})`);
+  if (c.contrast) f.push(`contrast(${(1 + c.contrast * 0.5).toFixed(2)})`);
+  if (c.saturation) f.push(`saturate(${(1 + c.saturation).toFixed(2)})`);
+  if (c.temperature > 0) f.push(`sepia(${(c.temperature * 0.35).toFixed(2)})`);
+  if (c.temperature < 0) f.push(`hue-rotate(${Math.round(c.temperature * 16)}deg)`);
+  if (c.tint) f.push(`hue-rotate(${Math.round(-c.tint * 12)}deg)`);
+  return f.join(' ');
+}
+
 export const DEFAULT_PHOTO_MS = 3000;
 export const DEFAULT_VIDEO_MS = 5000;
 export const PX_PER_MS = 0.06; // 60px per second at 1× zoom

@@ -28,6 +28,7 @@ try { PDFDocument = require('pdfkit'); } catch { /* optional — album pdf degra
 
 const { spawn } = require('child_process');
 const videoEngine = require('./video-engine');
+const videoLuts = require('./video-luts');
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
 
@@ -554,7 +555,9 @@ module.exports = function createMediaWorker(db, deps = {}) {
       const t = db.prepare('SELECT * FROM ms_timelines WHERE id = ?').get(exp.timeline_id);
       if (!t) return fail('timeline gone');
       let document = {}; try { document = JSON.parse(t.document || '{}'); } catch {}
-      const built = videoEngine.buildExportCommand(document, { width: exp.width, height: exp.height, fps: exp.fps }, resolveAssetPath);
+      // ensure the built-in LUT .cube files exist on disk, then resolve id → path
+      const lutMap = videoLuts.ensureCubeFiles(fs, path, path.join(uploadsDir, 'media', 'luts'));
+      const built = videoEngine.buildExportCommand(document, { width: exp.width, height: exp.height, fps: exp.fps }, resolveAssetPath, (id) => lutMap[id] || null);
       if (!built.args) return fail(built.note === 'empty-timeline' ? 'Add at least one clip before exporting.' : built.note);
 
       const exportsDir = path.join(uploadsDir, 'media', 'exports');

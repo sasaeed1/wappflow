@@ -10,9 +10,11 @@ import {
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
 import NavBar from '../../../../../components/StudioShell';
 import {
-  ASPECTS, ASPECT_LABELS, EXPORT_PRESETS, QUALITIES, SAFE_AREAS, TRANSITIONS,
-  DEFAULT_PHOTO_MS, DEFAULT_VIDEO_MS, PX_PER_MS, aspectBox, uid,
+  ASPECTS, ASPECT_LABELS, EXPORT_PRESETS, QUALITIES, SAFE_AREAS, TRANSITIONS, VIDEO_EFFECTS,
+  DEFAULT_PHOTO_MS, DEFAULT_VIDEO_MS, PX_PER_MS, aspectBox, uid, colorPreviewFilter,
 } from '../../../video-constants';
+
+const ZERO_COLOR = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0 };
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -34,6 +36,7 @@ export default function VideoEditor() {
   const [doc, setDoc] = useState(null);
   const [name, setName] = useState('');
   const [assets, setAssets] = useState([]);
+  const [luts, setLuts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selId, setSelId] = useState(null);
   const [playhead, setPlayhead] = useState(0);
@@ -57,11 +60,12 @@ export default function VideoEditor() {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
     (async () => {
       try {
-        const [t, a] = await Promise.all([mediaAPI.getTimeline(timelineId), mediaAPI.listAssets(id, { limit: 500 })]);
+        const [t, a, pr] = await Promise.all([mediaAPI.getTimeline(timelineId), mediaAPI.listAssets(id, { limit: 500 }), mediaAPI.videoPresets().catch(() => null)]);
         const d = t.data.document && t.data.document.tracks?.length ? t.data.document : emptyDoc(t.data.aspect_ratio);
         if (!getSpine(d)) d.tracks.unshift({ id: uid('t'), type: 'video', clips: [] });
         setDoc(d); setName(t.data.name || 'Untitled reel');
         setAssets((a.data.assets || []).filter(x => x.type === 'photo' || x.type === 'video'));
+        if (pr?.data?.luts) setLuts(pr.data.luts);
       } catch { router.push(`/studio/${id}/video`); return; }
       setLoading(false);
     })();
@@ -222,14 +226,17 @@ export default function VideoEditor() {
 
   const safe = SAFE_AREAS[EXPORT_PRESETS.find(p => p.aspect === doc.aspect && p.safe)?.safe] || null;
 
-  // active-clip media style (transform + Ken Burns)
+  // active-clip media style (transform + Ken Burns + colour/LUT look)
   let mediaStyle = { width: '100%', height: '100%', objectFit: 'cover' };
+  const activeFx = activeClip?.effects || [];
   if (activeClip) {
     const p = activeClip.duration ? (playhead - activeClip.start) / activeClip.duration : 0;
     const tf = activeClip.transform || {};
     let sc = tf.scale || 1, tx = (tf.x || 0) * 100, ty = (tf.y || 0) * 100;
     if (activeClip.kenBurns) { const k = activeClip.kenBurns; sc *= lerp(k.fromScale, k.toScale, p); tx += lerp(k.fromX, k.toX, p) * 100; ty += lerp(k.fromY, k.toY, p) * 100; }
-    mediaStyle = { ...mediaStyle, transform: `translate(${tx}%, ${ty}%) scale(${sc}) rotate(${tf.rotation || 0}deg)`, opacity: tf.opacity ?? 1, transition: playing ? 'none' : 'transform .12s' };
+    const lutCss = activeClip.lut ? (luts.find(l => l.id === activeClip.lut)?.css || '') : '';
+    const filter = [colorPreviewFilter(activeClip.color), lutCss, activeFx.includes('blur') ? 'blur(6px)' : '', activeFx.includes('softFocus') ? 'blur(1.5px)' : ''].filter(Boolean).join(' ');
+    mediaStyle = { ...mediaStyle, transform: `translate(${tx}%, ${ty}%) scale(${sc}) rotate(${tf.rotation || 0}deg)`, opacity: tf.opacity ?? 1, transition: playing ? 'none' : 'transform .12s', filter: filter || undefined };
   }
 
   return (
@@ -291,6 +298,10 @@ export default function VideoEditor() {
               {activeClip?.transitionOut && activeClip.end - playhead < activeClip.transitionOut.duration && (
                 <div style={dipStyle(activeClip.transitionOut, 1 - (activeClip.end - playhead) / activeClip.transitionOut.duration)} />
               )}
+              {/* effect overlays (preview) */}
+              {activeFx.includes('vignette') && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: 'inset 0 0 120px 40px rgba(0,0,0,0.55)' }} />}
+              {activeFx.includes('letterbox') && <><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '11%', background: '#000', pointerEvents: 'none' }} /><div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '11%', background: '#000', pointerEvents: 'none' }} /></>}
+              {activeFx.includes('filmGrain') && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.12, mixBlendMode: 'overlay', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")" }} />}
               {/* safe-area guides */}
               {safe && (
                 <div className="ms-ve-safe" style={{ top: `${safe.top * 100}%`, bottom: `${safe.bottom * 100}%`, left: `${safe.left * 100}%`, right: `${safe.right * 100}%` }} />
@@ -310,7 +321,7 @@ export default function VideoEditor() {
                 Select a clip to edit it. Click media on the left to add it to the timeline.<br /><br />
                 <b style={{ color: 'var(--ms-ink-2)' }}>Shortcuts</b><br />Space play · S split · Del remove · ←→ nudge
               </div>
-            ) : <Inspector clip={selected} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />}
+            ) : <Inspector clip={selected} luts={luts} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />}
           </aside>
         </div>
 
@@ -358,7 +369,11 @@ function dipStyle(tr, intensity) {
   return { position: 'absolute', inset: 0, background: white ? '#fff' : '#000', opacity: clamp(intensity, 0, 1), pointerEvents: 'none' };
 }
 
-function Inspector({ clip, patch, onDelete, onDup }) {
+function Inspector({ clip, luts, patch, onDelete, onDup }) {
+  const color = clip.color || ZERO_COLOR;
+  const fx = clip.effects || [];
+  const setColor = (k, v) => patch({ color: { ...ZERO_COLOR, ...color, [k]: v } });
+  const toggleFx = (idfx) => patch({ effects: fx.includes(idfx) ? fx.filter(e => e !== idfx) : [...fx, idfx] });
   return (
     <div style={{ padding: 14, overflowY: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -408,6 +423,40 @@ function Inspector({ clip, patch, onDelete, onDup }) {
         <TransitionPicker value={clip.transitionOut} onChange={t => patch({ transitionOut: t })} />
       </Field>
 
+      <div style={{ height: 1, background: 'var(--ms-line)', margin: '6px 0 14px' }} />
+
+      {luts.length > 0 && (
+        <Field label="Look">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+            <button onClick={() => patch({ lut: null })} className={`ms-chip${!clip.lut ? ' ms-chip-active' : ''}`} style={{ padding: '7px 4px', fontSize: 10, justifyContent: 'center' }}>None</button>
+            {luts.map(l => (
+              <button key={l.id} onClick={() => patch({ lut: l.id })} title={l.name}
+                className={`ms-chip${clip.lut === l.id ? ' ms-chip-active' : ''}`}
+                style={{ padding: 0, overflow: 'hidden', flexDirection: 'column', height: 46, position: 'relative' }}>
+                <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,#caa37a,#6b8aa6)', filter: l.css === 'none' ? undefined : l.css }} />
+                <span style={{ position: 'relative', fontSize: 8.5, fontWeight: 600, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.7)', alignSelf: 'flex-end', width: '100%', textAlign: 'left', padding: '0 4px 3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name}</span>
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      <Field label="Color">
+        <ColorSlider label="Exposure" value={color.brightness} onChange={v => setColor('brightness', v)} />
+        <ColorSlider label="Contrast" value={color.contrast} onChange={v => setColor('contrast', v)} />
+        <ColorSlider label="Saturation" value={color.saturation} onChange={v => setColor('saturation', v)} />
+        <ColorSlider label="Warmth" value={color.temperature} onChange={v => setColor('temperature', v)} />
+        <ColorSlider label="Tint" value={color.tint} onChange={v => setColor('tint', v)} />
+      </Field>
+
+      <Field label="Effects">
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {VIDEO_EFFECTS.map(e => (
+            <button key={e.id} onClick={() => toggleFx(e.id)} className={`ms-chip${fx.includes(e.id) ? ' ms-chip-active' : ''}`} style={{ padding: '5px 9px', fontSize: 11 }}>{e.label}</button>
+          ))}
+        </div>
+      </Field>
+
       <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
         <button onClick={onDup} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px' }}><Copy size={13} /> Duplicate</button>
         <button onClick={onDelete} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', color: '#d4564a' }}><Trash2 size={13} /> Delete</button>
@@ -424,6 +473,18 @@ function TransitionPicker({ value, onChange }) {
         return <button key={t.id} onClick={() => onChange(t.id === 'none' ? null : { type: t.id, duration: 400 })}
           className={`ms-chip${active ? ' ms-chip-active' : ''}`} style={{ padding: '5px 9px', fontSize: 11 }}>{t.label}</button>;
       })}
+    </div>
+  );
+}
+
+function ColorSlider({ label, value, onChange }) {
+  return (
+    <div style={{ marginBottom: 9 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+        <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>{label}</span>
+        <span style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(value * 100)}</span>
+      </div>
+      <input type="range" min={-100} max={100} value={Math.round(value * 100)} onChange={e => onChange(Number(e.target.value) / 100)} onDoubleClick={() => onChange(0)} style={{ width: '100%' }} />
     </div>
   );
 }
