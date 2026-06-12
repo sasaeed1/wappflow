@@ -26,6 +26,11 @@ try { exifr = require('exifr'); } catch { /* optional */ }
 try { AdmZip = require('adm-zip'); } catch { /* optional — zip export degrades */ }
 try { PDFDocument = require('pdfkit'); } catch { /* optional — album pdf degrades */ }
 
+const { spawn } = require('child_process');
+const videoEngine = require('./video-engine');
+const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
+const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
+
 module.exports = function createMediaWorker(db, deps = {}) {
   const {
     uploadsDir,
@@ -132,8 +137,13 @@ module.exports = function createMediaWorker(db, deps = {}) {
     const absPath = path.join(uploadsDir, asset.storage_key);
 
     if (!Jimp || !isProcessableImage(asset.mime, asset.filename) || !fs.existsSync(absPath)) {
-      // RAW/video/missing-lib → keep original as-is, no preview/scores.
+      // RAW/video/missing-lib → keep original as-is, no JS image preview.
       db.prepare("UPDATE ms_assets SET status = 'ready' WHERE id = ?").run(asset.id);
+      // Video assets enter the ffmpeg lane: probe → poster + proxy (degrades w/o ffmpeg).
+      if ((asset.type === 'video') || (asset.mime || '').startsWith('video/')) {
+        enqueue('video_probe', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
+        return { note: 'video-queued' };
+      }
       return { note: Jimp ? 'no-preview' : 'degraded-no-jimp' };
     }
 
@@ -449,6 +459,129 @@ module.exports = function createMediaWorker(db, deps = {}) {
     }
   }
 
+  // ── VIDEO STUDIO (ffmpeg) ────────────────────────────────────────────────────
+  // All video work is gated on detectFfmpeg(): without the binary, jobs degrade
+  // gracefully (probe → no metadata, export → 'failed' with a clear message) and
+  // NEVER crash the host. On the VPS where ffmpeg is installed, they run for real.
+  function enqueue(type, { asset_id = null, project_id = null, workspace_id = null, payload = {} }) {
+    db.prepare("INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload) VALUES (?, ?, ?, ?, ?, 'pending', ?)")
+      .run(generateId(), workspace_id, type, asset_id, project_id, JSON.stringify(payload));
+  }
+  function resolveAssetPath(assetId) {
+    const a = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(assetId);
+    if (!a) return null;
+    let variants = {}; try { variants = JSON.parse(a.variants || '{}'); } catch {}
+    let rel;
+    if ((a.type === 'video') || (a.mime || '').startsWith('video/')) rel = a.storage_key;
+    else rel = (variants.full_edit || variants.web || '').replace(/^\/?uploads\//, '') || a.storage_key;
+    const abs = path.join(uploadsDir, rel);
+    return fs.existsSync(abs) ? abs : null;
+  }
+  function runFfmpeg(args, { onProgress, totalMs } = {}) {
+    return new Promise((resolve, reject) => {
+      const p = spawn(FFMPEG, args, { windowsHide: true });
+      let err = '';
+      p.stderr.on('data', d => { err += d.toString(); if (err.length > 16000) err = err.slice(-16000); });
+      if (onProgress && totalMs) {
+        p.stdout.on('data', d => {
+          const m = /out_time_ms=(\d+)/.exec(d.toString());
+          if (m) onProgress(Math.max(0, Math.min(99, Math.round((Number(m[1]) / 1000 / totalMs) * 100))));
+        });
+      }
+      p.on('error', reject);
+      p.on('close', code => code === 0 ? resolve() : reject(new Error('ffmpeg exited ' + code + (err ? ': ' + err.slice(-400) : ''))));
+    });
+  }
+
+  async function processVideoProbe(job) {
+    const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
+    if (!asset) return { note: 'asset-gone' };
+    if (!videoEngine.detectFfmpeg().ffprobe) return { note: 'no-ffprobe' };
+    const abs = path.join(uploadsDir, asset.storage_key);
+    if (!fs.existsSync(abs)) return { note: 'file-missing' };
+    const out = await new Promise((resolve) => {
+      const p = spawn(FFPROBE, ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', abs], { windowsHide: true });
+      let buf = ''; p.stdout.on('data', d => buf += d.toString());
+      p.on('error', () => resolve('')); p.on('close', () => resolve(buf));
+    });
+    const meta = videoEngine.parseFfprobe(out);
+    db.prepare(`UPDATE ms_assets SET v_duration_ms=?, v_width=?, v_height=?, v_fps=?, v_codec=?, v_has_audio=? WHERE id=?`)
+      .run(meta.v_duration_ms || 0, meta.v_width || 0, meta.v_height || 0, meta.v_fps || 0, meta.v_codec || null, meta.v_has_audio || 0, asset.id);
+    // chain the poster + proxy renders
+    enqueue('video_poster', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
+    enqueue('video_proxy', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
+    return { note: 'ok', meta };
+  }
+
+  async function processVideoPoster(job) {
+    const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
+    if (!asset || !videoEngine.detectFfmpeg().ffmpeg) return { note: 'skip' };
+    const abs = path.join(uploadsDir, asset.storage_key);
+    if (!fs.existsSync(abs)) return { note: 'file-missing' };
+    const rel = `media/variants/${asset.id}-poster.jpg`;
+    const at = Math.max(0, ((asset.v_duration_ms || 2000) / 1000) * 0.25).toFixed(2);
+    await runFfmpeg(['-y', '-ss', at, '-i', abs, '-frames:v', '1', '-vf', 'scale=640:-2', path.join(uploadsDir, rel)]);
+    db.prepare('UPDATE ms_assets SET poster_url = ? WHERE id = ?').run(publicUrl(rel), asset.id);
+    if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
+    return { note: 'ok' };
+  }
+
+  async function processVideoProxy(job) {
+    const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
+    if (!asset || !videoEngine.detectFfmpeg().ffmpeg) return { note: 'skip' };
+    const abs = path.join(uploadsDir, asset.storage_key);
+    if (!fs.existsSync(abs)) return { note: 'file-missing' };
+    const rel = `media/variants/${asset.id}-proxy.mp4`;
+    // 720p H.264 proxy for smooth browser scrubbing — keep audio for preview
+    await runFfmpeg(['-y', '-i', abs, '-vf', 'scale=-2:720', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+      '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', path.join(uploadsDir, rel)]);
+    db.prepare('UPDATE ms_assets SET proxy_url = ? WHERE id = ?').run(publicUrl(rel), asset.id);
+    if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
+    return { note: 'ok' };
+  }
+
+  async function processVideoExport(job) {
+    const payload = (() => { try { return JSON.parse(job.payload || '{}'); } catch { return {}; } })();
+    const exp = db.prepare('SELECT * FROM ms_video_exports WHERE id = ?').get(payload.export_id);
+    if (!exp) return { note: 'export-gone' };
+    const fail = (msg) => {
+      db.prepare("UPDATE ms_video_exports SET status='failed', error_message=?, finished_at=CURRENT_TIMESTAMP WHERE id=?").run(msg, exp.id);
+      if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'failed' });
+      return { note: 'export-failed: ' + msg };
+    };
+    try {
+      if (!videoEngine.detectFfmpeg().ffmpeg) return fail('FFmpeg is not installed on the server. Run: apt install ffmpeg');
+      const t = db.prepare('SELECT * FROM ms_timelines WHERE id = ?').get(exp.timeline_id);
+      if (!t) return fail('timeline gone');
+      let document = {}; try { document = JSON.parse(t.document || '{}'); } catch {}
+      const built = videoEngine.buildExportCommand(document, { width: exp.width, height: exp.height, fps: exp.fps }, resolveAssetPath);
+      if (!built.args) return fail(built.note === 'empty-timeline' ? 'Add at least one clip before exporting.' : built.note);
+
+      const exportsDir = path.join(uploadsDir, 'media', 'exports');
+      try { fs.mkdirSync(exportsDir, { recursive: true }); } catch {}
+      const outRel = `media/exports/${exp.id}.mp4`;
+      const outAbs = path.join(uploadsDir, outRel);
+
+      db.prepare("UPDATE ms_video_exports SET status='rendering', progress=1 WHERE id=?").run(exp.id);
+      if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'rendering', progress: 1 });
+
+      const args = ['-progress', 'pipe:1', '-nostats', ...built.args, outAbs];
+      await runFfmpeg(args, {
+        totalMs: t.duration_ms || 1,
+        onProgress: (pct) => {
+          db.prepare("UPDATE ms_video_exports SET progress=? WHERE id=?").run(pct, exp.id);
+          if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'rendering', progress: pct });
+        },
+      });
+
+      const size = fs.existsSync(outAbs) ? fs.statSync(outAbs).size : 0;
+      db.prepare("UPDATE ms_video_exports SET status='done', progress=100, storage_key=?, size_bytes=?, finished_at=CURRENT_TIMESTAMP WHERE id=?")
+        .run(outRel, size, exp.id);
+      if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'done', progress: 100, url: publicUrl(outRel) });
+      return { note: 'ok', size, segments: built.segments };
+    } catch (e) { return fail(e.message); }
+  }
+
   // ── job runner (claim → run → done/retry) ───────────────────────────────────
   function claim(jobId) {
     const r = db.prepare("UPDATE ms_jobs SET status = 'running' WHERE id = ? AND status = 'pending'").run(jobId);
@@ -462,7 +595,11 @@ module.exports = function createMediaWorker(db, deps = {}) {
       else if (job.type === 'zip_export') result = await processZipExport(job);
       else if (job.type === 'pdf_export') result = await processPdfExport(job);
       else if (job.type === 'render_edits') result = await processRenderEdits(job);
-      // (future: transcode | score)
+      else if (job.type === 'video_probe') result = await processVideoProbe(job);
+      else if (job.type === 'video_poster') result = await processVideoPoster(job);
+      else if (job.type === 'video_proxy') result = await processVideoProxy(job);
+      else if (job.type === 'video_export') result = await processVideoExport(job);
+      // (future: ai_reel_draft | score)
       db.prepare("UPDATE ms_jobs SET status = 'done', progress = 100, finished_at = CURRENT_TIMESTAMP, error_message = ? WHERE id = ?")
         .run(result.note || null, job.id);
       if (job.workspace_id) broadcastToWorkspace(job.workspace_id, 'ms_asset_processed', { asset_id: job.asset_id, project_id: job.project_id });
@@ -511,5 +648,5 @@ module.exports = function createMediaWorker(db, deps = {}) {
   }
   function stop() { if (timer) { clearInterval(timer); timer = null; } }
 
-  return { processOnce, start, stop, get hasImageLib() { return !!Jimp; } };
+  return { processOnce, start, stop, get hasImageLib() { return !!Jimp; }, get hasFfmpeg() { return videoEngine.detectFfmpeg().ffmpeg; } };
 };

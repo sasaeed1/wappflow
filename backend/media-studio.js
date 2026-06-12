@@ -23,6 +23,7 @@
  */
 
 const createMediaWorker = require('./media-worker');
+const videoEngine = require('./video-engine');
 const crypto = require('crypto');
 
 module.exports = function mountMediaStudio(app, db, deps = {}) {
@@ -152,6 +153,11 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     }
   }
   safeAlter('ALTER TABLE ms_assets ADD COLUMN edits TEXT'); // non-destructive edit params (JSON)
+  // Video metadata (filled by the worker's ffprobe pass) + proxy/poster for the editor.
+  for (const col of ['v_duration_ms INTEGER', 'v_width INTEGER', 'v_height INTEGER', 'v_fps REAL',
+    'v_codec TEXT', 'v_has_audio INTEGER', 'proxy_url TEXT', 'poster_url TEXT']) {
+    safeAlter(`ALTER TABLE ms_assets ADD COLUMN ${col}`);
+  }
 
   // ───────────────────────────────────────────────────────────────────────────
   // 2. STORAGE SEAM  (local disk today → swap this block for R2 presigned later)
@@ -842,6 +848,66 @@ Only suggest actions that make sense for the question. If none make sense, retur
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_ms_video_clips_asset ON ms_video_clips(asset_id);
+
+    -- ── VIDEO STUDIO (timeline editor) ──────────────────────────────────────
+    -- A timeline is ONE JSON EDL document. Non-destructive, versioned by save.
+    CREATE TABLE IF NOT EXISTS ms_timelines (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      name TEXT DEFAULT 'Untitled reel',
+      source TEXT DEFAULT 'manual',          -- manual | template | ai_draft
+      template_id TEXT,
+      aspect_ratio TEXT DEFAULT '9:16',
+      width INTEGER DEFAULT 1080,
+      height INTEGER DEFAULT 1920,
+      fps INTEGER DEFAULT 30,
+      duration_ms INTEGER DEFAULT 0,
+      document TEXT DEFAULT '{}',             -- the EDL (tracks/clips/keyframes)
+      status TEXT DEFAULT 'draft',            -- draft | ready
+      ai_style TEXT,                          -- for ai_draft rows
+      ai_signature TEXT,                      -- hash of source media set
+      ai_stale INTEGER DEFAULT 0,
+      created_by TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_ms_timelines_project ON ms_timelines(project_id);
+
+    CREATE TABLE IF NOT EXISTS ms_video_exports (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      timeline_id TEXT NOT NULL,
+      project_id TEXT,
+      preset TEXT DEFAULT 'ig_reel',
+      width INTEGER, height INTEGER, fps INTEGER, quality INTEGER DEFAULT 1080,
+      status TEXT DEFAULT 'pending',          -- pending | rendering | done | failed
+      progress INTEGER DEFAULT 0,
+      storage_key TEXT,
+      size_bytes INTEGER,
+      error_message TEXT,
+      created_by TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      finished_at TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_ms_video_exports_timeline ON ms_video_exports(timeline_id);
+
+    -- Built-in (workspace_id NULL) + custom music / LUTs (used from Phase 2 on).
+    CREATE TABLE IF NOT EXISTS ms_audio_tracks (
+      id TEXT PRIMARY KEY, workspace_id TEXT, category TEXT, title TEXT, artist TEXT,
+      storage_key TEXT, duration_ms INTEGER, license TEXT, created_by TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS ms_luts (
+      id TEXT PRIMARY KEY, workspace_id TEXT, name TEXT, category TEXT,
+      cube_path TEXT, thumbnail_url TEXT, created_by TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS ms_video_templates (
+      id TEXT PRIMARY KEY, workspace_id TEXT, category TEXT, name TEXT,
+      thumbnail_url TEXT, aspect_ratios TEXT DEFAULT '[]', document TEXT DEFAULT '{}',
+      created_by TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   function getGallery(workspaceId, id) {
@@ -1436,6 +1502,122 @@ Only suggest actions that make sense for the question. If none make sense, retur
       db.prepare('DELETE FROM ms_video_clips WHERE id = ? AND workspace_id = ?').run(req.params.clipId, req.workspaceId);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // VIDEO STUDIO — timelines (the EDL) + MP4 export
+  //   The timeline document is the single source of truth. Editing = saving JSON.
+  //   Export enqueues a worker job that compiles the EDL to ffmpeg → MP4.
+  //   Control-first: nothing renders, publishes, or delivers without an explicit
+  //   user action (save / export / send).
+  // ───────────────────────────────────────────────────────────────────────────
+  function getTimeline(workspaceId, id) {
+    return db.prepare('SELECT * FROM ms_timelines WHERE id = ? AND workspace_id = ?').get(id, workspaceId);
+  }
+  function timelineOut(row) {
+    let document = {}; try { document = JSON.parse(row.document || '{}'); } catch {}
+    return { ...row, document };
+  }
+
+  // Formats/presets the editor offers (drives aspect switcher + export dialog).
+  app.get('/api/media/video/presets', auth, (req, res) => {
+    res.json({
+      aspects: Object.keys(videoEngine.ASPECTS),
+      qualities: Object.keys(videoEngine.QUALITIES).map(Number),
+      presets: Object.entries(videoEngine.EXPORT_PRESETS).map(([id, p]) => ({ id, ...p })),
+      transitions: videoEngine.TRANSITIONS,
+      effects: videoEngine.EFFECTS,
+      textTypes: videoEngine.TEXT_TYPES,
+      textAnimations: videoEngine.TEXT_ANIM,
+      ffmpeg: videoEngine.detectFfmpeg(),
+    });
+  });
+
+  app.get('/api/media/projects/:id/timelines', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const rows = db.prepare('SELECT id, name, source, aspect_ratio, width, height, fps, duration_ms, status, ai_style, ai_stale, updated_at FROM ms_timelines WHERE project_id = ? ORDER BY updated_at DESC').all(project.id);
+      res.json({ timelines: rows });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/media/projects/:id/timelines', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const doc = videoEngine.sanitizeTimeline(req.body.document || { aspect: req.body.aspect_ratio || '9:16' });
+      const id = generateId();
+      db.prepare(`INSERT INTO ms_timelines (id, workspace_id, project_id, name, source, aspect_ratio, width, height, fps, duration_ms, document, created_by)
+        VALUES (?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, req.workspaceId, project.id, (req.body.name || 'Untitled reel').slice(0, 120), doc.aspect, doc.width, doc.height, doc.fps, doc.duration, JSON.stringify(doc), req.userId);
+      logAudit(req.workspaceId, req.userId, 'create', 'ms_timeline', id, { name: req.body.name });
+      res.status(201).json(timelineOut(getTimeline(req.workspaceId, id)));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/media/timelines/:id', auth, (req, res) => {
+    const t = getTimeline(req.workspaceId, req.params.id);
+    if (!t) return res.status(404).json({ error: 'Timeline not found' });
+    res.json(timelineOut(t));
+  });
+
+  app.put('/api/media/timelines/:id', auth, (req, res) => {
+    try {
+      const t = getTimeline(req.workspaceId, req.params.id);
+      if (!t) return res.status(404).json({ error: 'Timeline not found' });
+      const doc = videoEngine.sanitizeTimeline(req.body.document || {});
+      const name = req.body.name != null ? String(req.body.name).slice(0, 120) : t.name;
+      db.prepare(`UPDATE ms_timelines SET name = ?, aspect_ratio = ?, width = ?, height = ?, fps = ?, duration_ms = ?, document = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(name, doc.aspect, doc.width, doc.height, doc.fps, doc.duration, JSON.stringify(doc), t.id);
+      res.json(timelineOut(getTimeline(req.workspaceId, t.id)));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/media/timelines/:id', auth, (req, res) => {
+    try {
+      const t = getTimeline(req.workspaceId, req.params.id);
+      if (!t) return res.status(404).json({ error: 'Timeline not found' });
+      db.prepare('DELETE FROM ms_video_exports WHERE timeline_id = ?').run(t.id);
+      db.prepare('DELETE FROM ms_timelines WHERE id = ?').run(t.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Kick off an MP4 render (background job). Returns the export row to poll.
+  app.post('/api/media/timelines/:id/export', auth, (req, res) => {
+    try {
+      const t = getTimeline(req.workspaceId, req.params.id);
+      if (!t) return res.status(404).json({ error: 'Timeline not found' });
+      const presetId = videoEngine.EXPORT_PRESETS[req.body.preset] ? req.body.preset : 'ig_reel';
+      const preset = videoEngine.EXPORT_PRESETS[presetId];
+      const quality = videoEngine.QUALITIES[req.body.quality] ? Number(req.body.quality) : 1080;
+      // custom preset keeps the timeline's own aspect; named presets force theirs
+      const aspect = preset.aspect || t.aspect_ratio;
+      const { width, height } = videoEngine.dimsFor(aspect, quality);
+      const fps = t.fps || 30;
+      const id = generateId();
+      db.prepare(`INSERT INTO ms_video_exports (id, workspace_id, timeline_id, project_id, preset, width, height, fps, quality, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, req.workspaceId, t.id, t.project_id, presetId, width, height, fps, quality, req.userId);
+      db.prepare(`INSERT INTO ms_jobs (id, workspace_id, type, project_id, status, payload) VALUES (?, ?, 'video_export', ?, 'pending', ?)`)
+        .run(generateId(), req.workspaceId, t.project_id, JSON.stringify({ export_id: id }));
+      logAudit(req.workspaceId, req.userId, 'export', 'ms_timeline', t.id, { preset: presetId, quality });
+      res.status(202).json(db.prepare('SELECT * FROM ms_video_exports WHERE id = ?').get(id));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/media/timelines/:id/exports', auth, (req, res) => {
+    const t = getTimeline(req.workspaceId, req.params.id);
+    if (!t) return res.status(404).json({ error: 'Timeline not found' });
+    const rows = db.prepare('SELECT * FROM ms_video_exports WHERE timeline_id = ? ORDER BY created_at DESC LIMIT 20').all(t.id);
+    res.json({ exports: rows.map(r => ({ ...r, url: r.storage_key ? publicUrl(r.storage_key) : null })) });
+  });
+
+  app.get('/api/media/video/exports/:exportId', auth, (req, res) => {
+    const r = db.prepare('SELECT * FROM ms_video_exports WHERE id = ? AND workspace_id = ?').get(req.params.exportId, req.workspaceId);
+    if (!r) return res.status(404).json({ error: 'Export not found' });
+    res.json({ ...r, url: r.storage_key ? publicUrl(r.storage_key) : null });
   });
 
   // ── Public client portal (NO auth — the share token IS the capability) ───────
