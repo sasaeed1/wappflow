@@ -280,7 +280,7 @@ export default function ProjectPage() {
         <header className="ms-masthead" style={{ marginBottom: 8 }}>
           <div>
             <p className="ms-eyebrow" style={{ textTransform: 'capitalize' }}>{(project.project_type || 'general').replace('_', ' ')}</p>
-            <h1 className="ms-display" style={{ fontSize: 'clamp(28px, 4vw, 46px)' }}>{project.title}</h1>
+            <h1 className="ms-display">{project.title}</h1>
             <p className="ms-collection-sub" style={{ marginTop: 8 }}>
               {project.client_name ? `${project.client_name} · ` : ''}{assets.length} photograph{assets.length === 1 ? '' : 's'}
             </p>
