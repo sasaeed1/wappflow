@@ -200,6 +200,92 @@ module.exports = function createMediaWorker(db, deps = {}) {
     return { note: 'ok', variants, scores: { ...cv }, group: groupKey };
   }
 
+  // ── non-destructive edit rendering ───────────────────────────────────────────
+  // Re-renders thumb/web/full variants from the untouched original with the
+  // asset's edit params applied (rotate → crop → tone). Clearing edits restores
+  // the plain variants. Rev-suffixed filenames bust browser caches.
+  async function processRenderEdits(job) {
+    const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
+    if (!asset) return { note: 'asset-gone' };
+    if (!Jimp) return { note: 'degraded-no-jimp' };
+    const absPath = path.join(uploadsDir, asset.storage_key);
+    if (!fs.existsSync(absPath)) return { note: 'file-gone' };
+
+    let edits = {}; try { edits = JSON.parse(asset.edits || '{}'); } catch {}
+    const hasEdits = ['exposure', 'contrast', 'temperature', 'saturation', 'rotate', 'crop'].some(k => edits[k] !== undefined);
+
+    const img = await Jimp.read(absPath);
+
+    if (!hasEdits) {
+      // restore plain variants from the original
+      const thumbRel = `media/variants/${asset.id}-thumb.jpg`;
+      const webRel = `media/variants/${asset.id}-web.jpg`;
+      await img.clone().resize(400, Jimp.AUTO).quality(72).writeAsync(path.join(uploadsDir, thumbRel));
+      await img.clone().resize(Math.min(2048, img.bitmap.width), Jimp.AUTO).quality(82).writeAsync(path.join(uploadsDir, webRel));
+      const variants = { original: publicUrl(asset.storage_key), web: publicUrl(webRel), thumb: publicUrl(thumbRel) };
+      db.prepare('UPDATE ms_assets SET variants = ?, width = ?, height = ? WHERE id = ?')
+        .run(JSON.stringify(variants), img.bitmap.width, img.bitmap.height, asset.id);
+      if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
+      return { note: 'reset' };
+    }
+
+    // 1. rotate (CSS-clockwise positive → jimp counter-clockwise)
+    if (edits.rotate) img.rotate(-edits.rotate);
+    // 2. crop (relative coords on the post-rotate frame)
+    if (edits.crop) {
+      const W = img.bitmap.width, H = img.bitmap.height;
+      const x = Math.max(0, Math.round(edits.crop.x * W));
+      const y = Math.max(0, Math.round(edits.crop.y * H));
+      const w = Math.min(W - x, Math.max(8, Math.round(edits.crop.w * W)));
+      const h = Math.min(H - y, Math.max(8, Math.round(edits.crop.h * H)));
+      img.crop(x, y, w, h);
+    }
+    // 3. tone
+    if (edits.exposure) img.brightness(Math.max(-1, Math.min(1, edits.exposure * 0.6)));
+    if (edits.contrast) img.contrast(Math.max(-1, Math.min(1, edits.contrast * 0.6)));
+    const colorOps = [];
+    if (edits.temperature) {
+      const t = Math.round(edits.temperature * 28);
+      colorOps.push({ apply: 'red', params: [t] }, { apply: 'blue', params: [-t] });
+    }
+    if (edits.saturation) {
+      colorOps.push(edits.saturation >= 0
+        ? { apply: 'saturate', params: [Math.round(edits.saturation * 40)] }
+        : { apply: 'desaturate', params: [Math.round(-edits.saturation * 40)] });
+    }
+    if (colorOps.length) img.color(colorOps);
+
+    const rev = edits.rev || 1;
+    const editsDir = path.join(uploadsDir, 'media', 'edits');
+    try { fs.mkdirSync(editsDir, { recursive: true }); } catch {}
+    const fullRel = `media/edits/${asset.id}-r${rev}-full.jpg`;
+    const webRel = `media/edits/${asset.id}-r${rev}-web.jpg`;
+    const thumbRel = `media/edits/${asset.id}-r${rev}-thumb.jpg`;
+    await img.clone().quality(88).writeAsync(path.join(uploadsDir, fullRel));
+    await img.clone().resize(Math.min(2048, img.bitmap.width), Jimp.AUTO).quality(82).writeAsync(path.join(uploadsDir, webRel));
+    await img.clone().resize(400, Jimp.AUTO).quality(72).writeAsync(path.join(uploadsDir, thumbRel));
+
+    const variants = {
+      original: publicUrl(asset.storage_key),
+      full_edit: publicUrl(fullRel),
+      web: publicUrl(webRel),
+      thumb: publicUrl(thumbRel),
+      edited: true,
+    };
+    db.prepare('UPDATE ms_assets SET variants = ?, width = ?, height = ? WHERE id = ?')
+      .run(JSON.stringify(variants), img.bitmap.width, img.bitmap.height, asset.id);
+
+    // clean older revisions so disk doesn't accumulate stale renders
+    try {
+      fs.readdirSync(editsDir).forEach(f => {
+        if (f.startsWith(`${asset.id}-r`) && !f.includes(`-r${rev}-`)) fs.unlinkSync(path.join(editsDir, f));
+      });
+    } catch {}
+
+    if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
+    return { note: 'ok', rev };
+  }
+
   // ── watermark (burned-in, tiled, semi-transparent) ──────────────────────────
   let _wmFont = null;
   async function watermarkBuffer(absPath, text) {
@@ -239,8 +325,10 @@ module.exports = function createMediaWorker(db, deps = {}) {
       let count = 0;
       for (const a of assets) {
         let variants = {}; try { variants = JSON.parse(a.variants || '{}'); } catch {}
+        // edited assets deliver their edited render; originals stay untouched on disk
+        const fullKey = variants.full_edit ? variants.full_edit.replace(/^\/?uploads\//, '') : a.storage_key;
         const rel = (variant === 'original' || !variants.web)
-          ? a.storage_key
+          ? fullKey
           : variants.web.replace(/^\/?uploads\//, '');
         const abs = path.join(uploadsDir, rel);
         if (!fs.existsSync(abs)) continue;
@@ -305,9 +393,11 @@ module.exports = function createMediaWorker(db, deps = {}) {
         rects.forEach((r, i) => {
           const slot = slots[i];
           if (!slot || !slot.asset_id) { doc.save().rect(r.x, r.y, r.w, r.h).fill('#eef0f3').restore(); return; }
-          const asset = db.prepare('SELECT storage_key FROM ms_assets WHERE id = ?').get(slot.asset_id);
+          const asset = db.prepare('SELECT storage_key, variants FROM ms_assets WHERE id = ?').get(slot.asset_id);
           if (!asset) return;
-          const abs = path.join(uploadsDir, asset.storage_key);
+          let av = {}; try { av = JSON.parse(asset.variants || '{}'); } catch {}
+          const key = av.full_edit ? av.full_edit.replace(/^\/?uploads\//, '') : asset.storage_key;
+          const abs = path.join(uploadsDir, key);
           if (!fs.existsSync(abs)) return;
           try { doc.image(abs, r.x, r.y, { cover: [r.w, r.h], align: 'center', valign: 'center' }); }
           catch { try { doc.image(abs, r.x, r.y, { fit: [r.w, r.h], align: 'center', valign: 'center' }); } catch {} }
@@ -339,6 +429,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
       if (job.type === 'ingest') result = await processIngest(job);
       else if (job.type === 'zip_export') result = await processZipExport(job);
       else if (job.type === 'pdf_export') result = await processPdfExport(job);
+      else if (job.type === 'render_edits') result = await processRenderEdits(job);
       // (future: transcode | score)
       db.prepare("UPDATE ms_jobs SET status = 'done', progress = 100, finished_at = CURRENT_TIMESTAMP, error_message = ? WHERE id = ?")
         .run(result.note || null, job.id);

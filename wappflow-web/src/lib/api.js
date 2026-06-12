@@ -291,6 +291,9 @@ export const mediaAPI = {
   cullAsset:       (id, data)    => api.put(`/media/assets/${id}/cull`, data),
   bulkCull:        (projectId, asset_ids, decision) => api.post(`/media/projects/${projectId}/cull/bulk`, { asset_ids, decision }),
   cullSummary:     (projectId)   => api.get(`/media/projects/${projectId}/cull/summary`),
+  // non-destructive edits (worker re-renders variants)
+  setEdits:        (assetId, edits) => api.put(`/media/assets/${assetId}/edits`, edits),
+  clearEdits:      (assetId)     => api.delete(`/media/assets/${assetId}/edits`),
   // galleries
   listGalleries:   (projectId)   => api.get(`/media/projects/${projectId}/galleries`),
   createGallery:   (projectId, data) => api.post(`/media/projects/${projectId}/galleries`, data),

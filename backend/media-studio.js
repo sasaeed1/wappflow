@@ -150,7 +150,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (!String(e.message || '').includes('duplicate column')) throw e;
     }
   }
-  // (none yet — placeholder for schema drift, matching server.js convention)
+  safeAlter('ALTER TABLE ms_assets ADD COLUMN edits TEXT'); // non-destructive edit params (JSON)
 
   // ───────────────────────────────────────────────────────────────────────────
   // 2. STORAGE SEAM  (local disk today → swap this block for R2 presigned later)
@@ -537,6 +537,61 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       rows.forEach(r => { out[r.d] = r.n; out.total += r.n; });
       res.json(out);
     } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Non-destructive edits (crop / rotate / tone) ─────────────────────────────
+  // Params are stored as JSON; the worker re-renders thumb/web/full variants from
+  // the untouched original. Delivery (galleries, ZIPs, PDFs) picks up the edited
+  // renders automatically. Clearing edits restores the original variants.
+  function inRange(v, lo, hi) { return typeof v === 'number' && isFinite(v) && v >= lo && v <= hi; }
+
+  app.put('/api/media/assets/:id/edits', auth, (req, res) => {
+    try {
+      const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!a) return res.status(404).json({ error: 'Asset not found' });
+      if (a.type !== 'photo') return res.status(400).json({ error: 'Only photos can be edited' });
+      const e = req.body || {};
+      const edits = {};
+      for (const k of ['exposure', 'contrast', 'temperature', 'saturation']) {
+        if (e[k] !== undefined && e[k] !== 0) {
+          if (!inRange(e[k], -1, 1)) return res.status(400).json({ error: `${k} must be between -1 and 1` });
+          edits[k] = Math.round(e[k] * 100) / 100;
+        }
+      }
+      if (e.rotate !== undefined && e.rotate !== 0) {
+        if (!inRange(e.rotate, -360, 360)) return res.status(400).json({ error: 'rotate must be between -360 and 360' });
+        edits.rotate = Math.round(e.rotate * 10) / 10;
+      }
+      if (e.crop) {
+        const c = e.crop;
+        if (!inRange(c.x, 0, 0.95) || !inRange(c.y, 0, 0.95) || !inRange(c.w, 0.05, 1) || !inRange(c.h, 0.05, 1) || c.x + c.w > 1.001 || c.y + c.h > 1.001) {
+          return res.status(400).json({ error: 'invalid crop' });
+        }
+        // ignore a full-frame crop (no-op)
+        if (!(c.x < 0.005 && c.y < 0.005 && c.w > 0.995 && c.h > 0.995)) {
+          edits.crop = { x: +c.x.toFixed(4), y: +c.y.toFixed(4), w: +c.w.toFixed(4), h: +c.h.toFixed(4) };
+        }
+      }
+      let prev = {}; try { prev = JSON.parse(a.edits || '{}'); } catch {}
+      edits.rev = (prev.rev || 0) + 1;
+      db.prepare('UPDATE ms_assets SET edits = ? WHERE id = ?').run(JSON.stringify(edits), a.id);
+      db.prepare("INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload) VALUES (?, ?, 'render_edits', ?, ?, 'pending', '{}')")
+        .run(generateId(), a.workspace_id, a.id, a.project_id);
+      logAudit(req.workspaceId, req.userId, 'edit', 'ms_asset', a.id, edits);
+      res.status(202).json({ status: 'rendering', edits });
+    } catch (e2) { res.status(500).json({ error: e2.message }); }
+  });
+
+  app.delete('/api/media/assets/:id/edits', auth, (req, res) => {
+    try {
+      const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!a) return res.status(404).json({ error: 'Asset not found' });
+      db.prepare('UPDATE ms_assets SET edits = NULL WHERE id = ?').run(a.id);
+      db.prepare("INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload) VALUES (?, ?, 'render_edits', ?, ?, 'pending', '{}')")
+        .run(generateId(), a.workspace_id, a.id, a.project_id);
+      logAudit(req.workspaceId, req.userId, 'edit_reset', 'ms_asset', a.id, {});
+      res.status(202).json({ status: 'rendering' });
+    } catch (e2) { res.status(500).json({ error: e2.message }); }
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
