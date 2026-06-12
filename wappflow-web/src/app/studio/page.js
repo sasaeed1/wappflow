@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X, Search, MapPin, Calendar } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../lib/api';
-import NavBar from '../../components/NavBar';
+import NavBar from '../../components/StudioShell';
 
 const TYPES = ['wedding', 'event', 'portrait', 'real_estate', 'commercial', 'product', 'general'];
 

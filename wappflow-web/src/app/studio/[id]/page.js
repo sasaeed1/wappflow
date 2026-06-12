@@ -9,7 +9,7 @@ import {
   Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../lib/api';
-import NavBar from '../../../components/NavBar';
+import NavBar from '../../../components/StudioShell';
 
 function FocusChip({ sharpness }) {
   if (sharpness == null) return null;

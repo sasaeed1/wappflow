@@ -16,6 +16,7 @@ const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 import { leadsAPI, remindersAPI, displayPhone, BASE_URL, platformAccountsAPI, ssoAPI } from '../lib/api';
 import { usePlan } from '@/lib/plan';
 import FloatingChat from './FloatingChat';
+import AppSwitcher from './AppSwitcher';
 import AICommandCenter from './AICommandCenter';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,7 +168,6 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Leads',     icon: Users,           path: '/leads-list' },
   { label: 'Inbox',     icon: Inbox,           path: '/chat' },
-  { label: 'Studio',    icon: Camera,          path: '/studio' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports',
     lockFeature: 'analytics', requiredPlan: 'Growth' },
@@ -700,6 +700,9 @@ export default function NavBar({ children }) {
 
         {/* Right side */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+
+          {/* App switcher — Studio opens in its own tab/module */}
+          <AppSwitcher />
 
           {/* Plan tier badge — between More and Settings */}
           <PlanBadge />

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Film, Scissors, Play, Trash2, ChevronUp, ChevronDown, FlagTriangleRight, Sparkles } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../lib/api';
-import NavBar from '../../../../components/NavBar';
+import NavBar from '../../../../components/StudioShell';
 
 const fmt = (ms) => {
   const s = Math.max(0, (ms || 0) / 1000);

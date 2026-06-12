@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, BookOpen, X, FileText } from 'lucide-react';
 import { mediaAPI } from '../../../../lib/api';
-import NavBar from '../../../../components/NavBar';
+import NavBar from '../../../../components/StudioShell';
 
 const SIZES = [
   { label: '30×30 cm square', spec: { w_mm: 300, h_mm: 300, margin_mm: 12 } },

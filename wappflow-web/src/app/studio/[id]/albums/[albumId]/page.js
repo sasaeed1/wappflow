@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, FileText, Download, Loader, Sparkles, X } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
-import NavBar from '../../../../../components/NavBar';
+import NavBar from '../../../../../components/StudioShell';
 
 const SLOTS = { single: 1, 'two-h': 2, 'two-v': 2, three: 3, grid4: 4 };
 const LAYOUT_OPTIONS = [['single', 'Single'], ['two-h', '2 across'], ['two-v', '2 stacked'], ['three', '3 across'], ['grid4', 'Grid of 4']];

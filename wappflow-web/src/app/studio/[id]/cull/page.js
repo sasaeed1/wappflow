@@ -7,7 +7,7 @@ import {
   ArrowLeft, Check, X, HelpCircle, Star, ChevronLeft, ChevronRight, Sparkles, Copy as Dup, Images,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../lib/api';
-import NavBar from '../../../../components/NavBar';
+import NavBar from '../../../../components/StudioShell';
 
 const FILTERS = [
   ['all', 'All'], ['undecided', 'To review'], ['keep', 'Keepers'], ['maybe', 'Maybe'], ['reject', 'Rejected'],

@@ -1,13 +1,13 @@
 import './studio.css';
-import StudioThemeToggle from './StudioThemeToggle';
 
-// Scopes the Media Studio design language to /studio/* only. WappFlow Core
-// (dashboard, leads, inbox, etc.) is untouched — it keeps its own look.
+// Studio is its own module. Each page renders <StudioShell> (its own nav bar);
+// this layout only loads the design system and sets the saved theme before paint
+// (no flash). WappFlow Core is untouched.
 export default function StudioLayout({ children }) {
   return (
-    <div className="ms-root">
+    <>
+      <script dangerouslySetInnerHTML={{ __html: `try{document.documentElement.setAttribute('data-ms-theme',localStorage.getItem('ms-theme')||'dark-pro')}catch(e){}` }} />
       {children}
-      <StudioThemeToggle />
-    </div>
+    </>
   );
 }
