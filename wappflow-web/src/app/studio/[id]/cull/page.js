@@ -92,6 +92,14 @@ export default function CullPage() {
   if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
 
   const sharp = current?.sharpness != null ? current.sharpness >= 120 : null;
+  const expo = current?.exposure;
+  const overE = (current?.high_clip || 0) > 0.06 || (expo != null && expo > 0.78);
+  const underE = (current?.shadow_clip || 0) > 0.10 || (expo != null && expo < 0.22);
+  const expoLabel = expo == null ? '—' : overE ? 'Bright' : underE ? 'Dark' : 'Balanced';
+  const expoColor = (overE || underE) ? '#d39a3e' : '#2f9e6e';
+  const q = current?.quality;
+  const qualLabel = q == null ? '—' : q >= 0.66 ? 'Great' : q >= 0.4 ? 'Good' : 'Weak';
+  const qualColor = q == null ? 'var(--ms-ink-3)' : q >= 0.66 ? '#2f9e6e' : q >= 0.4 ? '#d39a3e' : '#d4564a';
 
   return (
     <NavBar>
@@ -156,6 +164,8 @@ export default function CullPage() {
                   ) : (
                     <>
                       <Row label="Focus" value={sharp ? 'Sharp' : 'Soft'} color={sharp ? '#2f9e6e' : '#d39a3e'} />
+                      <Row label="Exposure" value={expoLabel} color={expoColor} />
+                      {q != null && <Row label="Quality" value={qualLabel} color={qualColor} />}
                       {current.dup_group && <Row label="Duplicate" value="Possible" color="var(--ms-ink-2)" icon={<Dup size={11} />} />}
                     </>
                   )}

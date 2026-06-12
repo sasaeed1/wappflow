@@ -79,7 +79,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
     if (g.bitmap.width > 1024) g.resize(1024, Jimp.AUTO);
     const { data, width, height } = g.bitmap;
     const L = (x, y) => data[(y * width + x) * 4];
-    let sum = 0, sumSq = 0, n = 0, clipped = 0, lumSum = 0, lumN = 0;
+    let sum = 0, sumSq = 0, n = 0, shadowClip = 0, highClip = 0, lumSum = 0, lumN = 0;
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const lap = 4 * L(x, y) - L(x - 1, y) - L(x + 1, y) - L(x, y - 1) - L(x, y + 1);
@@ -88,14 +88,23 @@ module.exports = function createMediaWorker(db, deps = {}) {
     }
     for (let i = 0; i < data.length; i += 4) {
       const v = data[i]; lumSum += v; lumN++;
-      if (v <= 4 || v >= 251) clipped++;
+      if (v <= 4) shadowClip++; else if (v >= 251) highClip++;
     }
     const variance = n ? (sumSq / n) - Math.pow(sum / n, 2) : 0;
+    const exposure = (lumSum / lumN) / 255;                   // 0..1 mean luminance
+    const shadow = shadowClip / lumN, high = highClip / lumN, clipping = shadow + high;
+    // composite "keepability" hint (0..1): focus + tonal balance, penalised for heavy clipping
+    const focusScore = Math.min(1, variance / 220);
+    const tonalScore = 1 - Math.min(1, Math.abs(exposure - 0.5) * 2);
+    const quality = Math.max(0, Math.min(1, focusScore * 0.55 + tonalScore * 0.30 + (1 - Math.min(1, clipping * 6)) * 0.15));
     return {
       phash,
       sharpness: Math.round(variance * 100) / 100,           // raw Laplacian variance (higher = sharper)
-      exposure: Math.round((lumSum / lumN) / 255 * 1000) / 1000, // 0..1 mean luminance
-      clipping: Math.round(clipped / lumN * 1000) / 1000,     // fraction of blown/crushed pixels
+      exposure: Math.round(exposure * 1000) / 1000,          // 0..1 mean luminance
+      shadow_clip: Math.round(shadow * 1000) / 1000,         // fraction crushed (underexposed)
+      high_clip: Math.round(high * 1000) / 1000,             // fraction blown (overexposed)
+      clipping: Math.round(clipping * 1000) / 1000,
+      quality: Math.round(quality * 100) / 100,
     };
   }
 
@@ -164,6 +173,9 @@ module.exports = function createMediaWorker(db, deps = {}) {
     addScore.run(generateId(), asset.workspace_id, asset.id, 'sharpness', cv.sharpness, null);
     addScore.run(generateId(), asset.workspace_id, asset.id, 'exposure', cv.exposure, null);
     addScore.run(generateId(), asset.workspace_id, asset.id, 'clipping', cv.clipping, null);
+    addScore.run(generateId(), asset.workspace_id, asset.id, 'quality', cv.quality, null);
+    addScore.run(generateId(), asset.workspace_id, asset.id, 'high_clip', cv.high_clip, null);
+    addScore.run(generateId(), asset.workspace_id, asset.id, 'shadow_clip', cv.shadow_clip, null);
 
     // duplicate grouping via perceptual hash, within the same project
     const others = db.prepare(

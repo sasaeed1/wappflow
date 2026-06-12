@@ -425,6 +425,10 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       const rows = db.prepare(`
         SELECT a.*, c.decision AS cull_decision, c.rating AS cull_rating, c.color_label AS cull_color, c.flagged AS cull_flagged,
           (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'sharpness' LIMIT 1) AS sharpness,
+          (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'quality' LIMIT 1) AS quality,
+          (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'exposure' LIMIT 1) AS exposure,
+          (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'high_clip' LIMIT 1) AS high_clip,
+          (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'shadow_clip' LIMIT 1) AS shadow_clip,
           (SELECT group_key FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'duplicate_group' LIMIT 1) AS dup_group
         FROM ms_assets a
         LEFT JOIN ms_cull_decisions c ON c.asset_id = a.id
