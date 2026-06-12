@@ -13,7 +13,7 @@ import NavBar from '../../../../components/StudioShell';
 import { PRESETS, previewFilter, previewVignette, suggestEnhance } from '../../presets';
 
 const FILTERS = [
-  ['all', 'All'], ['undecided', 'To review'], ['keep', 'Keepers'], ['maybe', 'Maybe'], ['reject', 'Rejected'],
+  ['all', 'All'], ['undecided', 'Review'], ['keep', 'Keep'], ['maybe', 'Maybe'], ['reject', 'Reject'],
 ];
 const DEC_META = {
   keep:   { label: 'KEEP',   color: '#2f9e6e', Icon: Check },
@@ -31,13 +31,13 @@ function EditSlider({ label, value, onChange, min = -100, max = 100 }) {
   return (
     <div style={{ marginBottom: 11 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-        <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>{label}</span>
-        <span style={{ fontSize: 11, color: 'var(--ms-ink-3)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(value * 100)}</span>
+        <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>{label}</span>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(value * 100)}</span>
       </div>
       <input type="range" min={min} max={max} value={Math.round(value * 100)}
         onChange={e => onChange(Number(e.target.value) / 100)}
         onDoubleClick={() => onChange(0)}
-        style={{ width: '100%', accentColor: 'var(--ms-accent)' }} />
+        style={{ width: '100%' }} />
     </div>
   );
 }
@@ -98,8 +98,7 @@ export default function CullPage() {
   const [cursor, setCursor] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
-  // workspace tools
-  const [tool, setTool] = useState('info'); // info | edit | presets
+  const [tool, setTool] = useState(null); // null | info | edit | presets
   const [compare, setCompare] = useState(false);
   const [pending, setPending] = useState({ ...ZERO_EDITS });
   const [crop, setCrop] = useState({ ...FULL_CROP });
@@ -108,7 +107,6 @@ export default function CullPage() {
   const [activePreset, setActivePreset] = useState(null);
   const [copied, setCopied] = useState(null);
   const [toast, setToast] = useState(null);
-  // zoom
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const panDrag = useRef(null);
@@ -181,7 +179,6 @@ export default function CullPage() {
   };
   useEffect(() => { setScale(1); setPan({ x: 0, y: 0 }); setCropOn(false); if (current) loadPendingFrom(current); }, [current?.id]); // eslint-disable-line
 
-  // duplicate-group members
   const dupMembers = useMemo(() => {
     if (!current?.dup_group) return null;
     const m = assets.filter(a => a.dup_group === current.dup_group);
@@ -189,7 +186,7 @@ export default function CullPage() {
   }, [current, assets]);
   const compareSet = useMemo(() => dupMembers || [current, view[idx + 1]].filter(Boolean), [dupMembers, current, view, idx]);
 
-  // ── zoom: wheel-to-zoom anchored at the cursor; drag to pan ────────────────
+  // wheel zoom anchored at cursor
   const zoomTo = useCallback((newScale, anchor) => {
     setScale(s => {
       const ns = Math.max(1, Math.min(6, newScale));
@@ -216,7 +213,7 @@ export default function CullPage() {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [scale, zoomTo, editing, cropOn]);
+  }, [scale, zoomTo, editing, cropOn, loading, current?.id]);
 
   const toggle100 = useCallback(() => {
     if (zoomed) { setScale(1); setPan({ x: 0, y: 0 }); return; }
@@ -234,7 +231,6 @@ export default function CullPage() {
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, []);
 
-  // ── copy / paste edits ──────────────────────────────────────────────────────
   const copyEdits = useCallback(() => {
     if (!current) return;
     const e = parseEdits(current);
@@ -268,7 +264,6 @@ export default function CullPage() {
     setRendering(false);
   }, [current, copied]); // eslint-disable-line
 
-  // ── apply / reset / batch ───────────────────────────────────────────────────
   const buildBody = () => {
     const body = {}; EDIT_KEYS.forEach(k => { if (pending[k]) body[k] = pending[k]; });
     if (cropOn || (crop.x || crop.y || crop.w !== 1 || crop.h !== 1)) body.crop = crop;
@@ -308,7 +303,6 @@ export default function CullPage() {
   };
   const aiSuggestion = useMemo(() => suggestEnhance(current), [current]);
 
-  // ── keyboard ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
@@ -316,8 +310,9 @@ export default function CullPage() {
       if (compare) { if (k === 'escape' || k === 'c') { e.preventDefault(); setCompare(false); } return; }
       if (e.shiftKey && k === 'c') { e.preventDefault(); copyEdits(); return; }
       if (e.shiftKey && k === 'v') { e.preventDefault(); pasteEdits(); return; }
-      if (editing && k === 'escape') { e.preventDefault(); setTool('info'); setCropOn(false); return; }
+      if (editing && k === 'escape') { e.preventDefault(); setTool(null); setCropOn(false); return; }
       if (k === 'escape' && zoomed) { e.preventDefault(); setScale(1); setPan({ x: 0, y: 0 }); return; }
+      if (k === 'escape' && tool) { e.preventDefault(); setTool(null); return; }
       if (k === 'arrowright' || k === ' ') { e.preventDefault(); next(); }
       else if (k === 'arrowleft') { e.preventDefault(); prev(); }
       else if (k === 'p') { e.preventDefault(); decide('keep'); }
@@ -326,14 +321,15 @@ export default function CullPage() {
       else if (k === 'u' || k === 'backspace') { e.preventDefault(); decide(null); }
       else if (k === 'z') { e.preventDefault(); toggle100(); }
       else if (k === 'c') { e.preventDefault(); if (compareSet.length > 1) setCompare(true); }
-      else if (k === 'e') { e.preventDefault(); setTool(t => t === 'edit' ? 'info' : 'edit'); }
-      else if (k === 'f') { e.preventDefault(); setTool(t => t === 'presets' ? 'info' : 'presets'); }
+      else if (k === 'e') { e.preventDefault(); setTool(t => t === 'edit' ? null : 'edit'); }
+      else if (k === 'f') { e.preventDefault(); setTool(t => t === 'presets' ? null : 'presets'); }
+      else if (k === 'i') { e.preventDefault(); setTool(t => t === 'info' ? null : 'info'); }
       else if (k >= '1' && k <= '5') { e.preventDefault(); rate(Number(k)); }
       else if (k === '0') { e.preventDefault(); rate(0); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [decide, rate, next, prev, zoomed, compare, editing, compareSet.length, toggle100, copyEdits, pasteEdits]);
+  }, [decide, rate, next, prev, zoomed, compare, editing, tool, compareSet.length, toggle100, copyEdits, pasteEdits]);
 
   if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
 
@@ -342,115 +338,104 @@ export default function CullPage() {
   const overE = (current?.high_clip || 0) > 0.06 || (expo != null && expo > 0.78);
   const underE = (current?.shadow_clip || 0) > 0.10 || (expo != null && expo < 0.22);
   const expoLabel = expo == null ? '—' : overE ? 'Bright' : underE ? 'Dark' : 'Balanced';
-  const expoColor = (overE || underE) ? '#d39a3e' : '#2f9e6e';
+  const expoColor = (overE || underE) ? '#e6b455' : '#5fd0a0';
   const q = current?.quality;
   const qualLabel = q == null ? '—' : q >= 0.66 ? 'Great' : q >= 0.4 ? 'Good' : 'Weak';
-  const qualColor = q == null ? 'var(--ms-ink-3)' : q >= 0.66 ? '#2f9e6e' : q >= 0.4 ? '#d39a3e' : '#d4564a';
+  const qualColor = q == null ? 'rgba(255,255,255,0.5)' : q >= 0.66 ? '#5fd0a0' : q >= 0.4 ? '#e6b455' : '#ff9b90';
   const livePreview = editing ? { filter: previewFilter(pending), transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined } : {};
   const liveVignette = editing ? previewVignette(pending) : 'none';
+  const panelOpen = !!tool && !!current;
 
   const railBtn = (key, Icon, label) => (
-    <button key={key} onClick={() => setTool(t => t === key ? 'info' : key)} title={label}
-      className="ms-iconbtn" style={{ width: 40, height: 40, borderRadius: 11, background: tool === key ? 'var(--ms-accent)' : 'transparent', color: tool === key ? 'var(--ms-on-accent)' : 'var(--ms-ink-2)', borderColor: tool === key ? 'var(--ms-accent)' : 'var(--ms-line)' }}>
+    <button key={key} onClick={() => setTool(t => t === key ? null : key)} title={label}
+      style={{ width: 40, height: 40, borderRadius: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: tool === key ? '#fff' : 'transparent', color: tool === key ? '#0c0c10' : 'rgba(255,255,255,0.65)', transition: 'all .15s ease' }}>
       <Icon size={17} />
     </button>
   );
 
   return (
     <NavBar>
-      <div className="ms-page" style={{ paddingTop: 'clamp(14px, 2vw, 24px)', maxWidth: 1560, paddingBottom: 40 }}>
-        {/* header row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
-          <button onClick={() => router.push(`/studio/${id}`)} className="ms-back" style={{ margin: 0 }}><ArrowLeft size={15} /> Back</button>
-          <h1 className="ms-h2" style={{ fontSize: 'clamp(17px, 2vw, 22px)', flex: 1, minWidth: 120 }}>Cull <span style={{ color: 'var(--ms-ink-3)', fontWeight: 400 }}>{project?.title ? `· ${project.title}` : ''}</span></h1>
-          <div className="ms-seg">
-            {FILTERS.map(([f, label]) => (
-              <button key={f} onClick={() => { setFilter(f); setCursor(0); }} className={filter === f ? 'is-active' : ''}>
-                {label} <span style={{ opacity: 0.6 }}>{counts[f] ?? 0}</span>
-              </button>
-            ))}
-          </div>
-          {counts.keep > 0 && (
-            <button onClick={() => setShowGallery(true)} className="ms-btn-ink" style={{ padding: '9px 16px', fontSize: 12 }}>
-              <Images size={15} /> Gallery · {counts.keep}
-            </button>
-          )}
-        </div>
-
+      <div className="ms-cull-canvas">
         {!current ? (
-          <div className="ms-empty-soft">{assets.length === 0 ? 'Upload photographs first.' : 'Nothing in this filter.'}</div>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>
+            {assets.length === 0 ? 'Upload photographs first.' : 'Nothing in this filter.'}
+            <button onClick={() => router.push(`/studio/${id}`)} className="ms-btn-ghost" style={{ marginLeft: 14, borderColor: 'rgba(255,255,255,0.25)', color: '#fff' }}>Back to shoot</button>
+          </div>
         ) : (
           <>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
-              {/* tool rail */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 2 }}>
-                {railBtn('info', Info, 'Info & AI (I)')}
-                {railBtn('edit', SlidersHorizontal, 'Edit (E)')}
-                {railBtn('presets', Wand2, 'Presets (F)')}
-                <button onClick={() => compareSet.length > 1 && setCompare(true)} disabled={compareSet.length < 2} title="Compare (C)"
-                  className="ms-iconbtn" style={{ width: 40, height: 40, borderRadius: 11 }}><Columns2 size={17} /></button>
-                <div style={{ flex: 1 }} />
-                <button onClick={copyEdits} title="Copy edits (Shift+C)" className="ms-iconbtn" style={{ width: 40, height: 40, borderRadius: 11 }}><ClipboardCopy size={16} /></button>
-                <button onClick={pasteEdits} disabled={!copied} title="Paste edits (Shift+V)" className="ms-iconbtn" style={{ width: 40, height: 40, borderRadius: 11 }}><ClipboardPaste size={16} /></button>
+            {/* stage — the photograph is the page */}
+            <div ref={stageRef}
+              style={{ position: 'absolute', top: 60, left: 64, right: panelOpen ? 312 : 16, bottom: 168, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: zoomed ? 'grab' : 'default', transition: 'right .25s ease' }}
+              onPointerDown={startPan} onDoubleClick={toggle100}>
+              <div ref={cropBoxRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', transform: zoomed ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transition: panDrag.current ? 'none' : 'transform 0.12s ease-out' }}>
+                <img ref={imgRef} key={current.id} src={mediaUrl(zoomed ? (current.variants?.full_edit || current.url) : (current.variants?.web || current.url))} alt={current.filename} draggable={false}
+                  style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 246px)', objectFit: 'contain', display: 'block', userSelect: 'none', boxShadow: '0 30px 90px -30px rgba(0,0,0,0.8)', ...livePreview }} />
+                {liveVignette !== 'none' && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: liveVignette, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined }} />}
+                {editing && cropOn && !zoomed && <CropOverlay crop={crop} setCrop={setCrop} boxRef={cropBoxRef} />}
               </div>
+              {!zoomed && (
+                <>
+                  <button onClick={(e) => { e.stopPropagation(); prev(); }} disabled={idx === 0} style={navArrow('left', idx === 0)}><ChevronLeft size={22} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); next(); }} disabled={idx >= view.length - 1} style={navArrow('right', idx >= view.length - 1)}><ChevronRight size={22} /></button>
+                </>
+              )}
+            </div>
 
-              {/* stage */}
-              <div ref={stageRef} style={{ flex: 1, minWidth: 280, position: 'relative', background: '#09090b', borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 500, maxHeight: '74vh', cursor: zoomed ? 'grab' : 'default' }}
-                onPointerDown={startPan} onDoubleClick={toggle100}>
-                <div ref={cropBoxRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '74vh', transform: zoomed ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transition: panDrag.current ? 'none' : 'transform 0.12s ease-out' }}>
-                  <img ref={imgRef} key={current.id} src={mediaUrl(zoomed ? (current.variants?.full_edit || current.url) : (current.variants?.web || current.url))} alt={current.filename} draggable={false}
-                    style={{ maxWidth: '100%', maxHeight: '74vh', objectFit: 'contain', display: 'block', userSelect: 'none', ...livePreview }} />
-                  {liveVignette !== 'none' && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: liveVignette, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined }} />}
-                  {editing && cropOn && !zoomed && <CropOverlay crop={crop} setCrop={setCrop} boxRef={cropBoxRef} />}
-                </div>
-
-                {!editing && current.cull_decision && DEC_META[current.cull_decision] && (
-                  <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: DEC_META[current.cull_decision].color, color: 'white', fontWeight: 700, fontSize: 10.5, letterSpacing: '0.08em' }}>
-                    {(() => { const I = DEC_META[current.cull_decision].Icon; return <I size={12} />; })()}
-                    {DEC_META[current.cull_decision].label}
-                  </div>
-                )}
-                {hasEdits(current) && !editing && (
-                  <div style={{ position: 'absolute', top: 14, right: 14, padding: '4px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#e8cb8d', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em' }}>EDITED</div>
-                )}
-                <div style={{ position: 'absolute', bottom: 12, right: 12, padding: '4px 11px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10.5, fontWeight: 600 }}>
-                  {zoomed ? `${Math.round(scale * 100)}% · scroll to zoom · drag to pan` : 'scroll or dbl-click to zoom'}
-                </div>
-                {rendering && (
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', color: '#fff', gap: 10, fontSize: 13 }}>
-                    <Loader size={16} className="ms-spin" /> Rendering…
-                  </div>
-                )}
-                {toast && (
-                  <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', padding: '7px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.75)', color: '#fff', fontSize: 12 }}>{toast}</div>
-                )}
-                {!zoomed && !editing && (
-                  <>
-                    <button onClick={(e) => { e.stopPropagation(); prev(); }} disabled={idx === 0} style={navArrow('left', idx === 0)}><ChevronLeft size={22} /></button>
-                    <button onClick={(e) => { e.stopPropagation(); next(); }} disabled={idx >= view.length - 1} style={navArrow('right', idx >= view.length - 1)}><ChevronRight size={22} /></button>
-                  </>
-                )}
-                <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', padding: '4px 13px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 11, fontWeight: 500 }}>
-                  {idx + 1} / {view.length}
-                </div>
+            {/* top HUD bar */}
+            <div className="ms-hud" style={{ position: 'absolute', top: 10, left: 12, right: 12, display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', flexWrap: 'wrap' }}>
+              <button onClick={() => router.push(`/studio/${id}`)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'rgba(255,255,255,0.65)', fontSize: 12, cursor: 'pointer', padding: '4px 2px' }}><ArrowLeft size={14} /> {project?.title || 'Shoot'}</button>
+              <div className="ms-hud-seg">
+                {FILTERS.map(([f, label]) => (
+                  <button key={f} onClick={() => { setFilter(f); setCursor(0); }} className={filter === f ? 'is-active' : ''}>
+                    {label} {counts[f] ?? 0}
+                  </button>
+                ))}
               </div>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>{idx + 1} / {view.length}{zoomed ? ` · ${Math.round(scale * 100)}%` : ''}</span>
+              {current.cull_decision && DEC_META[current.cull_decision] && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999, background: DEC_META[current.cull_decision].color, color: '#fff', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em' }}>
+                  {DEC_META[current.cull_decision].label}
+                </span>
+              )}
+              {hasEdits(current) && <span style={{ padding: '3px 9px', borderRadius: 999, background: 'rgba(232,203,141,0.15)', color: '#e8cb8d', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em' }}>EDITED</span>}
+              {counts.keep > 0 && (
+                <button onClick={() => setShowGallery(true)} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10', padding: '7px 14px', fontSize: 11.5 }}>
+                  <Images size={14} /> Gallery · {counts.keep}
+                </button>
+              )}
+            </div>
 
-              {/* right panel */}
-              <aside style={{ width: 262, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '74vh', overflowY: 'auto' }}>
+            {/* left tool rail */}
+            <div className="ms-hud" style={{ position: 'absolute', left: 12, top: 68, padding: 7, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {railBtn('info', Info, 'Info & AI (I)')}
+              {railBtn('edit', SlidersHorizontal, 'Edit (E)')}
+              {railBtn('presets', Wand2, 'Presets (F)')}
+              <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '3px 4px' }} />
+              <button onClick={() => compareSet.length > 1 && setCompare(true)} disabled={compareSet.length < 2} title="Compare (C)"
+                style={{ width: 40, height: 40, borderRadius: 12, border: 'none', cursor: compareSet.length > 1 ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', color: compareSet.length > 1 ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.22)' }}><Columns2 size={17} /></button>
+              <button onClick={copyEdits} title="Copy edits (Shift+C)" style={{ width: 40, height: 40, borderRadius: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', color: 'rgba(255,255,255,0.65)' }}><ClipboardCopy size={16} /></button>
+              <button onClick={pasteEdits} disabled={!copied} title="Paste edits (Shift+V)" style={{ width: 40, height: 40, borderRadius: 12, border: 'none', cursor: copied ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', color: copied ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.22)' }}><ClipboardPaste size={16} /></button>
+            </div>
+
+            {/* right HUD panel */}
+            {panelOpen && (
+              <div className="ms-hud" style={{ position: 'absolute', right: 12, top: 68, bottom: 168, width: 284, padding: 14, overflowY: 'auto', animation: 'ms-rise .25s ease both' }}>
                 {tool === 'presets' && (
-                  <div className="ms-panel" style={{ padding: 14 }}>
+                  <>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <span className="ms-section-label">Presets</span>
-                      <span style={{ fontSize: 10.5, color: 'var(--ms-ink-3)' }}>{PRESETS.length} looks</span>
+                      <span className="ms-hud-label">Presets</span>
+                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{PRESETS.length} looks</span>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       {PRESETS.map(ps => (
-                        <button key={ps.id} onClick={() => usePreset(ps)} style={{ border: activePreset === ps.id ? '2px solid var(--ms-accent)' : '1px solid var(--ms-line)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'var(--ms-surface-2)', textAlign: 'left' }}>
+                        <button key={ps.id} onClick={() => usePreset(ps)} style={{ border: activePreset === ps.id ? '2px solid #fff' : '1px solid rgba(255,255,255,0.12)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', textAlign: 'left' }}>
                           <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
                             <img src={mediaUrl(current.thumb_url || current.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: previewFilter(ps.p) }} />
                             {ps.p.vignette ? <div style={{ position: 'absolute', inset: 0, boxShadow: previewVignette(ps.p) }} /> : null}
                           </div>
-                          <div style={{ padding: '5px 7px', fontSize: 10, fontWeight: 600, color: 'var(--ms-ink-2)', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ps.name}</div>
+                          <div style={{ padding: '5px 7px', fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ps.name}</div>
                         </button>
                       ))}
                     </div>
@@ -460,15 +445,15 @@ export default function CullPage() {
                     <button onClick={applyToKeepers} disabled={rendering || !activePreset || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 8, padding: '9px' }}>
                       <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
                     </button>
-                  </div>
+                  </>
                 )}
 
                 {tool === 'edit' && (
-                  <div className="ms-panel" style={{ padding: 14 }}>
+                  <>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <span className="ms-section-label">Edit</span>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--ms-ink-2)', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={!!pending.bw} onChange={e => setPending(p => ({ ...p, bw: e.target.checked ? 1 : 0 }))} style={{ accentColor: 'var(--ms-accent)' }} /> B&amp;W
+                      <span className="ms-hud-label">Edit</span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'rgba(255,255,255,0.72)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!pending.bw} onChange={e => setPending(p => ({ ...p, bw: e.target.checked ? 1 : 0 }))} /> B&amp;W
                       </label>
                     </div>
                     {aiSuggestion && (
@@ -486,23 +471,22 @@ export default function CullPage() {
                     <EditSlider label="Grain" value={pending.grain} onChange={v => setPending(p => ({ ...p, grain: v }))} min={0} />
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0 6px' }}>
-                      <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)', flex: 1 }}>Rotate</span>
+                      <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', flex: 1 }}>Rotate</span>
                       <button onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate - 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCcw size={14} /></button>
                       <button onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate + 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCw size={14} /></button>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                      <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>Straighten</span>
-                      <span style={{ fontSize: 11, color: 'var(--ms-ink-3)' }}>{(pending.rotate - Math.round(pending.rotate / 90) * 90).toFixed(1)}°</span>
+                      <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>Straighten</span>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{(pending.rotate - Math.round(pending.rotate / 90) * 90).toFixed(1)}°</span>
                     </div>
                     <input type="range" min={-15} max={15} step={0.5} value={pending.rotate - Math.round(pending.rotate / 90) * 90}
                       onChange={e => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 + Number(e.target.value) }))}
                       onDoubleClick={() => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 }))}
-                      style={{ width: '100%', accentColor: 'var(--ms-accent)', marginBottom: 12 }} />
+                      style={{ width: '100%', marginBottom: 12 }} />
 
-                    <button onClick={() => setCropOn(v => !v)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 10, background: cropOn ? 'var(--ms-surface-2)' : undefined }}>
+                    <button onClick={() => setCropOn(v => !v)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 10, background: cropOn ? 'rgba(255,255,255,0.1)' : undefined }}>
                       <Crop size={14} /> {cropOn ? 'Cropping — drag handles' : 'Crop'}
                     </button>
-
                     <button onClick={applyEdits} disabled={rendering} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
                       {rendering ? 'Rendering…' : 'Apply'}
                     </button>
@@ -510,93 +494,96 @@ export default function CullPage() {
                       <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
                     </button>
                     <button onClick={resetEdits} disabled={rendering || !hasEdits(current)} className="ms-btn-text" style={{ width: '100%', justifyContent: 'center' }}><Undo2 size={13} /> Reset to original</button>
-                  </div>
+                  </>
                 )}
 
                 {tool === 'info' && (
                   <>
-                    <div className="ms-panel">
-                      <div className="ms-note" style={{ marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: 10, fontWeight: 600 }}>
-                        <Sparkles size={12} /> AI suggests
-                      </div>
-                      {sharp == null ? (
-                        <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3)', margin: 0 }}>No analysis yet (RAW, or still processing).</p>
-                      ) : (
-                        <>
-                          <Row label="Focus" value={sharp ? 'Sharp' : 'Soft'} color={sharp ? '#2f9e6e' : '#d39a3e'} />
-                          <Row label="Exposure" value={expoLabel} color={expoColor} />
-                          {q != null && <Row label="Quality" value={qualLabel} color={qualColor} />}
-                          {current.dup_group && <Row label="Duplicate" value={`${dupMembers ? dupMembers.length : 2} similar`} color="var(--ms-ink-2)" icon={<Dup size={11} />} />}
-                        </>
-                      )}
-                      {aiSuggestion && (
-                        <button onClick={() => { setTool('edit'); setPending(p => ({ ...p, ...aiSuggestion })); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 12, gap: 6 }}>
-                          <Wand2 size={13} /> Auto-enhance suggestion
-                        </button>
-                      )}
-                      {dupMembers && (
-                        <button onClick={() => setCompare(true)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 8 }}><Columns2 size={13} /> Compare duplicates</button>
-                      )}
-                      <p style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', margin: '12px 0 0', lineHeight: 1.5, borderTop: '1px solid var(--ms-line)', paddingTop: 10 }}>
-                        Advisory only — AI never keeps, rejects, or edits without you.
-                      </p>
-                    </div>
-                    <div className="ms-panel">
-                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ms-ink-3)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>Your rating</div>
+                    <div className="ms-hud-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}><Sparkles size={12} /> AI suggests</div>
+                    {sharp == null ? (
+                      <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.5)', margin: 0 }}>No analysis yet (RAW, or still processing).</p>
+                    ) : (
+                      <>
+                        <HudRow label="Focus" value={sharp ? 'Sharp' : 'Soft'} color={sharp ? '#5fd0a0' : '#e6b455'} />
+                        <HudRow label="Exposure" value={expoLabel} color={expoColor} />
+                        {q != null && <HudRow label="Quality" value={qualLabel} color={qualColor} />}
+                        {current.dup_group && <HudRow label="Duplicate" value={`${dupMembers ? dupMembers.length : 2} similar`} color="rgba(255,255,255,0.7)" icon={<Dup size={11} />} />}
+                      </>
+                    )}
+                    {aiSuggestion && (
+                      <button onClick={() => { setTool('edit'); setPending(p => ({ ...p, ...aiSuggestion })); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 12, gap: 6 }}>
+                        <Wand2 size={13} /> Auto-enhance suggestion
+                      </button>
+                    )}
+                    {dupMembers && (
+                      <button onClick={() => setCompare(true)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 8 }}><Columns2 size={13} /> Compare duplicates</button>
+                    )}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '14px 0', paddingTop: 12 }}>
+                      <div className="ms-hud-label" style={{ marginBottom: 10 }}>Your rating</div>
                       <div style={{ display: 'flex', gap: 5 }}>
                         {[1, 2, 3, 4, 5].map(n => (
                           <button key={n} onClick={() => rate(n)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                            <Star size={22} fill={(current.cull_rating || 0) >= n ? '#d39a3e' : 'none'} color={(current.cull_rating || 0) >= n ? '#d39a3e' : 'var(--ms-ink-3)'} />
+                            <Star size={22} fill={(current.cull_rating || 0) >= n ? '#e6b455' : 'none'} color={(current.cull_rating || 0) >= n ? '#e6b455' : 'rgba(255,255,255,0.35)'} />
                           </button>
                         ))}
                       </div>
                     </div>
+                    <p style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)', margin: 0, lineHeight: 1.6 }}>
+                      ←→ nav · P keep · X reject · M maybe · U undo · 1–5 rate · scroll/Z zoom · C compare · E edit · F presets · ⇧C/⇧V copy/paste edits.<br />
+                      AI is advisory only — it never decides for you.
+                    </p>
                   </>
                 )}
-              </aside>
+              </div>
+            )}
+
+            {/* decision dock */}
+            <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 104, display: 'flex', gap: 8, zIndex: 2 }}>
+              <DockBtn onClick={() => decide('reject')} active={current.cull_decision === 'reject'} color="#d4564a" Icon={X} label="Reject" hint="X" />
+              <DockBtn onClick={() => decide('maybe')} active={current.cull_decision === 'maybe'} color="#d39a3e" Icon={HelpCircle} label="Maybe" hint="M" />
+              <DockBtn onClick={() => decide('keep')} active={current.cull_decision === 'keep'} color="#2f9e6e" Icon={Check} label="Keep" hint="P" />
             </div>
 
-            {/* decision bar */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, margin: '14px 0 12px', flexWrap: 'wrap' }}>
-              <DecBtn onClick={() => decide('reject')} active={current.cull_decision === 'reject'} color="#d4564a" Icon={X} label="Reject" hint="X" />
-              <DecBtn onClick={() => decide('maybe')} active={current.cull_decision === 'maybe'} color="#d39a3e" Icon={HelpCircle} label="Maybe" hint="M" />
-              <DecBtn onClick={() => decide('keep')} active={current.cull_decision === 'keep'} color="#2f9e6e" Icon={Check} label="Keep" hint="P" />
-            </div>
-
-            {/* filmstrip */}
-            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '6px 2px' }}>
+            {/* filmstrip dock */}
+            <div className="ms-hud ms-filmdock">
               {view.map((a, i) => {
                 const dec = a.cull_decision;
                 const meta = dec && DEC_META[dec];
                 return (
                   <button key={a.id} onClick={() => setCursor(i)} style={{
-                    position: 'relative', flexShrink: 0, width: 70, height: 70, borderRadius: 5, overflow: 'hidden', cursor: 'pointer', padding: 0,
-                    outline: i === idx ? '2px solid var(--ms-accent)' : '1px solid var(--ms-line)', outlineOffset: -1, border: 'none', background: 'var(--ms-surface-2)',
+                    position: 'relative', flexShrink: 0, width: 62, height: 62, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', padding: 0,
+                    outline: i === idx ? '2px solid #fff' : '1px solid rgba(255,255,255,0.1)', outlineOffset: -1, border: 'none', background: 'rgba(255,255,255,0.05)',
                   }}>
                     {a.thumb_url
-                      ? <img src={mediaUrl(a.thumb_url)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: dec === 'reject' ? 0.4 : 1 }} />
+                      ? <img src={mediaUrl(a.thumb_url)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: dec === 'reject' ? 0.35 : 1 }} />
                       : null}
                     {meta && (
-                      <span style={{ position: 'absolute', top: 3, right: 3, width: 15, height: 15, borderRadius: '50%', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <meta.Icon size={9} color="white" />
+                      <span style={{ position: 'absolute', top: 3, right: 3, width: 14, height: 14, borderRadius: '50%', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <meta.Icon size={8} color="white" />
                       </span>
                     )}
-                    {hasEdits(a) && <span style={{ position: 'absolute', bottom: 3, left: 3, fontSize: 9, color: '#e8cb8d', background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '0 4px' }}>✎</span>}
+                    {hasEdits(a) && <span style={{ position: 'absolute', bottom: 2, left: 3, fontSize: 8.5, color: '#e8cb8d' }}>✎</span>}
                   </button>
                 );
               })}
             </div>
 
-            <p style={{ marginTop: 12, fontSize: 11, color: 'var(--ms-ink-3)', textAlign: 'center' }}>
-              <Kbd>←→</Kbd> nav · <Kbd>P</Kbd> keep · <Kbd>X</Kbd> reject · <Kbd>M</Kbd> maybe · <Kbd>U</Kbd> undo · <Kbd>1–5</Kbd> rate · <Kbd>scroll</Kbd>/<Kbd>Z</Kbd> zoom · <Kbd>C</Kbd> compare · <Kbd>E</Kbd> edit · <Kbd>F</Kbd> presets · <Kbd>⇧C/⇧V</Kbd> copy/paste edits
-            </p>
+            {/* status overlays */}
+            {rendering && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', color: '#fff', gap: 10, fontSize: 13, zIndex: 3 }}>
+                <Loader size={16} className="ms-spin" /> Rendering…
+              </div>
+            )}
+            {toast && (
+              <div style={{ position: 'absolute', top: 64, left: '50%', transform: 'translateX(-50%)', padding: '7px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.8)', color: '#fff', fontSize: 12, zIndex: 4 }}>{toast}</div>
+            )}
           </>
         )}
       </div>
 
       {/* compare overlay */}
       {compare && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 350, background: 'rgba(6,6,8,0.95)', display: 'flex', flexDirection: 'column', padding: 'clamp(12px, 3vw, 32px)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 350, background: 'rgba(6,6,8,0.96)', display: 'flex', flexDirection: 'column', padding: 'clamp(12px, 3vw, 32px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
             <span style={{ color: '#fff', fontSize: 14, fontWeight: 600, flex: 1 }}>{dupMembers ? `Duplicate set — ${compareSet.length} similar frames` : 'Compare'}</span>
             {dupMembers && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginRight: 14 }}>Pick the best — “Keep this” rejects the others</span>}
@@ -684,36 +671,32 @@ function GalleryFromKeepersModal({ projectId, keepers, onClose, onDone }) {
   );
 }
 
-function Row({ label, value, color, icon }) {
+function HudRow({ label, value, color, icon }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-      <span style={{ fontSize: 12.5, color: 'var(--ms-ink-3)' }}>{label}</span>
+      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{label}</span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 600, color }}>{icon}{value}</span>
     </div>
   );
 }
 
-function DecBtn({ onClick, active, color, Icon, label, hint }) {
+function DockBtn({ onClick, active, color, Icon, label, hint }) {
   return (
-    <button onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: 9, padding: '11px 24px', borderRadius: 999, cursor: 'pointer',
-      border: `1px solid ${active ? color : 'var(--ms-line)'}`, background: active ? color : 'transparent', color: active ? 'white' : 'var(--ms-ink)',
-      fontFamily: 'var(--ms-font-ui)', fontWeight: 600, fontSize: 13.5, transition: 'all 0.15s ease',
+    <button onClick={onClick} className="ms-hud" style={{
+      display: 'flex', alignItems: 'center', gap: 8, padding: '11px 22px', borderRadius: 999, cursor: 'pointer',
+      background: active ? color : 'rgba(16,16,20,0.78)', color: '#fff', border: active ? `1px solid ${color}` : '1px solid rgba(255,255,255,0.09)',
+      fontFamily: 'var(--ms-font-ui)', fontWeight: 600, fontSize: 13, transition: 'all 0.15s ease',
     }}>
-      <Icon size={16} color={active ? 'white' : color} /> {label}
-      <span style={{ fontSize: 10, opacity: 0.6, border: `1px solid ${active ? 'rgba(255,255,255,0.5)' : 'var(--ms-line)'}`, borderRadius: 4, padding: '1px 5px' }}>{hint}</span>
+      <Icon size={15} color={active ? '#fff' : color} /> {label}
+      <span style={{ fontSize: 9.5, opacity: 0.5, border: '1px solid rgba(255,255,255,0.3)', borderRadius: 4, padding: '1px 5px' }}>{hint}</span>
     </button>
   );
 }
 
-function Kbd({ children }) {
-  return <span style={{ display: 'inline-block', padding: '1px 6px', margin: '0 2px', borderRadius: 4, border: '1px solid var(--ms-line)', background: 'var(--ms-surface-2)', fontSize: 10.5, fontWeight: 600, color: 'var(--ms-ink-2)' }}>{children}</span>;
-}
-
 const navArrow = (side, disabled) => ({
-  position: 'absolute', [side]: 12, top: '50%', transform: 'translateY(-50%)',
+  position: 'absolute', [side]: 8, top: '50%', transform: 'translateY(-50%)',
   width: 42, height: 42, borderRadius: '50%', border: 'none', cursor: disabled ? 'default' : 'pointer',
   background: 'rgba(0,0,0,0.45)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  opacity: disabled ? 0.2 : 1, backdropFilter: 'blur(4px)',
+  opacity: disabled ? 0.2 : 1, backdropFilter: 'blur(4px)', zIndex: 2,
 });
 const cmpBtn = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', color: '#fff', fontSize: 11.5, fontWeight: 600 };

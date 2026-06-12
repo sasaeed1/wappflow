@@ -277,26 +277,28 @@ export default function ProjectPage() {
       <div className="ms-page">
         <button onClick={() => router.push('/studio')} className="ms-back"><ArrowLeft size={15} /> All shoots</button>
 
-        <header className="ms-masthead" style={{ marginBottom: 8 }}>
-          <div>
-            <p className="ms-eyebrow" style={{ textTransform: 'capitalize' }}>{(project.project_type || 'general').replace('_', ' ')}</p>
-            <h1 className="ms-display">{project.title}</h1>
-            <p className="ms-collection-sub" style={{ marginTop: 8 }}>
-              {project.client_name ? `${project.client_name} · ` : ''}{assets.length} photograph{assets.length === 1 ? '' : 's'}
-            </p>
+        <div className="ms-projecthero">
+          {assets[0]?.thumb_url
+            ? <img className="ms-hero-img" src={mediaUrl(assets[0].variants?.web || assets[0].thumb_url)} alt="" />
+            : <div className="ms-hero-fallback" />}
+          <div className="ms-hero-veil" />
+          <div className="ms-hero-body">
+            <div style={{ minWidth: 0 }}>
+              <p className="ms-hero-kicker">{(project.project_type || 'general').replace('_', ' ')}{project.client_name ? ` · ${project.client_name}` : ''}</p>
+              <h1 className="ms-hero-title" style={{ fontSize: 'clamp(26px, 3.6vw, 44px)' }}>{project.title}</h1>
+              <p className="ms-hero-sub">{assets.length} photograph{assets.length === 1 ? '' : 's'} · {galleries.length} galler{galleries.length === 1 ? 'y' : 'ies'}</p>
+            </div>
+            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+              <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
+              {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/cull`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><ListChecks size={15} /> Cull</button>}
+              {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><BookOpen size={15} /> Albums</button>}
+              {assets.some(a => a.type === 'video') && <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><Film size={15} /> Video</button>}
+              <button onClick={() => fileRef.current?.click()} disabled={uploading} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10' }}>
+                {uploading ? <Loader size={16} className="ms-spin" /> : <Upload size={16} />} {uploading ? 'Uploading…' : 'Upload photos'}
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-            <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
-            {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/cull`)} className="ms-btn-ghost"><ListChecks size={15} /> Cull</button>}
-            {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost"><BookOpen size={15} /> Albums</button>}
-            {assets.some(a => a.type === 'video') && <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost"><Film size={15} /> Video</button>}
-            <button onClick={() => fileRef.current?.click()} disabled={uploading} className="ms-btn-ink">
-              {uploading ? <Loader size={16} className="ms-spin" /> : <Upload size={16} />} {uploading ? 'Uploading…' : 'Upload photos'}
-            </button>
-          </div>
-        </header>
-
-        <hr className="ms-rule" />
+        </div>
 
         {banner && (
           <div className="ms-banner">
@@ -312,6 +314,8 @@ export default function ProjectPage() {
           </div>
         )}
 
+        <div className="ms-workgrid">
+        <aside className="ms-workaside">
         {/* Galleries */}
         <div className="ms-section-head">
           <h2 className="ms-h2">Galleries</h2>
@@ -375,6 +379,8 @@ export default function ProjectPage() {
           </div>
         )}
 
+        </aside>
+        <div className="ms-workmain">
         {/* Library */}
         <div className="ms-section-head">
           <h2 className="ms-h2">Library</h2>
@@ -430,6 +436,8 @@ export default function ProjectPage() {
         <p className="ms-note" style={{ marginTop: 26 }}>
           <Sparkles size={12} /> AI focus &amp; duplicate hints are advisory only — they never select, hide, or deliver a photograph. You stay in control.
         </p>
+        </div>
+        </div>
       </div>
 
       {lightbox != null && assets[lightbox] && (

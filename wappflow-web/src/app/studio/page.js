@@ -1,8 +1,9 @@
 'use client';
+/* eslint-disable @next/next/no-img-element -- covers are dynamic /uploads URLs */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, X, Search, MapPin, Calendar } from 'lucide-react';
+import { Plus, X, Search, MapPin, Calendar, ArrowRight } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../lib/api';
 import NavBar from '../../components/StudioShell';
 
@@ -83,7 +84,7 @@ function NewProjectModal({ onClose, onCreated }) {
               width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '9px 10px', borderRadius: 9, marginBottom: 2, textAlign: 'left', cursor: 'pointer',
               border: '1px solid transparent', background: leadId === l.id ? 'var(--ms-ink-soft)' : 'transparent',
             }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--ms-surface-2)', color: 'var(--ms-ink-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, fontFamily: 'var(--ms-serif)' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--ms-surface-2)', color: 'var(--ms-ink-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>
                 {(l.customer_name || '?')[0]?.toUpperCase()}
               </div>
               <span style={{ fontSize: 13.5, color: 'var(--ms-ink)' }}>{l.customer_name || 'Unnamed lead'}</span>
@@ -92,7 +93,7 @@ function NewProjectModal({ onClose, onCreated }) {
           {filtered.length === 0 && <p style={{ fontSize: 13, color: 'var(--ms-ink-3)', padding: '4px 10px' }}>No matching clients.</p>}
         </div>
 
-        {err && <p style={{ color: '#b3261e', fontSize: 13, margin: '0 0 14px' }}>{err}</p>}
+        {err && <p style={{ color: '#d4564a', fontSize: 13, margin: '0 0 14px' }}>{err}</p>}
         <button onClick={create} disabled={saving} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', opacity: saving ? 0.6 : 1 }}>
           {saving ? 'Creating…' : 'Create shoot'}
         </button>
@@ -118,50 +119,79 @@ export default function StudioPage() {
     setLoading(false);
   };
 
+  const live = useMemo(() => projects.filter(p => p.status !== 'archived'), [projects]);
+  const featured = live[0] || projects[0] || null;
+  const rest = useMemo(() => projects.filter(p => p.id !== featured?.id), [projects, featured]);
+  const totalPhotos = useMemo(() => projects.reduce((s, p) => s + (p.asset_count || 0), 0), [projects]);
+  const clients = useMemo(() => new Set(projects.map(p => p.client_name).filter(Boolean)).size, [projects]);
+
   return (
     <NavBar>
-      <div className="ms-page">
-        <header className="ms-masthead">
-          <div>
-            <p className="ms-eyebrow">Media Studio</p>
-            <h1 className="ms-display">Your shoots</h1>
-            <p className="ms-lede">Every collection — from first frame to final delivery — in one quiet, image-first workspace.</p>
-          </div>
-          <button onClick={() => setShowNew(true)} className="ms-btn-ink"><Plus size={17} /> New shoot</button>
-        </header>
-
-        <hr className="ms-rule" />
-
+      <div className="ms-page" style={{ paddingTop: 'clamp(18px, 2.6vw, 34px)' }}>
         {loading ? (
           <p className="ms-loading">Opening the studio…</p>
         ) : projects.length === 0 ? (
-          <div className="ms-empty">
-            <h2>Nothing on the wall yet</h2>
-            <p>Create your first shoot to bring photographs in, cull them, and deliver a gallery your client will remember.</p>
-            <button onClick={() => setShowNew(true)} className="ms-btn-ink" style={{ margin: '0 auto' }}><Plus size={17} /> New shoot</button>
+          <div className="ms-hero" onClick={() => setShowNew(true)} style={{ minHeight: '60vh', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="ms-hero-fallback" />
+            <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: 24 }}>
+              <p className="ms-hero-kicker">Media Studio</p>
+              <h1 className="ms-hero-title" style={{ fontSize: 'clamp(34px, 6vw, 72px)' }}>Every shoot,<br />delivered beautifully.</h1>
+              <p className="ms-hero-sub" style={{ maxWidth: 480, margin: '14px auto 26px' }}>Bring photographs in, cull with AI at your side, and deliver galleries your clients will remember.</p>
+              <button onClick={(e) => { e.stopPropagation(); setShowNew(true); }} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10' }}><Plus size={16} /> Create your first shoot</button>
+            </div>
           </div>
         ) : (
-          <div className="ms-collection-grid">
-            {projects.map((p, i) => (
-              <button key={p.id} onClick={() => router.push(`/studio/${p.id}`)} className="ms-collection" style={{ animationDelay: `${Math.min(i * 0.04, 0.4)}s` }}>
-                <div className="ms-cover">
-                  {p.cover_url
-                    ? <img src={mediaUrl(p.cover_url)} alt={p.title} />
-                    : <div className="ms-cover-ph"><span>{(p.project_type || 'general').replace('_', ' ')}</span></div>}
-                </div>
-                <div className="ms-collection-meta">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <span className="ms-tag">{(p.project_type || 'general').replace('_', ' ')}</span>
-                    {p.status === 'archived' && <span className="ms-archived">Archived</span>}
+          <>
+            {/* hero — the latest shoot, cinematic */}
+            {featured && (
+              <div className="ms-hero" onClick={() => router.push(`/studio/${featured.id}`)}>
+                {featured.cover_url
+                  ? <img className="ms-hero-img" src={mediaUrl(featured.cover_url)} alt="" />
+                  : <div className="ms-hero-fallback" />}
+                <div className="ms-hero-veil" />
+                <div className="ms-hero-body">
+                  <div style={{ minWidth: 0 }}>
+                    <p className="ms-hero-kicker">Latest shoot · {(featured.project_type || 'general').replace('_', ' ')}</p>
+                    <h1 className="ms-hero-title">{featured.title}</h1>
+                    <p className="ms-hero-sub">
+                      {featured.client_name ? `${featured.client_name} · ` : ''}{featured.asset_count || 0} photograph{featured.asset_count === 1 ? '' : 's'}
+                      <ArrowRight size={13} style={{ display: 'inline', verticalAlign: '-2px', marginLeft: 8, opacity: 0.7 }} />
+                    </p>
                   </div>
-                  <h3 className="ms-collection-title">{p.title}</h3>
-                  <p className="ms-collection-sub">
-                    {p.client_name ? `${p.client_name} · ` : ''}{p.asset_count || 0} photograph{p.asset_count === 1 ? '' : 's'}
-                  </p>
+                  <div className="ms-statrow">
+                    <div className="ms-stat"><b>{projects.length}</b><span>Shoots</span></div>
+                    <div className="ms-stat"><b>{totalPhotos.toLocaleString()}</b><span>Photographs</span></div>
+                    {clients > 0 && <div className="ms-stat"><b>{clients}</b><span>Clients</span></div>}
+                  </div>
                 </div>
-              </button>
-            ))}
-          </div>
+              </div>
+            )}
+
+            {/* collection wall */}
+            <div className="ms-section-head" style={{ marginTop: 36 }}>
+              <h2 className="ms-h2">All shoots</h2>
+              <button onClick={() => setShowNew(true)} className="ms-btn-ink"><Plus size={16} /> New shoot</button>
+            </div>
+            <div className="ms-collection-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+              {rest.length === 0 && featured && (
+                <button className="ms-covercard" onClick={() => setShowNew(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="ms-covercard-ph" />
+                  <span style={{ position: 'relative', zIndex: 1, color: 'var(--ms-ink-3)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}><Plus size={16} /> Add another shoot</span>
+                </button>
+              )}
+              {rest.map((p, i) => (
+                <button key={p.id} onClick={() => router.push(`/studio/${p.id}`)} className="ms-covercard" style={{ animationDelay: `${Math.min(i * 0.05, 0.45)}s` }}>
+                  {p.cover_url ? <img src={mediaUrl(p.cover_url)} alt={p.title} /> : <div className="ms-covercard-ph" />}
+                  <div className="ms-covercard-veil" />
+                  <div className="ms-covercard-body">
+                    <span className="ms-covercard-tag">{(p.project_type || 'general').replace('_', ' ')}{p.status === 'archived' ? ' · archived' : ''}</span>
+                    <h3 className="ms-covercard-title">{p.title}</h3>
+                    <p className="ms-covercard-sub">{p.client_name ? `${p.client_name} · ` : ''}{p.asset_count || 0} photograph{p.asset_count === 1 ? '' : 's'}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </div>
       {showNew && <NewProjectModal onClose={() => setShowNew(false)} onCreated={(p) => router.push(`/studio/${p.id}`)} />}

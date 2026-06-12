@@ -6,7 +6,7 @@ import './studio.css';
 export default function StudioLayout({ children }) {
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: `try{document.documentElement.setAttribute('data-ms-theme',localStorage.getItem('ms-theme')||'dark-pro')}catch(e){}` }} />
+      <script dangerouslySetInnerHTML={{ __html: `try{document.documentElement.setAttribute('data-ms-theme',localStorage.getItem('ms-theme')||'bold')}catch(e){}` }} />
       {children}
     </>
   );

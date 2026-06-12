@@ -351,3 +351,74 @@ html[data-ms-theme="airy"] .ms-photo::after { background: linear-gradient(to top
 /* filmstrip + seg micro-interactions */
 .ms-seg button:hover:not(.is-active) { color: var(--ms-ink); }
 .ms-iconbtn:active, .ms-btn-ink:active, .ms-btn-ghost:active { transform: scale(0.97); }
+
+/* ═══ CINEMATIC SURFACES (hero, overlay cards, immersive cull HUD) ═════════ */
+
+/* — Home hero: the latest shoot as a full-bleed cinematic opener — */
+.ms-hero { position: relative; border-radius: calc(var(--ms-radius) + 6px); overflow: hidden; min-height: clamp(280px, 38vh, 420px); display: flex; align-items: flex-end; background: var(--ms-surface-2); cursor: pointer; animation: ms-rise .6s var(--ms-ease) both; }
+.ms-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 1.2s var(--ms-ease); }
+.ms-hero:hover .ms-hero-img { transform: scale(1.03); }
+.ms-hero-veil { position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,8,10,0.82) 0%, rgba(8,8,10,0.25) 45%, rgba(8,8,10,0.05) 70%), linear-gradient(115deg, rgba(8,8,10,0.45), transparent 55%); }
+.ms-hero-fallback { position: absolute; inset: 0; background:
+  radial-gradient(700px 420px at 80% 10%, rgba(120,96,220,0.5), transparent 60%),
+  radial-gradient(560px 420px at 12% 88%, rgba(214,170,92,0.36), transparent 58%),
+  radial-gradient(420px 360px at 50% 50%, rgba(70,130,210,0.22), transparent 65%),
+  #101018; animation: ms-aurora 22s ease-in-out infinite alternate; }
+.ms-hero-body { position: relative; z-index: 1; padding: clamp(20px, 3.6vw, 44px); width: 100%; display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.ms-hero-kicker { font-family: var(--ms-font-label); font-size: 10.5px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase; color: rgba(255,255,255,0.72); margin: 0 0 10px; }
+.ms-hero-title { font-family: var(--ms-font-display); font-weight: var(--ms-display-weight); font-size: clamp(30px, 4.6vw, 56px); letter-spacing: var(--ms-display-track); line-height: 1.02; color: #fff; margin: 0; text-shadow: 0 2px 30px rgba(0,0,0,0.4); }
+.ms-hero-sub { font-size: 13.5px; color: rgba(255,255,255,0.78); margin: 10px 0 0; }
+.ms-statrow { display: flex; gap: clamp(18px, 3vw, 40px); flex-wrap: wrap; }
+.ms-stat { min-width: 76px; }
+.ms-stat b { display: block; font-family: var(--ms-font-display); font-size: clamp(22px, 2.6vw, 32px); font-weight: var(--ms-display-weight); letter-spacing: -0.03em; color: #fff; line-height: 1; }
+.ms-stat span { display: block; margin-top: 5px; font-family: var(--ms-font-label); font-size: 9.5px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.6); }
+
+/* — Collection cards: title lives ON the image (gallery-wall, not admin card) — */
+.ms-covercard { position: relative; display: block; width: 100%; aspect-ratio: 4/3; border-radius: var(--ms-radius); overflow: hidden; border: none; padding: 0; cursor: pointer; background: var(--ms-surface-2); text-align: left; box-shadow: var(--ms-cover-shadow); transition: transform var(--ms-speed) var(--ms-ease), box-shadow var(--ms-speed) var(--ms-ease); animation: ms-rise .5s var(--ms-ease) both; }
+.ms-covercard:hover { transform: translateY(-4px); box-shadow: 0 26px 60px -22px rgba(0,0,0,0.55); }
+.ms-covercard img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .7s var(--ms-ease); }
+.ms-covercard:hover img { transform: scale(1.05); }
+.ms-covercard-veil { position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,8,10,0.78), rgba(8,8,10,0.12) 48%, transparent 65%); }
+.ms-covercard-body { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 16px 14px; z-index: 1; }
+.ms-covercard-tag { font-family: var(--ms-font-label); font-size: 9px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.66); }
+.ms-covercard-title { font-family: var(--ms-font-display); font-weight: var(--ms-display-weight); font-size: 19px; letter-spacing: -0.02em; line-height: 1.2; color: #fff; margin: 6px 0 3px; }
+.ms-covercard-sub { font-size: 12px; color: rgba(255,255,255,0.66); margin: 0; }
+.ms-covercard-ph { position: absolute; inset: 0; background: linear-gradient(135deg, var(--ms-surface-2), var(--ms-ink-soft)); }
+html[data-ms-theme="airy"] .ms-covercard-veil { background: linear-gradient(to top, rgba(15,15,14,0.7), rgba(15,15,14,0.08) 46%, transparent 62%); }
+
+/* — Project workspace hero band — */
+.ms-projecthero { position: relative; border-radius: calc(var(--ms-radius) + 6px); overflow: hidden; margin-bottom: 26px; min-height: 200px; display: flex; align-items: flex-end; background: var(--ms-surface-2); }
+.ms-projecthero .ms-hero-body { padding: clamp(18px, 2.6vw, 30px); }
+
+/* — Immersive cull canvas: the photo IS the page — */
+.ms-cull-canvas { position: fixed; left: 0; right: 0; bottom: 0; top: 58px; background: #08080a; overflow: hidden; z-index: 5; }
+html[data-ms-theme="airy"] .ms-cull-canvas { top: 64px; }
+.ms-hud { background: rgba(16,16,20,0.78); backdrop-filter: blur(18px) saturate(1.2); border: 1px solid rgba(255,255,255,0.09); border-radius: 16px; box-shadow: 0 18px 50px -20px rgba(0,0,0,0.7); color: #ececf2; }
+.ms-hud-label { font-family: var(--ms-font-label); font-size: 9.5px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+.ms-hud .ms-iconbtn { border-color: rgba(255,255,255,0.12); color: rgba(255,255,255,0.75); }
+.ms-hud .ms-iconbtn:hover { border-color: rgba(255,255,255,0.4); color: #fff; }
+.ms-hud-seg { display: inline-flex; gap: 3px; padding: 3px; border-radius: 999px; background: rgba(255,255,255,0.07); }
+.ms-hud-seg button { padding: 5px 12px; border-radius: 999px; border: none; background: transparent; color: rgba(255,255,255,0.55); font-family: var(--ms-font-label); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; cursor: pointer; transition: all .15s ease; }
+.ms-hud-seg button.is-active { background: #fff; color: #0c0c10; }
+.ms-hud input[type="range"] { background: rgba(255,255,255,0.16); }
+.ms-hud input[type="range"]::-webkit-slider-thumb { background: #fff; border-color: #1a1a20; }
+.ms-hud .ms-chip { border-color: rgba(255,255,255,0.14); color: rgba(255,255,255,0.7); }
+.ms-hud .ms-chip-active, .ms-hud .ms-chip.ms-chip-active { background: #fff; color: #0c0c10; border-color: #fff; }
+.ms-hud .ms-btn-ink { background: #fff; color: #0c0c10; box-shadow: none; }
+.ms-hud .ms-btn-ghost { border-color: rgba(255,255,255,0.16); color: rgba(255,255,255,0.85); }
+.ms-hud .ms-btn-ghost:hover { border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.06); }
+.ms-hud .ms-btn-text { color: rgba(255,255,255,0.6); }
+.ms-hud .ms-btn-text:hover { color: #fff; }
+.ms-hud .ms-section-label { color: rgba(255,255,255,0.5); }
+.ms-filmdock { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; max-width: min(92vw, 1100px); display: flex; gap: 6px; overflow-x: auto; padding: 8px; border-radius: 14px; }
+.ms-filmdock::-webkit-scrollbar { height: 5px; }
+
+/* — Project workspace: media-first two-column layout — */
+.ms-workgrid { display: grid; grid-template-columns: minmax(0, 1fr) 352px; gap: clamp(20px, 2.6vw, 36px); align-items: start; }
+.ms-workmain { grid-column: 1; grid-row: 1; min-width: 0; }
+.ms-workaside { grid-column: 2; grid-row: 1; position: sticky; top: 76px; min-width: 0; }
+.ms-workaside .ms-h2 { font-size: 17px; }
+@media (max-width: 1020px) {
+  .ms-workgrid { grid-template-columns: 1fr; }
+  .ms-workmain, .ms-workaside { grid-column: 1; grid-row: auto; position: static; }
+}

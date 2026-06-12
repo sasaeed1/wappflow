@@ -13,7 +13,7 @@ const THEMES = [['dark-pro', Moon, 'Dark pro'], ['airy', Sun, 'Airy'], ['bold', 
 // the app-switcher in WappFlow Core). Owns the theme switcher + navigation.
 export default function StudioShell({ children }) {
   const router = useRouter();
-  const [theme, setTheme] = useState('dark-pro');
+  const [theme, setTheme] = useState('bold');
   const [menu, setMenu] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [user, setUser] = useState(null);
@@ -21,8 +21,8 @@ export default function StudioShell({ children }) {
   const userRef = useRef(null);
 
   useEffect(() => {
-    let t = 'dark-pro';
-    try { t = localStorage.getItem('ms-theme') || 'dark-pro'; } catch {}
+    let t = 'bold';
+    try { t = localStorage.getItem('ms-theme') || 'bold'; } catch {}
     setTheme(t);
     document.documentElement.setAttribute('data-ms-theme', t);
     try { const u = localStorage.getItem('user'); if (u) setUser(JSON.parse(u)); } catch {}
