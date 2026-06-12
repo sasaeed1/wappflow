@@ -290,3 +290,64 @@ html[data-ms-theme="airy"] .ms-note { justify-content: center; }
 @keyframes ms-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 @keyframes ms-spin { to { transform: rotate(360deg); } }
 .ms-spin { animation: ms-spin 1s linear infinite; }
+
+/* ═══ SIGNATURE TREATMENTS (theme atmosphere + micro-interaction craft) ════ */
+
+/* smooth identity shift when switching themes */
+.ms-root, .ms-root .ms-panel, .ms-root .ms-shell, .ms-root .ms-btn-ink, .ms-root .ms-btn-ghost, .ms-root .ms-input { transition: background-color .45s ease, color .45s ease, border-color .45s ease; }
+
+/* content above the atmosphere layers */
+.ms-shell-content, .ms-shell { position: relative; z-index: 1; }
+
+/* dark-pro: faint film grain over the whole module — photographic, alive */
+html[data-ms-theme="dark-pro"] .ms-root::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* bold: living aurora — two drifting gradient blobs behind the glass */
+html[data-ms-theme="bold"] .ms-root::before {
+  content: ''; position: fixed; inset: -20%; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(620px 480px at 78% 12%, rgba(116,92,210,0.32), transparent 65%),
+    radial-gradient(560px 460px at 16% 92%, rgba(206,160,84,0.2), transparent 60%),
+    radial-gradient(420px 380px at 45% 45%, rgba(64,120,200,0.12), transparent 60%);
+  filter: blur(10px);
+  animation: ms-aurora 26s ease-in-out infinite alternate;
+}
+@keyframes ms-aurora {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(3%, -2%) scale(1.06); }
+  100% { transform: translate(-3%, 2%) scale(1.02); }
+}
+html[data-ms-theme="bold"] .ms-panel { box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 18px 50px -22px rgba(0,0,0,0.55); }
+html[data-ms-theme="bold"] .ms-btn-ink:hover { box-shadow: 0 14px 44px -8px rgba(217,184,120,0.7); }
+
+/* airy: hairline elegance + slow editorial reveals */
+html[data-ms-theme="airy"] .ms-panel { box-shadow: 0 1px 0 rgba(25,25,22,0.03); }
+html[data-ms-theme="airy"] .ms-photo, html[data-ms-theme="airy"] .ms-cover { box-shadow: 0 1px 3px rgba(25,25,22,0.08); }
+html[data-ms-theme="airy"] ::selection { background: #1c1c1b; color: #fcfcfb; }
+html:not([data-ms-theme="airy"]) .ms-root ::selection { background: var(--ms-accent); color: var(--ms-on-accent); }
+
+/* themed scrollbars */
+.ms-root ::-webkit-scrollbar { width: 9px; height: 9px; }
+.ms-root ::-webkit-scrollbar-track { background: transparent; }
+.ms-root ::-webkit-scrollbar-thumb { background: var(--ms-line); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+.ms-root ::-webkit-scrollbar-thumb:hover { background: var(--ms-ink-3); background-clip: content-box; border: 2px solid transparent; }
+
+/* focus rings that match the theme */
+.ms-root :focus-visible { outline: 2px solid var(--ms-accent); outline-offset: 2px; border-radius: 4px; }
+
+/* photo hover sheen — quiet on airy, lifted on bold, instant on dark-pro */
+.ms-photo::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.18), transparent 38%); opacity: 0; transition: opacity var(--ms-speed) var(--ms-ease); pointer-events: none; }
+.ms-photo:hover::after { opacity: 1; }
+html[data-ms-theme="airy"] .ms-photo::after { background: linear-gradient(to top, rgba(25,25,22,0.1), transparent 35%); }
+
+/* range sliders (edit panel) — themed track */
+.ms-root input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px; background: var(--ms-line); outline: none; }
+.ms-root input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 999px; background: var(--ms-accent); border: 2px solid var(--ms-paper); box-shadow: 0 1px 5px rgba(0,0,0,0.3); cursor: pointer; }
+.ms-root input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: var(--ms-accent); border: 2px solid var(--ms-paper); cursor: pointer; }
+
+/* filmstrip + seg micro-interactions */
+.ms-seg button:hover:not(.is-active) { color: var(--ms-ink); }
+.ms-iconbtn:active, .ms-btn-ink:active, .ms-btn-ghost:active { transform: scale(0.97); }

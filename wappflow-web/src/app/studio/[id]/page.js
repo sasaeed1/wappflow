@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
   Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
-  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid,
+  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../lib/api';
 import NavBar from '../../../components/StudioShell';
@@ -388,8 +388,8 @@ export default function ProjectPage() {
               </>
             )}
             <div className="ms-seg" style={{ padding: 3 }}>
-              {[['s', Grid3x3], ['m', Grid2x2], ['l', LayoutGrid]].map(([sz, Icon]) => (
-                <button key={sz} onClick={() => setViewSize(sz)} className={viewSize === sz ? 'is-active' : ''} style={{ padding: '6px 9px' }} title={`${sz === 's' ? 'Small' : sz === 'm' ? 'Medium' : 'Large'} thumbnails`}><Icon size={15} /></button>
+              {[['s', Grid3x3, 'Small grid'], ['m', Grid2x2, 'Medium grid'], ['l', LayoutGrid, 'Large grid'], ['c', LayoutDashboard, 'Collage (natural sizes)']].map(([sz, Icon, label]) => (
+                <button key={sz} onClick={() => setViewSize(sz)} className={viewSize === sz ? 'is-active' : ''} style={{ padding: '6px 9px' }} title={label}><Icon size={15} /></button>
               ))}
             </div>
           </div>
@@ -398,14 +398,19 @@ export default function ProjectPage() {
         {assets.length === 0 ? (
           <div className="ms-empty-soft">No photographs yet — upload to begin.</div>
         ) : (
-          <div className="ms-photo-grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${VIEW_SIZES[viewSize]}px, 1fr))` }}>
+          <div className={viewSize === 'c' ? undefined : 'ms-photo-grid'}
+            style={viewSize === 'c'
+              ? { columnWidth: 250, columnGap: 'var(--ms-grid-gap)' }
+              : { gridTemplateColumns: `repeat(auto-fill, minmax(${VIEW_SIZES[viewSize]}px, 1fr))` }}>
             {assets.map((a, i) => {
               const isSel = selected.has(a.id);
+              const collage = viewSize === 'c';
               return (
-                <div key={a.id} onClick={() => setLightbox(i)} className={`ms-photo${isSel ? ' is-selected' : ''}`} title="Click to view full screen">
+                <div key={a.id} onClick={() => setLightbox(i)} className={`ms-photo${isSel ? ' is-selected' : ''}`} title="Click to view full screen"
+                  style={collage ? { aspectRatio: 'auto', breakInside: 'avoid', marginBottom: 'var(--ms-grid-gap)', display: 'inline-block', width: '100%' } : undefined}>
                   {a.thumb_url
-                    ? <img src={mediaUrl(a.thumb_url)} alt={a.filename} loading="lazy" style={{ opacity: a.variants?.thumb ? 1 : 0.7 }} />
-                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ImageIcon size={22} color="var(--ms-ink-3)" /></div>}
+                    ? <img src={mediaUrl(a.thumb_url)} alt={a.filename} loading="lazy" style={{ opacity: a.variants?.thumb ? 1 : 0.7, ...(collage ? { height: 'auto' } : {}) }} />
+                    : <div style={{ width: '100%', height: collage ? 120 : '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ImageIcon size={22} color="var(--ms-ink-3)" /></div>}
 
                   <div onClick={(e) => { e.stopPropagation(); toggle(a.id); }} className="ms-photo-check" style={isSel ? { background: 'var(--ms-ink)', borderColor: 'var(--ms-ink)' } : undefined} title="Select">
                     {isSel && <Check size={13} color="var(--ms-paper)" />}

@@ -294,6 +294,8 @@ export const mediaAPI = {
   // non-destructive edits (worker re-renders variants)
   setEdits:        (assetId, edits) => api.put(`/media/assets/${assetId}/edits`, edits),
   clearEdits:      (assetId)     => api.delete(`/media/assets/${assetId}/edits`),
+  batchEdits:      (projectId, asset_ids, edits) => api.post(`/media/projects/${projectId}/edits/batch`, { asset_ids, edits }),
+  copilot:         (body)        => api.post('/media/copilot', body),
   // galleries
   listGalleries:   (projectId)   => api.get(`/media/projects/${projectId}/galleries`),
   createGallery:   (projectId, data) => api.post(`/media/projects/${projectId}/galleries`, data),

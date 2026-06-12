@@ -5090,6 +5090,7 @@ app.get('/api/leads/:leadId/meetings', auth, (req, res) => {
 require('./media-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
   multer, path, fs, uploadsDir,
+  ai: aiEngine, // Studio Copilot reuses the existing text-AI provider chain
   clientBaseUrl: process.env.FRONTEND_URL || '',
   // Reuse the existing WhatsApp send path so gallery delivery lands in the client's
   // normal conversation thread (and is saved like any other outgoing message).

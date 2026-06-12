@@ -212,7 +212,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
     if (!fs.existsSync(absPath)) return { note: 'file-gone' };
 
     let edits = {}; try { edits = JSON.parse(asset.edits || '{}'); } catch {}
-    const hasEdits = ['exposure', 'contrast', 'temperature', 'saturation', 'rotate', 'crop'].some(k => edits[k] !== undefined);
+    const hasEdits = ['exposure', 'contrast', 'temperature', 'tint', 'saturation', 'fade', 'vignette', 'grain', 'bw', 'rotate', 'crop'].some(k => edits[k]);
 
     const img = await Jimp.read(absPath);
 
@@ -241,19 +241,51 @@ module.exports = function createMediaWorker(db, deps = {}) {
       img.crop(x, y, w, h);
     }
     // 3. tone
+    if (edits.bw) img.greyscale();
     if (edits.exposure) img.brightness(Math.max(-1, Math.min(1, edits.exposure * 0.6)));
     if (edits.contrast) img.contrast(Math.max(-1, Math.min(1, edits.contrast * 0.6)));
     const colorOps = [];
-    if (edits.temperature) {
+    if (edits.temperature && !edits.bw) {
       const t = Math.round(edits.temperature * 28);
       colorOps.push({ apply: 'red', params: [t] }, { apply: 'blue', params: [-t] });
     }
-    if (edits.saturation) {
+    if (edits.tint && !edits.bw) {
+      // +tint → magenta, −tint → green
+      colorOps.push({ apply: 'green', params: [Math.round(-edits.tint * 26)] });
+    }
+    if (edits.saturation && !edits.bw) {
       colorOps.push(edits.saturation >= 0
         ? { apply: 'saturate', params: [Math.round(edits.saturation * 40)] }
         : { apply: 'desaturate', params: [Math.round(-edits.saturation * 40)] });
     }
     if (colorOps.length) img.color(colorOps);
+
+    // 4. film finish: fade (lifted blacks), vignette, grain — single pixel pass
+    const fade = Math.max(0, Math.min(1, edits.fade || 0));
+    const vig = Math.max(0, Math.min(1, edits.vignette || 0));
+    const grain = Math.max(0, Math.min(1, edits.grain || 0));
+    if (fade || vig || grain) {
+      const { width: W2, height: H2, data } = img.bitmap;
+      const cx = W2 / 2, cy = H2 / 2;
+      const maxD2 = cx * cx + cy * cy;
+      for (let y = 0; y < H2; y++) {
+        for (let x = 0; x < W2; x++) {
+          const i = (y * W2 + x) * 4;
+          let vMul = 1;
+          if (vig) {
+            const dx = x - cx, dy = y - cy;
+            vMul = 1 - vig * 0.8 * Math.pow((dx * dx + dy * dy) / maxD2, 1.25);
+          }
+          const n = grain ? (Math.random() - 0.5) * grain * 34 : 0;
+          for (let c = 0; c < 3; c++) {
+            let v = data[i + c];
+            if (fade) v = v + (118 - v) * 0.32 * fade * (v < 118 ? 1 : 0.25); // lift shadows, gently milk highlights
+            v = v * vMul + n;
+            data[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+          }
+        }
+      }
+    }
 
     const rev = edits.rev || 1;
     const editsDir = path.join(uploadsDir, 'media', 'edits');

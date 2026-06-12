@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { LayoutGrid, Moon, Sun, Sparkles, Settings, LogOut, Users, Zap, Camera, ArrowUpRight } from 'lucide-react';
+import StudioCopilot from './StudioCopilot';
 
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 const THEMES = [['dark-pro', Moon, 'Dark pro'], ['airy', Sun, 'Airy'], ['bold', Sparkles, 'Bold']];
@@ -108,6 +109,7 @@ export default function StudioShell({ children }) {
       </header>
 
       <div className="ms-shell-content">{children}</div>
+      <StudioCopilot />
     </div>
   );
 }

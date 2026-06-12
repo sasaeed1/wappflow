@@ -5,10 +5,12 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Check, X, HelpCircle, Star, ChevronLeft, ChevronRight, Sparkles, Copy as Dup, Images,
-  ZoomIn, Columns2, SlidersHorizontal, RotateCcw, RotateCw, Crop, Loader, Undo2,
+  Columns2, SlidersHorizontal, RotateCcw, RotateCw, Crop, Loader, Undo2, Wand2, Info,
+  ClipboardCopy, ClipboardPaste, Users,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../lib/api';
 import NavBar from '../../../../components/StudioShell';
+import { PRESETS, previewFilter, previewVignette, suggestEnhance } from '../../presets';
 
 const FILTERS = [
   ['all', 'All'], ['undecided', 'To review'], ['keep', 'Keepers'], ['maybe', 'Maybe'], ['reject', 'Rejected'],
@@ -18,31 +20,21 @@ const DEC_META = {
   reject: { label: 'REJECT', color: '#d4564a', Icon: X },
   maybe:  { label: 'MAYBE',  color: '#d39a3e', Icon: HelpCircle },
 };
-const ZERO_EDITS = { exposure: 0, contrast: 0, temperature: 0, saturation: 0, rotate: 0 };
+const ZERO_EDITS = { exposure: 0, contrast: 0, temperature: 0, tint: 0, saturation: 0, fade: 0, vignette: 0, grain: 0, bw: 0, rotate: 0 };
 const FULL_CROP = { x: 0, y: 0, w: 1, h: 1 };
+const EDIT_KEYS = ['exposure', 'contrast', 'temperature', 'tint', 'saturation', 'fade', 'vignette', 'grain', 'bw', 'rotate'];
 
 const parseEdits = (a) => { try { return JSON.parse(a?.edits || '{}'); } catch { return {}; } };
-const hasEdits = (a) => { const e = parseEdits(a); return ['exposure', 'contrast', 'temperature', 'saturation', 'rotate', 'crop'].some(k => e[k]); };
+const hasEdits = (a) => { const e = parseEdits(a); return EDIT_KEYS.concat('crop').some(k => e[k]); };
 
-// CSS approximation of the server render — instant feedback while adjusting.
-function previewFilter(p) {
-  const f = [];
-  if (p.exposure) f.push(`brightness(${(1 + p.exposure * 0.6).toFixed(3)})`);
-  if (p.contrast) f.push(`contrast(${(1 + p.contrast * 0.6).toFixed(3)})`);
-  if (p.temperature > 0) f.push(`sepia(${(p.temperature * 0.35).toFixed(3)}) saturate(${(1 + p.temperature * 0.15).toFixed(3)})`);
-  if (p.temperature < 0) f.push(`hue-rotate(${(p.temperature * 18).toFixed(1)}deg)`);
-  if (p.saturation) f.push(`saturate(${(1 + p.saturation * 0.8).toFixed(3)})`);
-  return f.join(' ') || 'none';
-}
-
-function EditSlider({ label, value, onChange }) {
+function EditSlider({ label, value, onChange, min = -100, max = 100 }) {
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+    <div style={{ marginBottom: 11 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
         <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>{label}</span>
         <span style={{ fontSize: 11, color: 'var(--ms-ink-3)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(value * 100)}</span>
       </div>
-      <input type="range" min={-100} max={100} value={Math.round(value * 100)}
+      <input type="range" min={min} max={max} value={Math.round(value * 100)}
         onChange={e => onChange(Number(e.target.value) / 100)}
         onDoubleClick={() => onChange(0)}
         style={{ width: '100%', accentColor: 'var(--ms-accent)' }} />
@@ -50,9 +42,8 @@ function EditSlider({ label, value, onChange }) {
   );
 }
 
-// Draggable crop overlay — relative coords against the displayed image box.
 function CropOverlay({ crop, setCrop, boxRef }) {
-  const drag = useRef(null); // { mode: 'move'|'nw'|'ne'|'sw'|'se', startCrop, sx, sy }
+  const drag = useRef(null);
   useEffect(() => {
     const move = (e) => {
       if (!drag.current || !boxRef.current) return;
@@ -86,7 +77,6 @@ function CropOverlay({ crop, setCrop, boxRef }) {
   );
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      {/* dimmed outside */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ${pct(crop.y)}, ${pct(crop.x)} ${pct(crop.y)}, ${pct(crop.x)} ${pct(crop.y + crop.h)}, ${pct(crop.x + crop.w)} ${pct(crop.y + crop.h)}, ${pct(crop.x + crop.w)} ${pct(crop.y)}, 0 ${pct(crop.y)})` }} />
       <div onPointerDown={start('move')} style={{ position: 'absolute', left: pct(crop.x), top: pct(crop.y), width: pct(crop.w), height: pct(crop.h), border: '1.5px solid #fff', cursor: 'move', boxSizing: 'border-box' }}>
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.25) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.25) 1px, transparent 1px)', backgroundSize: '33.4% 33.4%' }} />
@@ -108,17 +98,28 @@ export default function CullPage() {
   const [cursor, setCursor] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
-  // inspect / compare / edit
-  const [zoom, setZoom] = useState(false);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const panDrag = useRef(null);
+  // workspace tools
+  const [tool, setTool] = useState('info'); // info | edit | presets
   const [compare, setCompare] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
   const [pending, setPending] = useState({ ...ZERO_EDITS });
   const [crop, setCrop] = useState({ ...FULL_CROP });
   const [cropOn, setCropOn] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [activePreset, setActivePreset] = useState(null);
+  const [copied, setCopied] = useState(null);
+  const [toast, setToast] = useState(null);
+  // zoom
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const panDrag = useRef(null);
+  const stageRef = useRef(null);
+  const imgRef = useRef(null);
   const cropBoxRef = useRef(null);
+
+  const editing = tool === 'edit' || tool === 'presets';
+  const zoomed = scale > 1.001;
+
+  const say = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
 
   const refreshAssets = useCallback(async () => {
     try { const r = await mediaAPI.listAssets(id, { limit: 500 }); setAssets(r.data.assets || []); return r.data.assets || []; } catch { return []; }
@@ -126,6 +127,7 @@ export default function CullPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
+    try { const c = localStorage.getItem('ms-copied-edits'); if (c) setCopied(JSON.parse(c)); } catch {}
     (async () => {
       try {
         const [p, a] = await Promise.all([mediaAPI.getProject(id), mediaAPI.listAssets(id, { limit: 500 })]);
@@ -147,6 +149,7 @@ export default function CullPage() {
   );
   const idx = Math.min(cursor, Math.max(0, view.length - 1));
   const current = view[idx];
+  const keepers = useMemo(() => assets.filter(a => a.cull_decision === 'keep'), [assets]);
 
   const applyLocal = (assetId, patch) => setAssets(prev => prev.map(a => (a.id === assetId ? { ...a, ...patch } : a)));
 
@@ -165,56 +168,65 @@ export default function CullPage() {
     try { await mediaAPI.cullAsset(current.id, { rating: v }); } catch {}
   }, [current]);
 
-  const next = useCallback(() => { setZoom(false); setCursor(c => Math.min(c + 1, view.length - 1)); }, [view.length]);
-  const prev = useCallback(() => { setZoom(false); setCursor(c => Math.max(c - 1, 0)); }, []);
-
-  // when the photo changes, leave zoom/edit context for the previous one
-  useEffect(() => { setZoom(false); setPan({ x: 0, y: 0 }); setCropOn(false); if (editOpen && current) loadPendingFrom(current); }, [current?.id]); // eslint-disable-line
+  const next = useCallback(() => { setScale(1); setPan({ x: 0, y: 0 }); setCursor(c => Math.min(c + 1, view.length - 1)); }, [view.length]);
+  const prev = useCallback(() => { setScale(1); setPan({ x: 0, y: 0 }); setCursor(c => Math.max(c - 1, 0)); }, []);
 
   const loadPendingFrom = (a) => {
     const e = parseEdits(a);
-    setPending({ exposure: e.exposure || 0, contrast: e.contrast || 0, temperature: e.temperature || 0, saturation: e.saturation || 0, rotate: e.rotate || 0 });
+    const p = { ...ZERO_EDITS };
+    EDIT_KEYS.forEach(k => { if (e[k]) p[k] = e[k]; });
+    setPending(p);
     setCrop(e.crop ? { ...e.crop } : { ...FULL_CROP });
+    setActivePreset(null);
   };
-  const openEdit = () => { if (!current) return; loadPendingFrom(current); setEditOpen(true); setCompare(false); setZoom(false); };
+  useEffect(() => { setScale(1); setPan({ x: 0, y: 0 }); setCropOn(false); if (current) loadPendingFrom(current); }, [current?.id]); // eslint-disable-line
 
-  // duplicate-group members for the compare view (falls back to current + next)
+  // duplicate-group members
   const dupMembers = useMemo(() => {
     if (!current?.dup_group) return null;
     const m = assets.filter(a => a.dup_group === current.dup_group);
     return m.length > 1 ? m.slice(0, 4) : null;
   }, [current, assets]);
-  const compareSet = useMemo(() => {
-    if (dupMembers) return dupMembers;
-    return [current, view[idx + 1]].filter(Boolean);
-  }, [dupMembers, current, view, idx]);
+  const compareSet = useMemo(() => dupMembers || [current, view[idx + 1]].filter(Boolean), [dupMembers, current, view, idx]);
 
-  // keyboard
+  // ── zoom: wheel-to-zoom anchored at the cursor; drag to pan ────────────────
+  const zoomTo = useCallback((newScale, anchor) => {
+    setScale(s => {
+      const ns = Math.max(1, Math.min(6, newScale));
+      setPan(p => {
+        if (ns <= 1.001) return { x: 0, y: 0 };
+        if (!anchor || !stageRef.current) return p;
+        const r = stageRef.current.getBoundingClientRect();
+        const cx = anchor.x - r.left - r.width / 2;
+        const cy = anchor.y - r.top - r.height / 2;
+        return { x: cx - (cx - p.x) * (ns / s), y: cy - (cy - p.y) * (ns / s) };
+      });
+      return ns;
+    });
+  }, []);
+
   useEffect(() => {
-    const onKey = (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-      const k = e.key.toLowerCase();
-      if (compare) { if (k === 'escape' || k === 'c') { e.preventDefault(); setCompare(false); } return; }
-      if (editOpen) { if (k === 'escape') { e.preventDefault(); setEditOpen(false); setCropOn(false); } return; }
-      if (k === 'escape' && zoom) { e.preventDefault(); setZoom(false); return; }
-      if (k === 'arrowright' || k === ' ') { e.preventDefault(); next(); }
-      else if (k === 'arrowleft') { e.preventDefault(); prev(); }
-      else if (k === 'p' || k === 'k') { e.preventDefault(); decide('keep'); }
-      else if (k === 'x') { e.preventDefault(); decide('reject'); }
-      else if (k === 'm') { e.preventDefault(); decide('maybe'); }
-      else if (k === 'u' || k === 'backspace') { e.preventDefault(); decide(null); }
-      else if (k === 'z') { e.preventDefault(); setZoom(z => !z); setPan({ x: 0, y: 0 }); }
-      else if (k === 'c') { e.preventDefault(); if (compareSet.length > 1) setCompare(true); }
-      else if (k === 'e') { e.preventDefault(); openEdit(); }
-      else if (k >= '1' && k <= '5') { e.preventDefault(); rate(Number(k)); }
-      else if (k === '0') { e.preventDefault(); rate(0); }
+    const el = stageRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (editing && cropOn) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      zoomTo(scale * factor, { x: e.clientX, y: e.clientY });
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [decide, rate, next, prev, zoom, compare, editOpen, compareSet.length]); // eslint-disable-line
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [scale, zoomTo, editing, cropOn]);
 
-  // zoom panning
-  const startPan = (e) => { if (!zoom) return; panDrag.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }; };
+  const toggle100 = useCallback(() => {
+    if (zoomed) { setScale(1); setPan({ x: 0, y: 0 }); return; }
+    const img = imgRef.current;
+    if (!img || !img.naturalWidth) return;
+    const ratio = img.naturalWidth / img.getBoundingClientRect().width;
+    zoomTo(Math.max(1.05, ratio), null);
+  }, [zoomed, zoomTo]);
+
+  const startPan = (e) => { if (!zoomed) return; panDrag.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }; };
   useEffect(() => {
     const move = (e) => { if (panDrag.current) setPan({ x: panDrag.current.px + (e.clientX - panDrag.current.sx), y: panDrag.current.py + (e.clientY - panDrag.current.sy) }); };
     const up = () => { panDrag.current = null; };
@@ -222,8 +234,19 @@ export default function CullPage() {
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, []);
 
-  // apply / reset edits → server render → poll until the new variants land
-  const pollUntil = async (test) => {
+  // ── copy / paste edits ──────────────────────────────────────────────────────
+  const copyEdits = useCallback(() => {
+    if (!current) return;
+    const e = parseEdits(current);
+    const bundle = {}; EDIT_KEYS.forEach(k => { if (e[k]) bundle[k] = e[k]; });
+    if (e.crop) bundle.crop = e.crop;
+    if (!Object.keys(bundle).length) { say('No edits on this photo to copy'); return; }
+    setCopied(bundle);
+    try { localStorage.setItem('ms-copied-edits', JSON.stringify(bundle)); } catch {}
+    say('Edits copied — Shift+V to paste');
+  }, [current]);
+
+  const pollAsset = async (test) => {
     for (let i = 0; i < 10; i++) {
       await new Promise(r => setTimeout(r, 1500));
       const list = await refreshAssets();
@@ -232,27 +255,85 @@ export default function CullPage() {
     }
     return false;
   };
+
+  const pasteEdits = useCallback(async () => {
+    if (!current || !copied) return;
+    setRendering(true);
+    try {
+      const res = await mediaAPI.setEdits(current.id, copied);
+      const rev = res.data?.edits?.rev;
+      await pollAsset(f => (parseEdits(f).rev || 0) >= (rev || 1));
+      say('Edits pasted');
+    } catch (e) { say(e.response?.data?.error || 'Paste failed'); }
+    setRendering(false);
+  }, [current, copied]); // eslint-disable-line
+
+  // ── apply / reset / batch ───────────────────────────────────────────────────
+  const buildBody = () => {
+    const body = {}; EDIT_KEYS.forEach(k => { if (pending[k]) body[k] = pending[k]; });
+    if (cropOn || (crop.x || crop.y || crop.w !== 1 || crop.h !== 1)) body.crop = crop;
+    return body;
+  };
   const applyEdits = async () => {
     if (!current) return;
     setRendering(true);
-    const body = { ...pending };
-    if (cropOn || (crop.x || crop.y || crop.w !== 1 || crop.h !== 1)) body.crop = crop;
     try {
-      const res = await mediaAPI.setEdits(current.id, body);
+      const res = await mediaAPI.setEdits(current.id, buildBody());
       const rev = res.data?.edits?.rev;
-      await pollUntil(f => (parseEdits(f).rev || 0) >= (rev || 1) && (f.variants?.web || '').includes(`-r${rev}-`));
-    } catch (e) { alert(e.response?.data?.error || 'Edit failed'); }
+      await pollAsset(f => (parseEdits(f).rev || 0) >= (rev || 1) && (f.variants?.web || '').includes(`-r${rev}-`));
+    } catch (e) { say(e.response?.data?.error || 'Edit failed'); }
     setRendering(false); setCropOn(false);
+  };
+  const applyToKeepers = async () => {
+    if (keepers.length === 0) { say('No keepers yet'); return; }
+    setRendering(true);
+    try {
+      await mediaAPI.batchEdits(id, keepers.map(k => k.id), buildBody());
+      say(`Rendering ${keepers.length} keeper${keepers.length === 1 ? '' : 's'}…`);
+      setTimeout(refreshAssets, 4000); setTimeout(refreshAssets, 9000);
+    } catch (e) { say(e.response?.data?.error || 'Batch failed'); }
+    setRendering(false);
   };
   const resetEdits = async () => {
     if (!current) return;
     setRendering(true);
-    try {
-      await mediaAPI.clearEdits(current.id);
-      await pollUntil(f => !f.variants?.full_edit);
-    } catch {}
-    setPending({ ...ZERO_EDITS }); setCrop({ ...FULL_CROP }); setRendering(false); setCropOn(false);
+    try { await mediaAPI.clearEdits(current.id); await pollAsset(f => !f.variants?.full_edit); } catch {}
+    setPending({ ...ZERO_EDITS }); setCrop({ ...FULL_CROP }); setActivePreset(null); setRendering(false); setCropOn(false);
   };
+
+  const usePreset = (preset) => {
+    const p = { ...ZERO_EDITS };
+    Object.entries(preset.p).forEach(([k, v]) => { p[k] = v; });
+    setPending(p); setActivePreset(preset.id);
+  };
+  const aiSuggestion = useMemo(() => suggestEnhance(current), [current]);
+
+  // ── keyboard ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      const k = e.key.toLowerCase();
+      if (compare) { if (k === 'escape' || k === 'c') { e.preventDefault(); setCompare(false); } return; }
+      if (e.shiftKey && k === 'c') { e.preventDefault(); copyEdits(); return; }
+      if (e.shiftKey && k === 'v') { e.preventDefault(); pasteEdits(); return; }
+      if (editing && k === 'escape') { e.preventDefault(); setTool('info'); setCropOn(false); return; }
+      if (k === 'escape' && zoomed) { e.preventDefault(); setScale(1); setPan({ x: 0, y: 0 }); return; }
+      if (k === 'arrowright' || k === ' ') { e.preventDefault(); next(); }
+      else if (k === 'arrowleft') { e.preventDefault(); prev(); }
+      else if (k === 'p') { e.preventDefault(); decide('keep'); }
+      else if (k === 'x') { e.preventDefault(); decide('reject'); }
+      else if (k === 'm') { e.preventDefault(); decide('maybe'); }
+      else if (k === 'u' || k === 'backspace') { e.preventDefault(); decide(null); }
+      else if (k === 'z') { e.preventDefault(); toggle100(); }
+      else if (k === 'c') { e.preventDefault(); if (compareSet.length > 1) setCompare(true); }
+      else if (k === 'e') { e.preventDefault(); setTool(t => t === 'edit' ? 'info' : 'edit'); }
+      else if (k === 'f') { e.preventDefault(); setTool(t => t === 'presets' ? 'info' : 'presets'); }
+      else if (k >= '1' && k <= '5') { e.preventDefault(); rate(Number(k)); }
+      else if (k === '0') { e.preventDefault(); rate(0); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [decide, rate, next, prev, zoomed, compare, editing, compareSet.length, toggle100, copyEdits, pasteEdits]);
 
   if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
 
@@ -265,25 +346,23 @@ export default function CullPage() {
   const q = current?.quality;
   const qualLabel = q == null ? '—' : q >= 0.66 ? 'Great' : q >= 0.4 ? 'Good' : 'Weak';
   const qualColor = q == null ? 'var(--ms-ink-3)' : q >= 0.66 ? '#2f9e6e' : q >= 0.4 ? '#d39a3e' : '#d4564a';
-  const livePreview = editOpen ? { filter: previewFilter(pending), transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined } : {};
+  const livePreview = editing ? { filter: previewFilter(pending), transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined } : {};
+  const liveVignette = editing ? previewVignette(pending) : 'none';
+
+  const railBtn = (key, Icon, label) => (
+    <button key={key} onClick={() => setTool(t => t === key ? 'info' : key)} title={label}
+      className="ms-iconbtn" style={{ width: 40, height: 40, borderRadius: 11, background: tool === key ? 'var(--ms-accent)' : 'transparent', color: tool === key ? 'var(--ms-on-accent)' : 'var(--ms-ink-2)', borderColor: tool === key ? 'var(--ms-accent)' : 'var(--ms-line)' }}>
+      <Icon size={17} />
+    </button>
+  );
 
   return (
     <NavBar>
-      <div className="ms-page" style={{ paddingTop: 'clamp(18px, 2.5vw, 30px)', maxWidth: 1480 }}>
-        {/* top bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div className="ms-page" style={{ paddingTop: 'clamp(14px, 2vw, 24px)', maxWidth: 1560, paddingBottom: 40 }}>
+        {/* header row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
           <button onClick={() => router.push(`/studio/${id}`)} className="ms-back" style={{ margin: 0 }}><ArrowLeft size={15} /> Back</button>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <h1 className="ms-h2" style={{ fontSize: 'clamp(18px, 2.2vw, 24px)' }}>Cull <span style={{ color: 'var(--ms-ink-3)', fontWeight: 400 }}>{project?.title ? `· ${project.title}` : ''}</span></h1>
-          </div>
-          {counts.keep > 0 && (
-            <button onClick={() => setShowGallery(true)} className="ms-btn-ink" style={{ padding: '9px 16px', fontSize: 12 }}>
-              <Images size={15} /> Gallery from {counts.keep} keeper{counts.keep === 1 ? '' : 's'}
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+          <h1 className="ms-h2" style={{ fontSize: 'clamp(17px, 2vw, 22px)', flex: 1, minWidth: 120 }}>Cull <span style={{ color: 'var(--ms-ink-3)', fontWeight: 400 }}>{project?.title ? `· ${project.title}` : ''}</span></h1>
           <div className="ms-seg">
             {FILTERS.map(([f, label]) => (
               <button key={f} onClick={() => { setFilter(f); setCursor(0); }} className={filter === f ? 'is-active' : ''}>
@@ -291,13 +370,10 @@ export default function CullPage() {
               </button>
             ))}
           </div>
-          <div style={{ flex: 1 }} />
-          {current && (
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => { setZoom(z => !z); setPan({ x: 0, y: 0 }); }} className="ms-btn-ghost" style={{ padding: '8px 13px', background: zoom ? 'var(--ms-surface-2)' : undefined }} title="Zoom 100% (Z)"><ZoomIn size={14} /> 100%</button>
-              <button onClick={() => compareSet.length > 1 && setCompare(true)} disabled={compareSet.length < 2} className="ms-btn-ghost" style={{ padding: '8px 13px' }} title="Compare (C)"><Columns2 size={14} /> Compare{dupMembers ? ` ${dupMembers.length} dupes` : ''}</button>
-              <button onClick={() => editOpen ? setEditOpen(false) : openEdit()} className="ms-btn-ghost" style={{ padding: '8px 13px', background: editOpen ? 'var(--ms-surface-2)' : undefined }} title="Edit (E)"><SlidersHorizontal size={14} /> Edit</button>
-            </div>
+          {counts.keep > 0 && (
+            <button onClick={() => setShowGallery(true)} className="ms-btn-ink" style={{ padding: '9px 16px', fontSize: 12 }}>
+              <Images size={15} /> Gallery · {counts.keep}
+            </button>
           )}
         </div>
 
@@ -305,41 +381,50 @@ export default function CullPage() {
           <div className="ms-empty-soft">{assets.length === 0 ? 'Upload photographs first.' : 'Nothing in this filter.'}</div>
         ) : (
           <>
-            {/* stage */}
-            <div style={{ display: 'flex', gap: 14, alignItems: 'stretch', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 280, position: 'relative', background: '#09090b', borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 480, maxHeight: '72vh', cursor: zoom ? 'grab' : 'zoom-in' }}
-                onPointerDown={startPan}
-                onClick={(e) => { if (!zoom && !editOpen && !panDrag.current) { setZoom(true); setPan({ x: 0, y: 0 }); } }}>
-                {zoom ? (
-                  <img key={current.id + '-z'} src={mediaUrl(current.variants?.full_edit || current.url)} alt={current.filename} draggable={false}
-                    style={{ maxWidth: 'none', maxHeight: 'none', transform: `translate(${pan.x}px, ${pan.y}px)`, userSelect: 'none' }} />
-                ) : (
-                  <div ref={cropBoxRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '72vh' }}>
-                    <img key={current.id} src={mediaUrl(current.variants?.web || current.url)} alt={current.filename} draggable={false}
-                      style={{ maxWidth: '100%', maxHeight: '72vh', objectFit: 'contain', display: 'block', userSelect: 'none', ...livePreview }} />
-                    {editOpen && cropOn && <CropOverlay crop={crop} setCrop={setCrop} boxRef={cropBoxRef} />}
-                  </div>
-                )}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+              {/* tool rail */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 2 }}>
+                {railBtn('info', Info, 'Info & AI (I)')}
+                {railBtn('edit', SlidersHorizontal, 'Edit (E)')}
+                {railBtn('presets', Wand2, 'Presets (F)')}
+                <button onClick={() => compareSet.length > 1 && setCompare(true)} disabled={compareSet.length < 2} title="Compare (C)"
+                  className="ms-iconbtn" style={{ width: 40, height: 40, borderRadius: 11 }}><Columns2 size={17} /></button>
+                <div style={{ flex: 1 }} />
+                <button onClick={copyEdits} title="Copy edits (Shift+C)" className="ms-iconbtn" style={{ width: 40, height: 40, borderRadius: 11 }}><ClipboardCopy size={16} /></button>
+                <button onClick={pasteEdits} disabled={!copied} title="Paste edits (Shift+V)" className="ms-iconbtn" style={{ width: 40, height: 40, borderRadius: 11 }}><ClipboardPaste size={16} /></button>
+              </div>
 
-                {/* decision badge */}
-                {!editOpen && current.cull_decision && DEC_META[current.cull_decision] && (
+              {/* stage */}
+              <div ref={stageRef} style={{ flex: 1, minWidth: 280, position: 'relative', background: '#09090b', borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 500, maxHeight: '74vh', cursor: zoomed ? 'grab' : 'default' }}
+                onPointerDown={startPan} onDoubleClick={toggle100}>
+                <div ref={cropBoxRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '74vh', transform: zoomed ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transition: panDrag.current ? 'none' : 'transform 0.12s ease-out' }}>
+                  <img ref={imgRef} key={current.id} src={mediaUrl(zoomed ? (current.variants?.full_edit || current.url) : (current.variants?.web || current.url))} alt={current.filename} draggable={false}
+                    style={{ maxWidth: '100%', maxHeight: '74vh', objectFit: 'contain', display: 'block', userSelect: 'none', ...livePreview }} />
+                  {liveVignette !== 'none' && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: liveVignette, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined }} />}
+                  {editing && cropOn && !zoomed && <CropOverlay crop={crop} setCrop={setCrop} boxRef={cropBoxRef} />}
+                </div>
+
+                {!editing && current.cull_decision && DEC_META[current.cull_decision] && (
                   <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: DEC_META[current.cull_decision].color, color: 'white', fontWeight: 700, fontSize: 10.5, letterSpacing: '0.08em' }}>
                     {(() => { const I = DEC_META[current.cull_decision].Icon; return <I size={12} />; })()}
                     {DEC_META[current.cull_decision].label}
                   </div>
                 )}
-                {hasEdits(current) && !editOpen && (
+                {hasEdits(current) && !editing && (
                   <div style={{ position: 'absolute', top: 14, right: 14, padding: '4px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#e8cb8d', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.06em' }}>EDITED</div>
                 )}
-                {zoom && <div style={{ position: 'absolute', top: 14, right: 14, padding: '4px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10.5, fontWeight: 600 }}>100% · drag to pan · Z to exit</div>}
+                <div style={{ position: 'absolute', bottom: 12, right: 12, padding: '4px 11px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10.5, fontWeight: 600 }}>
+                  {zoomed ? `${Math.round(scale * 100)}% · scroll to zoom · drag to pan` : 'scroll or dbl-click to zoom'}
+                </div>
                 {rendering && (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', color: '#fff', gap: 10, fontSize: 13 }}>
-                    <Loader size={16} className="ms-spin" /> Rendering edit…
+                    <Loader size={16} className="ms-spin" /> Rendering…
                   </div>
                 )}
-
-                {/* nav arrows */}
-                {!zoom && !editOpen && (
+                {toast && (
+                  <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', padding: '7px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.75)', color: '#fff', fontSize: 12 }}>{toast}</div>
+                )}
+                {!zoomed && !editing && (
                   <>
                     <button onClick={(e) => { e.stopPropagation(); prev(); }} disabled={idx === 0} style={navArrow('left', idx === 0)}><ChevronLeft size={22} /></button>
                     <button onClick={(e) => { e.stopPropagation(); next(); }} disabled={idx >= view.length - 1} style={navArrow('right', idx >= view.length - 1)}><ChevronRight size={22} /></button>
@@ -350,47 +435,85 @@ export default function CullPage() {
                 </div>
               </div>
 
-              {/* right rail */}
-              <aside style={{ width: 248, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {editOpen ? (
-                  <div className="ms-panel">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                      <span className="ms-section-label">Edit</span>
-                      <button onClick={() => { setEditOpen(false); setCropOn(false); }} className="ms-iconbtn" style={{ border: 'none', width: 26, height: 26 }}><X size={15} /></button>
+              {/* right panel */}
+              <aside style={{ width: 262, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '74vh', overflowY: 'auto' }}>
+                {tool === 'presets' && (
+                  <div className="ms-panel" style={{ padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <span className="ms-section-label">Presets</span>
+                      <span style={{ fontSize: 10.5, color: 'var(--ms-ink-3)' }}>{PRESETS.length} looks</span>
                     </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {PRESETS.map(ps => (
+                        <button key={ps.id} onClick={() => usePreset(ps)} style={{ border: activePreset === ps.id ? '2px solid var(--ms-accent)' : '1px solid var(--ms-line)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'var(--ms-surface-2)', textAlign: 'left' }}>
+                          <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
+                            <img src={mediaUrl(current.thumb_url || current.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: previewFilter(ps.p) }} />
+                            {ps.p.vignette ? <div style={{ position: 'absolute', inset: 0, boxShadow: previewVignette(ps.p) }} /> : null}
+                          </div>
+                          <div style={{ padding: '5px 7px', fontSize: 10, fontWeight: 600, color: 'var(--ms-ink-2)', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ps.name}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={applyEdits} disabled={rendering || !activePreset} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }}>
+                      {rendering ? 'Rendering…' : 'Apply to this photo'}
+                    </button>
+                    <button onClick={applyToKeepers} disabled={rendering || !activePreset || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 8, padding: '9px' }}>
+                      <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
+                    </button>
+                  </div>
+                )}
+
+                {tool === 'edit' && (
+                  <div className="ms-panel" style={{ padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <span className="ms-section-label">Edit</span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--ms-ink-2)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!pending.bw} onChange={e => setPending(p => ({ ...p, bw: e.target.checked ? 1 : 0 }))} style={{ accentColor: 'var(--ms-accent)' }} /> B&amp;W
+                      </label>
+                    </div>
+                    {aiSuggestion && (
+                      <button onClick={() => { setPending(p => ({ ...p, ...aiSuggestion })); setActivePreset(null); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 12, gap: 6 }}>
+                        <Sparkles size={13} /> AI auto-enhance{aiSuggestion.exposure ? ` · exp ${aiSuggestion.exposure > 0 ? '+' : ''}${aiSuggestion.exposure}` : ''}
+                      </button>
+                    )}
                     <EditSlider label="Exposure" value={pending.exposure} onChange={v => setPending(p => ({ ...p, exposure: v }))} />
                     <EditSlider label="Contrast" value={pending.contrast} onChange={v => setPending(p => ({ ...p, contrast: v }))} />
                     <EditSlider label="Warmth" value={pending.temperature} onChange={v => setPending(p => ({ ...p, temperature: v }))} />
+                    <EditSlider label="Tint" value={pending.tint} onChange={v => setPending(p => ({ ...p, tint: v }))} />
                     <EditSlider label="Saturation" value={pending.saturation} onChange={v => setPending(p => ({ ...p, saturation: v }))} />
+                    <EditSlider label="Fade" value={pending.fade} onChange={v => setPending(p => ({ ...p, fade: v }))} min={0} />
+                    <EditSlider label="Vignette" value={pending.vignette} onChange={v => setPending(p => ({ ...p, vignette: v }))} min={0} />
+                    <EditSlider label="Grain" value={pending.grain} onChange={v => setPending(p => ({ ...p, grain: v }))} min={0} />
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '14px 0 6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0 6px' }}>
                       <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)', flex: 1 }}>Rotate</span>
-                      <button onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate - 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }} title="Rotate left"><RotateCcw size={14} /></button>
-                      <button onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate + 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }} title="Rotate right"><RotateCw size={14} /></button>
+                      <button onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate - 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCcw size={14} /></button>
+                      <button onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate + 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCw size={14} /></button>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                       <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>Straighten</span>
-                      <span style={{ fontSize: 11, color: 'var(--ms-ink-3)' }}>{(pending.rotate % 90).toFixed(1)}°</span>
+                      <span style={{ fontSize: 11, color: 'var(--ms-ink-3)' }}>{(pending.rotate - Math.round(pending.rotate / 90) * 90).toFixed(1)}°</span>
                     </div>
                     <input type="range" min={-15} max={15} step={0.5} value={pending.rotate - Math.round(pending.rotate / 90) * 90}
                       onChange={e => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 + Number(e.target.value) }))}
                       onDoubleClick={() => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 }))}
-                      style={{ width: '100%', accentColor: 'var(--ms-accent)', marginBottom: 14 }} />
+                      style={{ width: '100%', accentColor: 'var(--ms-accent)', marginBottom: 12 }} />
 
-                    <button onClick={() => setCropOn(v => !v)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 8, background: cropOn ? 'var(--ms-surface-2)' : undefined }}>
-                      <Crop size={14} /> {cropOn ? 'Cropping — drag the handles' : 'Crop'}
+                    <button onClick={() => setCropOn(v => !v)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 10, background: cropOn ? 'var(--ms-surface-2)' : undefined }}>
+                      <Crop size={14} /> {cropOn ? 'Cropping — drag handles' : 'Crop'}
                     </button>
-                    {pending.rotate !== 0 && cropOn && <p style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', margin: '0 0 8px', lineHeight: 1.4 }}>Tip: crop applies after rotation — use it to trim the angled edges.</p>}
 
                     <button onClick={applyEdits} disabled={rendering} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
                       {rendering ? 'Rendering…' : 'Apply'}
                     </button>
+                    <button onClick={applyToKeepers} disabled={rendering || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 8 }}>
+                      <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
+                    </button>
                     <button onClick={resetEdits} disabled={rendering || !hasEdits(current)} className="ms-btn-text" style={{ width: '100%', justifyContent: 'center' }}><Undo2 size={13} /> Reset to original</button>
-                    <p style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', margin: '12px 0 0', lineHeight: 1.5, borderTop: '1px solid var(--ms-line)', paddingTop: 10 }}>
-                      Non-destructive — the original file is never touched. Galleries, ZIPs and albums deliver the edited version.
-                    </p>
                   </div>
-                ) : (
+                )}
+
+                {tool === 'info' && (
                   <>
                     <div className="ms-panel">
                       <div className="ms-note" style={{ marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: 10, fontWeight: 600 }}>
@@ -406,14 +529,18 @@ export default function CullPage() {
                           {current.dup_group && <Row label="Duplicate" value={`${dupMembers ? dupMembers.length : 2} similar`} color="var(--ms-ink-2)" icon={<Dup size={11} />} />}
                         </>
                       )}
+                      {aiSuggestion && (
+                        <button onClick={() => { setTool('edit'); setPending(p => ({ ...p, ...aiSuggestion })); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 12, gap: 6 }}>
+                          <Wand2 size={13} /> Auto-enhance suggestion
+                        </button>
+                      )}
                       {dupMembers && (
-                        <button onClick={() => setCompare(true)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 12 }}><Columns2 size={13} /> Compare duplicates</button>
+                        <button onClick={() => setCompare(true)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 8 }}><Columns2 size={13} /> Compare duplicates</button>
                       )}
                       <p style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', margin: '12px 0 0', lineHeight: 1.5, borderTop: '1px solid var(--ms-line)', paddingTop: 10 }}>
-                        Advisory only. AI never keeps, rejects, or hides a photograph — that&apos;s your call.
+                        Advisory only — AI never keeps, rejects, or edits without you.
                       </p>
                     </div>
-
                     <div className="ms-panel">
                       <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ms-ink-3)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>Your rating</div>
                       <div style={{ display: 'flex', gap: 5 }}>
@@ -430,7 +557,7 @@ export default function CullPage() {
             </div>
 
             {/* decision bar */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, margin: '16px 0 14px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, margin: '14px 0 12px', flexWrap: 'wrap' }}>
               <DecBtn onClick={() => decide('reject')} active={current.cull_decision === 'reject'} color="#d4564a" Icon={X} label="Reject" hint="X" />
               <DecBtn onClick={() => decide('maybe')} active={current.cull_decision === 'maybe'} color="#d39a3e" Icon={HelpCircle} label="Maybe" hint="M" />
               <DecBtn onClick={() => decide('keep')} active={current.cull_decision === 'keep'} color="#2f9e6e" Icon={Check} label="Keep" hint="P" />
@@ -443,7 +570,7 @@ export default function CullPage() {
                 const meta = dec && DEC_META[dec];
                 return (
                   <button key={a.id} onClick={() => setCursor(i)} style={{
-                    position: 'relative', flexShrink: 0, width: 72, height: 72, borderRadius: 4, overflow: 'hidden', cursor: 'pointer', padding: 0,
+                    position: 'relative', flexShrink: 0, width: 70, height: 70, borderRadius: 5, overflow: 'hidden', cursor: 'pointer', padding: 0,
                     outline: i === idx ? '2px solid var(--ms-accent)' : '1px solid var(--ms-line)', outlineOffset: -1, border: 'none', background: 'var(--ms-surface-2)',
                   }}>
                     {a.thumb_url
@@ -460,8 +587,8 @@ export default function CullPage() {
               })}
             </div>
 
-            <p style={{ marginTop: 14, fontSize: 11.5, color: 'var(--ms-ink-3)', textAlign: 'center' }}>
-              <Kbd>←</Kbd><Kbd>→</Kbd> navigate · <Kbd>P</Kbd> keep · <Kbd>X</Kbd> reject · <Kbd>M</Kbd> maybe · <Kbd>U</Kbd> undo · <Kbd>1–5</Kbd> rate · <Kbd>Z</Kbd> 100% · <Kbd>C</Kbd> compare · <Kbd>E</Kbd> edit
+            <p style={{ marginTop: 12, fontSize: 11, color: 'var(--ms-ink-3)', textAlign: 'center' }}>
+              <Kbd>←→</Kbd> nav · <Kbd>P</Kbd> keep · <Kbd>X</Kbd> reject · <Kbd>M</Kbd> maybe · <Kbd>U</Kbd> undo · <Kbd>1–5</Kbd> rate · <Kbd>scroll</Kbd>/<Kbd>Z</Kbd> zoom · <Kbd>C</Kbd> compare · <Kbd>E</Kbd> edit · <Kbd>F</Kbd> presets · <Kbd>⇧C/⇧V</Kbd> copy/paste edits
             </p>
           </>
         )}
@@ -580,7 +707,7 @@ function DecBtn({ onClick, active, color, Icon, label, hint }) {
 }
 
 function Kbd({ children }) {
-  return <span style={{ display: 'inline-block', padding: '1px 6px', margin: '0 2px', borderRadius: 4, border: '1px solid var(--ms-line)', background: 'var(--ms-surface-2)', fontSize: 11, fontWeight: 600, color: 'var(--ms-ink-2)' }}>{children}</span>;
+  return <span style={{ display: 'inline-block', padding: '1px 6px', margin: '0 2px', borderRadius: 4, border: '1px solid var(--ms-line)', background: 'var(--ms-surface-2)', fontSize: 10.5, fontWeight: 600, color: 'var(--ms-ink-2)' }}>{children}</span>;
 }
 
 const navArrow = (side, disabled) => ({

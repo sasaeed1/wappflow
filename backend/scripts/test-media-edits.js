@@ -84,6 +84,25 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
     const entry = zip.getEntries()[0];
     check('ZIP original delivers the edited bytes', entry.getData().equals(fs.readFileSync(fullAbs)));
 
+    // extended film params (bw / fade / vignette / grain / tint)
+    r = await PUT(`/api/media/assets/${A}/edits`, { bw: 1, fade: 0.2, vignette: 0.4, grain: 0.3, tint: 0.1 });
+    check('extended film params accepted (202)', r.status === 202);
+    check('vignette out of range → 400', (await PUT(`/api/media/assets/${A}/edits`, { vignette: 2 })).status === 400);
+    await drain(worker);
+    asset = (await GET(`/api/media/projects/${PID}/assets`)).assets[0];
+    check('film render rev-stamped (r2+)', /-r[2-9]\d*-/.test(asset.variants.web || ''), asset.variants.web);
+
+    // batch endpoint
+    r = await POST(`/api/media/projects/${PID}/edits/batch`, { asset_ids: [A], edits: { exposure: 0.2, contrast: 0.1 } });
+    const batch = await r.json();
+    check('batch edits accepted (202, updated 1)', r.status === 202 && batch.updated === 1, JSON.stringify(batch));
+    check('batch with bad params → 400', (await POST(`/api/media/projects/${PID}/edits/batch`, { asset_ids: [A], edits: { exposure: 9 } })).status === 400);
+    await drain(worker);
+
+    // copilot degrades gracefully without an AI provider
+    r = await POST('/api/media/copilot', { message: 'analyze this shoot', project_id: PID });
+    check('copilot without AI key → 503', r.status === 503);
+
     // reset restores plain variants
     r = await fetch(`${base}/api/media/assets/${A}/edits`, { method: 'DELETE' });
     check('reset accepted (202)', r.status === 202);

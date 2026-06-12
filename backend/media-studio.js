@@ -40,6 +40,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     // saveOutgoingMessage). Defaults to a no-op so the module works without messaging.
     sendClientMessage = async () => ({ skipped: true }),
     clientBaseUrl = process.env.FRONTEND_URL || '',
+    ai = null, // text-AI provider chain (ai-engine.js) — powers Studio Copilot
   } = deps;
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -545,40 +546,148 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   // renders automatically. Clearing edits restores the original variants.
   function inRange(v, lo, hi) { return typeof v === 'number' && isFinite(v) && v >= lo && v <= hi; }
 
+  // Shared validator for the full edit param set (single + batch + presets).
+  function sanitizeEdits(e) {
+    const edits = {};
+    for (const k of ['exposure', 'contrast', 'temperature', 'tint', 'saturation']) {
+      if (e[k] !== undefined && e[k] !== 0) {
+        if (!inRange(e[k], -1, 1)) return { error: `${k} must be between -1 and 1` };
+        edits[k] = Math.round(e[k] * 100) / 100;
+      }
+    }
+    for (const k of ['fade', 'vignette', 'grain']) {
+      if (e[k] !== undefined && e[k] !== 0) {
+        if (!inRange(e[k], 0, 1)) return { error: `${k} must be between 0 and 1` };
+        edits[k] = Math.round(e[k] * 100) / 100;
+      }
+    }
+    if (e.bw) edits.bw = 1;
+    if (e.rotate !== undefined && e.rotate !== 0) {
+      if (!inRange(e.rotate, -360, 360)) return { error: 'rotate must be between -360 and 360' };
+      edits.rotate = Math.round(e.rotate * 10) / 10;
+    }
+    if (e.crop) {
+      const c = e.crop;
+      if (!inRange(c.x, 0, 0.95) || !inRange(c.y, 0, 0.95) || !inRange(c.w, 0.05, 1) || !inRange(c.h, 0.05, 1) || c.x + c.w > 1.001 || c.y + c.h > 1.001) {
+        return { error: 'invalid crop' };
+      }
+      if (!(c.x < 0.005 && c.y < 0.005 && c.w > 0.995 && c.h > 0.995)) {
+        edits.crop = { x: +c.x.toFixed(4), y: +c.y.toFixed(4), w: +c.w.toFixed(4), h: +c.h.toFixed(4) };
+      }
+    }
+    return { edits };
+  }
+
+  function stampAndQueueEdits(asset, edits) {
+    let prev = {}; try { prev = JSON.parse(asset.edits || '{}'); } catch {}
+    const next = { ...edits, rev: (prev.rev || 0) + 1 };
+    db.prepare('UPDATE ms_assets SET edits = ? WHERE id = ?').run(JSON.stringify(next), asset.id);
+    db.prepare("INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload) VALUES (?, ?, 'render_edits', ?, ?, 'pending', '{}')")
+      .run(generateId(), asset.workspace_id, asset.id, asset.project_id);
+    return next;
+  }
+
   app.put('/api/media/assets/:id/edits', auth, (req, res) => {
     try {
       const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
       if (!a) return res.status(404).json({ error: 'Asset not found' });
       if (a.type !== 'photo') return res.status(400).json({ error: 'Only photos can be edited' });
-      const e = req.body || {};
-      const edits = {};
-      for (const k of ['exposure', 'contrast', 'temperature', 'saturation']) {
-        if (e[k] !== undefined && e[k] !== 0) {
-          if (!inRange(e[k], -1, 1)) return res.status(400).json({ error: `${k} must be between -1 and 1` });
-          edits[k] = Math.round(e[k] * 100) / 100;
-        }
+      const { edits, error } = sanitizeEdits(req.body || {});
+      if (error) return res.status(400).json({ error });
+      const next = stampAndQueueEdits(a, edits);
+      logAudit(req.workspaceId, req.userId, 'edit', 'ms_asset', a.id, next);
+      res.status(202).json({ status: 'rendering', edits: next });
+    } catch (e2) { res.status(500).json({ error: e2.message }); }
+  });
+
+  // Batch: same edit params across many photos (e.g. paste-to-keepers, preset-to-keepers).
+  app.post('/api/media/projects/:id/edits/batch', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const ids = Array.isArray(req.body.asset_ids) ? req.body.asset_ids.slice(0, 500) : [];
+      if (ids.length === 0) return res.status(400).json({ error: 'asset_ids[] required' });
+      const { edits, error } = sanitizeEdits(req.body.edits || {});
+      if (error) return res.status(400).json({ error });
+      const sel = db.prepare("SELECT * FROM ms_assets WHERE id = ? AND project_id = ? AND type = 'photo'");
+      let n = 0;
+      const tx = db.transaction(() => { for (const aid of ids) { const a = sel.get(aid, project.id); if (a) { stampAndQueueEdits(a, edits); n++; } } });
+      tx();
+      logAudit(req.workspaceId, req.userId, 'edit_batch', 'ms_project', project.id, { count: n, edits });
+      res.status(202).json({ status: 'rendering', updated: n });
+    } catch (e2) { res.status(500).json({ error: e2.message }); }
+  });
+
+  // ── Studio Copilot (control-first AI assistant) ──────────────────────────────
+  // Answers questions and analyzes the shoot from real DB context, and may return
+  // SUGGESTED actions — which the UI renders as buttons the photographer clicks.
+  // The copilot itself can change nothing.
+  const COPILOT_ACTIONS = new Set(['navigate', 'create_gallery_from_keepers', 'preset_keepers']);
+
+  app.post('/api/media/copilot', auth, async (req, res) => {
+    try {
+      if (!ai || typeof ai.callLLM !== 'function') return res.status(503).json({ error: 'AI is not configured on this server (set an AI provider key).' });
+      const message = (req.body.message || '').toString().slice(0, 2000).trim();
+      if (!message) return res.status(400).json({ error: 'message required' });
+
+      // build grounded context
+      let ctx = '';
+      const projectId = req.body.project_id;
+      const presetList = Array.isArray(req.body.presets) ? req.body.presets.slice(0, 40).map(p => String(p).slice(0, 40)) : [];
+      if (projectId) {
+        const p = getProject(req.workspaceId, projectId);
+        if (!p) return res.status(404).json({ error: 'Project not found' });
+        const cull = db.prepare(`SELECT COALESCE(c.decision,'undecided') d, COUNT(*) n FROM ms_assets a LEFT JOIN ms_cull_decisions c ON c.asset_id=a.id WHERE a.project_id=? GROUP BY d`).all(p.id);
+        const stats = db.prepare(`SELECT COUNT(*) total,
+            SUM(CASE WHEN s.value >= 120 THEN 1 ELSE 0 END) sharp,
+            ROUND(AVG(q.value),2) avg_quality
+          FROM ms_assets a
+          LEFT JOIN ms_asset_scores s ON s.asset_id=a.id AND s.score_type='sharpness'
+          LEFT JOIN ms_asset_scores q ON q.asset_id=a.id AND q.score_type='quality'
+          WHERE a.project_id=?`).get(p.id);
+        const dups = db.prepare(`SELECT COUNT(DISTINCT group_key) n FROM ms_asset_scores s JOIN ms_assets a ON a.id=s.asset_id WHERE a.project_id=? AND s.score_type='duplicate_group'`).get(p.id).n;
+        const best = db.prepare(`SELECT a.filename, q.value FROM ms_assets a JOIN ms_asset_scores q ON q.asset_id=a.id AND q.score_type='quality' WHERE a.project_id=? ORDER BY q.value DESC LIMIT 5`).all(p.id);
+        const worst = db.prepare(`SELECT a.filename, q.value FROM ms_assets a JOIN ms_asset_scores q ON q.asset_id=a.id AND q.score_type='quality' WHERE a.project_id=? ORDER BY q.value ASC LIMIT 5`).all(p.id);
+        const gals = db.prepare(`SELECT g.title, g.status, (SELECT COUNT(*) FROM ms_gallery_assets x WHERE x.gallery_id=g.id) n,
+            (SELECT COUNT(*) FROM ms_client_favorites f WHERE f.gallery_id=g.id) favs,
+            (SELECT COUNT(*) FROM ms_client_comments c WHERE c.gallery_id=g.id) comments FROM ms_galleries g WHERE g.project_id=?`).all(p.id);
+        const proofing = db.prepare(`SELECT s.title, s.status, s.quota, s.revision_round, (SELECT COUNT(*) FROM ms_proofing_selections x WHERE x.set_id=s.id) selected FROM ms_proofing_sets s WHERE s.project_id=?`).all(p.id);
+        const comments = db.prepare(`SELECT c.body FROM ms_client_comments c JOIN ms_galleries g ON g.id=c.gallery_id WHERE g.project_id=? ORDER BY c.created_at DESC LIMIT 5`).all(p.id);
+        const edited = db.prepare(`SELECT COUNT(*) n FROM ms_assets WHERE project_id=? AND edits IS NOT NULL`).get(p.id).n;
+        ctx = `PROJECT "${p.title}" (type ${p.project_type}, status ${p.status}, client ${p.lead_id ? 'linked' : 'none'})
+Photos: ${JSON.stringify(stats)}  Edited: ${edited}
+Cull: ${JSON.stringify(cull)}  Duplicate groups: ${dups}
+Best by AI quality: ${best.map(b => `${b.filename}(${b.value})`).join(', ') || '—'}
+Weakest: ${worst.map(b => `${b.filename}(${b.value})`).join(', ') || '—'}
+Galleries: ${JSON.stringify(gals)}
+Proofing: ${JSON.stringify(proofing)}
+Recent client comments: ${comments.map(c => JSON.stringify(c.body.slice(0, 80))).join(' ') || '—'}`;
+      } else {
+        const rows = db.prepare(`SELECT p.title, p.status, (SELECT COUNT(*) FROM ms_assets a WHERE a.project_id=p.id) n FROM ms_projects p WHERE p.workspace_id=? ORDER BY p.created_at DESC LIMIT 12`).all(req.workspaceId);
+        ctx = `WORKSPACE shoots: ${JSON.stringify(rows)}`;
       }
-      if (e.rotate !== undefined && e.rotate !== 0) {
-        if (!inRange(e.rotate, -360, 360)) return res.status(400).json({ error: 'rotate must be between -360 and 360' });
-        edits.rotate = Math.round(e.rotate * 10) / 10;
-      }
-      if (e.crop) {
-        const c = e.crop;
-        if (!inRange(c.x, 0, 0.95) || !inRange(c.y, 0, 0.95) || !inRange(c.w, 0.05, 1) || !inRange(c.h, 0.05, 1) || c.x + c.w > 1.001 || c.y + c.h > 1.001) {
-          return res.status(400).json({ error: 'invalid crop' });
-        }
-        // ignore a full-frame crop (no-op)
-        if (!(c.x < 0.005 && c.y < 0.005 && c.w > 0.995 && c.h > 0.995)) {
-          edits.crop = { x: +c.x.toFixed(4), y: +c.y.toFixed(4), w: +c.w.toFixed(4), h: +c.h.toFixed(4) };
-        }
-      }
-      let prev = {}; try { prev = JSON.parse(a.edits || '{}'); } catch {}
-      edits.rev = (prev.rev || 0) + 1;
-      db.prepare('UPDATE ms_assets SET edits = ? WHERE id = ?').run(JSON.stringify(edits), a.id);
-      db.prepare("INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload) VALUES (?, ?, 'render_edits', ?, ?, 'pending', '{}')")
-        .run(generateId(), a.workspace_id, a.id, a.project_id);
-      logAudit(req.workspaceId, req.userId, 'edit', 'ms_asset', a.id, edits);
-      res.status(202).json({ status: 'rendering', edits });
+
+      const history = Array.isArray(req.body.history)
+        ? req.body.history.slice(-6).map(h => `${h.role === 'user' ? 'Photographer' : 'Copilot'}: ${String(h.content).slice(0, 300)}`).join('\n')
+        : '';
+
+      const system = `You are Studio Copilot — the in-app assistant of Media Studio, a photographer's culling/gallery/delivery workspace. You are sharp, concise and practical. You analyze the REAL data provided and answer the photographer's question. You can also SUGGEST actions, but you never perform them — the photographer clicks to apply (control-first).
+Respond with ONLY valid JSON: {"reply": "<concise markdown-free answer, max ~120 words>", "actions": [ ...max 3... ]}.
+Allowed actions:
+ {"type":"navigate","label":"...","to":"cull"|"albums"|"video"|"project"}
+ {"type":"create_gallery_from_keepers","label":"..."}
+ {"type":"preset_keepers","label":"...","preset":"<one of: ${presetList.join(', ') || 'none available'}>"}
+Only suggest actions that make sense for the question. If none make sense, return "actions": [].`;
+
+      const prompt = `${ctx}\n\n${history ? 'Conversation so far:\n' + history + '\n\n' : ''}Photographer: ${message}`;
+      const raw = await ai.callLLM(prompt, { system, maxTokens: 500, temperature: 0.4 });
+      let parsed = null;
+      try { parsed = ai.extractJSON ? ai.extractJSON(raw, 'object') : JSON.parse(raw); } catch {}
+      if (!parsed || typeof parsed.reply !== 'string') parsed = { reply: String(raw || '').slice(0, 800), actions: [] };
+      const actions = (Array.isArray(parsed.actions) ? parsed.actions : []).filter(a => a && COPILOT_ACTIONS.has(a.type)).slice(0, 3)
+        .filter(a => a.type !== 'preset_keepers' || presetList.includes(a.preset))
+        .filter(a => a.type !== 'navigate' || ['cull', 'albums', 'video', 'project'].includes(a.to));
+      res.json({ reply: parsed.reply.slice(0, 1200), actions });
     } catch (e2) { res.status(500).json({ error: e2.message }); }
   });
 
