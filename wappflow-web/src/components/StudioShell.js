@@ -51,7 +51,8 @@ export default function StudioShell({ children }) {
           <button className="ms-waffle" onClick={() => setMenu(v => !v)} title="Switch app" aria-label="Switch app"><LayoutGrid size={19} /></button>
           {menu && (
             <div className="ms-menu" style={{ left: 0 }}>
-              <a className="ms-menu-item" href="/dashboard" target="_blank" rel="noreferrer" onClick={() => setMenu(false)}>
+              {/* same-origin: keep the referrer so the new tab inherits the session */}
+              <a className="ms-menu-item" href="/dashboard" target="_blank" onClick={() => setMenu(false)}>
                 <span className="ms-menu-ico" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}><Users size={15} /></span>
                 <span style={{ flex: 1 }}>WappFlow CRM</span><ArrowUpRight size={14} style={{ opacity: 0.4 }} />
               </a>
@@ -86,7 +87,7 @@ export default function StudioShell({ children }) {
           ))}
         </div>
 
-        <button className="ms-waffle" title="Settings" onClick={() => window.open('/settings', '_blank', 'noopener')} aria-label="Settings"><Settings size={17} /></button>
+        <button className="ms-waffle" title="Settings" onClick={() => window.open('/settings', '_blank')} aria-label="Settings"><Settings size={17} /></button>
 
         {/* user */}
         <div ref={userRef} style={{ position: 'relative' }}>

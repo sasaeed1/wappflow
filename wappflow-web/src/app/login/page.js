@@ -29,8 +29,14 @@ function LoginContent() {
     try { sessionStorage.setItem('wf_alive', '1'); } catch {}
     // Triggers the per-tier welcome modal on the next page after login
     try { sessionStorage.setItem('wf_just_logged_in', '1'); } catch {}
-    // Full navigation so plan context + all state re-initialize for this account
-    window.location.replace('/dashboard');
+    // Full navigation so plan context + all state re-initialize for this account.
+    // Honor ?next= (internal paths only) so e.g. /studio returns to Studio after sign-in.
+    let next = '/dashboard';
+    try {
+      const n = new URLSearchParams(window.location.search).get('next');
+      if (n && n.startsWith('/') && !n.startsWith('//')) next = n;
+    } catch {}
+    window.location.replace(next);
   };
 
   const handleSubmit = async (e) => {

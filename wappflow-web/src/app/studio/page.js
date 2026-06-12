@@ -108,7 +108,7 @@ export default function StudioPage() {
   const [showNew, setShowNew] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login'); return; }
+    if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
     load();
   }, []);
 

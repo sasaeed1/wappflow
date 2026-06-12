@@ -151,7 +151,7 @@ export default function ProjectPage() {
   }, [id]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login'); return; }
+    if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
     let poll;
     (async () => {
       setLoading(true);

@@ -42,7 +42,8 @@ export default function AppSwitcher() {
         <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, minWidth: 248, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.2)', padding: 8, zIndex: 300 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '6px 10px 8px' }}>Switch app</div>
           {item(Users, 'linear-gradient(135deg,#6366f1,#4f46e5)', 'WappFlow CRM', { href: '/dashboard' }, true)}
-          {item(Camera, 'linear-gradient(135deg,#0e0e11,#3a3a44)', 'Media Studio', { href: '/studio', target: '_blank', rel: 'noreferrer' }, false)}
+          {/* same-origin: keep the referrer so the new tab inherits the signed-in session */}
+          {item(Camera, 'linear-gradient(135deg,#0e0e11,#3a3a44)', 'Media Studio', { href: '/studio', target: '_blank' }, false)}
           {item(Zap, 'linear-gradient(135deg,#A78BFA,#22D3EE,#EC4899)', 'Flux', { href: FLUX_URL, target: '_blank', rel: 'noreferrer' }, false)}
         </div>
       )}

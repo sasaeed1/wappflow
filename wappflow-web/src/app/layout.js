@@ -35,7 +35,10 @@ export default function RootLayout({ children }) {
             document.documentElement.classList.toggle('light', t === 'light');
           } catch(e) {}
           try {
-            if (localStorage.getItem('wf_persist') === 'session' && !sessionStorage.getItem('wf_alive')) {
+            // A new tab opened FROM the app (same-origin referrer) inherits the session —
+            // only genuinely fresh visits (typed URL / external / browser restart) clear it.
+            var sameOrigin = document.referrer && document.referrer.indexOf(location.origin) === 0;
+            if (!sameOrigin && localStorage.getItem('wf_persist') === 'session' && !sessionStorage.getItem('wf_alive')) {
               localStorage.removeItem('token');
               localStorage.removeItem('user');
               localStorage.removeItem('workspace');
