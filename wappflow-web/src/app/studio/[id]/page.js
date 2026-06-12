@@ -4,14 +4,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy,
+  ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
   Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
+  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../lib/api';
 import NavBar from '../../../components/NavBar';
 
-// Advisory-only focus chip — quiet by design. Renders the CV sharpness estimate;
-// it never selects or rejects. The photographer decides.
 function FocusChip({ sharpness }) {
   if (sharpness == null) return null;
   const sharp = sharpness >= 120;
@@ -22,21 +21,51 @@ function FocusChip({ sharpness }) {
   );
 }
 
+const VIEW_SIZES = { s: 116, m: 168, l: 248 };
+
+// Fullscreen viewer for any photograph in the library.
+function Lightbox({ assets, index, onClose, onNav, onDelete, selected, onToggleSelect }) {
+  const a = assets[index];
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowRight') onNav(1);
+      else if (e.key === 'ArrowLeft') onNav(-1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, onNav]);
+  if (!a) return null;
+  const isSel = selected.has(a.id);
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(8,7,5,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <img onClick={e => e.stopPropagation()} src={mediaUrl(a.variants?.web || a.url)} alt={a.filename} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain' }} />
+
+      <button onClick={(e) => { e.stopPropagation(); onClose(); }} style={lbBtn} title="Close (Esc)" aria-label="Close"><X size={20} /></button>
+      <button onClick={(e) => { e.stopPropagation(); onNav(-1); }} disabled={index === 0} style={{ ...lbArrow, left: 16, opacity: index === 0 ? 0.25 : 1 }}><ChevronLeft size={26} /></button>
+      <button onClick={(e) => { e.stopPropagation(); onNav(1); }} disabled={index === assets.length - 1} style={{ ...lbArrow, right: 16, opacity: index === assets.length - 1 ? 0.25 : 1 }}><ChevronRight size={26} /></button>
+
+      <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}>
+        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, padding: '0 6px' }}>{index + 1} / {assets.length}</span>
+        <button onClick={() => onToggleSelect(a.id)} style={{ ...lbPill, background: isSel ? '#fff' : 'rgba(255,255,255,0.12)', color: isSel ? '#14120f' : '#fff' }}><Check size={14} /> {isSel ? 'Selected' : 'Select'}</button>
+        <button onClick={() => onDelete(a)} style={{ ...lbPill, background: 'rgba(212,86,74,0.18)', color: '#ff9b90' }}><Trash2 size={14} /> Delete</button>
+      </div>
+    </div>
+  );
+}
+
 function CreateGalleryModal({ onClose, onCreate }) {
   const [title, setTitle] = useState('');
   const [visibility, setVisibility] = useState('private');
   const [password, setPassword] = useState('');
   const [policy, setPolicy] = useState('web');
   const [saving, setSaving] = useState(false);
-
   const submit = async () => {
     if (!title.trim()) return;
     setSaving(true);
-    try {
-      await onCreate({ title: title.trim(), visibility, password: visibility === 'password' ? password : undefined, settings: { download_policy: policy } });
-    } finally { setSaving(false); }
+    try { await onCreate({ title: title.trim(), visibility, password: visibility === 'password' ? password : undefined, settings: { download_policy: policy } }); }
+    finally { setSaving(false); }
   };
-
   return (
     <div onClick={onClose} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 440 }}>
@@ -108,9 +137,11 @@ export default function ProjectPage() {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showNewGallery, setShowNewGallery] = useState(false);
-  const [banner, setBanner] = useState(null); // { type, msg, link }
-  const [exports, setExports] = useState({}); // galleryId -> { status, url }
-  const [proofingFor, setProofingFor] = useState(null); // gallery awaiting a selection request
+  const [banner, setBanner] = useState(null);
+  const [exports, setExports] = useState({});
+  const [proofingFor, setProofingFor] = useState(null);
+  const [viewSize, setViewSize] = useState('m');
+  const [lightbox, setLightbox] = useState(null); // index into assets
 
   const refreshAssets = useCallback(async () => {
     try { const r = await mediaAPI.listAssets(id, { limit: 500 }); setAssets(r.data.assets || []); return r.data.assets || []; } catch { return []; }
@@ -121,12 +152,16 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login'); return; }
+    let poll;
     (async () => {
       setLoading(true);
       try { const p = await mediaAPI.getProject(id); setProject(p.data); } catch { router.push('/studio'); return; }
       await Promise.all([refreshAssets(), refreshGalleries()]);
       setLoading(false);
+      // Live-ish: pick up client favourites / comments / submissions without a manual refresh.
+      poll = setInterval(() => { refreshAssets(); refreshGalleries(); }, 20000);
     })();
+    return () => { if (poll) clearInterval(poll); };
   }, [id]);
 
   const onUpload = async (e) => {
@@ -138,7 +173,6 @@ export default function ProjectPage() {
     try {
       await mediaAPI.uploadAssets(id, fd);
       await refreshAssets();
-      // Poll a few times while the worker generates variants + advisory scores.
       let tries = 0;
       const poll = setInterval(async () => {
         const a = await refreshAssets();
@@ -160,11 +194,28 @@ export default function ProjectPage() {
     return next;
   });
 
+  const deleteSelected = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Delete ${selected.size} photograph${selected.size === 1 ? '' : 's'}? This permanently removes the file and can’t be undone.`)) return;
+    for (const aid of Array.from(selected)) { try { await mediaAPI.deleteAsset(aid); } catch {} }
+    setSelected(new Set());
+    await refreshAssets();
+    setBanner({ type: 'ok', msg: 'Deleted' });
+  };
+
+  const deleteOne = async (asset) => {
+    if (!window.confirm(`Delete this photograph? This can’t be undone.`)) return;
+    try { await mediaAPI.deleteAsset(asset.id); } catch {}
+    setSelected(prev => { const n = new Set(prev); n.delete(asset.id); return n; });
+    const remaining = await refreshAssets();
+    setLightbox(li => (li == null ? li : Math.min(li, remaining.length - 1)));
+    if ((await refreshAssets()).length === 0) setLightbox(null);
+  };
+
   const createGallery = async (data) => {
     const res = await mediaAPI.createGallery(id, data);
     setShowNewGallery(false);
     await refreshGalleries();
-    // if photos are selected, drop them straight in
     if (selected.size > 0) { await mediaAPI.addGalleryAssets(res.data.id, Array.from(selected)); setSelected(new Set()); await refreshGalleries(); }
   };
 
@@ -190,7 +241,10 @@ export default function ProjectPage() {
     }
   };
 
-  const copy = (text) => { try { navigator.clipboard.writeText(text); setBanner({ type: 'ok', msg: 'Link copied' }); } catch {} };
+  const copy = (text) => {
+    if (!text) { setBanner({ type: 'error', msg: 'No share link yet — publish the gallery first.' }); return; }
+    try { navigator.clipboard.writeText(text); setBanner({ type: 'ok', msg: 'Link copied', link: text }); } catch { setBanner({ type: 'error', msg: 'Could not copy', link: text }); }
+  };
 
   const runExport = async (galleryId, variant) => {
     setExports(e => ({ ...e, [galleryId]: { status: 'pending' } }));
@@ -202,10 +256,10 @@ export default function ProjectPage() {
         try {
           const s = (await mediaAPI.getExport(exp.id)).data;
           if (s.status === 'ready') { clearInterval(poll); setExports(e => ({ ...e, [galleryId]: { status: 'ready', url: s.download_url } })); }
-          else if (s.status === 'failed' || tries > 30) { clearInterval(poll); setExports(e => ({ ...e, [galleryId]: { status: 'failed' } })); }
+          else if (s.status === 'failed' || tries > 40) { clearInterval(poll); setExports(e => ({ ...e, [galleryId]: { status: 'failed', error: s.error } })); setBanner({ type: 'error', msg: s.error ? `Export failed: ${s.error}` : 'Export failed' }); }
         } catch { clearInterval(poll); setExports(e => ({ ...e, [galleryId]: { status: 'failed' } })); }
       }, 2000);
-    } catch { setExports(e => ({ ...e, [galleryId]: { status: 'failed' } })); }
+    } catch (err) { setExports(e => ({ ...e, [galleryId]: { status: 'failed' } })); setBanner({ type: 'error', msg: err.response?.data?.error || 'Export failed to start' }); }
   };
 
   const createProof = async (galleryId, data) => {
@@ -233,15 +287,9 @@ export default function ProjectPage() {
           </div>
           <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
             <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
-            {assets.length > 0 && (
-              <button onClick={() => router.push(`/studio/${id}/cull`)} className="ms-btn-ghost"><ListChecks size={15} /> Cull</button>
-            )}
-            {assets.length > 0 && (
-              <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost"><BookOpen size={15} /> Albums</button>
-            )}
-            {assets.some(a => a.type === 'video') && (
-              <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost"><Film size={15} /> Video</button>
-            )}
+            {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/cull`)} className="ms-btn-ghost"><ListChecks size={15} /> Cull</button>}
+            {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost"><BookOpen size={15} /> Albums</button>}
+            {assets.some(a => a.type === 'video') && <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost"><Film size={15} /> Video</button>}
             <button onClick={() => fileRef.current?.click()} disabled={uploading} className="ms-btn-ink">
               {uploading ? <Loader size={16} className="ms-spin" /> : <Upload size={16} />} {uploading ? 'Uploading…' : 'Upload photos'}
             </button>
@@ -279,16 +327,22 @@ export default function ProjectPage() {
                   <span style={{ fontFamily: 'var(--ms-serif)', fontSize: 18, fontWeight: 500, color: 'var(--ms-ink)', flex: 1, lineHeight: 1.2 }}>{g.title}</span>
                   <span className={`ms-status${g.status === 'published' ? ' ms-status-live' : ''}`}>{g.status}</span>
                 </div>
-                <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3)', margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'capitalize' }}>
-                  {g.has_password ? <Lock size={11} /> : g.visibility === 'public' ? <Globe size={11} /> : <Eye size={11} />}
-                  {g.visibility} · {g.asset_count || 0} photos
+                <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3)', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 10, textTransform: 'capitalize', flexWrap: 'wrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>{g.has_password ? <Lock size={11} /> : g.visibility === 'public' ? <Globe size={11} /> : <Eye size={11} />}{g.visibility} · {g.asset_count || 0}</span>
+                  {(g.favorite_count > 0 || g.comment_count > 0) && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, textTransform: 'none' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }} title="Client favourites"><Heart size={11} fill="#c2766a" color="#c2766a" /> {g.favorite_count || 0}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }} title="Client comments"><MessageSquare size={11} /> {g.comment_count || 0}</span>
+                    </span>
+                  )}
                 </p>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {selected.size > 0 && (
-                    <button onClick={() => addSelected(g.id)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Plus size={13} /> Add {selected.size}</button>
-                  )}
+                  {selected.size > 0 && <button onClick={() => addSelected(g.id)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Plus size={13} /> Add {selected.size}</button>}
                   {g.status === 'published'
-                    ? <button onClick={() => copy(g.share_url || '')} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Share2 size={13} /> Copy link</button>
+                    ? <>
+                        <a href={g.share_url || '#'} target="_blank" rel="noreferrer" className="ms-btn-ghost" style={{ padding: '7px 13px', textDecoration: 'none' }}><Eye size={13} /> Open</a>
+                        <button onClick={() => copy(g.share_url)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Copy size={13} /> Copy link</button>
+                      </>
                     : <button onClick={() => publish(g)} disabled={(g.asset_count || 0) === 0} className="ms-btn-ink" style={{ padding: '8px 15px', fontSize: 12.5 }}><Share2 size={13} /> Publish &amp; send</button>}
                   {(() => {
                     const ex = exports[g.id];
@@ -324,27 +378,36 @@ export default function ProjectPage() {
         {/* Library */}
         <div className="ms-section-head">
           <h2 className="ms-h2">Library</h2>
-          {selected.size > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <span style={{ fontSize: 12.5, color: 'var(--ms-ink-3)' }}>{selected.size} selected</span>
-              <button onClick={() => setSelected(new Set())} className="ms-btn-text">Clear</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            {selected.size > 0 && (
+              <>
+                <span style={{ fontSize: 12.5, color: 'var(--ms-ink-3)' }}>{selected.size} selected</span>
+                <button onClick={deleteSelected} className="ms-btn-text" style={{ color: '#b3261e' }}><Trash2 size={13} /> Delete</button>
+                <button onClick={() => setSelected(new Set())} className="ms-btn-text">Clear</button>
+                <span style={{ width: 1, height: 16, background: 'var(--ms-line)' }} />
+              </>
+            )}
+            <div className="ms-seg" style={{ padding: 3 }}>
+              {[['s', Grid3x3], ['m', Grid2x2], ['l', LayoutGrid]].map(([sz, Icon]) => (
+                <button key={sz} onClick={() => setViewSize(sz)} className={viewSize === sz ? 'is-active' : ''} style={{ padding: '6px 9px' }} title={`${sz === 's' ? 'Small' : sz === 'm' ? 'Medium' : 'Large'} thumbnails`}><Icon size={15} /></button>
+              ))}
             </div>
-          )}
+          </div>
         </div>
 
         {assets.length === 0 ? (
           <div className="ms-empty-soft">No photographs yet — upload to begin.</div>
         ) : (
-          <div className="ms-photo-grid">
-            {assets.map(a => {
+          <div className="ms-photo-grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${VIEW_SIZES[viewSize]}px, 1fr))` }}>
+            {assets.map((a, i) => {
               const isSel = selected.has(a.id);
               return (
-                <div key={a.id} onClick={() => toggle(a.id)} className={`ms-photo${isSel ? ' is-selected' : ''}`}>
+                <div key={a.id} onClick={() => setLightbox(i)} className={`ms-photo${isSel ? ' is-selected' : ''}`} title="Click to view full screen">
                   {a.thumb_url
                     ? <img src={mediaUrl(a.thumb_url)} alt={a.filename} loading="lazy" style={{ opacity: a.variants?.thumb ? 1 : 0.7 }} />
                     : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ImageIcon size={22} color="var(--ms-ink-3)" /></div>}
 
-                  <div className="ms-photo-check" style={isSel ? { background: 'var(--ms-ink)', borderColor: 'var(--ms-ink)' } : undefined}>
+                  <div onClick={(e) => { e.stopPropagation(); toggle(a.id); }} className="ms-photo-check" style={isSel ? { background: 'var(--ms-ink)', borderColor: 'var(--ms-ink)' } : undefined} title="Select">
                     {isSel && <Check size={13} color="var(--ms-paper)" />}
                   </div>
 
@@ -364,8 +427,19 @@ export default function ProjectPage() {
         </p>
       </div>
 
+      {lightbox != null && assets[lightbox] && (
+        <Lightbox assets={assets} index={lightbox} selected={selected}
+          onClose={() => setLightbox(null)}
+          onNav={(d) => setLightbox(i => Math.max(0, Math.min(assets.length - 1, i + d)))}
+          onDelete={deleteOne}
+          onToggleSelect={toggle} />
+      )}
       {showNewGallery && <CreateGalleryModal onClose={() => setShowNewGallery(false)} onCreate={createGallery} />}
       {proofingFor && <ProofingRequestModal gallery={proofingFor} onClose={() => setProofingFor(null)} onCreate={createProof} />}
     </NavBar>
   );
 }
+
+const lbBtn = { position: 'absolute', top: 18, right: 18, width: 42, height: 42, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const lbArrow = { position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: 48, height: 48, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+const lbPill = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'var(--ms-sans)', fontSize: 12.5, fontWeight: 600 };

@@ -765,6 +765,8 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       const rows = db.prepare(`
         SELECT g.*,
           (SELECT COUNT(*) FROM ms_gallery_assets ga WHERE ga.gallery_id = g.id) AS asset_count,
+          (SELECT COUNT(*) FROM ms_client_favorites f WHERE f.gallery_id = g.id) AS favorite_count,
+          (SELECT COUNT(*) FROM ms_client_comments c WHERE c.gallery_id = g.id) AS comment_count,
           ps.id AS proofing_id, ps.status AS proofing_status, ps.quota AS proofing_quota,
           (SELECT COUNT(*) FROM ms_proofing_selections x WHERE x.set_id = ps.id) AS proofing_selected
         FROM ms_galleries g
@@ -773,7 +775,10 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
         )
         WHERE g.project_id = ? AND g.workspace_id = ? ORDER BY g.created_at DESC
       `).all(req.params.id, req.workspaceId);
-      res.json({ galleries: rows.map(g => ({ ...g, has_password: !!g.password_hash, password_hash: undefined })) });
+      res.json({ galleries: rows.map(g => ({
+        ...g, has_password: !!g.password_hash, password_hash: undefined,
+        share_url: g.share_token ? `${clientBaseUrl}/g/${g.share_token}` : null,
+      })) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
