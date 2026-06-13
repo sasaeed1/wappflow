@@ -375,6 +375,7 @@ export default function VideoEditor() {
               {activeFx.includes('vignette') && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: 'inset 0 0 120px 40px rgba(0,0,0,0.55)' }} />}
               {activeFx.includes('letterbox') && <><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '11%', background: '#000', pointerEvents: 'none' }} /><div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '11%', background: '#000', pointerEvents: 'none' }} /></>}
               {activeFx.includes('filmGrain') && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.12, mixBlendMode: 'overlay', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")" }} />}
+              {activeFx.includes('lightLeak') && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'screen', background: 'linear-gradient(115deg, rgba(255,138,30,0.55) 0%, rgba(255,80,40,0.18) 28%, transparent 55%)' }} />}
               {/* text overlays */}
               {activeTexts.map(tc => <TextOverlay key={tc.id} clip={tc} stage={stageSize} />)}
               {/* safe-area guides */}

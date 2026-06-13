@@ -1631,6 +1631,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
         (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'quality' LIMIT 1) AS quality,
         (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'sharpness' LIMIT 1) AS sharpness,
         (SELECT group_key FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'duplicate_group' LIMIT 1) AS dup_group,
+        (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'faces' LIMIT 1) AS faces,
+        (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'smile' LIMIT 1) AS smile,
         c.decision, c.rating
       FROM ms_assets a LEFT JOIN ms_cull_decisions c ON c.asset_id = a.id
       WHERE a.project_id = ? AND a.type IN ('photo','video')
@@ -1652,7 +1654,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       const project = getProject(req.workspaceId, req.params.id);
       if (!project) return res.status(404).json({ error: 'Project not found' });
       const style = videoAiDrafts.getStyle(req.body.style) || videoAiDrafts.getStyle(videoAiDrafts.recommendStyles(project.project_type)[0]);
-      const ranked = videoAiDrafts.rankMedia(scoredProjectMedia(project.id));
+      const ranked = videoAiDrafts.rankMedia(scoredProjectMedia(project.id), { faceWeight: videoAiDrafts.styleFaceWeight(style.id) });
       if (ranked.length < 2) return res.status(400).json({ error: 'Not enough usable media yet — upload more, or cull a few keepers first.' });
 
       const media = videoAiDrafts.selectForStyle(ranked, style);
@@ -1674,7 +1676,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       if (!t) return res.status(404).json({ error: 'Timeline not found' });
       if (t.source !== 'ai_draft') return res.status(400).json({ error: 'Only AI drafts can be refreshed' });
       const style = videoAiDrafts.getStyle(t.ai_style) || videoAiDrafts.DRAFT_STYLES[0];
-      const ranked = videoAiDrafts.rankMedia(scoredProjectMedia(t.project_id));
+      const ranked = videoAiDrafts.rankMedia(scoredProjectMedia(t.project_id), { faceWeight: videoAiDrafts.styleFaceWeight(style.id) });
       if (ranked.length < 2) return res.status(400).json({ error: 'Not enough usable media to refresh.' });
       const media = videoAiDrafts.selectForStyle(ranked, style);
       const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, t.aspect_ratio));

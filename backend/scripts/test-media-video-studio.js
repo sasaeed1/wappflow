@@ -86,6 +86,24 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
   check('keyframes render piecewise zoompan', kfj.includes('zoompan=z=') && kfj.includes('if(lt(') && kfj.includes('(iw-iw/zoom)/2*(1+('));
   check('single keyframe ignored (needs ≥2)', !ve.sanitizeTimeline({ tracks: [{ type: 'video', clips: [{ kind: 'photo', assetId: 'p', start: 0, duration: 1000, motionKeys: [{ t: 0, scale: 1.2 }] }] }] }).tracks[0].clips[0].motionKeys);
 
+  // glow + light-leak compositing subgraphs
+  const fxg = ve.sanitizeTimeline({ aspect: '9:16', tracks: [{ type: 'video', clips: [{ kind: 'photo', assetId: 'p', start: 0, duration: 2000, effects: ['glow', 'lightLeak'] }] }] });
+  const fxj = ve.buildExportCommand(fxg, { width: 1080, height: 1920, fps: 30 }, () => '/m/p.jpg').args.join(' ');
+  check('glow: blur + screen blend', fxj.includes('gblur=sigma=18') && fxj.includes('all_opacity=0.45'));
+  check('light-leak: warm gradient + screen blend', fxj.includes('gradients=s=1080x1920') && fxj.includes('all_opacity=0.32'));
+
+  // AI draft face/smile weighting (plumbing — boosts people shots when scores exist)
+  const aid = require('../video-ai-drafts');
+  const rowsF = [
+    { id: 'plain', type: 'photo', quality: 0.6, sharpness: 200 },
+    { id: 'face', type: 'photo', quality: 0.55, sharpness: 200, faces: 2, smile: 0.9 },
+  ];
+  const noFace = aid.rankMedia(rowsF, { faceWeight: 0 });
+  const withFace = aid.rankMedia(rowsF, { faceWeight: aid.styleFaceWeight('emotional_story') });
+  check('no faceWeight → quality wins (plain first)', noFace[0].id === 'plain');
+  check('emotional_story faceWeight → smiling face wins', withFace[0].id === 'face');
+  check('styleFaceWeight: people styles > real-estate', aid.styleFaceWeight('emotional_story') > aid.styleFaceWeight('realestate_tour'));
+
   const cmd = ve.buildExportCommand(san, { width: 1080, height: 1920, fps: 30 }, (id) => '/m/' + id + '.bin');
   const joined = cmd.args.join(' ');
   check('command: 2 segments concatenated', cmd.segments === 2 && joined.includes('concat=n=2'));

@@ -29,6 +29,11 @@ try { PDFDocument = require('pdfkit'); } catch { /* optional — album pdf degra
 const { spawn } = require('child_process');
 const videoEngine = require('./video-engine');
 const videoLuts = require('./video-luts');
+// Optional face/smile detector. Drop in a ./face-detect.js exporting
+// async detect(jimpImage) → { faces:number, smile:0..1 } to enable people-aware
+// AI reel drafts. Absent by default → no face scores, ranking unaffected.
+let faceDetect = null;
+try { faceDetect = require('./face-detect'); } catch { /* optional */ }
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
 
@@ -207,6 +212,15 @@ module.exports = function createMediaWorker(db, deps = {}) {
       }
     }
     if (groupKey) addScore.run(generateId(), asset.workspace_id, asset.id, 'duplicate_group', 1, groupKey);
+
+    // optional face/smile signal (advisory; powers people-aware AI drafts when a detector is installed)
+    if (faceDetect && typeof faceDetect.detect === 'function') {
+      try {
+        const fd = await faceDetect.detect(image);
+        if (fd && fd.faces) addScore.run(generateId(), asset.workspace_id, asset.id, 'faces', fd.faces, null);
+        if (fd && fd.smile != null) addScore.run(generateId(), asset.workspace_id, asset.id, 'smile', fd.smile, null);
+      } catch { /* detector failure must never break ingest */ }
+    }
 
     return { note: 'ok', variants, scores: { ...cv }, group: groupKey };
   }

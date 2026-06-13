@@ -43,8 +43,14 @@ function getStyle(id) { return DRAFT_STYLES.find(s => s.id === id) || null; }
 function recommendStyles(projectType) { return REC[projectType] || ['cinematic_highlights', 'social_short', 'emotional_story']; }
 function styleList() { return DRAFT_STYLES.map(s => ({ id: s.id, name: s.name, desc: s.desc, aspect: s.aspect, lut: s.lut })); }
 
-// Rank media by CV quality + cull signals; drop rejects; one shot per duplicate group.
-function rankMedia(rows) {
+// How much faces/smiles matter, by style (people-centric styles weight them up).
+// Consumed only when a face detector has written 'faces'/'smile' scores; harmless otherwise.
+const FACE_WEIGHT = { emotional_story: 0.45, wedding_highlights: 0.4, cinematic_highlights: 0.2, social_short: 0.2, promotional: 0.1, realestate_tour: 0 };
+function styleFaceWeight(styleId) { return FACE_WEIGHT[styleId] != null ? FACE_WEIGHT[styleId] : 0.2; }
+
+// Rank media by CV quality + cull signals (+ faces/smiles when available); drop
+// rejects; one shot per duplicate group. faceWeight tunes the people-shot boost.
+function rankMedia(rows, { faceWeight = 0 } = {}) {
   const scored = [];
   for (const r of rows) {
     if (r.decision === 'reject') continue; // human rejected → never in a draft
@@ -52,6 +58,10 @@ function rankMedia(rows) {
     if (r.decision === 'keep') score += 0.6;
     if (r.rating) score += r.rating * 0.08;
     if (r.sharpness != null && r.sharpness < 120) score -= 0.12; // soft penalty
+    if (faceWeight) { // advisory face/smile signals (present only if a detector ran)
+      if (r.faces) score += faceWeight;
+      if (r.smile) score += r.smile * faceWeight * 0.6;
+    }
     scored.push({ id: r.id, type: r.type, score, dup: r.dup_group || null, when: r.capture_time || r.created_at || '' });
   }
   scored.sort((a, b) => b.score - a.score);
@@ -83,4 +93,4 @@ function buildDraft(style, media, aspectOverride) {
   return videoTemplates.buildTimeline(tpl, media, aspectOverride || style.aspect);
 }
 
-module.exports = { DRAFT_STYLES, getStyle, recommendStyles, styleList, rankMedia, selectForStyle, signatureOf, buildDraft };
+module.exports = { DRAFT_STYLES, getStyle, recommendStyles, styleList, rankMedia, styleFaceWeight, selectForStyle, signatureOf, buildDraft };

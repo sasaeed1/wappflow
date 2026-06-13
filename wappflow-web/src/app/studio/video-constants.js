@@ -58,6 +58,7 @@ export const VIDEO_EFFECTS = [
   { id: 'vignette', label: 'Vignette' },
   { id: 'filmGrain', label: 'Film grain' },
   { id: 'glow', label: 'Glow' },
+  { id: 'lightLeak', label: 'Light leak' },
   { id: 'blur', label: 'Blur' },
   { id: 'softFocus', label: 'Soft focus' },
   { id: 'letterbox', label: 'Letterbox' },

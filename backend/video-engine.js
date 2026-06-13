@@ -266,11 +266,20 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
     // per-clip fade transitions (to/from black/white) — simple, reliable
     if (c.transitionIn) atoms.push(`fade=t=in:st=0:d=${(c.transitionIn.duration / 1000).toFixed(3)}${c.transitionIn.type === 'dipToWhite' ? ':color=white' : ''}`);
     if (c.transitionOut) { const d = c.transitionOut.duration / 1000; atoms.push(`fade=t=out:st=${(c.duration / 1000 - d).toFixed(3)}:d=${d.toFixed(3)}${c.transitionOut.type === 'dipToWhite' ? ':color=white' : ''}`); }
-    // glow needs compositing (split → blur → screen-blend) so it's a small subgraph
-    if ((c.effects || []).includes('glow')) {
-      filters.push(`[${i}:v]${atoms.join(',')}[p${i}];[p${i}]split[ga${i}][gb${i}];[gb${i}]gblur=sigma=18:steps=2[gc${i}];[ga${i}][gc${i}]blend=all_mode=screen:all_opacity=0.45[v${i}]`);
-    } else {
+    // glow + light-leak need compositing (blend), so they run as chained subgraphs
+    const post = (c.effects || []).filter(fx => fx === 'glow' || fx === 'lightLeak');
+    if (post.length === 0) {
       filters.push(`[${i}:v]${atoms.join(',')}[v${i}]`);
+    } else {
+      filters.push(`[${i}:v]${atoms.join(',')}[p${i}_0]`);
+      post.forEach((fx, pi) => {
+        const inL = `p${i}_${pi}`, outL = pi === post.length - 1 ? `v${i}` : `p${i}_${pi + 1}`;
+        if (fx === 'glow') {
+          filters.push(`[${inL}]split[ga${i}${pi}][gb${i}${pi}];[gb${i}${pi}]gblur=sigma=18:steps=2[gc${i}${pi}];[ga${i}${pi}][gc${i}${pi}]blend=all_mode=screen:all_opacity=0.45[${outL}]`);
+        } else { // lightLeak — warm gradient wash, screen-blended (generated in-graph, no extra -i input)
+          filters.push(`gradients=s=${W}x${H}:c0=0xff8a1e:c1=0x000000:nb_colors=2:seed=${(i + 1) * 7}:speed=0.015,trim=duration=${durS},fps=${FPS},setsar=1[leak${i}${pi}];[${inL}][leak${i}${pi}]blend=all_mode=screen:all_opacity=0.32[${outL}]`);
+        }
+      });
     }
     segLabels.push(`[v${i}]`);
   });
