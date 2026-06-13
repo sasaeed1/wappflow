@@ -9,10 +9,14 @@
  *  advisory: a human edits every draft.
  *
  *  ENABLE IT (on the server, one time):
- *      cd backend && npm install @vladmandic/face-api
- *  Model weights ship INSIDE that package (no separate download). It runs on the
- *  bundled CPU TensorFlow.js — no native build required. For ~5-10× faster
- *  detection, optionally also: npm install @tensorflow/tfjs-node
+ *      cd backend && npm install @vladmandic/face-api @tensorflow/tfjs-node
+ *      pm2 restart wappflow-api
+ *  BOTH are required — face-api's Node build externalises @tensorflow/tfjs-node
+ *  and requires it at load. Model weights ship INSIDE @vladmandic/face-api
+ *  (no separate download); confirmed loading from
+ *  node_modules/@vladmandic/face-api/model. (If a native tfjs-node build is not
+ *  possible, switch to the WASM backend: @tensorflow/tfjs + tfjs-backend-wasm
+ *  with face-api/dist/face-api.node-wasm.js.)
  *
  *  Until the package is installed, requiring this file throws and the worker's
  *  `require('./face-detect')` seam silently no-ops — ingest is unaffected and no
