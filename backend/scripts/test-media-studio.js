@@ -115,6 +115,11 @@ function check(name, cond, extra) {
     const jobs = db.prepare("SELECT * FROM ms_jobs WHERE project_id = ? AND type = 'ingest'").all(PID);
     check('ingest jobs enqueued for each asset', jobs.length === 2, `jobs=${jobs.length}`);
 
+    // 5c. project list now derives a cover thumbnail from the first photo (home cards/hero)
+    r = await fetch(`${base}/api/media/projects`); body = await J(r);
+    check('list reports asset_count 2 after upload', body.projects[0].asset_count === 2, `count=${body.projects[0].asset_count}`);
+    check('list derives cover_url from first photo', !!body.projects[0].cover_url, String(body.projects[0].cover_url));
+
     // 6. library listing
     r = await fetch(`${base}/api/media/projects/${PID}/assets`); body = await J(r);
     check('GET /assets library returns total 2', body.total === 2);

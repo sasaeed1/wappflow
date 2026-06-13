@@ -262,13 +262,24 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (req.query.status) { where += ' AND p.status = ?'; params.push(req.query.status); }
       const rows = db.prepare(`
         SELECT p.*, l.customer_name AS client_name,
-          (SELECT COUNT(*) FROM ms_assets a WHERE a.project_id = p.id) AS asset_count
+          (SELECT COUNT(*) FROM ms_assets a WHERE a.project_id = p.id) AS asset_count,
+          (SELECT a.variants FROM ms_assets a WHERE a.project_id = p.id AND a.type = 'photo'
+             ORDER BY a.capture_time IS NULL, a.capture_time, a.created_at LIMIT 1) AS _cover_variants,
+          (SELECT a.storage_key FROM ms_assets a WHERE a.project_id = p.id AND a.type = 'photo'
+             ORDER BY a.capture_time IS NULL, a.capture_time, a.created_at LIMIT 1) AS _cover_key
         FROM ms_projects p
         LEFT JOIN leads l ON l.id = p.lead_id
         WHERE ${where}
         ORDER BY p.created_at DESC
       `).all(...params);
-      res.json({ projects: rows });
+      // derive a cover thumbnail from the first photo so home cards/hero aren't blank
+      const projects = rows.map(({ _cover_variants, _cover_key, ...p }) => {
+        let cover_url = null;
+        if (_cover_variants) { try { const v = JSON.parse(_cover_variants); cover_url = v.thumb || v.web || null; } catch {} }
+        if (!cover_url && _cover_key) cover_url = publicUrl(_cover_key);
+        return { ...p, cover_url };
+      });
+      res.json({ projects });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
