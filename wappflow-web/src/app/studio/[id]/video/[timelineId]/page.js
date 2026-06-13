@@ -19,6 +19,19 @@ const ZERO_COLOR = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, 
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+// interpolate motion keyframes [{t,scale,x,y}] at progress p (0..1)
+function sampleMotion(keys, p) {
+  const k = [...keys].sort((a, b) => a.t - b.t);
+  if (p <= k[0].t) return k[0];
+  if (p >= k[k.length - 1].t) return k[k.length - 1];
+  for (let i = 0; i < k.length - 1; i++) {
+    if (p >= k[i].t && p <= k[i + 1].t) {
+      const f = (p - k[i].t) / ((k[i + 1].t - k[i].t) || 1);
+      return { scale: lerp(k[i].scale, k[i + 1].scale, f), x: lerp(k[i].x, k[i + 1].x, f), y: lerp(k[i].y, k[i + 1].y, f) };
+    }
+  }
+  return k[0];
+}
 const fmtClock = (ms) => { const s = Math.max(0, ms / 1000); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}.${Math.floor((s * 10) % 10)}`; };
 
 // ── document helpers (the spine = the single video track for Phase 1) ─────────
@@ -291,7 +304,9 @@ export default function VideoEditor() {
     const p = activeClip.duration ? (playhead - activeClip.start) / activeClip.duration : 0;
     const tf = activeClip.transform || {};
     let sc = tf.scale || 1, tx = (tf.x || 0) * 100, ty = (tf.y || 0) * 100;
-    if (activeClip.kenBurns) { const k = activeClip.kenBurns; sc *= lerp(k.fromScale, k.toScale, p); tx += lerp(k.fromX, k.toX, p) * 100; ty += lerp(k.fromY, k.toY, p) * 100; }
+    if (activeClip.motionKeys && activeClip.motionKeys.length >= 2) {
+      const m = sampleMotion(activeClip.motionKeys, p); sc *= m.scale; tx += m.x * 50; ty += m.y * 50;
+    } else if (activeClip.kenBurns) { const k = activeClip.kenBurns; sc *= lerp(k.fromScale, k.toScale, p); tx += lerp(k.fromX, k.toX, p) * 100; ty += lerp(k.fromY, k.toY, p) * 100; }
     const lutCss = activeClip.lut ? (luts.find(l => l.id === activeClip.lut)?.css || '') : '';
     const filter = [colorPreviewFilter(activeClip.color), lutCss, activeFx.includes('blur') ? 'blur(6px)' : '', activeFx.includes('softFocus') ? 'blur(1.5px)' : '', activeFx.includes('glow') ? 'brightness(1.07) contrast(1.03)' : ''].filter(Boolean).join(' ');
     mediaStyle = { ...mediaStyle, transform: `translate(${tx}%, ${ty}%) scale(${sc}) rotate(${tf.rotation || 0}deg)`, opacity: tf.opacity ?? 1, transition: playing ? 'none' : 'transform .12s', filter: filter || undefined };
@@ -386,7 +401,7 @@ export default function VideoEditor() {
               <TextInspector clip={selected} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />
             ) : selected.kind === 'audio' ? (
               <AudioInspector clip={selected} asset={musicAsset} patch={(p) => patchClip(selected.id, p)} onRemove={removeMusic} onReplace={() => setShowMusic(true)} />
-            ) : <Inspector clip={selected} luts={luts} onUploadLut={uploadLut} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />}
+            ) : <Inspector clip={selected} luts={luts} onUploadLut={uploadLut} kfT={selected.duration ? clamp((playhead - selected.start) / selected.duration, 0, 1) : 0} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />}
           </aside>
         </div>
 
@@ -413,6 +428,9 @@ export default function VideoEditor() {
                       style={{ left: c.start * scale, width: Math.max(c.duration * scale, 18) }}>
                       {a && <img src={mediaUrl(a.type === 'video' ? (a.poster_url || a.thumb_url) : (a.thumb_url || a.url))} alt="" />}
                       <span className="ms-ve-clip-label">{c.kind === 'video' ? <Film size={10} /> : <ImageIcon size={10} />}{c.freeze ? ' ❄' : c.speed !== 1 ? ` ${c.speed}×` : ''}</span>
+                      {c.motionKeys && c.motionKeys.map((k, j) => (
+                        <span key={j} style={{ position: 'absolute', top: 3, left: `calc(${k.t * 100}% - 3px)`, width: 6, height: 6, background: '#fff', transform: 'rotate(45deg)', boxShadow: '0 0 2px rgba(0,0,0,0.6)', pointerEvents: 'none' }} />
+                      ))}
                       <span className="ms-ve-handle l" onPointerDown={(e) => onClipPointerDown(e, c, 'trimL')} />
                       <span className="ms-ve-handle r" onPointerDown={(e) => onClipPointerDown(e, c, 'trimR')} />
                     </div>
@@ -559,9 +577,20 @@ function dipStyle(tr, intensity) {
   return { position: 'absolute', inset: 0, background: white ? '#fff' : '#000', opacity: clamp(intensity, 0, 1), pointerEvents: 'none' };
 }
 
-function Inspector({ clip, luts, onUploadLut, patch, onDelete, onDup }) {
+function Inspector({ clip, luts, onUploadLut, kfT = 0, patch, onDelete, onDup }) {
   const color = clip.color || ZERO_COLOR;
   const fx = clip.effects || [];
+  const mk = clip.motionKeys || null;
+  const [kfSel, setKfSel] = useState(0);
+  const ki = mk ? Math.min(kfSel, mk.length - 1) : 0;
+  const addKey = () => {
+    const cur = mk ? sampleMotion(mk, kfT) : { scale: 1, x: 0, y: 0 };
+    const next = [...(mk || []), { t: +kfT.toFixed(3), scale: cur.scale, x: cur.x, y: cur.y }].sort((a, b) => a.t - b.t);
+    patch({ motionKeys: next }); setKfSel(next.findIndex(k => k.t === +kfT.toFixed(3)));
+  };
+  const startKeys = () => { patch({ motionKeys: [{ t: 0, scale: 1, x: 0, y: 0 }, { t: 1, scale: 1.15, x: 0, y: 0 }] }); setKfSel(0); };
+  const setKey = (prop, v) => { const next = mk.map((k, j) => j === ki ? { ...k, [prop]: v } : k); patch({ motionKeys: next }); };
+  const delKey = () => { if (mk.length <= 2) { patch({ motionKeys: null }); return; } patch({ motionKeys: mk.filter((_, j) => j !== ki) }); setKfSel(0); };
   const setColor = (k, v) => patch({ color: { ...ZERO_COLOR, ...color, [k]: v } });
   const toggleFx = (idfx) => patch({ effects: fx.includes(idfx) ? fx.filter(e => e !== idfx) : [...fx, idfx] });
   return (
@@ -603,9 +632,32 @@ function Inspector({ clip, luts, onUploadLut, patch, onDelete, onDup }) {
               ['Zoom out', { fromScale: 1.18, toScale: 1, fromX: 0, toX: 0, fromY: 0, toY: 0 }],
               ['Pan ▸', { fromScale: 1.12, toScale: 1.12, fromX: -0.05, toX: 0.05, fromY: 0, toY: 0 }]].map(([lbl, kb]) => {
               const active = (!kb && !clip.kenBurns) || (kb && clip.kenBurns && clip.kenBurns.toScale === kb.toScale && clip.kenBurns.toX === kb.toX && clip.kenBurns.fromScale === kb.fromScale);
-              return <button key={lbl} onClick={() => patch({ kenBurns: kb })} className={`ms-chip${active ? ' ms-chip-active' : ''}`} style={{ padding: '5px 9px', fontSize: 11 }}>{lbl}</button>;
+              return <button key={lbl} onClick={() => patch({ kenBurns: kb, motionKeys: null })} className={`ms-chip${active && !mk ? ' ms-chip-active' : ''}`} style={{ padding: '5px 9px', fontSize: 11 }}>{lbl}</button>;
             })}
           </div>
+        </Field>
+      )}
+
+      {clip.kind === 'photo' && (
+        <Field label="Keyframes (scale + position)">
+          {!mk ? (
+            <button onClick={startKeys} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px' }}>+ Add motion keyframes</button>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                {mk.map((k, j) => (
+                  <button key={j} onClick={() => setKfSel(j)} title={`${Math.round(k.t * 100)}%`}
+                    className={`ms-chip${ki === j ? ' ms-chip-active' : ''}`} style={{ padding: '4px 8px', fontSize: 10.5 }}>◆ {Math.round(k.t * 100)}%</button>
+                ))}
+                <button onClick={addKey} title="Add keyframe at playhead" className="ms-iconbtn" style={{ width: 26, height: 26 }}>+</button>
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', marginBottom: 8 }}>Editing keyframe {ki + 1} of {mk.length} · at {Math.round(mk[ki].t * 100)}%</div>
+              <ColorSlider label="Zoom" min={0} max={100} value={(mk[ki].scale - 1) / 2} onChange={v => setKey('scale', 1 + clamp(v, 0, 1) * 2)} />
+              <ColorSlider label="Pan X" value={mk[ki].x} onChange={v => setKey('x', v)} />
+              <ColorSlider label="Pan Y" value={mk[ki].y} onChange={v => setKey('y', v)} />
+              <button onClick={delKey} className="ms-btn-text" style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}><Trash2 size={12} /> {mk.length <= 2 ? 'Clear keyframes' : 'Delete this keyframe'}</button>
+            </>
+          )}
         </Field>
       )}
 
@@ -770,14 +822,14 @@ function TextInspector({ clip, patch, onDelete, onDup }) {
   );
 }
 
-function ColorSlider({ label, value, onChange }) {
+function ColorSlider({ label, value, onChange, min = -100, max = 100 }) {
   return (
     <div style={{ marginBottom: 9 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
         <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>{label}</span>
         <span style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(value * 100)}</span>
       </div>
-      <input type="range" min={-100} max={100} value={Math.round(value * 100)} onChange={e => onChange(Number(e.target.value) / 100)} onDoubleClick={() => onChange(0)} style={{ width: '100%' }} />
+      <input type="range" min={min} max={max} value={Math.round(value * 100)} onChange={e => onChange(Number(e.target.value) / 100)} onDoubleClick={() => onChange(0)} style={{ width: '100%' }} />
     </div>
   );
 }

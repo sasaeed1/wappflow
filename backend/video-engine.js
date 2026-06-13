@@ -95,6 +95,13 @@ function sanitizeClip(c, kind) {
         fromY: clamp(k.fromY, -1, 1, 0), toY: clamp(k.toY, -1, 1, 0),
       };
     }
+    // motion keyframes (scale + position) — N points, override Ken Burns when present
+    if (Array.isArray(c.motionKeys)) {
+      const mk = c.motionKeys.slice(0, 8)
+        .map(k => ({ t: clamp(k.t, 0, 1, 0), scale: clamp(k.scale, 1, 3, 1), x: clamp(k.x, -1, 1, 0), y: clamp(k.y, -1, 1, 0) }))
+        .sort((a, b) => a.t - b.t);
+      if (mk.length >= 2) out.motionKeys = mk;
+    }
     out.transitionIn = sanitizeTransition(c.transitionIn);
     out.transitionOut = sanitizeTransition(c.transitionOut);
     out.effects = Array.isArray(c.effects) ? c.effects.filter(e => EFFECTS.includes(e)).slice(0, 6) : [];
@@ -221,9 +228,17 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
       if (file) inputs.push('-loop', '1', '-t', durS, '-i', file);
       else { inputs.push('-f', 'lavfi', '-t', durS, '-i', `color=c=0x111114:s=${W}x${H}:r=${FPS}`); missing++; }
       const k = c.kenBurns;
-      if (file && k) {
+      const frames = Math.max(2, Math.round((c.duration / 1000) * FPS));
+      if (file && c.motionKeys && c.motionKeys.length >= 2) {
+        // N-point motion keyframes (scale + position) → piecewise-linear zoompan
+        const T = `(on/${frames - 1})`;
+        const z = pwl(c.motionKeys.map(p => ({ t: p.t, v: p.scale })), T);
+        const px = pwl(c.motionKeys.map(p => ({ t: p.t, v: p.x })), T);
+        const py = pwl(c.motionKeys.map(p => ({ t: p.t, v: p.y })), T);
+        atoms.push(`scale=${W * 2}:${H * 2}`,
+          `zoompan=z='${z}':x='(iw-iw/zoom)/2*(1+(${px}))':y='(ih-ih/zoom)/2*(1+(${py}))':d=${frames}:s=${W}x${H}:fps=${FPS}`, 'setsar=1');
+      } else if (file && k) {
         // zoompan Ken Burns push over the clip's frame count
-        const frames = Math.max(1, Math.round((c.duration / 1000) * FPS));
         const zExpr = `min(zoom+${((k.toScale - k.fromScale) / frames).toFixed(6)},${k.toScale})`;
         atoms.push(`scale=${W * 2}:${H * 2}`, `zoompan=z='${zExpr}':d=${frames}:s=${W}x${H}:fps=${FPS}`, 'setsar=1');
       } else if (file) {
@@ -329,6 +344,21 @@ function fxFilter(fx) {
 // escape a file path for use inside a filtergraph option (Windows drive colons etc.)
 function ffEscape(p) { return p.replace(/\\/g, '/').replace(/:/g, '\\:'); }
 
+// Build a piecewise-linear ffmpeg expression interpolating keyframes [{t,v}] over
+// the normalised time variable `T` (0..1). Clamps to the end values outside range.
+function pwl(keys, T) {
+  const k = keys.map(p => ({ t: +(+p.t).toFixed(4), v: +(+p.v).toFixed(4) }));
+  if (k.length === 1) return `${k[0].v}`;
+  let expr = `${k[k.length - 1].v}`; // T ≥ last keyframe → hold last value
+  for (let i = k.length - 2; i >= 0; i--) {
+    const a = k[i], b = k[i + 1];
+    const span = (b.t - a.t) || 1;
+    const seg = `(${a.v}+(${(b.v - a.v).toFixed(4)})*((${T})-${a.t})/${span.toFixed(4)})`;
+    expr = `if(lt(${T},${b.t}),${seg},${expr})`;
+  }
+  return `if(lt(${T},${k[0].t}),${k[0].v},${expr})`; // before first → hold first value
+}
+
 // escape user text for drawtext (avoid breaking the filtergraph)
 function escapeDrawtext(s) {
   return String(s || '')
@@ -383,5 +413,5 @@ function _resetFontsCache() { _fonts = null; }
 module.exports = {
   ASPECTS, EXPORT_PRESETS, QUALITIES, TRANSITIONS, EFFECTS, TEXT_TYPES, TEXT_ANIM,
   dimsFor, sanitizeTimeline, sanitizeClip, detectFfmpeg, _resetFfmpegCache, parseFfprobe, buildExportCommand,
-  detectFonts, _resetFontsCache, drawtextAtom,
+  detectFonts, _resetFontsCache, drawtextAtom, pwl,
 };

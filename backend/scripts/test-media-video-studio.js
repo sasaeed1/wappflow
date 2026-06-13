@@ -76,6 +76,16 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
   const muted = ve.sanitizeTimeline({ aspect: '9:16', tracks: [{ type: 'video', clips: [{ kind: 'photo', assetId: 'p', start: 0, duration: 2000 }] }, { type: 'audio', clips: [{ kind: 'audio', assetId: 's', audio: { mute: true } }] }] });
   check('music: muted → no audio in output', !ve.buildExportCommand(muted, { width: 1080, height: 1920, fps: 30 }, () => '/m/a.bin').hasAudio);
 
+  // motion keyframes (scale + position) → piecewise-linear zoompan
+  check('pwl builds nested piecewise expr', /if\(lt\(T,/.test(ve.pwl([{ t: 0, v: 1 }, { t: 0.5, v: 1.3 }, { t: 1, v: 1.1 }], 'T')));
+  const kf = ve.sanitizeTimeline({ aspect: '9:16', tracks: [{ type: 'video', clips: [
+    { kind: 'photo', assetId: 'p1', start: 0, duration: 3000, motionKeys: [{ t: 0, scale: 1, x: -0.3, y: 0 }, { t: 0.5, scale: 1.3, x: 0, y: 0 }, { t: 1, scale: 1.1, x: 0.3, y: 0 }] },
+  ] }] });
+  check('motionKeys sanitized (3, sorted, clamped)', kf.tracks[0].clips[0].motionKeys.length === 3);
+  const kfj = ve.buildExportCommand(kf, { width: 1080, height: 1920, fps: 30 }, () => '/m/p.jpg').args.join(' ');
+  check('keyframes render piecewise zoompan', kfj.includes('zoompan=z=') && kfj.includes('if(lt(') && kfj.includes('(iw-iw/zoom)/2*(1+('));
+  check('single keyframe ignored (needs ≥2)', !ve.sanitizeTimeline({ tracks: [{ type: 'video', clips: [{ kind: 'photo', assetId: 'p', start: 0, duration: 1000, motionKeys: [{ t: 0, scale: 1.2 }] }] }] }).tracks[0].clips[0].motionKeys);
+
   const cmd = ve.buildExportCommand(san, { width: 1080, height: 1920, fps: 30 }, (id) => '/m/' + id + '.bin');
   const joined = cmd.args.join(' ');
   check('command: 2 segments concatenated', cmd.segments === 2 && joined.includes('concat=n=2'));
