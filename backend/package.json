@@ -41,5 +41,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
+  },
+  "optionalDependencies": {
+    "@vladmandic/face-api": "^1.7.13"
   }
 }
