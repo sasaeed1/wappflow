@@ -102,6 +102,13 @@ function sanitizeClip(c, kind) {
         .sort((a, b) => a.t - b.t);
       if (mk.length >= 2) out.motionKeys = mk;
     }
+    // opacity keyframes (0..1 over the clip) — composited via alpha at render
+    if (Array.isArray(c.opacityKeys)) {
+      const ok = c.opacityKeys.slice(0, 8)
+        .map(k => ({ t: clamp(k.t, 0, 1, 0), v: clamp(k.v, 0, 1, 1) }))
+        .sort((a, b) => a.t - b.t);
+      if (ok.length >= 2) out.opacityKeys = ok;
+    }
     out.transitionIn = sanitizeTransition(c.transitionIn);
     out.transitionOut = sanitizeTransition(c.transitionOut);
     out.effects = Array.isArray(c.effects) ? c.effects.filter(e => EFFECTS.includes(e)).slice(0, 6) : [];
@@ -216,8 +223,11 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
 
   const inputs = [];     // ffmpeg -i args (in order)
   const filters = [];    // filter_complex chains
-  const segLabels = [];
+  const layers = [];     // { label, start, end } composited onto the base canvas
   let missing = 0;
+
+  const DIP = new Set(['dipToBlack', 'dipToWhite']);
+  const isAlphaTrans = (tr) => tr && (tr.type === 'fade' || tr.type === 'crossDissolve');
 
   clips.forEach((c, i) => {
     const file = c.assetId ? resolve(c.assetId) : null;
@@ -230,7 +240,6 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
       const k = c.kenBurns;
       const frames = Math.max(2, Math.round((c.duration / 1000) * FPS));
       if (file && c.motionKeys && c.motionKeys.length >= 2) {
-        // N-point motion keyframes (scale + position) → piecewise-linear zoompan
         const T = `(on/${frames - 1})`;
         const z = pwl(c.motionKeys.map(p => ({ t: p.t, v: p.scale })), T);
         const px = pwl(c.motionKeys.map(p => ({ t: p.t, v: p.x })), T);
@@ -238,7 +247,6 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
         atoms.push(`scale=${W * 2}:${H * 2}`,
           `zoompan=z='${z}':x='(iw-iw/zoom)/2*(1+(${px}))':y='(ih-ih/zoom)/2*(1+(${py}))':d=${frames}:s=${W}x${H}:fps=${FPS}`, 'setsar=1');
       } else if (file && k) {
-        // zoompan Ken Burns push over the clip's frame count
         const zExpr = `min(zoom+${((k.toScale - k.fromScale) / frames).toFixed(6)},${k.toScale})`;
         atoms.push(`scale=${W * 2}:${H * 2}`, `zoompan=z='${zExpr}':d=${frames}:s=${W}x${H}:fps=${FPS}`, 'setsar=1');
       } else if (file) {
@@ -247,11 +255,9 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
         atoms.push(`fps=${FPS}`, `trim=duration=${durS}`, 'setsar=1');
       }
     } else if (c.freeze) {
-      // freeze frame: hold the in-point frame for the whole clip
       inputs.push('-ss', (c.in / 1000).toFixed(3), '-i', file);
       atoms.push(scaleCover(W, H), `fps=${FPS}`, 'loop=loop=-1:size=1:start=0', 'setpts=N/FRAME_RATE/TB', `trim=duration=${durS}`, 'setsar=1');
     } else {
-      // video: trim source, optional speed/reverse, scale/cover
       const inS = (c.in / 1000).toFixed(3), outS = ((c.in + c.duration * c.speed) / 1000).toFixed(3);
       inputs.push('-ss', inS, '-to', outS, '-i', file);
       atoms.push(scaleCover(W, H), `fps=${FPS}`);
@@ -263,36 +269,69 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
     const col = colorAtoms(c.color); if (col) atoms.push(...col);
     const lp = c.lut ? lutPath(c.lut) : null; if (lp) atoms.push(`lut3d=${ffEscape(lp)}`);
     for (const fx of (c.effects || [])) { const f = fxFilter(fx); if (f) atoms.push(f); }
-    // per-clip fade transitions (to/from black/white) — simple, reliable
-    if (c.transitionIn) atoms.push(`fade=t=in:st=0:d=${(c.transitionIn.duration / 1000).toFixed(3)}${c.transitionIn.type === 'dipToWhite' ? ':color=white' : ''}`);
-    if (c.transitionOut) { const d = c.transitionOut.duration / 1000; atoms.push(`fade=t=out:st=${(c.duration / 1000 - d).toFixed(3)}:d=${d.toFixed(3)}${c.transitionOut.type === 'dipToWhite' ? ':color=white' : ''}`); }
-    // glow + light-leak need compositing (blend), so they run as chained subgraphs
+    // DIP transitions stay as opaque colour fades (dip through black/white);
+    // fade/crossDissolve are handled by ALPHA below so they crossfade on overlap.
+    const dipIn = DIP.has(c.transitionIn?.type), dipOut = DIP.has(c.transitionOut?.type);
+    if (dipIn) atoms.push(`fade=t=in:st=0:d=${(c.transitionIn.duration / 1000).toFixed(3)}${c.transitionIn.type === 'dipToWhite' ? ':color=white' : ''}`);
+    if (dipOut) { const d = c.transitionOut.duration / 1000; atoms.push(`fade=t=out:st=${(c.duration / 1000 - d).toFixed(3)}:d=${d.toFixed(3)}${c.transitionOut.type === 'dipToWhite' ? ':color=white' : ''}`); }
+
+    // glow + light-leak compositing subgraphs → produce [rgb${i}]
     const post = (c.effects || []).filter(fx => fx === 'glow' || fx === 'lightLeak');
     if (post.length === 0) {
-      filters.push(`[${i}:v]${atoms.join(',')}[v${i}]`);
+      filters.push(`[${i}:v]${atoms.join(',')}[rgb${i}]`);
     } else {
       filters.push(`[${i}:v]${atoms.join(',')}[p${i}_0]`);
       post.forEach((fx, pi) => {
-        const inL = `p${i}_${pi}`, outL = pi === post.length - 1 ? `v${i}` : `p${i}_${pi + 1}`;
+        const inL = `p${i}_${pi}`, outL = pi === post.length - 1 ? `rgb${i}` : `p${i}_${pi + 1}`;
         if (fx === 'glow') {
           filters.push(`[${inL}]split[ga${i}${pi}][gb${i}${pi}];[gb${i}${pi}]gblur=sigma=18:steps=2[gc${i}${pi}];[ga${i}${pi}][gc${i}${pi}]blend=all_mode=screen:all_opacity=0.45[${outL}]`);
-        } else { // lightLeak — warm gradient wash, screen-blended (generated in-graph, no extra -i input)
+        } else {
           filters.push(`gradients=s=${W}x${H}:c0=0xff8a1e:c1=0x000000:nb_colors=2:seed=${(i + 1) * 7}:speed=0.015,trim=duration=${durS},fps=${FPS},setsar=1[leak${i}${pi}];[${inL}][leak${i}${pi}]blend=all_mode=screen:all_opacity=0.32[${outL}]`);
         }
       });
     }
-    segLabels.push(`[v${i}]`);
+
+    // ALPHA stage — gives the clip transparency so it crossfades on overlap / keys opacity.
+    let lab = `rgb${i}`;
+    const okeys = c.opacityKeys && c.opacityKeys.length >= 2;
+    const aIn = isAlphaTrans(c.transitionIn), aOut = isAlphaTrans(c.transitionOut);
+    if (okeys || aIn || aOut) {
+      const aatoms = ['format=yuva420p'];
+      if (okeys) {
+        // keyframed opacity → alpha via geq (T is stream-relative seconds, 0..D)
+        const oexpr = pwl(c.opacityKeys.map(k => ({ t: k.t, v: k.v })), `(T/${(c.duration / 1000).toFixed(3)})`);
+        aatoms.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='clip(255*(${oexpr}),0,255)'`);
+      } else {
+        if (aIn) aatoms.push(`fade=t=in:st=0:d=${(c.transitionIn.duration / 1000).toFixed(3)}:alpha=1`);
+        if (aOut) { const d = c.transitionOut.duration / 1000; aatoms.push(`fade=t=out:st=${(c.duration / 1000 - d).toFixed(3)}:d=${d.toFixed(3)}:alpha=1`); }
+      }
+      filters.push(`[${lab}]${aatoms.join(',')}[a${i}]`); lab = `a${i}`;
+    }
+    // SHIFT the clip to its absolute timeline position
+    filters.push(`[${lab}]setpts=PTS-STARTPTS+${(c.start / 1000).toFixed(3)}/TB[lay${i}]`);
+    layers.push({ label: `lay${i}`, start: c.start, end: c.end });
   });
 
-  // concat the normalized segments → [vbase]
+  // ── COMPOSITE: overlay every clip onto a full-length base canvas at its time ──
+  // Honors gaps (base shows through) and overlaps (top clip wins; alpha → crossfade).
+  const totalMs = Math.max(...clips.map(c => c.end), 1);
+  const totalS = (totalMs / 1000).toFixed(3);
+  filters.push(`color=c=black:s=${W}x${H}:r=${FPS}:d=${totalS}[base]`);
+  let prev = 'base';
+  layers.forEach((L, i) => {
+    const out = `cmp${i}`;
+    filters.push(`[${prev}][${L.label}]overlay=eof_action=pass:enable='between(t,${(L.start / 1000).toFixed(3)},${(L.end / 1000).toFixed(3)})'[${out}]`);
+    prev = out;
+  });
+
+  // text overlays (drawtext) on top of the composite
   const textClips = t.tracks.filter(tk => tk.type === 'text').flatMap(tk => tk.clips);
   const textAtoms = textClips
     .map(tc => { const fp = tc.text ? fontFile(tc.text.font) : null; return fp ? drawtextAtom(tc, W, H, fp) : null; })
     .filter(Boolean);
-  const concatOut = textAtoms.length ? 'vbase' : 'vout';
-  filters.push(`${segLabels.join('')}concat=n=${segLabels.length}:v=1:a=0[${concatOut}]`);
-  // overlay text via drawtext (timed with enable=between, fade/slide via alpha/x)
-  if (textAtoms.length) filters.push(`[vbase]${textAtoms.join(',')}[vout]`);
+  if (textAtoms.length) filters.push(`[${prev}]${textAtoms.join(',')}[vout]`);
+  else filters.push(`[${prev}]null[vout]`);
+  const segLabels = layers; // for the return shape (segments count)
 
   // audio spine (first audio clip of the first audio track)
   let hasAudio = false;
@@ -305,8 +344,7 @@ function buildExportCommand(timeline, target, resolve = () => null, lutPath = ()
     const vol = aClip.audio ? aClip.audio.volume : 1;
     const fi = aClip.audio ? aClip.audio.fadeIn / 1000 : 0;
     const fo = aClip.audio ? aClip.audio.fadeOut / 1000 : 0.6;
-    const totalS = (t.duration / 1000).toFixed(3);
-    filters.push(`[${aIdx}:a]volume=${vol.toFixed(2)},afade=t=in:st=0:d=${fi.toFixed(2)},afade=t=out:st=${Math.max(0, t.duration / 1000 - fo).toFixed(2)}:d=${fo.toFixed(2)},atrim=duration=${totalS}[aout]`);
+    filters.push(`[${aIdx}:a]volume=${vol.toFixed(2)},afade=t=in:st=0:d=${fi.toFixed(2)},afade=t=out:st=${Math.max(0, totalMs / 1000 - fo).toFixed(2)}:d=${fo.toFixed(2)},atrim=duration=${totalS}[aout]`);
     hasAudio = true;
   }
 

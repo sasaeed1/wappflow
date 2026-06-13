@@ -32,6 +32,17 @@ function sampleMotion(keys, p) {
   }
   return k[0];
 }
+// interpolate scalar opacity keyframes [{t,v}] at progress p
+function sampleOpacity(keys, p) {
+  const k = [...keys].sort((a, b) => a.t - b.t);
+  if (p <= k[0].t) return k[0].v;
+  if (p >= k[k.length - 1].t) return k[k.length - 1].v;
+  for (let i = 0; i < k.length - 1; i++) if (p >= k[i].t && p <= k[i + 1].t) {
+    const f = (p - k[i].t) / ((k[i + 1].t - k[i].t) || 1);
+    return lerp(k[i].v, k[i + 1].v, f);
+  }
+  return k[0].v;
+}
 const fmtClock = (ms) => { const s = Math.max(0, ms / 1000); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}.${Math.floor((s * 10) % 10)}`; };
 
 // ── document helpers (the spine = the single video track for Phase 1) ─────────
@@ -139,7 +150,8 @@ export default function VideoEditor() {
     return () => cancelAnimationFrame(raf);
   }, [playing, duration]);
 
-  const activeClip = spine?.clips.find(c => playhead >= c.start && playhead < c.end) || null;
+  // top-most clip at the playhead (greatest start wins on overlap — matches the compositor)
+  const activeClip = spine ? (spine.clips.filter(c => playhead >= c.start && playhead < c.end).sort((a, b) => a.start - b.start).slice(-1)[0] || null) : null;
   const activeAsset = activeClip ? assetMap[activeClip.assetId] : null;
 
   // keep the <video> element seeked/playing in sync with the playhead
@@ -267,7 +279,7 @@ export default function VideoEditor() {
         }
         return c;
       });
-      if (tr.type === 'video' && d.mode === 'move') next = repack(next);
+      // move = free positioning (overlap allowed → crossfades); only trims keep ends synced
       return { ...tr, clips: next };
     }) }));
   };
@@ -309,7 +321,8 @@ export default function VideoEditor() {
     } else if (activeClip.kenBurns) { const k = activeClip.kenBurns; sc *= lerp(k.fromScale, k.toScale, p); tx += lerp(k.fromX, k.toX, p) * 100; ty += lerp(k.fromY, k.toY, p) * 100; }
     const lutCss = activeClip.lut ? (luts.find(l => l.id === activeClip.lut)?.css || '') : '';
     const filter = [colorPreviewFilter(activeClip.color), lutCss, activeFx.includes('blur') ? 'blur(6px)' : '', activeFx.includes('softFocus') ? 'blur(1.5px)' : '', activeFx.includes('glow') ? 'brightness(1.07) contrast(1.03)' : ''].filter(Boolean).join(' ');
-    mediaStyle = { ...mediaStyle, transform: `translate(${tx}%, ${ty}%) scale(${sc}) rotate(${tf.rotation || 0}deg)`, opacity: tf.opacity ?? 1, transition: playing ? 'none' : 'transform .12s', filter: filter || undefined };
+    const op = activeClip.opacityKeys && activeClip.opacityKeys.length >= 2 ? sampleOpacity(activeClip.opacityKeys, p) : (tf.opacity ?? 1);
+    mediaStyle = { ...mediaStyle, transform: `translate(${tx}%, ${ty}%) scale(${sc}) rotate(${tf.rotation || 0}deg)`, opacity: op, transition: playing ? 'none' : 'transform .12s', filter: filter || undefined };
   }
 
   return (
@@ -592,6 +605,14 @@ function Inspector({ clip, luts, onUploadLut, kfT = 0, patch, onDelete, onDup })
   const startKeys = () => { patch({ motionKeys: [{ t: 0, scale: 1, x: 0, y: 0 }, { t: 1, scale: 1.15, x: 0, y: 0 }] }); setKfSel(0); };
   const setKey = (prop, v) => { const next = mk.map((k, j) => j === ki ? { ...k, [prop]: v } : k); patch({ motionKeys: next }); };
   const delKey = () => { if (mk.length <= 2) { patch({ motionKeys: null }); return; } patch({ motionKeys: mk.filter((_, j) => j !== ki) }); setKfSel(0); };
+  // opacity keyframes (any clip kind)
+  const ok = clip.opacityKeys || null;
+  const [okSel, setOkSel] = useState(0);
+  const oi = ok ? Math.min(okSel, ok.length - 1) : 0;
+  const startOKeys = () => { patch({ opacityKeys: [{ t: 0, v: 0 }, { t: 1, v: 1 }] }); setOkSel(0); };
+  const addOKey = () => { const cur = ok ? sampleOpacity(ok, kfT) : 1; const next = [...(ok || []), { t: +kfT.toFixed(3), v: cur }].sort((a, b) => a.t - b.t); patch({ opacityKeys: next }); setOkSel(next.findIndex(k => k.t === +kfT.toFixed(3))); };
+  const setOKey = (v) => patch({ opacityKeys: ok.map((k, j) => j === oi ? { ...k, v } : k) });
+  const delOKey = () => { if (ok.length <= 2) { patch({ opacityKeys: null }); return; } patch({ opacityKeys: ok.filter((_, j) => j !== oi) }); setOkSel(0); };
   const setColor = (k, v) => patch({ color: { ...ZERO_COLOR, ...color, [k]: v } });
   const toggleFx = (idfx) => patch({ effects: fx.includes(idfx) ? fx.filter(e => e !== idfx) : [...fx, idfx] });
   return (
@@ -667,6 +688,24 @@ function Inspector({ clip, luts, onUploadLut, kfT = 0, patch, onDelete, onDup })
       </Field>
       <Field label="Transition out">
         <TransitionPicker value={clip.transitionOut} onChange={t => patch({ transitionOut: t })} />
+      </Field>
+      <p style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', margin: '-6px 0 12px', lineHeight: 1.4 }}>Fade/Dissolve crossfade when clips overlap — drag a clip over its neighbour on the timeline.</p>
+
+      <Field label="Opacity keyframes">
+        {!ok ? (
+          <button onClick={startOKeys} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px' }}>+ Animate opacity</button>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+              {ok.map((k, j) => (
+                <button key={j} onClick={() => setOkSel(j)} className={`ms-chip${oi === j ? ' ms-chip-active' : ''}`} style={{ padding: '4px 8px', fontSize: 10.5 }}>◆ {Math.round(k.t * 100)}%</button>
+              ))}
+              <button onClick={addOKey} title="Add keyframe at playhead" className="ms-iconbtn" style={{ width: 26, height: 26 }}>+</button>
+            </div>
+            <ColorSlider label={`Opacity @ ${Math.round(ok[oi].t * 100)}%`} min={0} max={100} value={ok[oi].v} onChange={v => setOKey(clamp(v, 0, 1))} />
+            <button onClick={delOKey} className="ms-btn-text" style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}><Trash2 size={12} /> {ok.length <= 2 ? 'Clear opacity' : 'Delete this keyframe'}</button>
+          </>
+        )}
       </Field>
 
       <div style={{ height: 1, background: 'var(--ms-line)', margin: '6px 0 14px' }} />

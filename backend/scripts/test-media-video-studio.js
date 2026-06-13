@@ -62,7 +62,7 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
   check('freeze: holds a single looped frame', rj.includes('loop=loop=-1:size=1'));
   check('sanitize preserves freeze + keeps text track', rich.tracks[0].clips[1].freeze === true && rich.tracks.some(t => t.type === 'text' && t.clips.length === 1));
   const noFont = ve.buildExportCommand(rich, { width: 1080, height: 1920, fps: 30 }, () => '/m/a.jpg', () => null, () => null).args.join(' ');
-  check('no font on box → text skipped, video still renders', !noFont.includes('drawtext') && noFont.includes('concat'));
+  check('no font on box → text skipped, video still renders', !noFont.includes('drawtext') && noFont.includes('color=c=black'));
   check('detectFonts returns a shape (degrades to null when absent)', typeof ve.detectFonts() === 'object');
 
   // music track: mix one audio clip with volume/fade + trim-in
@@ -92,6 +92,25 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
   check('glow: blur + screen blend', fxj.includes('gblur=sigma=18') && fxj.includes('all_opacity=0.45'));
   check('light-leak: warm gradient + screen blend', fxj.includes('gradients=s=1080x1920') && fxj.includes('all_opacity=0.32'));
 
+  // COMPOSITOR — overlay onto base canvas, absolute positions, crossfade + opacity keys
+  const comp = ve.sanitizeTimeline({ aspect: '9:16', tracks: [{ type: 'video', clips: [
+    { kind: 'photo', assetId: 'a', start: 0, duration: 3000 },
+    { kind: 'photo', assetId: 'b', start: 2600, duration: 3000, transitionIn: { type: 'fade', duration: 400 } }, // overlaps a → crossfade
+    { kind: 'video', assetId: 'c', start: 5600, duration: 2000, opacityKeys: [{ t: 0, v: 0 }, { t: 0.5, v: 1 }, { t: 1, v: 0.3 }] },
+  ] }] });
+  const cj = ve.buildExportCommand(comp, { width: 1080, height: 1920, fps: 30 }, () => '/m/x.bin').args.join(' ');
+  check('compositor: black base canvas spans timeline', cj.includes('color=c=black:s=1080x1920') && cj.includes(':d=7.600'));
+  check('compositor: one overlay per clip (3)', (cj.match(/overlay=eof_action=pass:enable=/g) || []).length === 3);
+  check('compositor: clips shifted to absolute start (2.600)', cj.includes('setpts=PTS-STARTPTS+2.600/TB'));
+  check('crossfade: fade/dissolve → alpha (yuva + fade alpha)', cj.includes('format=yuva420p') && cj.includes('fade=t=in:st=0:d=0.400:alpha=1'));
+  check('opacity keys → geq alpha expression', cj.includes("geq=r='r(X,Y)'") && cj.includes(":a='clip(255*("));
+  check('opacityKeys sanitized (3, clamped 0..1)', comp.tracks[0].clips[2].opacityKeys.length === 3);
+  check('dipToBlack stays opaque colour fade (not alpha)', (() => {
+    const d = ve.sanitizeTimeline({ tracks: [{ type: 'video', clips: [{ kind: 'photo', assetId: 'a', start: 0, duration: 2000, transitionIn: { type: 'dipToBlack', duration: 300 } }] }] });
+    const dj = ve.buildExportCommand(d, { width: 1080, height: 1920, fps: 30 }, () => '/m/a').args.join(' ');
+    return dj.includes('fade=t=in:st=0:d=0.300') && !dj.includes('alpha=1');
+  })());
+
   // AI draft face/smile weighting (plumbing — boosts people shots when scores exist)
   const aid = require('../video-ai-drafts');
   const rowsF = [
@@ -106,7 +125,7 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
 
   const cmd = ve.buildExportCommand(san, { width: 1080, height: 1920, fps: 30 }, (id) => '/m/' + id + '.bin');
   const joined = cmd.args.join(' ');
-  check('command: 2 segments concatenated', cmd.segments === 2 && joined.includes('concat=n=2'));
+  check('command: 2 clips composited (overlay onto base)', cmd.segments === 2 && joined.includes('color=c=black') && (joined.match(/overlay=/g) || []).length === 2);
   check('command: scales to target 1080:1920', joined.includes('1080:1920'));
   check('command: photo clip uses zoompan (Ken Burns)', joined.includes('zoompan'));
   check('command: video clip uses setpts (speed)', joined.includes('setpts='));
