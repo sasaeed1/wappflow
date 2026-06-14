@@ -1624,7 +1624,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
       if (!media.length) return res.status(400).json({ error: 'Add photos or clips to this shoot first.' });
 
       const aspect = videoEngine.ASPECTS[req.body.aspect] ? req.body.aspect : tpl.aspect;
-      const doc = videoEngine.sanitizeTimeline(videoTemplates.buildTimeline(tpl, media, aspect));
+      const durationSec = videoTemplates.DURATIONS.includes(req.body.duration_sec) ? req.body.duration_sec : videoTemplates.DEFAULT_DURATION;
+      const doc = videoEngine.sanitizeTimeline(videoTemplates.buildTimeline(tpl, media, { aspect, durationSec, title: project.title }));
       const id = generateId();
       db.prepare(`INSERT INTO ms_timelines (id, workspace_id, project_id, name, source, template_id, aspect_ratio, width, height, fps, duration_ms, document, created_by)
         VALUES (?, ?, ?, ?, 'template', ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -1670,7 +1671,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
 
       const media = videoAiDrafts.selectForStyle(ranked, style);
       const aspect = videoEngine.ASPECTS[req.body.aspect] ? req.body.aspect : style.aspect;
-      const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, aspect));
+      const durationSec = videoTemplates.DURATIONS.includes(req.body.duration_sec) ? req.body.duration_sec : videoTemplates.DEFAULT_DURATION;
+      const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, { aspect, durationSec, title: project.title }));
       const id = generateId();
       db.prepare(`INSERT INTO ms_timelines (id, workspace_id, project_id, name, source, aspect_ratio, width, height, fps, duration_ms, document, ai_style, ai_signature, ai_stale, created_by)
         VALUES (?, ?, ?, ?, 'ai_draft', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`)
@@ -1690,7 +1692,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       const ranked = videoAiDrafts.rankMedia(scoredProjectMedia(t.project_id), { faceWeight: videoAiDrafts.styleFaceWeight(style.id) });
       if (ranked.length < 2) return res.status(400).json({ error: 'Not enough usable media to refresh.' });
       const media = videoAiDrafts.selectForStyle(ranked, style);
-      const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, t.aspect_ratio));
+      const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, { aspect: t.aspect_ratio, durationSec: Math.round((t.duration_ms || 60000) / 1000) || 60, title: getProject(req.workspaceId, t.project_id)?.title }));
       db.prepare(`UPDATE ms_timelines SET document = ?, duration_ms = ?, width = ?, height = ?, ai_signature = ?, ai_stale = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
         .run(JSON.stringify(doc), doc.duration, doc.width, doc.height, videoAiDrafts.signatureOf(media), t.id);
       res.json(timelineOut(getTimeline(req.workspaceId, t.id)));

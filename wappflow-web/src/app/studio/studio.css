@@ -362,6 +362,11 @@ html[data-ms-theme="editorial"] .ms-photo::after { background: linear-gradient(t
 .ms-seg button:hover:not(.is-active) { color: var(--ms-ink); }
 .ms-iconbtn:active, .ms-btn-ink:active, .ms-btn-ghost:active { transform: scale(0.97); }
 
+/* creative-pack posters — movie-poster tiles that lift + reveal a CTA on hover */
+.ms-poster { background: var(--ms-surface-2); box-shadow: 0 12px 32px -16px rgba(0,0,0,0.5); transition: transform .22s var(--ms-ease), box-shadow .22s var(--ms-ease); }
+.ms-poster:hover:not(:disabled) { transform: translateY(-5px) scale(1.02); box-shadow: 0 30px 64px -22px rgba(0,0,0,0.62); }
+.ms-poster:hover:not(:disabled) .ms-poster-cta { opacity: 1 !important; }
+
 /* ═══ CINEMATIC SURFACES (hero, overlay cards, immersive cull HUD) ═════════ */
 
 /* — Home hero: the latest shoot as a full-bleed cinematic opener — */

@@ -118,10 +118,10 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
     { id: 'face', type: 'photo', quality: 0.55, sharpness: 200, faces: 2, smile: 0.9 },
   ];
   const noFace = aid.rankMedia(rowsF, { faceWeight: 0 });
-  const withFace = aid.rankMedia(rowsF, { faceWeight: aid.styleFaceWeight('emotional_story') });
+  const withFace = aid.rankMedia(rowsF, { faceWeight: aid.styleFaceWeight('wedding_emotional') });
   check('no faceWeight → quality wins (plain first)', noFace[0].id === 'plain');
-  check('emotional_story faceWeight → smiling face wins', withFace[0].id === 'face');
-  check('styleFaceWeight: people styles > real-estate', aid.styleFaceWeight('emotional_story') > aid.styleFaceWeight('realestate_tour'));
+  check('wedding faceWeight → smiling face wins', withFace[0].id === 'face');
+  check('styleFaceWeight: people packs > real-estate', aid.styleFaceWeight('wedding_emotional') > aid.styleFaceWeight('realestate_luxury'));
 
   const cmd = ve.buildExportCommand(san, { width: 1080, height: 1920, fps: 30 }, (id) => '/m/' + id + '.bin');
   const joined = cmd.args.join(' ');
@@ -250,17 +250,17 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
 
     // ── templates ──
     const tpls = await GET('/api/media/video/templates');
-    check('templates listed across categories', tpls.templates.length >= 8 && tpls.templates.some(t => t.category === 'Wedding') && tpls.templates[0].css);
-    // apply auto-fills from project media (we have the uploaded video asset)
-    r = await POST(`/api/media/projects/${PID}/templates/wedding_highlights/apply`, {});
-    check('apply template → 201 new timeline', r.status === 201);
+    check('12 creative packs across categories w/ poster metadata', tpls.templates.length === 12 && tpls.templates.some(t => t.category === 'Wedding') && tpls.templates[0].css && Array.isArray(tpls.templates[0].palette) && tpls.templates[0].mood);
+    // apply at a chosen duration → exact-length timeline filled with project media
+    r = await POST(`/api/media/projects/${PID}/templates/wedding_cinematic/apply`, { duration_sec: 30 });
+    check('apply pack at 30s → 201 new timeline', r.status === 201);
     const applied = await r.json();
-    check('template timeline is source=template + has clips', applied.source === 'template' && applied.document.tracks[0].clips.length > 0);
-    check('template clips reference real project media', applied.document.tracks[0].clips.every(c => c.assetId === VID));
-    check('apply with bad template → 404', (await POST(`/api/media/projects/${PID}/templates/nope/apply`, {})).status === 404);
+    check('pack timeline source=template, exact 30s, has clips', applied.source === 'template' && applied.duration_ms === 30000 && applied.document.tracks[0].clips.length > 0);
+    check('pack clips reference real project media', applied.document.tracks[0].clips.every(c => !c.assetId || c.assetId === VID || c.kind === 'text'));
+    check('apply with bad pack → 404', (await POST(`/api/media/projects/${PID}/templates/nope/apply`, {})).status === 404);
     // a project with no media can't apply
     const EMPTY_PID = (await (await POST('/api/media/projects', { title: 'No media' })).json()).id;
-    check('apply with no media → 400 with guidance', (await POST(`/api/media/projects/${EMPTY_PID}/templates/social_quick/apply`, {})).status === 400);
+    check('apply with no media → 400 with guidance', (await POST(`/api/media/projects/${EMPTY_PID}/templates/social_premium/apply`, {})).status === 400);
 
     // ── AI reel drafts (score-driven, control-first) ──
     const fd2 = new FormData();
@@ -269,12 +269,12 @@ const drain = async (w) => { let t = 0; while (await w.processOnce() > 0 && t < 
     await drain(worker);
 
     const styles = await GET(`/api/media/projects/${PID}/ai-drafts/styles`);
-    check('AI-draft styles + project recommendations', styles.styles.length === 6 && styles.recommended.length >= 1 && styles.styles[0].css);
+    check('AI drafts expose the 12 packs + recommendations', styles.styles.length === 12 && styles.recommended.length >= 1 && styles.styles[0].palette);
 
-    r = await POST(`/api/media/projects/${PID}/ai-drafts`, { style: 'social_short' });
+    r = await POST(`/api/media/projects/${PID}/ai-drafts`, { style: 'social_premium' });
     check('generate AI draft → 201', r.status === 201);
     const draft = await r.json();
-    check('draft is source=ai_draft (style + clips, not stale)', draft.source === 'ai_draft' && draft.ai_style === 'social_short' && draft.document.tracks[0].clips.length >= 2 && draft.ai_stale === 0);
+    check('draft is source=ai_draft via pack (clips, not stale)', draft.source === 'ai_draft' && draft.ai_style === 'social_premium' && draft.document.tracks[0].clips.length >= 2 && draft.ai_stale === 0);
     check('draft clips reference real media', draft.document.tracks[0].clips.every(c => c.assetId));
 
     // uploading more media marks the draft refreshable (never auto-rebuilt)

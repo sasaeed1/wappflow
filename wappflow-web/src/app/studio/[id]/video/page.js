@@ -176,7 +176,7 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
               <button key={s.id} onClick={() => generate(s.id)} disabled={!hasMedia || !!generating}
                 style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 12, borderRadius: 12, border: '1px solid var(--ms-line)', background: 'var(--ms-surface)', cursor: hasMedia ? 'pointer' : 'default', textAlign: 'left', opacity: !hasMedia ? 0.5 : 1 }}>
                 <span style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 9, overflow: 'hidden', position: 'relative' }}>
-                  <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,#caa37a,#9c7bb0,#6b8aa6)', filter: s.css === 'none' ? undefined : s.css }} />
+                  <span style={{ position: 'absolute', inset: 0, background: `linear-gradient(150deg, ${(s.palette || ['#caa37a', '#3a2c1a'])[0]}, ${(s.palette || ['#caa37a', '#3a2c1a'])[1]})`, filter: s.css === 'none' ? undefined : s.css }} />
                 </span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -199,68 +199,89 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
   );
 }
 
+const PACK_DURATIONS = [15, 30, 45, 60];
+const POSTER_GRAIN = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+
 function TemplateGalleryModal({ projectId, hasMedia, onClose }) {
   const router = useRouter();
-  const [templates, setTemplates] = useState(null);
+  const [packs, setPacks] = useState(null);
   const [cat, setCat] = useState('All');
+  const [duration, setDuration] = useState(60);
   const [applying, setApplying] = useState(null);
   const [err, setErr] = useState('');
 
-  useEffect(() => { mediaAPI.videoTemplates().then(r => setTemplates(r.data.templates || [])).catch(() => setTemplates([])); }, []);
+  useEffect(() => { mediaAPI.videoTemplates().then(r => setPacks(r.data.templates || [])).catch(() => setPacks([])); }, []);
 
-  const cats = ['All', ...Array.from(new Set((templates || []).map(t => t.category)))];
-  const shown = (templates || []).filter(t => cat === 'All' || t.category === cat);
+  const cats = ['All', ...Array.from(new Set((packs || []).map(p => p.category)))];
+  const shown = (packs || []).filter(p => cat === 'All' || p.category === cat);
 
-  const apply = async (t) => {
-    if (applying) return;
-    setApplying(t.id); setErr('');
+  const apply = async (p) => {
+    if (applying || !hasMedia) return;
+    setApplying(p.id); setErr('');
     try {
-      const r = await mediaAPI.applyTemplate(projectId, t.id, {});
+      const r = await mediaAPI.applyTemplate(projectId, p.id, { duration_sec: duration });
       router.push(`/studio/${projectId}/video/${r.data.id}`);
-    } catch (e) { setErr(e.response?.data?.error || 'Could not apply template'); setApplying(null); }
+    } catch (e) { setErr(e.response?.data?.error || 'Could not apply pack'); setApplying(null); }
   };
 
   return (
     <div onClick={onClose} className="ms-modal-overlay">
-      <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 720, width: '92vw' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+      <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 1160, width: '95vw' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 4 }}>
           <div>
-            <h2>Reel templates</h2>
-            <p className="ms-modal-sub">Pick a look — we’ll drop your {hasMedia ? 'photos & clips' : 'media'} into it. Fully editable after.</p>
+            <h2>Creative packs</h2>
+            <p className="ms-modal-sub">Production-ready reels. Pick a look — your {hasMedia ? 'photos & clips' : 'media'} pour straight in, ready to export.</p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+          {/* duration selector — 60s is primary */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ms-ink-3)' }}>Length</span>
+            <div className="ms-seg" style={{ padding: 3 }}>
+              {PACK_DURATIONS.map(d => (
+                <button key={d} onClick={() => setDuration(d)} className={duration === d ? 'is-active' : ''} style={{ padding: '6px 11px', fontSize: 12 }}>{d}s</button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {!hasMedia && <p style={{ fontSize: 12.5, color: '#d39a3e', margin: '8px 0 0' }}>Upload photos or clips to this shoot first — templates fill from your media.</p>}
+        {!hasMedia && <p style={{ fontSize: 12.5, color: '#d39a3e', margin: '8px 0 0' }}>Upload photos or clips to this shoot first — packs fill from your media.</p>}
         {err && <p style={{ fontSize: 12.5, color: '#d4564a', margin: '8px 0 0' }}>{err}</p>}
 
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '16px 0' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '14px 0 16px' }}>
           {cats.map(c => (
             <button key={c} onClick={() => setCat(c)} className={`ms-chip${cat === c ? ' ms-chip-active' : ''}`} style={{ fontSize: 11.5 }}>{c}</button>
           ))}
         </div>
 
-        {templates === null ? (
-          <p className="ms-loading">Loading templates…</p>
+        {packs === null ? (
+          <p className="ms-loading">Loading packs…</p>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, maxHeight: '52vh', overflowY: 'auto', paddingRight: 4 }}>
-            {shown.map(t => {
-              const [aw, ah] = ASPECTS[t.aspect] || ASPECTS['9:16'];
-              const portrait = ah > aw;
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(184px, 1fr))', gap: 16, maxHeight: '60vh', overflowY: 'auto', padding: '2px 4px 4px' }}>
+            {shown.map(p => {
+              const pal = p.palette || ['#caa37a', '#3a2c1a'];
               return (
-                <button key={t.id} onClick={() => apply(t)} disabled={!hasMedia || !!applying}
-                  style={{ border: '1px solid var(--ms-line)', borderRadius: 12, overflow: 'hidden', cursor: hasMedia ? 'pointer' : 'default', background: 'var(--ms-surface-2)', padding: 0, textAlign: 'left', opacity: !hasMedia ? 0.5 : 1 }}>
-                  <div style={{ position: 'relative', aspectRatio: portrait ? '3 / 4' : '4 / 3', overflow: 'hidden' }}>
-                    <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,#caa37a 0%,#9c7bb0 45%,#6b8aa6 100%)', filter: t.css === 'none' ? undefined : t.css }} />
-                    <span style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 -40px 40px -20px rgba(0,0,0,0.5)' }} />
-                    {applying === t.id && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}><Loader size={20} className="ms-spin" color="#fff" /></span>}
-                    <span style={{ position: 'absolute', top: 7, right: 7, padding: '2px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 9.5, fontWeight: 600 }}>{t.aspect}</span>
-                    <span style={{ position: 'absolute', bottom: 7, left: 8, color: '#fff', fontSize: 9.5, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>{t.slotCount} clips · {Math.round(t.durationMs / 1000)}s</span>
-                  </div>
-                  <div style={{ padding: '8px 10px' }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ms-ink)' }}>{t.name}</div>
-                    <div style={{ fontSize: 10.5, color: 'var(--ms-ink-3)' }}>{t.category}</div>
-                  </div>
+                <button key={p.id} onClick={() => apply(p)} disabled={!hasMedia || !!applying} className="ms-poster"
+                  style={{ position: 'relative', aspectRatio: '2 / 3', borderRadius: 14, overflow: 'hidden', border: 'none', padding: 0, cursor: hasMedia ? 'pointer' : 'default', textAlign: 'left', opacity: !hasMedia ? 0.55 : 1 }}>
+                  {/* art: graded palette + grain + cinematic scrim */}
+                  <span style={{ position: 'absolute', inset: 0, background: `linear-gradient(155deg, ${pal[0]}, ${pal[1]})`, filter: p.css && p.css !== 'none' ? p.css : undefined }} />
+                  <span style={{ position: 'absolute', inset: 0, opacity: 0.12, mixBlendMode: 'overlay', backgroundImage: POSTER_GRAIN }} />
+                  <span style={{ position: 'absolute', inset: 0, background: 'radial-gradient(120% 75% at 50% 22%, transparent 42%, rgba(0,0,0,0.45)), linear-gradient(to top, rgba(0,0,0,0.82) 4%, rgba(0,0,0,0.05) 52%)' }} />
+                  {/* content */}
+                  <span style={{ position: 'absolute', inset: 0, padding: 15, display: 'flex', flexDirection: 'column', color: '#fff' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', opacity: 0.82 }}>{p.category}</span>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontFamily: 'var(--ms-font-display)', fontWeight: 800, fontSize: 23, lineHeight: 1.04, letterSpacing: '-0.01em', textShadow: '0 2px 16px rgba(0,0,0,0.5)' }}>{p.name}</span>
+                    <span style={{ fontSize: 11, opacity: 0.82, margin: '5px 0 9px', lineHeight: 1.35 }}>{p.mood}</span>
+                    <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                      {[`${duration}s`, p.aspect, p.style].map((chip, j) => (
+                        <span key={j} style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.04em', padding: '3px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', backdropFilter: 'blur(4px)' }}>{chip}</span>
+                      ))}
+                    </span>
+                  </span>
+                  {/* hover CTA */}
+                  <span className="ms-poster-cta" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.32)', opacity: 0, transition: 'opacity .2s' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 999, background: '#fff', color: '#0c0c10', fontSize: 12.5, fontWeight: 700 }}><Film size={14} /> Use this pack</span>
+                  </span>
+                  {applying === p.id && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }}><Loader size={22} className="ms-spin" color="#fff" /></span>}
                 </button>
               );
             })}
