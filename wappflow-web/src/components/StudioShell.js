@@ -2,18 +2,24 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { LayoutGrid, Moon, Sun, Sparkles, Settings, LogOut, Users, Zap, Camera, ArrowUpRight } from 'lucide-react';
+import { LayoutGrid, Aperture, BookOpen, Clapperboard, Settings, LogOut, Users, Zap, Camera, ArrowUpRight } from 'lucide-react';
 import StudioCopilot from './StudioCopilot';
 
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
-const THEMES = [['dark-pro', Moon, 'Dark pro'], ['airy', Sun, 'Airy'], ['bold', Sparkles, 'Bold']];
+// Three creative-studio identities (see studio.css). Aperture = gallery, BookOpen
+// = magazine, Clapperboard = film.
+const THEMES = [['monochrome', Aperture, 'Monochrome'], ['editorial', BookOpen, 'Editorial'], ['cinema', Clapperboard, 'Cinema']];
+// migrate anyone still holding a retired theme id
+const THEME_MIGRATE = { 'dark-pro': 'cinema', airy: 'editorial', bold: 'monochrome' };
+const DEFAULT_THEME = 'monochrome';
+const resolveTheme = (t) => (THEMES.some(([id]) => id === t) ? t : (THEME_MIGRATE[t] || DEFAULT_THEME));
 
 // Studio's own application shell. Used in place of WappFlow's NavBar on every
 // /studio screen, so Studio is a self-contained module (opened in a new tab via
 // the app-switcher in WappFlow Core). Owns the theme switcher + navigation.
 export default function StudioShell({ children }) {
   const router = useRouter();
-  const [theme, setTheme] = useState('bold');
+  const [theme, setTheme] = useState(DEFAULT_THEME);
   const [menu, setMenu] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [user, setUser] = useState(null);
@@ -21,10 +27,11 @@ export default function StudioShell({ children }) {
   const userRef = useRef(null);
 
   useEffect(() => {
-    let t = 'bold';
-    try { t = localStorage.getItem('ms-theme') || 'bold'; } catch {}
+    let t = DEFAULT_THEME;
+    try { t = resolveTheme(localStorage.getItem('ms-theme')); } catch {}
     setTheme(t);
     document.documentElement.setAttribute('data-ms-theme', t);
+    try { localStorage.setItem('ms-theme', t); } catch {} // persist any migration
     try { const u = localStorage.getItem('user'); if (u) setUser(JSON.parse(u)); } catch {}
   }, []);
 
