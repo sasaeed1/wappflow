@@ -22,13 +22,24 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Database = require('better-sqlite3');
 
-const PROD = process.env.NODE_ENV === 'production';
-const DB_PATH = process.env.WAPPFLOW_DB || (PROD ? '/data/wappflow.db' : path.join(__dirname, '..', 'wappflow.db'));
-const UPLOADS_DIR = process.env.UPLOADS_DIR || (PROD ? '/data/uploads' : path.join(__dirname, '..', 'uploads'));
+// Resolve paths by EXISTENCE, not NODE_ENV — an interactive SSH shell rarely
+// has NODE_ENV=production set, so prefer the real prod volume (/data) when it's
+// there. Override explicitly with WAPPFLOW_DB / UPLOADS_DIR.
+const localDb = path.join(__dirname, '..', 'wappflow.db');
+const localUploads = path.join(__dirname, '..', 'uploads');
+const DB_PATH = process.env.WAPPFLOW_DB
+  || (fs.existsSync('/data/wappflow.db') ? '/data/wappflow.db' : localDb);
+const UPLOADS_DIR = process.env.UPLOADS_DIR
+  || (path.dirname(DB_PATH) === '/data' || fs.existsSync('/data/uploads') ? '/data/uploads' : localUploads);
 const MEDIA_DIR = path.join(UPLOADS_DIR, 'media');
 
 const REMOVE = process.argv.includes('--remove');
 const CLEAN = process.argv.includes('--clean');
+const wsArgIdx = process.argv.indexOf('--workspace');
+const WS_ARG = wsArgIdx !== -1 ? process.argv[wsArgIdx + 1] : null;
+
+console.log(`DB:      ${DB_PATH}`);
+console.log(`Uploads: ${UPLOADS_DIR}`);
 
 if (!fs.existsSync(DB_PATH)) { console.error(`DB not found at ${DB_PATH}`); process.exit(1); }
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
@@ -44,9 +55,11 @@ const ts = (d) => new Date(d).toISOString().slice(0, 19).replace('T', ' ');
 const publicUrl = (key) => '/' + ['uploads', key].join('/').replace(/\/+/g, '/');
 
 // ── Find the workspace to seed into ─────────────────────────────────────────
-// Prefer the workspace that already owns shoots (matches what the user sees);
-// otherwise the first user's workspace.
-let ws = db.prepare(`SELECT workspace_id AS id FROM ms_projects GROUP BY workspace_id
+// --workspace <id> wins; else the workspace that already owns the most shoots
+// (matches what the logged-in user sees); else the first user's workspace.
+let ws = null;
+if (WS_ARG) ws = { id: WS_ARG };
+if (!ws) ws = db.prepare(`SELECT workspace_id AS id FROM ms_projects GROUP BY workspace_id
   ORDER BY COUNT(*) DESC LIMIT 1`).get();
 let creator = null;
 if (ws) {
@@ -59,7 +72,17 @@ if (!ws) {
 }
 const WS = ws.id;
 const CREATED_BY = creator ? creator.id : null;
-console.log(`Workspace: ${WS}`);
+// Show who we're seeding into so the targeting is verifiable at a glance.
+const owner = db.prepare(`SELECT email FROM users WHERE workspace_id = ? ORDER BY created_at LIMIT 1`).get(WS);
+const projCount = db.prepare(`SELECT COUNT(*) AS c FROM ms_projects WHERE workspace_id = ?`).get(WS).c;
+console.log(`Workspace: ${WS}  (owner: ${owner ? owner.email : 'unknown'}, existing shoots: ${projCount})`);
+const allWs = db.prepare(`SELECT p.workspace_id AS id, COUNT(*) AS c,
+    (SELECT email FROM users u WHERE u.workspace_id = p.workspace_id ORDER BY created_at LIMIT 1) AS email
+  FROM ms_projects p GROUP BY p.workspace_id ORDER BY c DESC`).all();
+if (allWs.length > 1) {
+  console.log('Other workspaces with shoots (use --workspace <id> to target one):');
+  for (const w of allWs) if (w.id !== WS) console.log(`   ${w.id}  (${w.email || '?'}, ${w.c} shoots)`);
+}
 
 // ── Remove previously-seeded demo shoots (tag: settings.demo) ───────────────
 function removeDemo() {
