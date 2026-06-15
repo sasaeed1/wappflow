@@ -350,7 +350,25 @@ export const mediaAPI = {
   updateClip:    (clipId, data)      => api.put(`/media/clips/${clipId}`, data),
   deleteClip:    (clipId)            => api.delete(`/media/clips/${clipId}`),
   reorderClips:  (assetId, clip_ids) => api.put(`/media/assets/${assetId}/clips/order`, { clip_ids }),
+  // ── Portfolio (the creator's public showcase) ──
+  getPortfolio:        ()              => api.get('/media/portfolio'),
+  updatePortfolio:     (data)          => api.put('/media/portfolio', data),
+  portfolioHandleFree: (handle)        => api.get('/media/portfolio/handle-available', { params: { handle } }),
+  portfolioCandidates: ()              => api.get('/media/portfolio/candidates'),
+  addPortfolioItems:   (body)          => api.post('/media/portfolio/items', body),
+  uploadPortfolio:     (formData)      => api.post('/media/portfolio/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  reorderPortfolio:    (order)         => api.put('/media/portfolio/items/order', { order }),
+  updatePortfolioItem: (itemId, data)  => api.put(`/media/portfolio/items/${itemId}`, data),
+  deletePortfolioItem: (itemId)        => api.delete(`/media/portfolio/items/${itemId}`),
+  sharePortfolio:      (lead_id)       => api.post('/media/portfolio/share', { lead_id }),
 };
+
+// PUBLIC portfolio fetch — no auth, plain fetch (mirrors the /g/[token] portal)
+export async function fetchPublicPortfolio(handle) {
+  const res = await fetch(`${API_URL}/media/public/portfolio/${encodeURIComponent(handle)}`);
+  if (!res.ok) throw new Error(res.status === 404 ? 'not_found' : 'error');
+  return res.json();
+}
 
 // Resolve an API-relative media path (/uploads/...) to an absolute URL.
 export function mediaUrl(p) {

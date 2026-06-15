@@ -84,6 +84,7 @@ export default function StudioShell({ children }) {
 
         <nav className="ms-shell-nav" style={{ marginLeft: 8 }}>
           <button className="ms-shell-link" onClick={() => router.push('/studio')}>Shoots</button>
+          <button className="ms-shell-link" onClick={() => router.push('/studio/portfolio')}>Portfolio</button>
         </nav>
 
         <div style={{ flex: 1 }} />

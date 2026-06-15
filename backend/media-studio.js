@@ -162,6 +162,50 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     safeAlter(`ALTER TABLE ms_assets ADD COLUMN ${col}`);
   }
 
+  // PORTFOLIO — a per-user public showcase. Curated (the creator controls every
+  // item), auto-fed from PUBLISHED galleries/reels (never raw), with a vanity
+  // share link. Owns ms_portfolios + ms_portfolio_items only.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ms_portfolios (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      user_id TEXT,                       -- owner (one portfolio per user)
+      handle TEXT UNIQUE,                 -- vanity slug → /folio/:handle
+      token TEXT UNIQUE,                  -- opaque fallback resolver
+      title TEXT,
+      tagline TEXT,
+      bio TEXT,
+      theme TEXT DEFAULT 'atelier',
+      cover_url TEXT,
+      avatar_url TEXT,
+      is_public INTEGER DEFAULT 0,
+      auto_include INTEGER DEFAULT 1,     -- pull published-gallery work in automatically
+      settings TEXT DEFAULT '{}',         -- JSON: accent, contact{}, social{}, layout opts
+      view_count INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS ms_portfolio_items (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      portfolio_id TEXT NOT NULL,
+      asset_id TEXT,                      -- ref into ms_assets (library item), nullable
+      storage_key TEXT,                   -- for portfolio-only direct uploads
+      variants TEXT DEFAULT '{}',
+      kind TEXT DEFAULT 'photo',          -- photo|video
+      source TEXT DEFAULT 'manual',       -- manual|gallery|upload|reel
+      gallery_id TEXT,                    -- provenance
+      title TEXT,
+      caption TEXT,
+      featured INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_ms_portfolio_ws ON ms_portfolios(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_ms_portfolio_handle ON ms_portfolios(handle);
+    CREATE INDEX IF NOT EXISTS idx_ms_pf_items ON ms_portfolio_items(portfolio_id);
+  `);
+
   // ───────────────────────────────────────────────────────────────────────────
   // 2. STORAGE SEAM  (local disk today → swap this block for R2 presigned later)
   // ───────────────────────────────────────────────────────────────────────────
@@ -1135,6 +1179,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       }
 
       emitToLead(project, req, 'gallery_published', `Gallery "${g.title}" published & shared`, link);
+      autoIncludeGalleryIntoPortfolio(req.workspaceId, req.userId, g); // feed the creator's portfolio (if opted in)
       logAudit(req.workspaceId, req.userId, 'publish', 'ms_gallery', g.id, { version: g.version + 1, delivery });
       broadcastToWorkspace(req.workspaceId, 'ms_gallery_published', { gallery_id: g.id });
       res.json({ ...getGallery(req.workspaceId, g.id), share_url: link, delivery, password_hash: undefined });
@@ -1794,6 +1839,255 @@ Only suggest actions that make sense for the question. If none make sense, retur
     const r = db.prepare('SELECT * FROM ms_video_exports WHERE id = ? AND workspace_id = ?').get(req.params.exportId, req.workspaceId);
     if (!r) return res.status(404).json({ error: 'Export not found' });
     res.json({ ...r, url: r.storage_key ? publicUrl(r.storage_key) : null });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  PORTFOLIO — the creator's public showcase (curated, auto-fed, shareable)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 10 distinct identities, rendered entirely on the public page (see web).
+  const PORTFOLIO_THEMES = ['atelier', 'noir', 'editorial', 'gallery', 'film', 'brut', 'luxe', 'vivid', 'mono', 'frame'];
+  const slugify = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+  const portfolioShareUrl = (pf) => `${clientBaseUrl}/folio/${pf.handle || pf.token}`;
+
+  function getOrCreatePortfolio(req) {
+    let pf = db.prepare('SELECT * FROM ms_portfolios WHERE workspace_id = ? AND user_id = ?').get(req.workspaceId, req.userId);
+    if (pf) return pf;
+    const u = db.prepare('SELECT full_name, email FROM users WHERE id = ?').get(req.userId) || {};
+    const base = slugify(u.full_name || (u.email || '').split('@')[0] || 'studio') || 'studio';
+    const token = crypto.randomBytes(8).toString('hex');
+    let handle = base, n = 0;
+    while (db.prepare('SELECT 1 FROM ms_portfolios WHERE handle = ?').get(handle)) {
+      handle = `${base}-${Math.random().toString(36).slice(2, 5)}`;
+      if (++n > 5) { handle = `${base}-${token.slice(0, 5)}`; break; }
+    }
+    const id = generateId();
+    db.prepare(`INSERT INTO ms_portfolios (id, workspace_id, user_id, handle, token, title, tagline, theme)
+      VALUES (?,?,?,?,?,?,?,'atelier')`).run(id, req.workspaceId, req.userId, handle, token, u.full_name || 'My Studio', 'Photography & Film');
+    return db.prepare('SELECT * FROM ms_portfolios WHERE id = ?').get(id);
+  }
+
+  function shapePortfolioItem(it) {
+    let v = {};
+    try { v = JSON.parse((it.asset_id ? it.a_variants : it.variants) || '{}'); } catch {}
+    const key = it.asset_id ? it.a_key : it.storage_key;
+    const kind = it.kind || (it.a_type === 'video' ? 'video' : 'photo');
+    return {
+      id: it.id, kind, source: it.source, title: it.title, caption: it.caption,
+      featured: !!it.featured, sort_order: it.sort_order, asset_id: it.asset_id || null,
+      url: v.web || v.original || (key ? publicUrl(key) : null),
+      full_url: v.original || v.web || (key ? publicUrl(key) : null),
+      poster_url: it.asset_id ? (it.a_poster || null) : (v.poster || null),
+      video_url: kind === 'video' ? (it.asset_id ? (it.a_proxy || (key ? publicUrl(key) : null)) : (key ? publicUrl(key) : null)) : null,
+    };
+  }
+  function getPortfolioItems(portfolioId) {
+    return db.prepare(`
+      SELECT pi.*, a.variants AS a_variants, a.storage_key AS a_key, a.poster_url AS a_poster, a.proxy_url AS a_proxy, a.type AS a_type
+      FROM ms_portfolio_items pi LEFT JOIN ms_assets a ON a.id = pi.asset_id
+      WHERE pi.portfolio_id = ? ORDER BY pi.sort_order, pi.created_at
+    `).all(portfolioId).map(shapePortfolioItem);
+  }
+  function shapePortfolio(pf, { withItems = false } = {}) {
+    let settings = {}; try { settings = JSON.parse(pf.settings || '{}'); } catch {}
+    const out = {
+      id: pf.id, handle: pf.handle, token: pf.token, title: pf.title, tagline: pf.tagline, bio: pf.bio,
+      theme: pf.theme, cover_url: pf.cover_url, avatar_url: pf.avatar_url,
+      is_public: !!pf.is_public, auto_include: !!pf.auto_include, settings,
+      share_url: portfolioShareUrl(pf), view_count: pf.view_count || 0, themes: PORTFOLIO_THEMES,
+    };
+    if (withItems) out.items = getPortfolioItems(pf.id);
+    return out;
+  }
+  function shapePublicPortfolio(pf) {
+    let settings = {}; try { settings = JSON.parse(pf.settings || '{}'); } catch {}
+    return {
+      title: pf.title, tagline: pf.tagline, bio: pf.bio, theme: pf.theme,
+      cover_url: pf.cover_url, avatar_url: pf.avatar_url, settings, items: getPortfolioItems(pf.id),
+    };
+  }
+  // called from gallery publish — opt-in auto-feed of published work (never raw)
+  function autoIncludeGalleryIntoPortfolio(workspaceId, userId, gallery) {
+    try {
+      const pf = db.prepare('SELECT * FROM ms_portfolios WHERE workspace_id = ? AND user_id = ?').get(workspaceId, userId);
+      if (!pf || !pf.auto_include) return;
+      const have = new Set(db.prepare('SELECT asset_id FROM ms_portfolio_items WHERE portfolio_id = ? AND asset_id IS NOT NULL').all(pf.id).map(r => r.asset_id));
+      const assets = db.prepare(`SELECT a.id, a.type FROM ms_gallery_assets ga JOIN ms_assets a ON a.id = ga.asset_id WHERE ga.gallery_id = ? AND ga.is_hidden = 0 ORDER BY ga.sort_order`).all(gallery.id);
+      let base = db.prepare('SELECT COALESCE(MAX(sort_order),0) m FROM ms_portfolio_items WHERE portfolio_id = ?').get(pf.id).m;
+      const ins = db.prepare(`INSERT INTO ms_portfolio_items (id, workspace_id, portfolio_id, asset_id, kind, source, gallery_id, sort_order) VALUES (?,?,?,?,?,'gallery',?,?)`);
+      db.transaction(() => { for (const a of assets) { if (have.has(a.id)) continue; ins.run(generateId(), workspaceId, pf.id, a.id, a.type === 'video' ? 'video' : 'photo', gallery.id, ++base); } })();
+    } catch {}
+  }
+
+  app.get('/api/media/portfolio', auth, (req, res) => {
+    try { res.json(shapePortfolio(getOrCreatePortfolio(req), { withItems: true })); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/media/portfolio/handle-available', auth, (req, res) => {
+    try {
+      const h = slugify(req.query.handle);
+      if (!h || h.length < 3) return res.json({ available: false, handle: h, reason: 'too_short' });
+      const pf = getOrCreatePortfolio(req);
+      res.json({ available: !db.prepare('SELECT id FROM ms_portfolios WHERE handle = ? AND id != ?').get(h, pf.id), handle: h });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/media/portfolio', auth, (req, res) => {
+    try {
+      const pf = getOrCreatePortfolio(req);
+      const b = req.body || {}; const set = {};
+      if (b.title !== undefined) set.title = String(b.title || '').slice(0, 80);
+      if (b.tagline !== undefined) set.tagline = String(b.tagline || '').slice(0, 160);
+      if (b.bio !== undefined) set.bio = String(b.bio || '').slice(0, 1500);
+      if (b.theme !== undefined && PORTFOLIO_THEMES.includes(b.theme)) set.theme = b.theme;
+      if (b.cover_url !== undefined) set.cover_url = b.cover_url || null;
+      if (b.avatar_url !== undefined) set.avatar_url = b.avatar_url || null;
+      if (b.is_public !== undefined) set.is_public = b.is_public ? 1 : 0;
+      if (b.auto_include !== undefined) set.auto_include = b.auto_include ? 1 : 0;
+      if (b.settings !== undefined && b.settings && typeof b.settings === 'object') set.settings = JSON.stringify(b.settings);
+      if (b.handle !== undefined) {
+        const h = slugify(b.handle);
+        if (!h || h.length < 3) return res.status(400).json({ error: 'Handle needs 3+ letters, numbers or hyphens.' });
+        if (db.prepare('SELECT id FROM ms_portfolios WHERE handle = ? AND id != ?').get(h, pf.id)) return res.status(409).json({ error: 'That handle is taken.' });
+        set.handle = h;
+      }
+      const keys = Object.keys(set);
+      if (keys.length) db.prepare(`UPDATE ms_portfolios SET ${keys.map(k => `${k} = @${k}`).join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = @id`).run({ ...set, id: pf.id });
+      logAudit(req.workspaceId, req.userId, 'portfolio_update', 'ms_portfolio', pf.id, { keys });
+      res.json(shapePortfolio(db.prepare('SELECT * FROM ms_portfolios WHERE id = ?').get(pf.id), { withItems: true }));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/media/portfolio/candidates', auth, (req, res) => {
+    try {
+      const pf = getOrCreatePortfolio(req);
+      const have = new Set(db.prepare('SELECT asset_id FROM ms_portfolio_items WHERE portfolio_id = ? AND asset_id IS NOT NULL').all(pf.id).map(r => r.asset_id));
+      const rows = db.prepare(`
+        SELECT a.id, a.type, a.variants, a.storage_key, a.poster_url, g.id AS gallery_id, g.title AS gallery_title, g.published_at
+        FROM ms_gallery_assets ga
+        JOIN ms_galleries g ON g.id = ga.gallery_id AND g.status = 'published'
+        JOIN ms_assets a ON a.id = ga.asset_id
+        WHERE g.workspace_id = ? AND ga.is_hidden = 0
+        ORDER BY g.published_at DESC, ga.sort_order
+      `).all(req.workspaceId);
+      const seen = new Set(); const candidates = [];
+      for (const r of rows) {
+        if (seen.has(r.id)) continue; seen.add(r.id);
+        let v = {}; try { v = JSON.parse(r.variants || '{}'); } catch {}
+        candidates.push({
+          asset_id: r.id, kind: r.type === 'video' ? 'video' : 'photo',
+          gallery_id: r.gallery_id, gallery_title: r.gallery_title, in_portfolio: have.has(r.id),
+          thumb_url: v.thumb || v.web || r.poster_url || publicUrl(r.storage_key),
+        });
+      }
+      res.json({ candidates });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/media/portfolio/items', auth, (req, res) => {
+    try {
+      const pf = getOrCreatePortfolio(req);
+      let assetIds = Array.isArray(req.body.asset_ids) ? req.body.asset_ids : [];
+      if (req.body.gallery_id) {
+        assetIds = assetIds.concat(db.prepare(`SELECT a.id FROM ms_gallery_assets ga JOIN ms_assets a ON a.id = ga.asset_id JOIN ms_galleries g ON g.id = ga.gallery_id WHERE ga.gallery_id = ? AND g.workspace_id = ? AND ga.is_hidden = 0 ORDER BY ga.sort_order`).all(req.body.gallery_id, req.workspaceId).map(r => r.id));
+      }
+      const have = new Set(db.prepare('SELECT asset_id FROM ms_portfolio_items WHERE portfolio_id = ? AND asset_id IS NOT NULL').all(pf.id).map(r => r.asset_id));
+      let base = db.prepare('SELECT COALESCE(MAX(sort_order),0) m FROM ms_portfolio_items WHERE portfolio_id = ?').get(pf.id).m;
+      const sel = db.prepare('SELECT id, type FROM ms_assets WHERE id = ? AND workspace_id = ?');
+      const ins = db.prepare(`INSERT INTO ms_portfolio_items (id, workspace_id, portfolio_id, asset_id, kind, source, sort_order) VALUES (?,?,?,?,?,'manual',?)`);
+      let n = 0;
+      db.transaction(() => {
+        for (const aid of assetIds) {
+          if (have.has(aid)) continue;
+          const a = sel.get(aid, req.workspaceId); if (!a) continue;
+          ins.run(generateId(), req.workspaceId, pf.id, aid, a.type === 'video' ? 'video' : 'photo', ++base);
+          have.add(aid); n++;
+        }
+      })();
+      res.json({ added: n, items: getPortfolioItems(pf.id) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/media/portfolio/upload', auth, mediaUpload.array('files', 30), (req, res) => {
+    try {
+      const pf = getOrCreatePortfolio(req);
+      let base = db.prepare('SELECT COALESCE(MAX(sort_order),0) m FROM ms_portfolio_items WHERE portfolio_id = ?').get(pf.id).m;
+      const ins = db.prepare(`INSERT INTO ms_portfolio_items (id, workspace_id, portfolio_id, storage_key, variants, kind, source, sort_order) VALUES (?,?,?,?,?,?,'upload',?)`);
+      const files = req.files || [];
+      db.transaction(() => {
+        for (const f of files) {
+          const key = `media/${path.basename(f.path)}`;
+          const kind = detectType(f.mimetype, f.originalname) === 'video' ? 'video' : 'photo';
+          ins.run(generateId(), req.workspaceId, pf.id, key, JSON.stringify({ original: publicUrl(key), web: publicUrl(key) }), kind, ++base);
+        }
+      })();
+      res.json({ added: files.length, items: getPortfolioItems(pf.id) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/media/portfolio/items/order', auth, (req, res) => {
+    try {
+      const pf = getOrCreatePortfolio(req);
+      const order = Array.isArray(req.body.order) ? req.body.order : [];
+      const upd = db.prepare('UPDATE ms_portfolio_items SET sort_order = ? WHERE id = ? AND portfolio_id = ?');
+      db.transaction(() => { order.forEach((iid, i) => upd.run(i, iid, pf.id)); })();
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/media/portfolio/items/:itemId', auth, (req, res) => {
+    try {
+      const pf = getOrCreatePortfolio(req);
+      const it = db.prepare('SELECT * FROM ms_portfolio_items WHERE id = ? AND portfolio_id = ?').get(req.params.itemId, pf.id);
+      if (!it) return res.status(404).json({ error: 'Item not found' });
+      const set = {};
+      if (req.body.caption !== undefined) set.caption = String(req.body.caption || '').slice(0, 300);
+      if (req.body.title !== undefined) set.title = String(req.body.title || '').slice(0, 120);
+      if (req.body.featured !== undefined) set.featured = req.body.featured ? 1 : 0;
+      const keys = Object.keys(set);
+      if (keys.length) db.prepare(`UPDATE ms_portfolio_items SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: it.id });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/media/portfolio/items/:itemId', auth, (req, res) => {
+    try {
+      const pf = getOrCreatePortfolio(req);
+      const it = db.prepare('SELECT * FROM ms_portfolio_items WHERE id = ? AND portfolio_id = ?').get(req.params.itemId, pf.id);
+      if (!it) return res.status(404).json({ error: 'Item not found' });
+      if (it.source === 'upload' && it.storage_key) { try { fs.unlinkSync(path.join(uploadsDir, it.storage_key)); } catch {} }
+      db.prepare('DELETE FROM ms_portfolio_items WHERE id = ?').run(it.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // one-click share to a CRM client over the existing WhatsApp rail
+  app.post('/api/media/portfolio/share', auth, async (req, res) => {
+    try {
+      const pf = getOrCreatePortfolio(req);
+      if (!pf.is_public) return res.status(400).json({ error: 'Make the portfolio public before sharing.' });
+      const link = portfolioShareUrl(pf);
+      let delivery = { whatsapp: 'skipped' };
+      if (req.body.lead_id) {
+        const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.body.lead_id, req.workspaceId);
+        if (lead && lead.customer_phone) {
+          try { await sendClientMessage({ lead, userId: req.userId, text: `✨ Have a look at my portfolio:\n${link}` }); delivery.whatsapp = 'sent'; }
+          catch (e) { delivery.whatsapp = 'failed'; delivery.error = e.message; }
+        } else delivery.whatsapp = 'no_phone';
+      }
+      res.json({ share_url: link, delivery });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PUBLIC portfolio page data (NO auth — the handle/token is the capability)
+  app.get('/api/media/public/portfolio/:handle', (req, res) => {
+    try {
+      const h = req.params.handle;
+      const pf = db.prepare('SELECT * FROM ms_portfolios WHERE (handle = ? OR token = ?) AND is_public = 1').get(h, h);
+      if (!pf) return res.status(404).json({ error: 'Portfolio not found' });
+      try { db.prepare('UPDATE ms_portfolios SET view_count = view_count + 1 WHERE id = ?').run(pf.id); } catch {}
+      res.json(shapePublicPortfolio(pf));
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   // ── Public client portal (NO auth — the share token IS the capability) ───────
