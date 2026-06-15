@@ -2,7 +2,7 @@
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- *  WappFlow · CONTRACTS  — a self-contained e-signature module (DocuSign-grade)
+ *  WappFlow · CONTRACTS  — a self-contained, full e-signature module
  * ─────────────────────────────────────────────────────────────────────────────
  *  Additive: owns the `contracts*` tables only; touches no existing table/route.
  *  Compliance (ESIGN / UETA): explicit intent-to-sign consent, a full audit

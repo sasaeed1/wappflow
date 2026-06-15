@@ -1480,8 +1480,8 @@ useEffect(() => {
                 <ThumbsDown size={13} /> Lost
               </button>
             </div>
-            {lead.status === 'Closed - Won' && !lead.is_client && (
-              <button onClick={moveToClient} disabled={actionLoading} title="Hide from Leads (kept in chat + analytics)"
+            {!lead.is_client && (
+              <button onClick={moveToClient} disabled={actionLoading} title="Mark as a client — hides from Leads but keeps the chat, history & analytics"
                 style={{ marginTop: 8, width: '100%', padding: '9px', borderRadius: 10, border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 800, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <UserCheck size={13} /> Move to Clients
               </button>

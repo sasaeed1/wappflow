@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { LayoutGrid, Users, Camera, Zap, ArrowUpRight } from 'lucide-react';
+import { LayoutGrid, Users, Camera, Zap, ArrowUpRight, FileSignature } from 'lucide-react';
 
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 
@@ -44,6 +44,7 @@ export default function AppSwitcher() {
           {item(Users, 'linear-gradient(135deg,#6366f1,#4f46e5)', 'WappFlow CRM', { href: '/dashboard' }, true)}
           {/* same-origin: keep the referrer so the new tab inherits the signed-in session */}
           {item(Camera, 'linear-gradient(135deg,#0e0e11,#3a3a44)', 'Media Studio', { href: '/studio', target: '_blank' }, false)}
+          {item(FileSignature, 'linear-gradient(135deg,#0ea5e9,#6366f1)', 'Contracts', { href: '/contracts', target: '_blank' }, false)}
           {item(Zap, 'linear-gradient(135deg,#A78BFA,#22D3EE,#EC4899)', 'Flux', { href: FLUX_URL, target: '_blank', rel: 'noreferrer' }, false)}
         </div>
       )}

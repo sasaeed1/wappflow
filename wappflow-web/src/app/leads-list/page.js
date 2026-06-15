@@ -782,6 +782,20 @@ export default function LeadsListPage() {
               <Download size={14} /> Export Selected
             </button>
             <button
+              onClick={async () => {
+                if (!window.confirm(`Move ${selected.size} lead${selected.size > 1 ? 's' : ''} to Clients? They'll leave the Leads list but keep their chat, history & analytics.`)) return;
+                const ids = [...selected];
+                for (const id of ids) { try { await leadsAPI.setClient(id, true); } catch {} }
+                setAllLeads(prev => prev.filter(l => !ids.includes(l.id)));
+                clearSelection();
+                showToast(`Moved ${ids.length} to Clients`, 'success');
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#0ea5e9', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+              title="Mark selected as clients — hidden from Leads, kept in chat & analytics"
+            >
+              <UserCheck size={14} /> Move to Clients
+            </button>
+            <button
               onClick={() => setShowTrashConfirm(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#dc2626', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
               title="Move selected leads to trash"

@@ -7,7 +7,7 @@ import {
   Download, Ban, Mail, MessageCircle, FileText, ChevronRight,
 } from 'lucide-react';
 import { contractsAPI, leadsAPI } from '../../lib/api';
-import NavBar from '../../components/NavBar';
+import NavBar from '../../components/ContractsShell';
 
 const STATUS = {
   draft:     { label: 'Draft',     color: '#94a3b8', bg: 'rgba(148,163,184,0.14)' },
@@ -81,7 +81,7 @@ export default function ContractsPage() {
             <div style={{ textAlign: 'center', padding: 'clamp(50px,10vh,110px) 20px', border: '1px dashed var(--border)', borderRadius: 16 }}>
               <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--accent-light)', color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}><FileSignature size={24} /></div>
               <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: '0 0 6px' }}>No contracts yet</h2>
-              <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 auto 20px', maxWidth: 380 }}>Create a contract, send it over WhatsApp or email, and get it signed — no DocuSign account needed.</p>
+              <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 auto 20px', maxWidth: 380 }}>Create a contract, send it over WhatsApp or email, and collect a legally-binding e-signature — all in one place.</p>
               <button onClick={() => setShowNew(true)} style={btnPrimary}><Plus size={15} /> New contract</button>
             </div>
           ) : (
