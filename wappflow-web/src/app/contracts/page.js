@@ -103,14 +103,15 @@ export default function ContractsStudioPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {shown.map(d => (
-                    <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 13, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                    <div key={d.id} onClick={() => router.push(`/contracts/${d.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 13, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', transition: 'border-color .12s' }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
                       <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, background: 'var(--accent-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileText size={17} /></div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</div>
                         <div style={{ fontSize: 12.5, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{d.type}{d.client_name ? ` · ${d.client_name}` : ''} · {d.updated_at ? `updated ${fmtDate(d.updated_at)}` : ''}</div>
                       </div>
                       <Pill s={d.status} />
-                      <button onClick={async () => { if (window.confirm(`Delete "${d.title}"?`)) { try { await csAPI.remove(d.id); load(); } catch {} } }} title="Delete" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={15} /></button>
+                      <button onClick={async (e) => { e.stopPropagation(); if (window.confirm(`Delete "${d.title}"?`)) { try { await csAPI.remove(d.id); load(); } catch {} } }} title="Delete" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={15} /></button>
                     </div>
                   ))}
                   {shown.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>No documents match.</p>}
@@ -139,7 +140,7 @@ export default function ContractsStudioPage() {
         </div>
       </div>
 
-      {showNew && <NewDocModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load(); say('Draft created — the visual builder lands next'); }} say={say} />}
+      {showNew && <NewDocModal onClose={() => setShowNew(false)} onCreated={(id) => { setShowNew(false); router.push(`/contracts/${id}`); }} say={say} />}
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 700, padding: '10px 18px', borderRadius: 999, background: 'var(--text)', color: 'var(--surface)', fontSize: 13 }}>{toast}</div>}
     </ContractsStudioShell>
   );
@@ -171,7 +172,7 @@ function NewDocModal({ onClose, onCreated, say }) {
   const create = async () => {
     if (!title.trim()) { setErr('Give it a title'); return; }
     setSaving(true); setErr('');
-    try { await csAPI.create({ type, title: title.trim(), lead_id: leadId || undefined }); onCreated(); }
+    try { const r = await csAPI.create({ type, title: title.trim(), lead_id: leadId || undefined }); onCreated(r.data.id); }
     catch (e) { setErr(e.response?.data?.error || 'Could not create'); setSaving(false); }
   };
 
