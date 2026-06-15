@@ -107,6 +107,7 @@ export default function StudioPage() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
@@ -123,6 +124,11 @@ export default function StudioPage() {
   const featured = live[0] || projects[0] || null;
   const totalPhotos = useMemo(() => projects.reduce((s, p) => s + (p.asset_count || 0), 0), [projects]);
   const clients = useMemo(() => new Set(projects.map(p => p.client_name).filter(Boolean)).size, [projects]);
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter(p => `${p.title || ''} ${p.client_name || ''} ${(p.project_type || '').replace('_', ' ')}`.toLowerCase().includes(q));
+  }, [projects, query]);
 
   return (
     <NavBar>
@@ -169,25 +175,38 @@ export default function StudioPage() {
           <section className="ms-wall">
             <div className="ms-wall-head">
               <h2 className="ms-h2">The work</h2>
-              <button onClick={() => setShowNew(true)} className="ms-btn-ink"><Plus size={16} /> New shoot</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div className="ms-shoot-search">
+                  <Search size={15} />
+                  <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search shoots…" aria-label="Search shoots" />
+                  {query && <button onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}
+                </div>
+                <button onClick={() => setShowNew(true)} className="ms-btn-ink"><Plus size={16} /> New shoot</button>
+              </div>
             </div>
-            <div className="ms-collection-grid">
-              {projects.map((p, i) => (
-                <button key={p.id} onClick={() => router.push(`/studio/${p.id}`)} className="ms-covercard" style={{ animationDelay: `${Math.min(i * 0.06, 0.5)}s` }}>
-                  {p.cover_url ? <img src={mediaUrl(p.cover_url)} alt={p.title} /> : <div className="ms-covercard-ph" />}
-                  <div className="ms-covercard-veil" />
-                  <div className="ms-covercard-body">
-                    <span className="ms-covercard-tag">{(p.project_type || 'general').replace('_', ' ')}{p.status === 'archived' ? ' · archived' : ''}</span>
-                    <h3 className="ms-covercard-title">{p.title}</h3>
-                    <p className="ms-covercard-sub">{p.client_name ? `${p.client_name} · ` : ''}{p.asset_count || 0} photo{p.asset_count === 1 ? '' : 's'}</p>
-                  </div>
-                </button>
-              ))}
-              <button className="ms-covercard ms-covercard-add" onClick={() => setShowNew(true)}>
-                <div className="ms-covercard-ph" />
-                <span className="ms-covercard-addlabel"><Plus size={18} /> New shoot</span>
-              </button>
-            </div>
+            {shown.length === 0 ? (
+              <div className="ms-empty-soft">No shoots match “{query}”.</div>
+            ) : (
+              <div className="ms-collection-grid">
+                {shown.map((p, i) => (
+                  <button key={p.id} onClick={() => router.push(`/studio/${p.id}`)} className="ms-covercard" style={{ animationDelay: `${Math.min(i * 0.06, 0.5)}s` }}>
+                    {p.cover_url ? <img src={mediaUrl(p.cover_url)} alt={p.title} /> : <div className="ms-covercard-ph" />}
+                    <div className="ms-covercard-veil" />
+                    <div className="ms-covercard-body">
+                      <span className="ms-covercard-tag">{(p.project_type || 'general').replace('_', ' ')}{p.status === 'archived' ? ' · archived' : ''}</span>
+                      <h3 className="ms-covercard-title">{p.title}</h3>
+                      <p className="ms-covercard-sub">{p.client_name ? `${p.client_name} · ` : ''}{p.asset_count || 0} photo{p.asset_count === 1 ? '' : 's'}</p>
+                    </div>
+                  </button>
+                ))}
+                {!query && (
+                  <button className="ms-covercard ms-covercard-add" onClick={() => setShowNew(true)}>
+                    <div className="ms-covercard-ph" />
+                    <span className="ms-covercard-addlabel"><Plus size={18} /> New shoot</span>
+                  </button>
+                )}
+              </div>
+            )}
           </section>
         </div>
       )}

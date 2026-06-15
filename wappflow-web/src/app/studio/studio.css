@@ -626,6 +626,14 @@ html[data-ms-theme="cinema"] .ms-stage-title { text-transform: uppercase; }
   margin-bottom: clamp(22px, 3vw, 42px); }
 html[data-ms-theme="editorial"] .ms-wall-head { flex-direction: column; align-items: center; text-align: center; }
 .ms-wall-head .ms-h2 { font-size: clamp(28px, 4vw, 52px); }
+/* shoot search — quiet field that matches the studio identity */
+.ms-shoot-search { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 999px;
+  background: var(--ms-surface); border: 1px solid var(--ms-line); color: var(--ms-ink-3); transition: border-color var(--ms-speed) var(--ms-ease); }
+.ms-shoot-search:focus-within { border-color: var(--ms-ink-2); }
+.ms-shoot-search input { border: none; background: none; outline: none; width: clamp(120px, 22vw, 240px); font-family: var(--ms-font-ui); font-size: 13.5px; color: var(--ms-ink); }
+.ms-shoot-search input::placeholder { color: var(--ms-ink-3); }
+.ms-shoot-search button { display: inline-flex; border: none; background: none; cursor: pointer; color: var(--ms-ink-3); padding: 2px; }
+.ms-shoot-search button:hover { color: var(--ms-ink); }
 
 /* "new shoot" tile sits in the masonry as a dashed, inviting placeholder */
 .ms-covercard-add { background: transparent; border: 1.5px dashed var(--ms-line); display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 5; }
