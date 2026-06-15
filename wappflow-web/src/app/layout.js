@@ -27,7 +27,9 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    // pre-hydration inline script below mutates <html> (theme class / data-ms-theme),
+    // so suppress the expected attribute hydration warning on this element only.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
           try {

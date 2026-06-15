@@ -642,6 +642,11 @@ html[data-ms-theme="editorial"] .ms-wall-head { flex-direction: column; align-it
 @keyframes ms-scrolldot { 0% { opacity: 0; transform: translate(-50%, 0); } 35% { opacity: 1; } 70%,100% { opacity: 0; transform: translate(-50%, 11px); } }
 @keyframes ms-stage-in { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
 
+/* — Help center: sticky TOC sidebar (left) + content (right) — */
+.ms-helpgrid { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: clamp(20px, 3vw, 48px); align-items: start; }
+.ms-helpgrid > aside { position: sticky; top: 76px; align-self: start; }
+@media (max-width: 860px) { .ms-helpgrid { grid-template-columns: 1fr; } .ms-helpgrid > aside { position: static; } }
+
 /* — Project workspace: media-first two-column layout — */
 .ms-workgrid { display: grid; grid-template-columns: minmax(0, 1fr) 352px; gap: clamp(20px, 2.6vw, 36px); align-items: start; }
 .ms-workmain { grid-column: 1; grid-row: 1; min-width: 0; }

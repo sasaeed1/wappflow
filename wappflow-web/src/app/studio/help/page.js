@@ -207,9 +207,9 @@ export default function StudioHelpPage() {
           </div>
         </div>
 
-        <div className="ms-workgrid" style={{ gridTemplateColumns: '230px minmax(0,1fr)', alignItems: 'start' }}>
+        <div className="ms-helpgrid">
           {/* sidebar TOC */}
-          <aside className="ms-workaside" style={{ top: 76 }}>
+          <aside>
             <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {SECTIONS.map(s => (
                 <button key={s.id} onClick={() => go(s.id)} style={{
@@ -225,7 +225,7 @@ export default function StudioHelpPage() {
           </aside>
 
           {/* content */}
-          <div className="ms-workmain">
+          <div>
             {shown.length === 0 ? (
               <div className="ms-empty-soft">No help articles match “{q}”. Try another term.</div>
             ) : shown.map(s => (
