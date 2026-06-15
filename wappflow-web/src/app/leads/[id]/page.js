@@ -18,7 +18,7 @@ import {
   leadsAPI, presetsAPI, tagsAPI, emailTemplatesAPI,
   invoicesAPI, emailWorkflowsAPI, teamAPI, settingsAPI,
   leadEmailsAPI, leadChannelsAPI, leadRelationsAPI, timelineAPI, aiAPI, lostReasonsAPI,
-  displayPhone, formatCurrency, BASE_URL, mediaAPI, mediaUrl,
+  displayPhone, formatCurrency, BASE_URL, mediaAPI, mediaUrl, contractsAPI,
 } from '../../../lib/api';
 import { formatSmart, formatDateTime, formatRelative, formatFull, formatDate, formatTime } from '../../../lib/datetime';
 import { markLeadSeen } from '../../../lib/unread';
@@ -575,6 +575,40 @@ function LeadStudioSection({ leadId }) {
         ))}
       </div>
       <button onClick={() => open('/studio')} style={{ marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px', borderRadius: 9, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Plus size={13} /> New shoot</button>
+    </div>
+  );
+}
+
+// Contracts linked to this lead — quick status + deep link to the module.
+function LeadContractsSection({ leadId }) {
+  const router = useRouter();
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    let on = true;
+    contractsAPI.list({ lead_id: leadId }).then(r => { if (on) setItems(r.data.contracts || []); }).catch(() => { if (on) setItems([]); });
+    return () => { on = false; };
+  }, [leadId]);
+  if (!items || items.length === 0) return null;
+  const C = { draft: '#94a3b8', sent: '#3b82f6', viewed: '#6366f1', signed: '#10b981', completed: '#10b981', declined: '#ef4444', voided: '#94a3b8' };
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 16, marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>
+          <span style={{ width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileText size={14} color="#fff" /></span>
+          Contracts
+        </div>
+        <button onClick={() => router.push('/contracts')} style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>All <ChevronRight size={12} /></button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map(c => (
+          <button key={c.id} onClick={() => router.push('/contracts')} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 9, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', textAlign: 'left' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
+            </div>
+            <span style={{ fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: C[c.status] || '#94a3b8' }}>{c.status}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1462,6 +1496,9 @@ useEffect(() => {
 
           {/* Media Studio — linked shoots for this client (appears once a shoot is connected) */}
           <LeadStudioSection leadId={leadId} />
+
+          {/* Contracts — e-signature documents for this client */}
+          <LeadContractsSection leadId={leadId} />
 
           {/* Lead Intelligence — shows AI-derived score / sentiment / urgency once analysis has run */}
           {(lead.lead_score || lead.sentiment || lead.urgency) && (() => {

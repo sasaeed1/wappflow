@@ -375,6 +375,38 @@ export async function fetchPublicPortfolio(handle) {
   return res.json();
 }
 
+// ── Contracts / e-signature ──
+export const contractsAPI = {
+  list:          (params)      => api.get('/contracts', { params }),
+  get:           (id)          => api.get(`/contracts/${id}`),
+  create:        (data)        => api.post('/contracts', data),
+  update:        (id, data)    => api.put(`/contracts/${id}`, data),
+  remove:        (id)          => api.delete(`/contracts/${id}`),
+  send:          (id, channels)=> api.post(`/contracts/${id}/send`, { channels }),
+  voidContract:  (id)          => api.post(`/contracts/${id}/void`),
+  downloadPdf:   (id)          => api.get(`/contracts/${id}/pdf`, { responseType: 'blob' }),
+  templates:     ()            => api.get('/contract-templates'),
+  createTemplate:(data)        => api.post('/contract-templates', data),
+  deleteTemplate:(id)          => api.delete(`/contract-templates/${id}`),
+};
+
+// Public signing (no auth — token is the capability)
+export async function fetchPublicContract(token) {
+  const r = await fetch(`${API_URL}/contracts/sign/${encodeURIComponent(token)}`);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'unavailable');
+  return r.json();
+}
+export async function signPublicContract(token, data) {
+  const r = await fetch(`${API_URL}/contracts/sign/${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not sign');
+  return r.json();
+}
+export async function declinePublicContract(token, reason) {
+  const r = await fetch(`${API_URL}/contracts/sign/${encodeURIComponent(token)}/decline`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+  return r.ok;
+}
+export const publicContractPdfUrl = (token) => `${API_URL}/contracts/sign/${encodeURIComponent(token)}/pdf`;
+
 // Resolve an API-relative media path (/uploads/...) to an absolute URL.
 export function mediaUrl(p) {
   if (!p) return '';

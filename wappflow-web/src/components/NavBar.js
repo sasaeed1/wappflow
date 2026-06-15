@@ -6,7 +6,7 @@ import {
   Zap, LayoutDashboard, Users, BarChart2, UserCheck,
   HelpCircle, Settings, Bell, LogOut,
   MessageCircle, X, Clock, CheckCircle, CheckCircle2, Brain,
-  FileText, Inbox, Menu, ChevronDown,
+  FileText, Inbox, Menu, ChevronDown, FileSignature,
   Camera, Globe, MonitorSmartphone, Sparkles,
   Crown, Lock
 } from 'lucide-react';
@@ -170,6 +170,7 @@ const NAV_ITEMS = [
   { label: 'Clients',   icon: UserCheck,       path: '/clients' },
   { label: 'Inbox',     icon: Inbox,           path: '/chat' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
+  { label: 'Contracts', icon: FileSignature,   path: '/contracts' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports',
     lockFeature: 'analytics', requiredPlan: 'Growth' },
 ];
