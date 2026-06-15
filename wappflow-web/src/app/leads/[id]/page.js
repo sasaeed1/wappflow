@@ -18,7 +18,7 @@ import {
   leadsAPI, presetsAPI, tagsAPI, emailTemplatesAPI,
   invoicesAPI, emailWorkflowsAPI, teamAPI, settingsAPI,
   leadEmailsAPI, leadChannelsAPI, leadRelationsAPI, timelineAPI, aiAPI, lostReasonsAPI,
-  displayPhone, formatCurrency, BASE_URL,
+  displayPhone, formatCurrency, BASE_URL, mediaAPI, mediaUrl,
 } from '../../../lib/api';
 import { formatSmart, formatDateTime, formatRelative, formatFull, formatDate, formatTime } from '../../../lib/datetime';
 import { markLeadSeen } from '../../../lib/unread';
@@ -539,6 +539,45 @@ function EmailWorkflowModal({ lead, templates, onClose, onSaved }) {
 // ════════════════════════════════════════════════════════════
 //  MAIN PAGE
 // ════════════════════════════════════════════════════════════
+
+// Studio shoots linked to this lead. Renders only when shoots exist (i.e. the
+// number has been connected to a shoot in Media Studio). Opens in the Studio tab.
+function LeadStudioSection({ leadId }) {
+  const [shoots, setShoots] = useState(null);
+  useEffect(() => {
+    let on = true;
+    mediaAPI.listProjects({ lead_id: leadId }).then(r => { if (on) setShoots(r.data.projects || []); }).catch(() => { if (on) setShoots([]); });
+    return () => { on = false; };
+  }, [leadId]);
+  if (!shoots || shoots.length === 0) return null;
+  const open = (path) => window.open(path, '_blank', 'noopener,noreferrer');
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 16, marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>
+          <span style={{ width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg,#0ea5e9,#a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Camera size={14} color="#fff" /></span>
+          Studio
+        </div>
+        <button onClick={() => open('/studio')} style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>Open <ChevronRight size={12} /></button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {shoots.map(s => (
+          <button key={s.id} onClick={() => open(`/studio/${s.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', textAlign: 'left' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 8, overflow: 'hidden', flexShrink: 0, background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {s.cover_url ? <img src={mediaUrl(s.cover_url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Camera size={16} color="var(--text-muted)" />}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{(s.project_type || 'general').replace('_', ' ')} · {s.asset_count || 0} photo{s.asset_count === 1 ? '' : 's'}</div>
+            </div>
+            {s.status && <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>{s.status}</span>}
+          </button>
+        ))}
+      </div>
+      <button onClick={() => open('/studio')} style={{ marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px', borderRadius: 9, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Plus size={13} /> New shoot</button>
+    </div>
+  );
+}
 
 export default function LeadDetailPage() {
   const router = useRouter();
@@ -1420,6 +1459,9 @@ useEffect(() => {
               </div>
             )}
           </div>
+
+          {/* Media Studio — linked shoots for this client (appears once a shoot is connected) */}
+          <LeadStudioSection leadId={leadId} />
 
           {/* Lead Intelligence — shows AI-derived score / sentiment / urgency once analysis has run */}
           {(lead.lead_score || lead.sentiment || lead.urgency) && (() => {
