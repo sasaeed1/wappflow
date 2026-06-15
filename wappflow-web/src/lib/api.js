@@ -375,6 +375,20 @@ export async function fetchPublicPortfolio(handle) {
   return res.json();
 }
 
+// ── Contracts Studio ──
+export const csAPI = {
+  overview:       ()          => api.get('/cs/overview'),
+  list:           (params)    => api.get('/cs/documents', { params }),
+  get:            (id)        => api.get(`/cs/documents/${id}`),
+  create:         (data)      => api.post('/cs/documents', data),
+  update:         (id, data)  => api.put(`/cs/documents/${id}`, data),
+  remove:         (id)        => api.delete(`/cs/documents/${id}`),
+  templates:      ()          => api.get('/cs/templates'),
+  getTemplate:    (id)        => api.get(`/cs/templates/${id}`),
+  createTemplate: (data)      => api.post('/cs/templates', data),
+  deleteTemplate: (id)        => api.delete(`/cs/templates/${id}`),
+};
+
 // Resolve an API-relative media path (/uploads/...) to an absolute URL.
 export function mediaUrl(p) {
   if (!p) return '';

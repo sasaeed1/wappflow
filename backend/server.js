@@ -5132,6 +5132,26 @@ require('./media-studio')(app, db, {
   },
 });
 
+// ── Contracts Studio module (additive; owns the cs_* tables) ──
+require('./contracts-studio')(app, db, {
+  auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
+  path, fs, uploadsDir,
+  clientBaseUrl: process.env.FRONTEND_URL || '',
+  sendClientMessage: async ({ lead, userId, text }) => {
+    if (!lead || !lead.customer_phone) return { skipped: true };
+    await whatsappService.sendMessage(lead.customer_phone, text);
+    try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text); } catch {}
+    return { sent: true };
+  },
+  sendEmail: async ({ workspaceOwnerId, to, subject, html, text }) => {
+    const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(workspaceOwnerId);
+    if (!smtpRow || !smtpRow.smtp_host) return { skipped: true };
+    const transporter = nodemailer.createTransport({ host: smtpRow.smtp_host, port: smtpRow.smtp_port, secure: !!smtpRow.smtp_secure, auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass } });
+    await transporter.sendMail({ from: `"${smtpRow.from_name || 'WappFlow'}" <${smtpRow.from_email || smtpRow.smtp_user}>`, to, subject, html, text });
+    return { sent: true };
+  },
+});
+
 // ════════════════════════════════════════════════════════════
 //  START SERVER
 // ════════════════════════════════════════════════════════════
