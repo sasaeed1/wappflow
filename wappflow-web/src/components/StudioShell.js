@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { LayoutGrid, Aperture, BookOpen, Clapperboard, Settings, LogOut, Users, Zap, Camera, ArrowUpRight } from 'lucide-react';
+import { LayoutGrid, Aperture, BookOpen, Clapperboard, Settings, LogOut, Users, Zap, Camera, ArrowUpRight, HelpCircle, User } from 'lucide-react';
 import StudioCopilot from './StudioCopilot';
 
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
@@ -96,7 +96,7 @@ export default function StudioShell({ children }) {
           ))}
         </div>
 
-        <button className="ms-waffle" title="Settings" onClick={() => window.open('/settings', '_blank')} aria-label="Settings"><Settings size={17} /></button>
+        <button className="ms-waffle" title="Studio settings" onClick={() => router.push('/studio/settings')} aria-label="Studio settings"><Settings size={17} /></button>
 
         {/* user */}
         <div ref={userRef} style={{ position: 'relative' }}>
@@ -109,7 +109,9 @@ export default function StudioShell({ children }) {
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ms-ink)' }}>{user?.full_name || user?.email || 'Account'}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--ms-ink-3)' }}>{user?.email || ''}</div>
               </div>
-              <button className="ms-menu-item" onClick={() => { router.push('/profile'); }} style={{ color: 'var(--ms-ink)' }}>My profile</button>
+              <button className="ms-menu-item" onClick={() => { setUserMenu(false); router.push('/studio/settings'); }} style={{ color: 'var(--ms-ink)' }}><Settings size={15} /> Studio settings</button>
+              <button className="ms-menu-item" onClick={() => { setUserMenu(false); router.push('/studio/help'); }} style={{ color: 'var(--ms-ink)' }}><HelpCircle size={15} /> Help center</button>
+              <button className="ms-menu-item" onClick={() => { router.push('/profile'); }} style={{ color: 'var(--ms-ink)' }}><User size={15} /> My profile</button>
               <button className="ms-menu-item" onClick={signOut} style={{ color: '#e0726a' }}><LogOut size={15} /> Sign out</button>
             </div>
           )}

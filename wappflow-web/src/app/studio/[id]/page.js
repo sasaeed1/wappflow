@@ -149,7 +149,13 @@ export default function ProjectPage() {
   const [proofingFor, setProofingFor] = useState(null);
   const [viewSize, setViewSize] = useState('c'); // collage (natural sizes) is the default — gallery feel
   const [mediaTab, setMediaTab] = useState('all'); // all | photo | video — works like a filter, reads like sections
+  const [aiHints, setAiHints] = useState(true);    // Settings → Defaults: show advisory AI badges
   const [lightbox, setLightbox] = useState(null); // index into the SHOWN list
+
+  // apply per-device studio preferences (set in Studio → Settings)
+  useEffect(() => {
+    try { const p = JSON.parse(localStorage.getItem('ms-prefs') || '{}'); if (p.libraryView) setViewSize(p.libraryView); if (p.aiHints === false) setAiHints(false); } catch {}
+  }, []);
 
   const photoCount = assets.filter(a => kindOf(a) === 'photo').length;
   const videoCount = assets.length - photoCount;
@@ -456,9 +462,9 @@ export default function ProjectPage() {
                   </div>
 
                   <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', gap: 4 }}>
-                    {!isVideo && <FocusChip sharpness={a.sharpness} />}
+                    {!isVideo && aiHints && <FocusChip sharpness={a.sharpness} />}
                     {dur && <span className="ms-chip-float" style={{ background: 'rgba(10,8,6,0.62)' }}>{dur}</span>}
-                    {a.dup_group && <span className="ms-chip-float" style={{ background: 'rgba(10,8,6,0.55)' }} title="Possible duplicate (perceptual hash) — advisory"><span style={{ width: 5, height: 5, borderRadius: 9, background: '#9bb0e6' }} /> Dup?</span>}
+                    {aiHints && a.dup_group && <span className="ms-chip-float" style={{ background: 'rgba(10,8,6,0.55)' }} title="Possible duplicate (perceptual hash) — advisory"><span style={{ width: 5, height: 5, borderRadius: 9, background: '#9bb0e6' }} /> Dup?</span>}
                   </div>
                   {a.type === 'raw' && <span className="ms-chip-float" style={{ top: 8, left: 'auto', right: 8, bottom: 'auto', background: 'rgba(10,8,6,0.6)' }}>RAW</span>}
                 </div>
