@@ -380,6 +380,7 @@ export const contractsAPI = {
   list:          (params)      => api.get('/contracts', { params }),
   get:           (id)          => api.get(`/contracts/${id}`),
   create:        (data)        => api.post('/contracts', data),
+  bulkSend:      (data)        => api.post('/contracts/bulk', data),
   update:        (id, data)    => api.put(`/contracts/${id}`, data),
   remove:        (id)          => api.delete(`/contracts/${id}`),
   send:          (id, channels)=> api.post(`/contracts/${id}/send`, { channels }),

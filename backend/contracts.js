@@ -79,6 +79,10 @@ module.exports = function mountContracts(app, db, deps = {}) {
   const contractsDir = path.join(uploadsDir, 'contracts');
   try { fs.mkdirSync(contractsDir, { recursive: true }); } catch {}
 
+  function safeAlter(sql) { try { db.exec(sql); } catch (e) { if (!String(e.message || '').includes('duplicate column')) throw e; } }
+  safeAlter('ALTER TABLE contracts ADD COLUMN last_reminded_at TIMESTAMP');
+  safeAlter('ALTER TABLE contracts ADD COLUMN reminder_count INTEGER DEFAULT 0');
+
   const clientIp = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
   const signUrl = (c) => `${clientBaseUrl}/sign/${c.token}`;
   const safeJson = (s, d = {}) => { try { return JSON.parse(s || '') || d; } catch { return d; } };
@@ -309,6 +313,63 @@ module.exports = function mountContracts(app, db, deps = {}) {
     try { db.prepare('DELETE FROM contract_templates WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
+
+  // BULK send — create + send the same contract to many clients at once (one per lead).
+  app.post('/api/contracts/bulk', auth, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const leadIds = Array.isArray(b.lead_ids) ? b.lead_ids : [];
+      if (!leadIds.length) return res.status(400).json({ error: 'Pick at least one client' });
+      if (!b.title || !String(b.title).trim()) return res.status(400).json({ error: 'Title is required' });
+      let body = b.body || '';
+      if (b.template_id) { const t = db.prepare('SELECT body FROM contract_templates WHERE id = ? AND workspace_id = ?').get(b.template_id, req.workspaceId); if (t) body = t.body; }
+      const channels = Array.isArray(b.channels) && b.channels.length ? b.channels : ['whatsapp'];
+      let sent = 0;
+      for (const lid of leadIds) {
+        const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(lid, req.workspaceId);
+        if (!lead) continue;
+        const id = generateId(); const token = crypto.randomBytes(18).toString('hex');
+        db.prepare(`INSERT INTO contracts (id, workspace_id, lead_id, title, body, signer_name, signer_email, signer_phone, amount, token, status, sent_at, created_by)
+          VALUES (?,?,?,?,?,?,?,?,?,?, 'sent', CURRENT_TIMESTAMP, ?)`).run(
+          id, req.workspaceId, lid, String(b.title).slice(0, 200), body, lead.customer_name || null, lead.email || null, lead.customer_phone || null,
+          b.amount != null ? Number(b.amount) : null, token, req.userId);
+        const c = db.prepare('SELECT * FROM contracts WHERE id = ?').get(id);
+        const link = signUrl(c);
+        if (channels.includes('whatsapp') && lead.customer_phone) { try { await sendClientMessage({ lead, userId: req.userId, text: `📄 Please review & sign "${c.title}":\n${link}` }); } catch {} }
+        if (channels.includes('email') && lead.email) { try { await sendEmail({ workspaceOwnerId: req.workspaceOwnerId, to: lead.email, subject: `Please sign: ${c.title}`, html: `<p>Hello ${lead.customer_name || ''},</p><p>Please review and sign <strong>${c.title}</strong>.</p><p><a href="${link}">Review &amp; sign</a></p>`, text: `Review & sign "${c.title}": ${link}` }); } catch {} }
+        recordEvent(c, 'sent', { actor: req.userId, meta: { bulk: true, channels } });
+        if (lid) addContactHistory(lid, req.userId, 'contract', `Contract "${c.title}" sent for signature`);
+        sent++;
+      }
+      logAudit(req.workspaceId, req.userId, 'contract_bulk_send', 'contract', null, { count: sent });
+      res.json({ sent });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Auto-reminders — nudge unsigned contracts every ~3 days (max 3), over the same channels.
+  async function reminderSweep() {
+    try {
+      const due = db.prepare(`SELECT * FROM contracts WHERE status IN ('sent','viewed') AND token IS NOT NULL
+        AND (reminder_count IS NULL OR reminder_count < 3)
+        AND sent_at IS NOT NULL AND sent_at < datetime('now','-3 days')
+        AND (last_reminded_at IS NULL OR last_reminded_at < datetime('now','-3 days'))
+        AND (expires_at IS NULL OR expires_at > datetime('now'))`).all();
+      for (const c of due) {
+        const link = signUrl(c);
+        const lead = c.lead_id ? db.prepare('SELECT * FROM leads WHERE id = ?').get(c.lead_id) : null;
+        const phone = lead?.customer_phone || c.signer_phone;
+        if (phone) { try { await sendClientMessage({ lead: lead || { customer_phone: phone, id: c.lead_id }, userId: c.created_by, text: `⏰ Reminder — please sign "${c.title}":\n${link}` }); } catch {} }
+        if (c.signer_email) {
+          const owner = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(c.workspace_id);
+          try { await sendEmail({ workspaceOwnerId: owner?.user_id || c.created_by, to: c.signer_email, subject: `Reminder: please sign ${c.title}`, html: `<p>Just a reminder to sign <strong>${c.title}</strong>: <a href="${link}">Review &amp; sign</a></p>`, text: `Reminder — sign "${c.title}": ${link}` }); } catch {}
+        }
+        db.prepare('UPDATE contracts SET reminder_count = COALESCE(reminder_count,0) + 1, last_reminded_at = CURRENT_TIMESTAMP WHERE id = ?').run(c.id);
+        recordEvent(c, 'reminded', { actor: 'system' });
+      }
+    } catch {}
+  }
+  setTimeout(reminderSweep, 30000);                 // shortly after boot
+  setInterval(reminderSweep, 6 * 60 * 60 * 1000);   // every 6 hours
 
   // ── PUBLIC signing (no auth — the token is the capability) ──────────────────
   function loadByToken(token) { return db.prepare('SELECT * FROM contracts WHERE token = ?').get(token); }

@@ -28,6 +28,7 @@ export default function ContractsPage() {
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [showNew, setShowNew] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [toast, setToast] = useState(null);
   const say = (m) => { setToast(m); setTimeout(() => setToast(null), 2800); };
@@ -61,7 +62,10 @@ export default function ContractsPage() {
             <h1 style={{ fontSize: 'clamp(26px, 4vw, 40px)', fontWeight: 900, letterSpacing: '-0.02em', color: 'var(--text)', margin: 0 }}>E-signatures</h1>
             <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '6px 0 0', maxWidth: 560 }}>Send legally-binding contracts over WhatsApp &amp; email, signed in the browser — with a full audit trail.</p>
           </div>
-          <button onClick={() => setShowNew(true)} style={btnPrimary}><Plus size={16} /> New contract</button>
+          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+            <button onClick={() => setShowBulk(true)} style={btnGhost}><Send size={15} /> Bulk send</button>
+            <button onClick={() => setShowNew(true)} style={btnPrimary}><Plus size={16} /> New contract</button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
@@ -103,6 +107,7 @@ export default function ContractsPage() {
       </div>
 
       {showNew && <NewContractModal onClose={() => setShowNew(false)} onCreated={(id) => { setShowNew(false); load(); setOpenId(id); }} say={say} />}
+      {showBulk && <BulkSendModal onClose={() => setShowBulk(false)} onSent={() => { setShowBulk(false); load(); }} say={say} />}
       {openId && <DetailModal id={openId} onClose={() => { setOpenId(null); load(); }} say={say} />}
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 700, padding: '10px 18px', borderRadius: 999, background: 'var(--text)', color: 'var(--surface)', fontSize: 13, boxShadow: '0 10px 30px rgba(0,0,0,0.25)' }}>{toast}</div>}
     </NavBar>
@@ -261,6 +266,80 @@ function DetailModal({ id, onClose, say }) {
         <summary style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', cursor: 'pointer' }}>Contract text</summary>
         <div style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', lineHeight: 1.55, marginTop: 10, maxHeight: 240, overflowY: 'auto' }}>{c.body || '—'}</div>
       </details>
+    </Overlay>
+  );
+}
+
+function BulkSendModal({ onClose, onSent, say }) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [templateId, setTemplateId] = useState('');
+  const [templates, setTemplates] = useState([]);
+  const [leads, setLeads] = useState([]);
+  const [picked, setPicked] = useState(() => new Set());
+  const [q, setQ] = useState('');
+  const [channels, setChannels] = useState({ whatsapp: true, email: false });
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    leadsAPI.getAll(null).then(r => setLeads(r.data.leads || [])).catch(() => {});
+    contractsAPI.templates().then(r => setTemplates(r.data.templates || [])).catch(() => {});
+  }, []);
+  const filtered = q ? leads.filter(l => (l.customer_name || '').toLowerCase().includes(q.toLowerCase())) : leads.slice(0, 40);
+  const toggle = (id) => setPicked(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const pickTemplate = (id) => { setTemplateId(id); const t = templates.find(x => x.id === id); if (t) { setBody(t.body || ''); if (!title) setTitle(t.title); } };
+
+  const send = async () => {
+    if (!title.trim()) { setErr('Give the contract a title'); return; }
+    if (picked.size === 0) { setErr('Pick at least one client'); return; }
+    const chs = Object.entries(channels).filter(([, v]) => v).map(([k]) => k);
+    if (!chs.length) { setErr('Pick a channel'); return; }
+    setSending(true); setErr('');
+    try { const r = await contractsAPI.bulkSend({ title: title.trim(), body, template_id: templateId || undefined, lead_ids: Array.from(picked), channels: chs }); say(`Sent to ${r.data.sent} client${r.data.sent === 1 ? '' : 's'}`); onSent(); }
+    catch (e) { setErr(e.response?.data?.error || 'Bulk send failed'); setSending(false); }
+  };
+
+  return (
+    <Overlay onClose={onClose} wide>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Bulk send</h2>
+        <button onClick={onClose} style={iconBtn}><X size={18} /></button>
+      </div>
+      <Label>Title</Label>
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. 2026 Booking Agreement" style={input} />
+      {templates.length > 0 && (
+        <>
+          <Label>Template</Label>
+          <select value={templateId} onChange={e => pickTemplate(e.target.value)} style={{ ...input, cursor: 'pointer' }}>
+            <option value="">— Blank / custom body —</option>
+            {templates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+          </select>
+        </>
+      )}
+      {!templateId && <textarea value={body} onChange={e => setBody(e.target.value)} rows={4} placeholder="Contract body (merge fields auto-fill per client)…" style={{ ...input, resize: 'vertical', fontFamily: 'inherit' }} />}
+      <Label>Send to ({picked.size} selected)</Label>
+      <div style={{ position: 'relative', marginBottom: 8 }}>
+        <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: 'var(--text-muted)' }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients…" style={{ ...input, paddingLeft: 34, marginBottom: 0 }} />
+      </div>
+      <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 12 }}>
+        {filtered.map(l => (
+          <button key={l.id} onClick={() => toggle(l.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: 'none', borderBottom: '1px solid var(--border)', background: picked.has(l.id) ? 'var(--accent-light)' : 'transparent', color: 'var(--text)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>
+            <span style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${picked.has(l.id) ? 'var(--accent)' : 'var(--border)'}`, background: picked.has(l.id) ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{picked.has(l.id) && <Check size={12} color="#fff" />}</span>
+            <span style={{ flex: 1 }}>{l.customer_name || 'Unnamed'}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{l.email ? 'email' : ''}{l.email && l.customer_phone ? ' · ' : ''}{l.customer_phone ? 'phone' : ''}</span>
+          </button>
+        ))}
+        {filtered.length === 0 && <p style={{ fontSize: 13, color: 'var(--text-muted)', padding: 12, margin: 0 }}>No clients found.</p>}
+      </div>
+      <Label>Channels</Label>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <ChanToggle on={channels.whatsapp} onClick={() => setChannels(s => ({ ...s, whatsapp: !s.whatsapp }))} icon={<MessageCircle size={14} />} label="WhatsApp" />
+        <ChanToggle on={channels.email} onClick={() => setChannels(s => ({ ...s, email: !s.email }))} icon={<Mail size={14} />} label="Email" />
+      </div>
+      {err && <p style={{ color: '#ef4444', fontSize: 13, margin: '0 0 12px' }}>{err}</p>}
+      <button onClick={send} disabled={sending} style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }}><Send size={15} /> {sending ? 'Sending…' : `Send to ${picked.size || ''} client${picked.size === 1 ? '' : 's'}`}</button>
     </Overlay>
   );
 }
