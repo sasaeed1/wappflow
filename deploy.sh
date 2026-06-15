@@ -8,12 +8,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# npm install rewrites package-lock.json on the server, which then blocks the
-# next `git pull`. Lockfiles are regenerable + the committed ones are canonical,
-# so drop that churn before pulling. package.json files are never touched (keeps
-# server-only deps like tfjs-node intact).
-echo "→ Dropping regenerable lockfile churn so git pull can't conflict…"
-git checkout -- wappflow-web/package-lock.json backend/package-lock.json 2>/dev/null || true
+# npm install rewrites package-lock.json on the server, and `next build` rewrites
+# wappflow-web/tsconfig.json (its TS plugin appends the build's type-include
+# globs) — both then block the next `git pull`. All three are regenerable build
+# artifacts + the committed copies are canonical, so drop that churn before
+# pulling. package.json files are never touched (keeps server-only deps intact).
+echo "→ Dropping regenerable build-artifact churn so git pull can't conflict…"
+git checkout -- wappflow-web/package-lock.json backend/package-lock.json wappflow-web/tsconfig.json 2>/dev/null || true
 
 echo "→ Pulling latest…"
 git pull
