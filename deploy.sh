@@ -20,7 +20,10 @@ echo "→ Backend dependencies…"
 
 echo "→ Building frontend into .next.staging (live site stays up on the old build)…"
 cd wappflow-web
-npm install --omit=dev
+# FULL install (incl. devDependencies) — the Next build NEEDS tailwindcss /
+# postcss / autoprefixer / typescript / eslint. A --omit=dev install here prunes
+# them, the build fails mid-write, and next start serves a corrupt .next as 500s.
+npm install
 rm -rf .next.staging
 # If this build fails/OOMs, set -e aborts here — the live .next is untouched,
 # nothing is restarted, and the site keeps serving the previous good build.
