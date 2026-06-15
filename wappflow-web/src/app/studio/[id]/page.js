@@ -140,7 +140,7 @@ export default function ProjectPage() {
   const [banner, setBanner] = useState(null);
   const [exports, setExports] = useState({});
   const [proofingFor, setProofingFor] = useState(null);
-  const [viewSize, setViewSize] = useState('m');
+  const [viewSize, setViewSize] = useState('c'); // collage (natural sizes) is the default — gallery feel
   const [lightbox, setLightbox] = useState(null); // index into assets
 
   const refreshAssets = useCallback(async () => {

@@ -13,31 +13,31 @@
      cinema     : Film studio. Deep blacks, Oswald condensed, film grain +
                   vignette, deep shadows, high contrast, deliberate motion.
    ───────────────────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Jost:wght@300;400;500;600&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,500..900;1,6..96,500..700&family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..500&family=Anton&family=Inter:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600&display=swap');
 
 /* ═══ BASE (semantic tokens; MONOCHROME values double as fallback) ═════════ */
 .ms-root {
-  /* type — neo-grotesque, heavy, set huge; the type IS the design */
-  --ms-font-display: 'Inter', system-ui, sans-serif;
+  /* type — high-fashion didone display; gallery / Vogue museum-wall drama */
+  --ms-font-display: 'Bodoni Moda', Didot, 'Times New Roman', serif;
   --ms-font-ui: 'Inter', system-ui, sans-serif;
   --ms-font-label: 'Inter', system-ui, sans-serif;
-  --ms-display-weight: 800;
-  --ms-display-size: clamp(34px, 6vw, 78px);
-  --ms-display-track: -0.045em;
+  --ms-display-weight: 600;
+  --ms-display-size: clamp(44px, 7vw, 98px);
+  --ms-display-track: -0.01em;
   --ms-display-line: 1.0;
-  --ms-label-track: 0.16em;
-  --ms-label-size: 10.5px;
+  --ms-label-track: 0.24em;
+  --ms-label-size: 10px;
   /* shape — flush, sharp, gallery prints */
   --ms-radius: 2px;
   --ms-radius-photo: 0px;
   --ms-radius-btn: 2px;
   --ms-radius-modal: 4px;
-  /* density — disciplined, photos near-touching so they read as one wall */
-  --ms-pad-y: clamp(30px, 4vw, 60px);
-  --ms-pad-x: clamp(20px, 5vw, 56px);
+  /* density — gallery air around the work; photos near-touching as one wall */
+  --ms-pad-y: clamp(38px, 5.5vw, 84px);
+  --ms-pad-x: clamp(22px, 5.5vw, 66px);
   --ms-grid-gap: 3px;
-  --ms-collection-gap: 28px;
-  --ms-rule-margin: 26px 0 34px;
+  --ms-collection-gap: 36px;
+  --ms-rule-margin: 34px 0 44px;
   /* surfaces — cool museum white; black is the only "colour" */
   --ms-paper: #f6f6f4; --ms-surface: #ffffff; --ms-surface-2: #efefec;
   --ms-ink: #101010; --ms-ink-2: #6a6a67; --ms-ink-3: #9d9d98;
@@ -69,14 +69,14 @@
 
 /* ═══ THEME: CINEMA — film studio. Deep blacks, Oswald, grain, vignette ════ */
 html[data-ms-theme="cinema"] .ms-root {
-  --ms-font-display: 'Oswald', system-ui, sans-serif;
+  --ms-font-display: 'Anton', 'Oswald', system-ui, sans-serif;
   --ms-font-ui: 'Inter', system-ui, sans-serif;
-  --ms-font-label: 'Oswald', system-ui, sans-serif;
-  --ms-display-weight: 600;
-  --ms-display-size: clamp(36px, 5.6vw, 74px);
-  --ms-display-track: 0.005em;
-  --ms-display-line: 0.98;
-  --ms-label-track: 0.26em;
+  --ms-font-label: 'Inter', system-ui, sans-serif;
+  --ms-display-weight: 400;
+  --ms-display-size: clamp(46px, 7.4vw, 104px);
+  --ms-display-track: 0.012em;
+  --ms-display-line: 0.9;
+  --ms-label-track: 0.3em;
   --ms-label-size: 11px;
   --ms-radius: 4px; --ms-radius-photo: 2px; --ms-radius-btn: 2px; --ms-radius-modal: 8px;
   --ms-pad-y: clamp(28px, 3.6vw, 54px); --ms-pad-x: clamp(20px, 4.5vw, 52px);
@@ -96,13 +96,13 @@ html[data-ms-theme="cinema"] .ms-root {
 
 /* ═══ THEME: EDITORIAL — magazine. Cream paper, serif, vast whitespace ═════ */
 html[data-ms-theme="editorial"] .ms-root {
-  --ms-font-display: 'Cormorant Garamond', Georgia, serif;
+  --ms-font-display: 'Fraunces', 'Cormorant Garamond', Georgia, serif;
   --ms-font-ui: 'Inter', system-ui, sans-serif;
   --ms-font-label: 'Jost', system-ui, sans-serif;
-  --ms-display-weight: 500;
-  --ms-display-size: clamp(42px, 6.4vw, 80px);
-  --ms-display-track: 0.005em;
-  --ms-display-line: 1.04;
+  --ms-display-weight: 460;
+  --ms-display-size: clamp(44px, 6.6vw, 88px);
+  --ms-display-track: 0;
+  --ms-display-line: 1.02;
   --ms-label-track: 0.34em;
   --ms-label-size: 11px;
   --ms-radius: 2px; --ms-radius-photo: 0px; --ms-radius-btn: 999px; --ms-radius-modal: 3px;
@@ -125,16 +125,16 @@ html[data-ms-theme="editorial"] .ms-root {
 /* (The base .ms-root tokens already ARE monochrome; restated so the cascade is
     explicit and immune to ordering, and to clear the retired theme's values.) */
 html[data-ms-theme="monochrome"] .ms-root {
-  --ms-font-display: 'Inter', system-ui, sans-serif;
+  --ms-font-display: 'Bodoni Moda', Didot, 'Times New Roman', serif;
   --ms-font-ui: 'Inter', system-ui, sans-serif;
   --ms-font-label: 'Inter', system-ui, sans-serif;
-  --ms-display-weight: 800;
-  --ms-display-size: clamp(34px, 6vw, 78px);
-  --ms-display-track: -0.045em; --ms-display-line: 1.0;
-  --ms-label-track: 0.16em; --ms-label-size: 10.5px;
+  --ms-display-weight: 600;
+  --ms-display-size: clamp(44px, 7vw, 98px);
+  --ms-display-track: -0.01em; --ms-display-line: 1.0;
+  --ms-label-track: 0.24em; --ms-label-size: 10px;
   --ms-radius: 2px; --ms-radius-photo: 0px; --ms-radius-btn: 2px; --ms-radius-modal: 4px;
-  --ms-pad-y: clamp(30px, 4vw, 60px); --ms-pad-x: clamp(20px, 5vw, 56px);
-  --ms-grid-gap: 3px; --ms-collection-gap: 28px; --ms-rule-margin: 26px 0 34px;
+  --ms-pad-y: clamp(38px, 5.5vw, 84px); --ms-pad-x: clamp(22px, 5.5vw, 66px);
+  --ms-grid-gap: 3px; --ms-collection-gap: 36px; --ms-rule-margin: 34px 0 44px;
   --ms-paper: #f6f6f4; --ms-surface: #ffffff; --ms-surface-2: #efefec;
   --ms-ink: #101010; --ms-ink-2: #6a6a67; --ms-ink-3: #9d9d98;
   --ms-line: #e4e4df; --ms-ink-soft: #efefec;
@@ -152,6 +152,14 @@ html[data-ms-theme="monochrome"] .ms-root {
 .ms-display { font-family: var(--ms-font-display); font-weight: var(--ms-display-weight); font-size: var(--ms-display-size); line-height: var(--ms-display-line); letter-spacing: var(--ms-display-track); color: var(--ms-ink); margin: 0; }
 .ms-h2 { font-family: var(--ms-font-display); font-weight: var(--ms-display-weight); font-size: clamp(20px, 2.8vw, 28px); letter-spacing: calc(var(--ms-display-track) * 0.7); color: var(--ms-ink); margin: 0; }
 html[data-ms-theme="editorial"] .ms-h2 { font-size: clamp(24px, 3.2vw, 34px); }
+/* Cinema: Anton is an all-caps impact face — set every heading in caps, poster-style */
+html[data-ms-theme="cinema"] .ms-display, html[data-ms-theme="cinema"] .ms-h2,
+html[data-ms-theme="cinema"] h1, html[data-ms-theme="cinema"] h2, html[data-ms-theme="cinema"] h3,
+html[data-ms-theme="cinema"] .ms-hero-title, html[data-ms-theme="cinema"] .ms-covercard-title { text-transform: uppercase; }
+html[data-ms-theme="cinema"] .ms-h2 { font-size: clamp(24px, 3.4vw, 40px); }
+/* Monochrome / Editorial display: optical refinement for the big serif faces */
+html[data-ms-theme="monochrome"] .ms-display, html[data-ms-theme="monochrome"] .ms-hero-title { font-feature-settings: 'lnum'; }
+html[data-ms-theme="editorial"] .ms-display, html[data-ms-theme="editorial"] .ms-hero-title { font-optical-sizing: auto; }
 .ms-eyebrow, .ms-tag, .ms-label, .ms-section-label, .ms-status {
   font-family: var(--ms-font-label); letter-spacing: var(--ms-label-track); text-transform: uppercase; }
 .ms-eyebrow { font-size: var(--ms-label-size); font-weight: 500; color: var(--ms-ink-3); margin: 0 0 12px; }
