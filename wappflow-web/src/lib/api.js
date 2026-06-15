@@ -288,6 +288,10 @@ export const mediaAPI = {
   listAssets:      (id, params)  => api.get(`/media/projects/${id}/assets`, { params }),
   uploadAssets:    (id, formData)=> api.post(`/media/projects/${id}/assets`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   deleteAsset:     (id)          => api.delete(`/media/assets/${id}`),
+  // trash (soft-delete → 30-day restore)
+  listTrash:       ()            => api.get('/media/trash'),
+  restoreAsset:    (id)          => api.post(`/media/assets/${id}/restore`),
+  purgeAsset:      (id)          => api.delete(`/media/assets/${id}/permanent`),
   // culling — the human decision layer
   cullAsset:       (id, data)    => api.put(`/media/assets/${id}/cull`, data),
   bulkCull:        (projectId, asset_ids, decision) => api.post(`/media/projects/${projectId}/cull/bulk`, { asset_ids, decision }),

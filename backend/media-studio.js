@@ -156,6 +156,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     }
   }
   safeAlter('ALTER TABLE ms_assets ADD COLUMN edits TEXT'); // non-destructive edit params (JSON)
+  safeAlter('ALTER TABLE ms_assets ADD COLUMN deleted_at TIMESTAMP'); // soft-delete → Trash (30-day restore)
   // Video metadata (filled by the worker's ffprobe pass) + proxy/poster for the editor.
   for (const col of ['v_duration_ms INTEGER', 'v_width INTEGER', 'v_height INTEGER', 'v_fps REAL',
     'v_codec TEXT', 'v_has_audio INTEGER', 'proxy_url TEXT', 'poster_url TEXT']) {
@@ -306,10 +307,10 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (req.query.status) { where += ' AND p.status = ?'; params.push(req.query.status); }
       const rows = db.prepare(`
         SELECT p.*, l.customer_name AS client_name,
-          (SELECT COUNT(*) FROM ms_assets a WHERE a.project_id = p.id) AS asset_count,
-          (SELECT a.variants FROM ms_assets a WHERE a.project_id = p.id AND a.type = 'photo'
+          (SELECT COUNT(*) FROM ms_assets a WHERE a.project_id = p.id AND a.deleted_at IS NULL) AS asset_count,
+          (SELECT a.variants FROM ms_assets a WHERE a.project_id = p.id AND a.type = 'photo' AND a.deleted_at IS NULL
              ORDER BY a.capture_time IS NULL, a.capture_time, a.created_at LIMIT 1) AS _cover_variants,
-          (SELECT a.storage_key FROM ms_assets a WHERE a.project_id = p.id AND a.type = 'photo'
+          (SELECT a.storage_key FROM ms_assets a WHERE a.project_id = p.id AND a.type = 'photo' AND a.deleted_at IS NULL
              ORDER BY a.capture_time IS NULL, a.capture_time, a.created_at LIMIT 1) AS _cover_key
         FROM ms_projects p
         LEFT JOIN leads l ON l.id = p.lead_id
@@ -484,7 +485,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
       const offset = parseInt(req.query.offset, 10) || 0;
       const params = [project.id];
-      let where = 'a.project_id = ?';
+      let where = 'a.project_id = ? AND a.deleted_at IS NULL';
       if (req.query.folder_id) { where += ' AND a.folder_id = ?'; params.push(req.query.folder_id); }
       if (req.query.type) { where += ' AND a.type = ?'; params.push(req.query.type); }
       if (req.query.decision === 'undecided') { where += ' AND c.decision IS NULL'; }
@@ -521,17 +522,69 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Hard-delete one asset's row, scores, decisions and file. Used by purge +
+  // the permanent-delete endpoint.
+  function purgeAsset(a) {
+    db.prepare('DELETE FROM ms_assets WHERE id = ?').run(a.id);
+    db.prepare('DELETE FROM ms_asset_scores WHERE asset_id = ?').run(a.id);
+    db.prepare('DELETE FROM ms_cull_decisions WHERE asset_id = ?').run(a.id);
+    db.prepare('DELETE FROM ms_portfolio_items WHERE asset_id = ?').run(a.id);
+    try { fs.unlinkSync(path.join(uploadsDir, a.storage_key)); } catch {}
+  }
+  // Drop anything in Trash past the 30-day window. Cheap; safe to call often.
+  function purgeExpiredTrash(workspaceId) {
+    try {
+      const stale = db.prepare("SELECT * FROM ms_assets WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-30 days')" + (workspaceId ? ' AND workspace_id = ?' : '')).all(...(workspaceId ? [workspaceId] : []));
+      for (const a of stale) purgeAsset(a);
+      return stale.length;
+    } catch { return 0; }
+  }
+  purgeExpiredTrash(); // sweep once on boot
+
+  // DELETE = soft-delete → Trash (restorable for 30 days).
   app.delete('/api/media/assets/:id', auth, (req, res) => {
     try {
       if (!canManage(req)) return res.status(403).json({ error: 'Not allowed' });
       const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
       if (!a) return res.status(404).json({ error: 'Asset not found' });
-      db.prepare('DELETE FROM ms_assets WHERE id = ?').run(a.id);
-      db.prepare('DELETE FROM ms_asset_scores WHERE asset_id = ?').run(a.id);
-      db.prepare('DELETE FROM ms_cull_decisions WHERE asset_id = ?').run(a.id);
-      try { fs.unlinkSync(path.join(uploadsDir, a.storage_key)); } catch {}
+      db.prepare('UPDATE ms_assets SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(a.id);
+      logAudit(req.workspaceId, req.userId, 'trash', 'ms_asset', a.id, { filename: a.filename });
+      res.json({ message: 'Moved to Trash', id: a.id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Trash listing (workspace-wide), newest-deleted first, with days remaining.
+  app.get('/api/media/trash', auth, (req, res) => {
+    try {
+      purgeExpiredTrash(req.workspaceId);
+      const rows = db.prepare(`
+        SELECT a.*, p.title AS project_title FROM ms_assets a
+        LEFT JOIN ms_projects p ON p.id = a.project_id
+        WHERE a.workspace_id = ? AND a.deleted_at IS NOT NULL
+        ORDER BY a.deleted_at DESC LIMIT 1000
+      `).all(req.workspaceId);
+      res.json({ assets: rows.map(r => ({ ...shapeAsset(r), project_id: r.project_id, project_title: r.project_title, deleted_at: r.deleted_at })) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/media/assets/:id/restore', auth, (req, res) => {
+    try {
+      const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!a) return res.status(404).json({ error: 'Asset not found' });
+      db.prepare('UPDATE ms_assets SET deleted_at = NULL WHERE id = ?').run(a.id);
+      logAudit(req.workspaceId, req.userId, 'restore', 'ms_asset', a.id, {});
+      res.json({ message: 'Restored', id: a.id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/media/assets/:id/permanent', auth, (req, res) => {
+    try {
+      if (!canManage(req)) return res.status(403).json({ error: 'Not allowed' });
+      const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!a) return res.status(404).json({ error: 'Asset not found' });
+      purgeAsset(a);
       logAudit(req.workspaceId, req.userId, 'delete', 'ms_asset', a.id, { filename: a.filename });
-      res.json({ message: 'Asset deleted', id: a.id });
+      res.json({ message: 'Permanently deleted', id: a.id });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { LayoutGrid, Aperture, BookOpen, Clapperboard, Settings, LogOut, Users, Zap, Camera, ArrowUpRight, HelpCircle, User } from 'lucide-react';
+import { LayoutGrid, Aperture, BookOpen, Clapperboard, Settings, LogOut, Users, Zap, Camera, ArrowUpRight, HelpCircle, User, Trash2 } from 'lucide-react';
 import StudioCopilot from './StudioCopilot';
 
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
@@ -111,6 +111,7 @@ export default function StudioShell({ children }) {
               </div>
               <button className="ms-menu-item" onClick={() => { setUserMenu(false); router.push('/studio/settings'); }} style={{ color: 'var(--ms-ink)' }}><Settings size={15} /> Studio settings</button>
               <button className="ms-menu-item" onClick={() => { setUserMenu(false); router.push('/studio/help'); }} style={{ color: 'var(--ms-ink)' }}><HelpCircle size={15} /> Help center</button>
+              <button className="ms-menu-item" onClick={() => { setUserMenu(false); router.push('/studio/trash'); }} style={{ color: 'var(--ms-ink)' }}><Trash2 size={15} /> Trash</button>
               <button className="ms-menu-item" onClick={() => { router.push('/profile'); }} style={{ color: 'var(--ms-ink)' }}><User size={15} /> My profile</button>
               <button className="ms-menu-item" onClick={signOut} style={{ color: '#e0726a' }}><LogOut size={15} /> Sign out</button>
             </div>

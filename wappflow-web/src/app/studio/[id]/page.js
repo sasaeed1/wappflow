@@ -214,7 +214,7 @@ export default function ProjectPage() {
 
   const deleteSelected = async () => {
     if (selected.size === 0) return;
-    if (!window.confirm(`Delete ${selected.size} photograph${selected.size === 1 ? '' : 's'}? This permanently removes the file and can’t be undone.`)) return;
+    if (!window.confirm(`Move ${selected.size} item${selected.size === 1 ? '' : 's'} to Trash? You can restore within 30 days.`)) return;
     for (const aid of Array.from(selected)) { try { await mediaAPI.deleteAsset(aid); } catch {} }
     setSelected(new Set());
     await refreshAssets();
@@ -222,7 +222,7 @@ export default function ProjectPage() {
   };
 
   const deleteOne = async (asset) => {
-    if (!window.confirm(`Delete this ${kindOf(asset) === 'video' ? 'video' : 'photograph'}? This can’t be undone.`)) return;
+    if (!window.confirm(`Move this ${kindOf(asset) === 'video' ? 'video' : 'photograph'} to Trash? You can restore within 30 days.`)) return;
     try { await mediaAPI.deleteAsset(asset.id); } catch {}
     setSelected(prev => { const n = new Set(prev); n.delete(asset.id); return n; });
     const remaining = await refreshAssets();
