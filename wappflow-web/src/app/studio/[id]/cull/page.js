@@ -100,6 +100,9 @@ export default function CullPage() {
   const [showGallery, setShowGallery] = useState(false);
   const [tool, setTool] = useState(null); // null | info | edit | presets
   const [compare, setCompare] = useState(false);
+  const [ba, setBa] = useState(false);        // before/after split view
+  const [baPos, setBaPos] = useState(0.5);     // divider position 0..1
+  const baDrag = useRef(null);
   const [pending, setPending] = useState({ ...ZERO_EDITS });
   const [crop, setCrop] = useState({ ...FULL_CROP });
   const [cropOn, setCropOn] = useState(false);
@@ -177,7 +180,20 @@ export default function CullPage() {
     setCrop(e.crop ? { ...e.crop } : { ...FULL_CROP });
     setActivePreset(null);
   };
-  useEffect(() => { setScale(1); setPan({ x: 0, y: 0 }); setCropOn(false); if (current) loadPendingFrom(current); }, [current?.id]); // eslint-disable-line
+  useEffect(() => { setScale(1); setPan({ x: 0, y: 0 }); setCropOn(false); setBa(false); if (current) loadPendingFrom(current); }, [current?.id]); // eslint-disable-line
+
+  // saved (server) edit state for the current photo, and whether pending differs
+  const savedEdits = useMemo(() => {
+    const e = parseEdits(current); const p = { ...ZERO_EDITS };
+    EDIT_KEYS.forEach(k => { if (e[k]) p[k] = e[k]; });
+    return { p, crop: e.crop ? { ...e.crop } : { ...FULL_CROP } };
+  }, [current]);
+  const pendingNonZero = EDIT_KEYS.some(k => pending[k]) || crop.x || crop.y || crop.w !== 1 || crop.h !== 1;
+  const pendingDirty = useMemo(() => {
+    if (!current) return false;
+    if (EDIT_KEYS.some(k => (pending[k] || 0) !== (savedEdits.p[k] || 0))) return true;
+    return JSON.stringify(crop) !== JSON.stringify(savedEdits.crop);
+  }, [pending, crop, savedEdits, current]);
 
   const dupMembers = useMemo(() => {
     if (!current?.dup_group) return null;
@@ -227,6 +243,15 @@ export default function CullPage() {
   useEffect(() => {
     const move = (e) => { if (panDrag.current) setPan({ x: panDrag.current.px + (e.clientX - panDrag.current.sx), y: panDrag.current.py + (e.clientY - panDrag.current.sy) }); };
     const up = () => { panDrag.current = null; };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, []);
+
+  // before/after divider drag
+  const startBaDrag = (e) => { e.preventDefault(); e.stopPropagation(); baDrag.current = true; };
+  useEffect(() => {
+    const move = (e) => { if (!baDrag.current || !cropBoxRef.current) return; const r = cropBoxRef.current.getBoundingClientRect(); setBaPos(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width))); };
+    const up = () => { baDrag.current = null; };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, []);
@@ -289,12 +314,18 @@ export default function CullPage() {
     } catch (e) { say(e.response?.data?.error || 'Batch failed'); }
     setRendering(false);
   };
+  // Reset to ORIGINAL: snap the controls back instantly (so it always "works"
+  // even with only unsaved changes), then clear any baked edits on the server.
   const resetEdits = async () => {
     if (!current) return;
+    setPending({ ...ZERO_EDITS }); setCrop({ ...FULL_CROP }); setActivePreset(null); setCropOn(false);
+    if (!hasEdits(current)) return; // nothing baked on the server — local revert is enough
     setRendering(true);
     try { await mediaAPI.clearEdits(current.id); await pollAsset(f => !f.variants?.full_edit); } catch {}
-    setPending({ ...ZERO_EDITS }); setCrop({ ...FULL_CROP }); setActivePreset(null); setRendering(false); setCropOn(false);
+    setRendering(false);
   };
+  // Cancel: discard unsaved changes (revert to the last saved state) and leave edit.
+  const cancelEdits = () => { if (current) loadPendingFrom(current); setCropOn(false); setBa(false); setTool(null); };
 
   const usePreset = (preset) => {
     const p = { ...ZERO_EDITS };
@@ -310,6 +341,7 @@ export default function CullPage() {
       if (compare) { if (k === 'escape' || k === 'c') { e.preventDefault(); setCompare(false); } return; }
       if (e.shiftKey && k === 'c') { e.preventDefault(); copyEdits(); return; }
       if (e.shiftKey && k === 'v') { e.preventDefault(); pasteEdits(); return; }
+      if (ba && k === 'escape') { e.preventDefault(); setBa(false); return; }
       if (editing && k === 'escape') { e.preventDefault(); setTool(null); setCropOn(false); return; }
       if (k === 'escape' && zoomed) { e.preventDefault(); setScale(1); setPan({ x: 0, y: 0 }); return; }
       if (k === 'escape' && tool) { e.preventDefault(); setTool(null); return; }
@@ -324,12 +356,13 @@ export default function CullPage() {
       else if (k === 'e') { e.preventDefault(); setTool(t => t === 'edit' ? null : 'edit'); }
       else if (k === 'f') { e.preventDefault(); setTool(t => t === 'presets' ? null : 'presets'); }
       else if (k === 'i') { e.preventDefault(); setTool(t => t === 'info' ? null : 'info'); }
+      else if (k === 'b' && editing) { e.preventDefault(); setBa(v => !v); }
       else if (k >= '1' && k <= '5') { e.preventDefault(); rate(Number(k)); }
       else if (k === '0') { e.preventDefault(); rate(0); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [decide, rate, next, prev, zoomed, compare, editing, tool, compareSet.length, toggle100, copyEdits, pasteEdits]);
+  }, [decide, rate, next, prev, zoomed, compare, editing, tool, compareSet.length, toggle100, copyEdits, pasteEdits, ba]);
 
   if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
 
@@ -369,10 +402,31 @@ export default function CullPage() {
               style={{ position: 'absolute', top: 60, left: 64, right: panelOpen ? 312 : 16, bottom: 168, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: zoomed ? 'grab' : 'default', transition: 'right .25s ease' }}
               onPointerDown={startPan} onDoubleClick={toggle100}>
               <div ref={cropBoxRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', transform: zoomed ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transition: panDrag.current ? 'none' : 'transform 0.12s ease-out' }}>
-                <img ref={imgRef} key={current.id} src={mediaUrl(zoomed ? (current.variants?.full_edit || current.url) : (current.variants?.web || current.url))} alt={current.filename} draggable={false}
-                  style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 246px)', objectFit: 'contain', display: 'block', userSelect: 'none', boxShadow: '0 30px 90px -30px rgba(0,0,0,0.8)', ...livePreview }} />
-                {liveVignette !== 'none' && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: liveVignette, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined }} />}
-                {editing && cropOn && !zoomed && <CropOverlay crop={crop} setCrop={setCrop} boxRef={cropBoxRef} />}
+                {(() => {
+                  const baActive = editing && ba && !zoomed;
+                  const originalSrc = mediaUrl(current.variants?.original || current.url);
+                  const afterSrc = baActive ? originalSrc : mediaUrl(zoomed ? (current.variants?.full_edit || current.url) : (current.variants?.web || current.url));
+                  return (
+                    <>
+                      <img ref={imgRef} key={current.id} src={afterSrc} alt={current.filename} draggable={false}
+                        style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 246px)', objectFit: 'contain', display: 'block', userSelect: 'none', boxShadow: '0 30px 90px -30px rgba(0,0,0,0.8)', ...livePreview }} />
+                      {liveVignette !== 'none' && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: liveVignette, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined }} />}
+                      {baActive && (
+                        <>
+                          {/* BEFORE = untouched original, revealed on the left of the divider */}
+                          <img src={originalSrc} alt="" draggable={false}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', clipPath: `inset(0 ${(1 - baPos) * 100}% 0 0)`, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined, userSelect: 'none' }} />
+                          <div className="ms-ba-divider" style={{ left: `${baPos * 100}%` }} onPointerDown={startBaDrag}>
+                            <span className="ms-ba-handle"><Columns2 size={13} /></span>
+                          </div>
+                          <span className="ms-ba-tag" style={{ left: 10 }}>Before</span>
+                          <span className="ms-ba-tag" style={{ right: 10 }}>After</span>
+                        </>
+                      )}
+                      {editing && cropOn && !zoomed && !ba && <CropOverlay crop={crop} setCrop={setCrop} boxRef={cropBoxRef} />}
+                    </>
+                  );
+                })()}
               </div>
               {!zoomed && (
                 <>
@@ -429,6 +483,13 @@ export default function CullPage() {
                       <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{PRESETS.length} looks</span>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {/* Original — the untouched look, always selectable to revert */}
+                      <button onClick={() => { setPending({ ...ZERO_EDITS }); setActivePreset('__original'); }} style={{ border: activePreset === '__original' ? '2px solid #fff' : '1px solid rgba(255,255,255,0.12)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', textAlign: 'left' }}>
+                        <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
+                          <img src={mediaUrl(current.variants?.original || current.thumb_url || current.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                        <div style={{ padding: '5px 7px', fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.03em' }}>Original</div>
+                      </button>
                       {PRESETS.map(ps => (
                         <button key={ps.id} onClick={() => usePreset(ps)} style={{ border: activePreset === ps.id ? '2px solid #fff' : '1px solid rgba(255,255,255,0.12)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', textAlign: 'left' }}>
                           <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
@@ -484,16 +545,24 @@ export default function CullPage() {
                       onDoubleClick={() => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 }))}
                       style={{ width: '100%', marginBottom: 12 }} />
 
-                    <button onClick={() => setCropOn(v => !v)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 10, background: cropOn ? 'rgba(255,255,255,0.1)' : undefined }}>
-                      <Crop size={14} /> {cropOn ? 'Cropping — drag handles' : 'Crop'}
-                    </button>
-                    <button onClick={applyEdits} disabled={rendering} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                      <button onClick={() => { setBa(v => !v); setCropOn(false); }} disabled={!pendingNonZero && !hasEdits(current)} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', background: ba ? 'rgba(255,255,255,0.1)' : undefined, opacity: (!pendingNonZero && !hasEdits(current)) ? 0.4 : 1 }} title="Before / after (B)">
+                        <Columns2 size={14} /> {ba ? 'Comparing' : 'Before / After'}
+                      </button>
+                      <button onClick={() => { setCropOn(v => !v); setBa(false); }} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', background: cropOn ? 'rgba(255,255,255,0.1)' : undefined }}>
+                        <Crop size={14} /> {cropOn ? 'Cropping' : 'Crop'}
+                      </button>
+                    </div>
+                    <button onClick={applyEdits} disabled={rendering || !pendingDirty} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
                       {rendering ? 'Rendering…' : 'Apply'}
                     </button>
-                    <button onClick={applyToKeepers} disabled={rendering || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 8 }}>
+                    <button onClick={applyToKeepers} disabled={rendering || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 10 }}>
                       <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
                     </button>
-                    <button onClick={resetEdits} disabled={rendering || !hasEdits(current)} className="ms-btn-text" style={{ width: '100%', justifyContent: 'center' }}><Undo2 size={13} /> Reset to original</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
+                      <button onClick={cancelEdits} className="ms-btn-text" style={{ justifyContent: 'center' }}><X size={13} /> {pendingDirty ? 'Cancel' : 'Close'}</button>
+                      <button onClick={resetEdits} disabled={rendering || (!hasEdits(current) && !pendingNonZero)} className="ms-btn-text" style={{ justifyContent: 'center' }}><Undo2 size={13} /> Reset to original</button>
+                    </div>
                   </>
                 )}
 
@@ -529,7 +598,7 @@ export default function CullPage() {
                       </div>
                     </div>
                     <p style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)', margin: 0, lineHeight: 1.6 }}>
-                      ←→ nav · P keep · X reject · M maybe · U undo · 1–5 rate · scroll/Z zoom · C compare · E edit · F presets · ⇧C/⇧V copy/paste edits.<br />
+                      ←→ nav · P keep · X reject · M maybe · U undo · 1–5 rate · scroll/Z zoom · C compare · E edit · F presets · B before/after · ⇧C/⇧V copy/paste edits.<br />
                       AI is advisory only — it never decides for you.
                     </p>
                   </>

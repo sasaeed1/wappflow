@@ -6,8 +6,12 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
   Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
-  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard,
+  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play,
 } from 'lucide-react';
+
+// photo | video — RAW and stills both live under "photo"
+const kindOf = (a) => (a?.type === 'video' ? 'video' : 'photo');
+const fmtDur = (ms) => { if (!ms) return null; const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 import { mediaAPI, mediaUrl } from '../../../lib/api';
 import NavBar from '../../../components/StudioShell';
 
@@ -37,9 +41,12 @@ function Lightbox({ assets, index, onClose, onNav, onDelete, selected, onToggleS
   }, [onClose, onNav]);
   if (!a) return null;
   const isSel = selected.has(a.id);
+  const isVideo = kindOf(a) === 'video';
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(8,7,5,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <img onClick={e => e.stopPropagation()} src={mediaUrl(a.variants?.web || a.url)} alt={a.filename} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain' }} />
+      {isVideo
+        ? <video onClick={e => e.stopPropagation()} src={mediaUrl(a.proxy_url || a.url)} poster={a.poster_url ? mediaUrl(a.poster_url) : undefined} controls autoPlay style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', background: '#000' }} />
+        : <img onClick={e => e.stopPropagation()} src={mediaUrl(a.variants?.web || a.url)} alt={a.filename} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain' }} />}
 
       <button onClick={(e) => { e.stopPropagation(); onClose(); }} style={lbBtn} title="Close (Esc)" aria-label="Close"><X size={20} /></button>
       <button onClick={(e) => { e.stopPropagation(); onNav(-1); }} disabled={index === 0} style={{ ...lbArrow, left: 16, opacity: index === 0 ? 0.25 : 1 }}><ChevronLeft size={26} /></button>
@@ -141,7 +148,12 @@ export default function ProjectPage() {
   const [exports, setExports] = useState({});
   const [proofingFor, setProofingFor] = useState(null);
   const [viewSize, setViewSize] = useState('c'); // collage (natural sizes) is the default — gallery feel
-  const [lightbox, setLightbox] = useState(null); // index into assets
+  const [mediaTab, setMediaTab] = useState('all'); // all | photo | video — works like a filter, reads like sections
+  const [lightbox, setLightbox] = useState(null); // index into the SHOWN list
+
+  const photoCount = assets.filter(a => kindOf(a) === 'photo').length;
+  const videoCount = assets.length - photoCount;
+  const shown = mediaTab === 'all' ? assets : assets.filter(a => kindOf(a) === mediaTab);
 
   const refreshAssets = useCallback(async () => {
     try { const r = await mediaAPI.listAssets(id, { limit: 500 }); setAssets(r.data.assets || []); return r.data.assets || []; } catch { return []; }
@@ -204,12 +216,12 @@ export default function ProjectPage() {
   };
 
   const deleteOne = async (asset) => {
-    if (!window.confirm(`Delete this photograph? This can’t be undone.`)) return;
+    if (!window.confirm(`Delete this ${kindOf(asset) === 'video' ? 'video' : 'photograph'}? This can’t be undone.`)) return;
     try { await mediaAPI.deleteAsset(asset.id); } catch {}
     setSelected(prev => { const n = new Set(prev); n.delete(asset.id); return n; });
     const remaining = await refreshAssets();
-    setLightbox(li => (li == null ? li : Math.min(li, remaining.length - 1)));
-    if ((await refreshAssets()).length === 0) setLightbox(null);
+    const remainingShown = mediaTab === 'all' ? remaining : remaining.filter(x => kindOf(x) === mediaTab);
+    setLightbox(li => (li == null ? li : (remainingShown.length === 0 ? null : Math.min(li, remainingShown.length - 1))));
   };
 
   const createGallery = async (data) => {
@@ -286,7 +298,7 @@ export default function ProjectPage() {
             <div style={{ minWidth: 0 }}>
               <p className="ms-hero-kicker">{(project.project_type || 'general').replace('_', ' ')}{project.client_name ? ` · ${project.client_name}` : ''}</p>
               <h1 className="ms-hero-title" style={{ fontSize: 'clamp(26px, 3.6vw, 44px)' }}>{project.title}</h1>
-              <p className="ms-hero-sub">{assets.length} photograph{assets.length === 1 ? '' : 's'} · {galleries.length} galler{galleries.length === 1 ? 'y' : 'ies'}</p>
+              <p className="ms-hero-sub">{photoCount} photo{photoCount === 1 ? '' : 's'}{videoCount > 0 ? ` · ${videoCount} video${videoCount === 1 ? '' : 's'}` : ''} · {galleries.length} galler{galleries.length === 1 ? 'y' : 'ies'}</p>
             </div>
             <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
               <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
@@ -294,7 +306,7 @@ export default function ProjectPage() {
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><BookOpen size={15} /> Albums</button>}
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><Film size={15} /> Reels</button>}
               <button onClick={() => fileRef.current?.click()} disabled={uploading} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10' }}>
-                {uploading ? <Loader size={16} className="ms-spin" /> : <Upload size={16} />} {uploading ? 'Uploading…' : 'Upload photos'}
+                {uploading ? <Loader size={16} className="ms-spin" /> : <Upload size={16} />} {uploading ? 'Uploading…' : 'Upload media'}
               </button>
             </div>
           </div>
@@ -383,7 +395,17 @@ export default function ProjectPage() {
         <div className="ms-workmain">
         {/* Library */}
         <div className="ms-section-head">
-          <h2 className="ms-h2">Library</h2>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 'clamp(14px, 2vw, 26px)', flexWrap: 'wrap', minWidth: 0 }}>
+            <h2 className="ms-h2">Library</h2>
+            {/* media switch — reads as sections, works as a filter */}
+            <div className="ms-mediatabs">
+              {[['all', 'All', assets.length], ['photo', 'Photos', photoCount], ['video', 'Videos', videoCount]].map(([k, label, n]) => (
+                <button key={k} onClick={() => { setMediaTab(k); setLightbox(null); }} className={`ms-mediatab${mediaTab === k ? ' is-active' : ''}`}>
+                  {label}{n > 0 && <span className="ms-mediatab-n">{n}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
             {selected.size > 0 && (
               <>
@@ -401,29 +423,41 @@ export default function ProjectPage() {
           </div>
         </div>
 
-        {assets.length === 0 ? (
-          <div className="ms-empty-soft">No photographs yet — upload to begin.</div>
+        {shown.length === 0 ? (
+          <div className="ms-empty-soft">
+            {assets.length === 0 ? 'No media yet — upload photos or videos to begin.'
+              : mediaTab === 'video' ? 'No videos yet. Upload video and it lands here — same uploader.'
+              : 'No photos yet — upload to begin.'}
+          </div>
         ) : (
           <div className={viewSize === 'c' ? undefined : 'ms-photo-grid'}
             style={viewSize === 'c'
               ? { columnWidth: 250, columnGap: 'var(--ms-grid-gap)' }
               : { gridTemplateColumns: `repeat(auto-fill, minmax(${VIEW_SIZES[viewSize]}px, 1fr))` }}>
-            {assets.map((a, i) => {
+            {shown.map((a, i) => {
               const isSel = selected.has(a.id);
               const collage = viewSize === 'c';
+              const isVideo = kindOf(a) === 'video';
+              const poster = isVideo ? (a.poster_url || a.thumb_url) : a.thumb_url;
+              const dur = isVideo ? fmtDur(a.v_duration_ms) : null;
               return (
-                <div key={a.id} onClick={() => setLightbox(i)} className={`ms-photo${isSel ? ' is-selected' : ''}`} title="Click to view full screen"
-                  style={collage ? { aspectRatio: 'auto', breakInside: 'avoid', marginBottom: 'var(--ms-grid-gap)', display: 'inline-block', width: '100%' } : undefined}>
-                  {a.thumb_url
-                    ? <img src={mediaUrl(a.thumb_url)} alt={a.filename} loading="lazy" style={{ opacity: a.variants?.thumb ? 1 : 0.7, ...(collage ? { height: 'auto' } : {}) }} />
-                    : <div style={{ width: '100%', height: collage ? 120 : '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ImageIcon size={22} color="var(--ms-ink-3)" /></div>}
+                <div key={a.id} onClick={() => setLightbox(i)} className={`ms-photo${isSel ? ' is-selected' : ''}`} title={isVideo ? 'Click to play' : 'Click to view full screen'}
+                  style={collage ? { aspectRatio: isVideo && !poster ? '16/9' : 'auto', breakInside: 'avoid', marginBottom: 'var(--ms-grid-gap)', display: 'inline-block', width: '100%' } : undefined}>
+                  {poster
+                    ? <img src={mediaUrl(poster)} alt={a.filename} loading="lazy" style={{ opacity: (isVideo ? a.poster_url : a.variants?.thumb) ? 1 : 0.7, ...(collage ? { height: 'auto' } : {}) }} />
+                    : <div style={{ width: '100%', height: collage ? (isVideo ? 150 : 120) : '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isVideo ? '#101013' : undefined }}>{isVideo ? <Film size={22} color="var(--ms-ink-3)" /> : <ImageIcon size={22} color="var(--ms-ink-3)" />}</div>}
+
+                  {isVideo && (
+                    <span className="ms-play-badge" aria-hidden><Play size={18} fill="#fff" color="#fff" /></span>
+                  )}
 
                   <div onClick={(e) => { e.stopPropagation(); toggle(a.id); }} className="ms-photo-check" style={isSel ? { background: 'var(--ms-ink)', borderColor: 'var(--ms-ink)' } : undefined} title="Select">
                     {isSel && <Check size={13} color="var(--ms-paper)" />}
                   </div>
 
                   <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', gap: 4 }}>
-                    <FocusChip sharpness={a.sharpness} />
+                    {!isVideo && <FocusChip sharpness={a.sharpness} />}
+                    {dur && <span className="ms-chip-float" style={{ background: 'rgba(10,8,6,0.62)' }}>{dur}</span>}
                     {a.dup_group && <span className="ms-chip-float" style={{ background: 'rgba(10,8,6,0.55)' }} title="Possible duplicate (perceptual hash) — advisory"><span style={{ width: 5, height: 5, borderRadius: 9, background: '#9bb0e6' }} /> Dup?</span>}
                   </div>
                   {a.type === 'raw' && <span className="ms-chip-float" style={{ top: 8, left: 'auto', right: 8, bottom: 'auto', background: 'rgba(10,8,6,0.6)' }}>RAW</span>}
@@ -440,10 +474,10 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      {lightbox != null && assets[lightbox] && (
-        <Lightbox assets={assets} index={lightbox} selected={selected}
+      {lightbox != null && shown[lightbox] && (
+        <Lightbox assets={shown} index={lightbox} selected={selected}
           onClose={() => setLightbox(null)}
-          onNav={(d) => setLightbox(i => Math.max(0, Math.min(assets.length - 1, i + d)))}
+          onNav={(d) => setLightbox(i => Math.max(0, Math.min(shown.length - 1, i + d)))}
           onDelete={deleteOne}
           onToggleSelect={toggle} />
       )}

@@ -271,6 +271,24 @@ html[data-ms-theme="monochrome"] .ms-collection-title { font-size: 21px; }
 .ms-photo-check { position: absolute; top: 9px; left: 9px; width: 22px; height: 22px; border-radius: 999px; display: flex; align-items: center; justify-content: center; border: 1.5px solid rgba(255,255,255,0.9); background: rgba(0,0,0,0.32); backdrop-filter: blur(3px); }
 .ms-chip-float { position: absolute; bottom: 8px; left: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; font-family: var(--ms-font-label); font-size: 9px; font-weight: 600; letter-spacing: 0.04em; color: #fff; backdrop-filter: blur(4px); }
 
+/* play badge over video thumbnails */
+.ms-play-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 46px; height: 46px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center; background: rgba(12,12,16,0.5); backdrop-filter: blur(4px);
+  border: 1.5px solid rgba(255,255,255,0.7); padding-left: 3px; pointer-events: none; transition: transform var(--ms-speed) var(--ms-ease), background var(--ms-speed) var(--ms-ease); }
+.ms-photo:hover .ms-play-badge { transform: translate(-50%, -50%) scale(1.08); background: rgba(12,12,16,0.66); }
+
+/* media switch (All / Photos / Videos) — looks like editorial section nav, works like a filter */
+.ms-mediatabs { display: inline-flex; align-items: baseline; gap: clamp(12px, 1.6vw, 22px); }
+.ms-mediatab { background: none; border: none; cursor: pointer; padding: 0 0 4px; position: relative;
+  font-family: var(--ms-font-label); font-size: 12.5px; font-weight: 500; letter-spacing: 0.02em; text-transform: var(--ms-btn-case, none);
+  color: var(--ms-ink-3); transition: color var(--ms-speed) var(--ms-ease); }
+html[data-ms-theme="cinema"] .ms-mediatab { text-transform: uppercase; font-size: 11.5px; letter-spacing: 0.1em; }
+.ms-mediatab:hover { color: var(--ms-ink-2); }
+.ms-mediatab.is-active { color: var(--ms-ink); }
+.ms-mediatab.is-active::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--ms-spark); border-radius: 2px; }
+.ms-mediatab-n { margin-left: 5px; font-size: 9.5px; font-weight: 600; color: var(--ms-ink-3); vertical-align: super; }
+.ms-mediatab.is-active .ms-mediatab-n { color: var(--ms-spark); }
+
 /* ═══ PANELS ═══════════════════════════════════════════════════════════════ */
 .ms-panel { background: var(--ms-panel-bg); backdrop-filter: var(--ms-panel-blur); border: var(--ms-panel-border); border-radius: var(--ms-radius); padding: 18px;
   transition: transform var(--ms-speed) var(--ms-ease), box-shadow var(--ms-speed) var(--ms-ease); }
@@ -320,7 +338,11 @@ html[data-ms-theme="editorial"] .ms-note { justify-content: center; }
 .ms-spin { animation: ms-spin 1s linear infinite; }
 
 /* ═══ ATMOSPHERE + MOTION — alive, gradient-lit, Pinterest-immersive ═══════ */
-.ms-shell-content, .ms-shell { position: relative; z-index: 1; }
+/* Both sit above the drifting ::before backdrop (z-index 0). The fixed shell
+   MUST outrank the content, or a full-bleed stage (later in the DOM, own
+   stacking context) paints over the header AND swallows its clicks. */
+.ms-shell-content { position: relative; z-index: 1; }
+.ms-shell { position: relative; z-index: 100; }
 .ms-root, .ms-root .ms-panel, .ms-root .ms-shell, .ms-root .ms-btn-ink, .ms-root .ms-btn-ghost, .ms-root .ms-input { transition: background-color .5s ease, color .5s ease, border-color .5s ease; }
 
 /* a drifting mesh-gradient backdrop on EVERY theme — bold, saturated, alive */
@@ -487,6 +509,11 @@ html[data-ms-theme="editorial"] .ms-cull-canvas { top: 64px; }
 .ms-hud .ms-section-label { color: rgba(255,255,255,0.5); }
 .ms-filmdock { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; max-width: min(92vw, 1100px); display: flex; gap: 6px; overflow-x: auto; padding: 8px; border-radius: 14px; }
 .ms-filmdock::-webkit-scrollbar { height: 5px; }
+
+/* before/after split — draggable divider over the photo in the cull edit view */
+.ms-ba-divider { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.92); transform: translateX(-1px); cursor: ew-resize; z-index: 4; box-shadow: 0 0 0 1px rgba(0,0,0,0.25); touch-action: none; }
+.ms-ba-handle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; border-radius: 999px; background: rgba(255,255,255,0.95); color: #14120f; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,0.45); }
+.ms-ba-tag { position: absolute; bottom: 10px; z-index: 4; padding: 3px 10px; border-radius: 999px; background: rgba(8,8,10,0.72); backdrop-filter: blur(4px); color: #fff; font-family: var(--ms-font-label); font-size: 9.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; pointer-events: none; }
 
 /* ═══ VIDEO STUDIO — editor (immersive, media-first) ══════════════════════ */
 .ms-ve { position: fixed; left: 0; right: 0; bottom: 0; top: 58px; display: flex; flex-direction: column; background: var(--ms-paper); z-index: 5; }
