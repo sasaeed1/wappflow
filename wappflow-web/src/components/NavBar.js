@@ -4,11 +4,11 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import {
   Zap, LayoutDashboard, Users, BarChart2, UserCheck,
-  HelpCircle, Settings, Bell, LogOut, MessageSquare,
+  HelpCircle, Settings, Bell, LogOut,
   MessageCircle, X, Clock, CheckCircle, CheckCircle2, Brain,
-  FileText, Inbox, Menu, ChevronDown, ChevronRight,
-  Camera, Globe, MonitorSmartphone, Layers, Sparkles,
-  ExternalLink, Crown
+  FileText, Inbox, Menu, ChevronDown,
+  Camera, Globe, MonitorSmartphone, Sparkles,
+  Crown, Lock
 } from 'lucide-react';
 
 // Flux — sibling AI content engine. Opens in a new tab.
@@ -173,20 +173,13 @@ const NAV_ITEMS = [
     lockFeature: 'analytics', requiredPlan: 'Growth' },
 ];
 
+// Secondary items — now live in the top-right account menu (no more "More"
+// dropdown, and Flux lives in the app-switcher).
 const MORE_ITEMS = [
   { label: 'Team',      icon: UserCheck,       path: '/team',
     lockFeature: 'team_collaboration', requiredPlan: 'Growth' },
   { label: 'Knowledge', icon: Brain,           path: '/knowledge',
     lockFeature: 'team_collaboration', requiredPlan: 'Growth' },
-  {
-    label: 'Flux',
-    icon: Sparkles,
-    href: FLUX_URL,
-    external: true,
-    badge: 'NEW',
-    description: 'AI Instagram content engine',
-    lockFeature: 'flux', requiredPlan: 'Growth',
-  },
   { label: 'Help',      icon: HelpCircle,      path: '/help' },
 ];
 
@@ -196,6 +189,13 @@ const PLATFORM_GATES = {
   instagram: { feature: 'instagram',       requiredPlan: 'Growth' },
   facebook:  { feature: 'facebook',        requiredPlan: 'Growth' },
   website:   { feature: 'website_capture', requiredPlan: 'Growth' },
+};
+
+// Shared row style for the account dropdown.
+const menuItem = {
+  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+  padding: '10px 16px', border: 'none', background: 'transparent',
+  color: 'var(--text)', fontSize: 13, cursor: 'pointer', textAlign: 'left',
 };
 
 export default function NavBar({ children }) {
@@ -411,291 +411,6 @@ export default function NavBar({ children }) {
         {/* Nav items — desktop */}
         <div className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
           {NAV_ITEMS.map(item => <NavBtn key={item.path} {...item} />)}
-
-          {/* Platform dropdown */}
-          <div ref={platformRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => { setShowPlatform(v => !v); if (showPlatform) setExpandedPlatform(null); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '7px 11px', borderRadius: 9, border: 'none',
-                background: showPlatform || isPlatformActive() ? 'var(--accent-light)' : 'transparent',
-                color: showPlatform || isPlatformActive() ? 'var(--accent)' : 'var(--text-muted)',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.12s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text)'; }}
-              onMouseLeave={e => {
-                const a = showPlatform || isPlatformActive();
-                e.currentTarget.style.background = a ? 'var(--accent-light)' : 'transparent';
-                e.currentTarget.style.color = a ? 'var(--accent)' : 'var(--text-muted)';
-              }}
-            >
-              <Layers size={15} /> Platform <ChevronDown size={13} />
-            </button>
-
-            {showPlatform && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 220,
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
-                zIndex: 300, overflow: 'visible', animation: 'navFadeIn 0.12s ease',
-              }}>
-                {/* All in One */}
-                <button
-                  onClick={() => { router.push('/leads-list'); setShowPlatform(false); setExpandedPlatform(null); }}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '11px 16px', border: 'none', borderRadius: '14px 14px 0 0',
-                    background: 'transparent', color: 'var(--text)',
-                    fontSize: 13, fontWeight: 700, cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
-                    borderBottom: '1px solid var(--border)',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <div style={{ width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Layers size={13} color="white" />
-                  </div>
-                  All in One
-                </button>
-
-                {/* Per-platform sections */}
-                {['whatsapp', 'instagram', 'facebook', 'website'].map((p, idx, arr) => {
-                  const meta = PLATFORM_META[p];
-                  const Icon = meta.icon;
-                  const accounts = accountsByPlatform[p];
-                  const isExpanded = expandedPlatform === p;
-                  const isLast = idx === arr.length - 1;
-                  const gate = PLATFORM_GATES[p];
-                  const platformLocked = featureLocked(gate?.feature);
-
-                  return (
-                    <div key={p}>
-                      <button
-                        onClick={() => {
-                          if (platformLocked) {
-                            setNavUpgrade({
-                              label: `${meta.label} inbox`,
-                              requiredPlan: gate.requiredPlan || 'Growth',
-                              feature: gate.feature,
-                            });
-                            setShowPlatform(false); setExpandedPlatform(null);
-                            return;
-                          }
-                          if (accounts.length === 0) {
-                            router.push('/settings?tab=connections');
-                            setShowPlatform(false); setExpandedPlatform(null);
-                          } else if (accounts.length === 1) {
-                            router.push(`/leads-list?platform=${p}&account=${accounts[0].id}`);
-                            setShowPlatform(false); setExpandedPlatform(null);
-                          } else {
-                            setExpandedPlatform(isExpanded ? null : p);
-                          }
-                        }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 16px', border: 'none',
-                          borderRadius: isLast && !isExpanded ? '0 0 14px 14px' : 0,
-                          background: platformLocked ? 'rgba(239,68,68,0.06)' : 'transparent',
-                          color: 'var(--text)',
-                          fontSize: 13, fontWeight: 500, cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
-                          borderBottom: isLast && !isExpanded ? 'none' : '1px solid var(--border)',
-                          opacity: platformLocked ? 0.78 : 1,
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = platformLocked ? 'rgba(239,68,68,0.12)' : 'var(--surface2)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = platformLocked ? 'rgba(239,68,68,0.06)' : 'transparent'; }}
-                      >
-                        <div style={{ width: 26, height: 26, borderRadius: 8, background: meta.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                          <Icon size={13} color={meta.color} />
-                          {platformLocked && (
-                            <div style={{ position: 'absolute', bottom: -3, right: -3, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--surface)' }}>
-                              <Lock size={7} color="white" />
-                            </div>
-                          )}
-                        </div>
-                        <span style={{ flex: 1 }}>{meta.label}</span>
-                        {platformLocked ? (
-                          <span style={{
-                            fontSize: 9, fontWeight: 900, letterSpacing: '0.05em',
-                            padding: '2px 7px', borderRadius: 5,
-                            background: 'linear-gradient(135deg, #A78BFA, #EC4899)',
-                            color: 'white',
-                          }}>
-                            {(gate.requiredPlan || 'GROWTH').toUpperCase()}
-                          </span>
-                        ) : (
-                          <>
-                            {accounts.length > 0 && (
-                              <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 6, background: meta.color + '20', color: meta.color }}>{accounts.length}</span>
-                            )}
-                            {accounts.length > 1 && <ChevronRight size={12} color="var(--text-muted)" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />}
-                          </>
-                        )}
-                      </button>
-
-                      {/* Sub-accounts */}
-                      {isExpanded && accounts.map((acc, ai) => (
-                        <button
-                          key={acc.id}
-                          onClick={() => { router.push(`/leads-list?platform=${p}&account=${acc.id}`); setShowPlatform(false); setExpandedPlatform(null); }}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                            padding: '9px 16px 9px 52px', border: 'none',
-                            borderRadius: isLast && ai === accounts.length - 1 ? '0 0 14px 14px' : 0,
-                            background: 'var(--surface2)', color: 'var(--text-muted)',
-                            fontSize: 12, fontWeight: 500, cursor: 'pointer', textAlign: 'left',
-                            borderBottom: isLast && ai === accounts.length - 1 ? 'none' : '1px solid var(--border)',
-                            transition: 'background 0.1s',
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.background = meta.color + '12'; e.currentTarget.style.color = meta.color; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                        >
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: acc.status === 'connected' ? '#10b981' : '#9ca3af', flexShrink: 0 }} />
-                          {acc.account_name}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* More dropdown */}
-          <div ref={moreRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowMore(v => !v)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '7px 11px', borderRadius: 9, border: 'none',
-                background: MORE_ITEMS.some(i => i.path && isActive(i.path)) ? 'var(--accent-light)' : 'transparent',
-                color: MORE_ITEMS.some(i => i.path && isActive(i.path)) ? 'var(--accent)' : 'var(--text-muted)',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.12s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text)'; }}
-              onMouseLeave={e => {
-                const anyActive = MORE_ITEMS.some(i => i.path && isActive(i.path));
-                e.currentTarget.style.background = anyActive ? 'var(--accent-light)' : 'transparent';
-                e.currentTarget.style.color = anyActive ? 'var(--accent)' : 'var(--text-muted)';
-              }}
-            >
-              More <ChevronDown size={13} />
-            </button>
-            {showMore && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: 220,
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
-                zIndex: 300, overflow: 'hidden', animation: 'navFadeIn 0.12s ease',
-              }}>
-                {MORE_ITEMS.map(item => {
-                  const active = item.path ? isActive(item.path) : false;
-                  const ItemIcon = item.icon;
-
-                  if (item.external) {
-                    return (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={handleFluxClick}
-                        disabled={fluxLoading}
-                        style={{
-                          position: 'relative',
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '12px 16px', textDecoration: 'none', border: 'none',
-                          background: 'linear-gradient(135deg, rgba(167,139,250,0.10) 0%, rgba(34,211,238,0.08) 50%, rgba(236,72,153,0.10) 100%)',
-                          color: 'var(--text)',
-                          fontSize: 13, fontWeight: 600,
-                          cursor: fluxLoading ? 'wait' : 'pointer', textAlign: 'left',
-                          borderTop: '1px solid var(--border)',
-                          borderBottom: '1px solid var(--border)',
-                          transition: 'all 0.15s',
-                          opacity: fluxLoading ? 0.6 : 1,
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.15)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-                      >
-                        <div style={{
-                          width: 30, height: 30, borderRadius: 9, flexShrink: 0,
-                          background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          boxShadow: '0 4px 14px -2px rgba(34,211,238,0.5)',
-                        }}>
-                          <ItemIcon size={14} color="white" />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{
-                              fontWeight: 800, fontSize: 13,
-                              background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',
-                              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                              backgroundClip: 'text',
-                            }}>{item.label}</span>
-                            {item.badge && (
-                              <span style={{
-                                fontSize: 8.5, fontWeight: 900, letterSpacing: '0.05em',
-                                padding: '1.5px 5px', borderRadius: 4,
-                                background: 'linear-gradient(135deg, #A78BFA, #EC4899)',
-                                color: 'white',
-                              }}>{item.badge}</span>
-                            )}
-                          </div>
-                          {item.description && (
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-                              {fluxLoading ? 'Opening Flux…' : item.description}
-                            </div>
-                          )}
-                        </div>
-                        <ExternalLink size={12} color="var(--text-muted)" />
-                      </button>
-                    );
-                  }
-
-                  const itemLocked = featureLocked(item.lockFeature);
-                  return (
-                    <button key={item.path}
-                      onClick={() => {
-                        if (itemLocked) {
-                          setNavUpgrade({
-                            label: item.label,
-                            requiredPlan: item.requiredPlan || 'Growth',
-                            feature: item.lockFeature,
-                          });
-                          setShowMore(false);
-                          return;
-                        }
-                        router.push(item.path);
-                        setShowMore(false);
-                      }}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '11px 16px', border: 'none',
-                        background: active ? 'var(--accent-light)' : (itemLocked ? 'rgba(239,68,68,0.06)' : 'transparent'),
-                        color: active ? 'var(--accent)' : 'var(--text)',
-                        fontSize: 13, fontWeight: active ? 700 : 500,
-                        cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
-                      }}
-                      onMouseEnter={e => { if (!active) e.currentTarget.style.background = itemLocked ? 'rgba(239,68,68,0.12)' : 'var(--surface2)'; }}
-                      onMouseLeave={e => { if (!active) e.currentTarget.style.background = itemLocked ? 'rgba(239,68,68,0.06)' : 'transparent'; }}
-                    >
-                      <ItemIcon size={14} style={itemLocked ? { color: '#ef4444', opacity: 0.7 } : undefined} />
-                      <span style={{ flex: 1, opacity: itemLocked ? 0.7 : 1 }}>{item.label}</span>
-                      {itemLocked && (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 3,
-                          padding: '2px 7px', borderRadius: 5,
-                          background: 'linear-gradient(135deg, #A78BFA, #EC4899)',
-                          color: 'white', fontSize: 9, fontWeight: 900, letterSpacing: '0.05em',
-                        }}>
-                          <Lock size={9} />{(item.requiredPlan || 'GROWTH').toUpperCase()}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Right side */}
@@ -704,31 +419,8 @@ export default function NavBar({ children }) {
           {/* App switcher — Studio opens in its own tab/module */}
           <AppSwitcher />
 
-          {/* Plan tier badge — between More and Settings */}
-          <PlanBadge />
-
           {/* Lead usage chip — only when limit is finite (Free/Starter). Red at ≥80%. */}
           <LeadUsageChip planInfo={planInfo} router={router} />
-
-          {/* Settings */}
-          <button
-            onClick={() => router.push('/settings')}
-            title="Settings"
-            style={{
-              width: 36, height: 36, borderRadius: 9, border: 'none',
-              background: isActive('/settings') ? 'var(--accent-light)' : 'transparent',
-              color: isActive('/settings') ? 'var(--accent)' : 'var(--text-muted)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-              transition: 'all 0.12s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text)'; }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = isActive('/settings') ? 'var(--accent-light)' : 'transparent';
-              e.currentTarget.style.color = isActive('/settings') ? 'var(--accent)' : 'var(--text-muted)';
-            }}
-          >
-            <Settings size={17} />
-          </button>
 
           {/* Notifications */}
           <div ref={notifRef} style={{ position: 'relative' }}>
@@ -837,23 +529,63 @@ export default function NavBar({ children }) {
                 </div>
                 <button
                   onClick={() => { router.push('/profile'); setShowUserMenu(false); }}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 16px', border: 'none', background: 'transparent',
-                    color: 'var(--text)', fontSize: 13, cursor: 'pointer', textAlign: 'left',
-                  }}
+                  style={menuItem}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  My Profile
+                  <UserCheck size={15} /> My Profile
                 </button>
                 <button
+                  onClick={() => { router.push('/settings'); setShowUserMenu(false); }}
+                  style={menuItem}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Settings size={15} /> Settings
+                </button>
+
+                {/* Team / Knowledge / Help — moved out of the old "More" dropdown */}
+                {MORE_ITEMS.map(item => {
+                  const ItemIcon = item.icon;
+                  const itemLocked = featureLocked(item.lockFeature);
+                  return (
+                    <button key={item.path}
+                      onClick={() => {
+                        if (itemLocked) { setNavUpgrade({ label: item.label, requiredPlan: item.requiredPlan || 'Growth', feature: item.lockFeature }); setShowUserMenu(false); return; }
+                        router.push(item.path); setShowUserMenu(false);
+                      }}
+                      style={menuItem}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <ItemIcon size={15} style={itemLocked ? { color: '#ef4444', opacity: 0.7 } : undefined} />
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      {itemLocked && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 5, background: 'linear-gradient(135deg, #A78BFA, #EC4899)', color: 'white', fontSize: 8.5, fontWeight: 900 }}>
+                          <Lock size={8} />{(item.requiredPlan || 'GROWTH').toUpperCase()}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* Plan & billing — the tier badge now lives here */}
+                <button
+                  onClick={() => { router.push('/settings?tab=billing'); setShowUserMenu(false); }}
+                  style={{ ...menuItem, borderTop: '1px solid var(--border)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Crown size={15} color="#f59e0b" />
+                  <span style={{ flex: 1 }}>Plan &amp; billing</span>
+                  <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: '0.06em', padding: '2px 7px', borderRadius: 6, background: 'var(--accent-light)', color: 'var(--accent)' }}>
+                    {(planInfo.planName || planInfo.plan || 'free').toString().toUpperCase()}
+                  </span>
+                </button>
+
+                <button
                   onClick={handleLogout}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 16px', border: 'none', background: 'transparent',
-                    color: '#ef4444', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
-                  }}
+                  style={{ ...menuItem, color: '#ef4444', fontWeight: 600, borderTop: '1px solid var(--border)' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
@@ -914,96 +646,15 @@ export default function NavBar({ children }) {
                 </button>
               ))}
 
-              {/* Platform section in mobile */}
-              <div style={{ margin: '8px 0 4px 14px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Platform</div>
-              <button
-                onClick={() => { router.push('/leads-list'); setMobileOpen(false); }}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', marginBottom: 2 }}
-              >
-                <Layers size={15} /> All in One
-              </button>
-              {['whatsapp', 'instagram', 'facebook', 'website'].map(p => {
-                const meta = PLATFORM_META[p];
-                const Icon = meta.icon;
-                const accounts = accountsByPlatform[p];
-                return (
-                  <div key={p}>
-                    <button
-                      onClick={() => {
-                        if (accounts.length > 0) router.push(`/leads-list?platform=${p}`);
-                        else router.push('/settings?tab=connections');
-                        setMobileOpen(false);
-                      }}
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', textAlign: 'left', marginBottom: 2 }}
-                    >
-                      <Icon size={15} color={meta.color} /> {meta.label}
-                      {accounts.length > 0 && <span style={{ marginLeft: 'auto', fontSize: 10, background: meta.color + '20', color: meta.color, padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>{accounts.length}</span>}
-                    </button>
-                    {accounts.map(acc => (
-                      <button key={acc.id}
-                        onClick={() => { router.push(`/leads-list?platform=${p}&account=${acc.id}`); setMobileOpen(false); }}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px 8px 40px', borderRadius: 9, border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', textAlign: 'left', marginBottom: 1 }}
-                      >
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: acc.status === 'connected' ? '#10b981' : '#9ca3af' }} />
-                        {acc.account_name}
-                      </button>
-                    ))}
-                  </div>
-                );
-              })}
-
               <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
+              <button
+                onClick={() => { router.push('/settings'); setMobileOpen(false); }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, border: 'none', background: isActive('/settings') ? 'var(--accent-light)' : 'transparent', color: isActive('/settings') ? 'var(--accent)' : 'var(--text)', fontSize: 14, fontWeight: isActive('/settings') ? 700 : 500, cursor: 'pointer', textAlign: 'left', marginBottom: 2 }}
+              >
+                <Settings size={16} /> Settings
+              </button>
               {MORE_ITEMS.map(item => {
                 const ItemIcon = item.icon;
-                if (item.external) {
-                  return (
-                    <a
-                      key={item.label}
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setMobileOpen(false)}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '11px 14px', borderRadius: 10, marginBottom: 2,
-                        background: 'linear-gradient(135deg, rgba(167,139,250,0.10), rgba(34,211,238,0.08), rgba(236,72,153,0.10))',
-                        textDecoration: 'none',
-                        boxShadow: 'inset 0 0 0 1px rgba(34,211,238,0.18)',
-                      }}
-                    >
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 8,
-                        background: 'linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <ItemIcon size={14} color="white" />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{
-                            fontSize: 14, fontWeight: 800,
-                            background: 'linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899)',
-                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                            backgroundClip: 'text',
-                          }}>{item.label}</span>
-                          {item.badge && (
-                            <span style={{
-                              fontSize: 8.5, fontWeight: 900, letterSpacing: '0.05em',
-                              padding: '1.5px 5px', borderRadius: 4,
-                              background: 'linear-gradient(135deg, #A78BFA, #EC4899)', color: 'white',
-                            }}>{item.badge}</span>
-                          )}
-                        </div>
-                        {item.description && (
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-                            {item.description}
-                          </div>
-                        )}
-                      </div>
-                      <ExternalLink size={13} color="var(--text-muted)" />
-                    </a>
-                  );
-                }
                 return (
                   <button key={item.path}
                     onClick={() => { router.push(item.path); setMobileOpen(false); }}
