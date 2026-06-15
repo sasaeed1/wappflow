@@ -606,7 +606,7 @@ export default function LeadsListPage() {
 
   const fetchAll = async (pf, ac) => {
     try {
-      const params = {};
+      const params = { client: 0 }; // hide leads promoted to Clients (kept in chat + analytics)
       if (pf && pf !== 'all') params.platform = pf;
       if (ac) params.account_id = ac;
       const [leadsRes, tagsRes, wsRes] = await Promise.allSettled([

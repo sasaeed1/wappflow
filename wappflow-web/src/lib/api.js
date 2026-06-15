@@ -48,6 +48,7 @@ export const leadsAPI = {
   create: (data) => api.post('/leads', data),
   update: (id, data) => api.put(`/leads/${id}`, data),
   updateStatus: (id, data) => api.put(`/leads/${id}/status`, data),
+  setClient: (id, is_client) => api.put(`/leads/${id}/client`, { is_client }),
   deleteLead: (id) => api.delete(`/leads/${id}`),
   restore: (id) => api.post(`/leads/${id}/restore`),
   permanentDelete: (id) => api.delete(`/leads/${id}/permanent`),

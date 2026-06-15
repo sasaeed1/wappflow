@@ -878,6 +878,15 @@ const [aiError, setAiError] = useState('');
     } catch (e) { console.error(e); } finally { setActionLoading(false); }
   };
 
+  // Promote this won lead to a client — hides from Leads, keeps chat + analytics.
+  const moveToClient = async () => {
+    try {
+      setActionLoading(true);
+      await leadsAPI.setClient(leadId, true);
+      router.push('/clients');
+    } catch (e) { console.error(e); setActionLoading(false); }
+  };
+
   const handleLostConfirm = async (reason) => {
     try {
       setActionLoading(true);
@@ -1398,6 +1407,18 @@ useEffect(() => {
                 <ThumbsDown size={13} /> Lost
               </button>
             </div>
+            {lead.status === 'Closed - Won' && !lead.is_client && (
+              <button onClick={moveToClient} disabled={actionLoading} title="Hide from Leads (kept in chat + analytics)"
+                style={{ marginTop: 8, width: '100%', padding: '9px', borderRadius: 10, border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 800, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <UserCheck size={13} /> Move to Clients
+              </button>
+            )}
+            {lead.is_client && (
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 11px', borderRadius: 10, background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.3)' }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: 5 }}><UserCheck size={12} /> Client</span>
+                <button onClick={async () => { try { setActionLoading(true); await leadsAPI.setClient(leadId, false); await fetchAll(); } catch (e) { console.error(e); } finally { setActionLoading(false); } }} disabled={actionLoading} style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Move back to Leads</button>
+              </div>
+            )}
           </div>
 
           {/* Lead Intelligence — shows AI-derived score / sentiment / urgency once analysis has run */}

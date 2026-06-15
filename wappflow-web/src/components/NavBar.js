@@ -167,6 +167,7 @@ const PLATFORM_META = {
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Leads',     icon: Users,           path: '/leads-list' },
+  { label: 'Clients',   icon: UserCheck,       path: '/clients' },
   { label: 'Inbox',     icon: Inbox,           path: '/chat' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports',

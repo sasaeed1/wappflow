@@ -552,6 +552,10 @@ function safeAlter(sql) {
 
 safeAlter('ALTER TABLE leads ADD COLUMN is_deleted INTEGER DEFAULT 0');
 safeAlter('ALTER TABLE leads ADD COLUMN deleted_at TIMESTAMP');
+// Won leads can be promoted to "clients": hidden from the Leads list (but kept
+// in chat + analytics). Additive flag — never deletes, fully reversible.
+safeAlter('ALTER TABLE leads ADD COLUMN is_client INTEGER DEFAULT 0');
+safeAlter('ALTER TABLE leads ADD COLUMN client_since TIMESTAMP');
 safeAlter('ALTER TABLE leads ADD COLUMN closed_at TIMESTAMP');
 safeAlter('ALTER TABLE leads ADD COLUMN lost_reason TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN last_contacted_at TIMESTAMP');
@@ -1402,9 +1406,14 @@ app.post('/api/leads/round-robin', auth, (req, res) => {
 
 app.get('/api/leads', auth, (req, res) => {
   try {
-    const { status, assigned_to, source, platform, account_id } = req.query;
+    const { status, assigned_to, source, platform, account_id, client } = req.query;
     let query = 'SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)';
     const params = [req.workspaceId];
+    // Client filter is OPT-IN so other surfaces (Inbox, dashboard) are unchanged:
+    //   client=1 → only clients (Clients page) · client=0 → only leads (Leads list)
+    //   omitted  → everything (keeps clients visible in chat)
+    if (client === '1') query += ' AND is_client = 1';
+    else if (client === '0') query += ' AND (is_client = 0 OR is_client IS NULL)';
     // 'user' role can only see assigned leads
     if (req.userRole === 'user') { query += ' AND assigned_to = ?'; params.push(req.userId); }
     if (status && status !== 'all') { query += ' AND status = ?'; params.push(status); }
@@ -1768,6 +1777,27 @@ app.put('/api/leads/:id', auth, (req, res) => {
 
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
     broadcastToWorkspace(req.workspaceId, 'lead_updated', { lead });
+    res.json(lead);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Promote a won lead to a client (or move it back). Hides it from the Leads
+// list only — chat, history and analytics are untouched. Fully reversible.
+app.put('/api/leads/:id/client', auth, (req, res) => {
+  try {
+    const makeClient = req.body.is_client !== false; // default true
+    const existing = db.prepare('SELECT id FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    if (!existing) return res.status(404).json({ error: 'Lead not found' });
+    if (makeClient) {
+      db.prepare('UPDATE leads SET is_client = 1, client_since = COALESCE(client_since, CURRENT_TIMESTAMP) WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
+      addContactHistory(req.params.id, req.userId, 'client', 'Moved to Clients');
+    } else {
+      db.prepare('UPDATE leads SET is_client = 0 WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
+      addContactHistory(req.params.id, req.userId, 'client', 'Moved back to Leads');
+    }
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+    broadcastToWorkspace(req.workspaceId, 'lead_updated', { lead });
+    logAudit(req.workspaceId, req.userId, 'client_toggle', 'lead', req.params.id, { is_client: makeClient });
     res.json(lead);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
