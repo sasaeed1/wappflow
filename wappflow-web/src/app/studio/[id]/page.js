@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
   Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
-  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play,
+  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause,
 } from 'lucide-react';
 
 // photo | video — RAW and stills both live under "photo"
@@ -28,20 +28,28 @@ function FocusChip({ sharpness }) {
 const VIEW_SIZES = { s: 116, m: 168, l: 248 };
 
 // Fullscreen viewer for any photograph in the library.
-function Lightbox({ assets, index, onClose, onNav, onDelete, selected, onToggleSelect }) {
+function Lightbox({ assets, index, onClose, onNav, onAdvance, onDelete, selected, onToggleSelect }) {
   const a = assets[index];
+  const isVideo = a ? kindOf(a) === 'video' : false;
+  const [playing, setPlaying] = useState(false);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') onClose();
       else if (e.key === 'ArrowRight') onNav(1);
       else if (e.key === 'ArrowLeft') onNav(-1);
+      else if (e.key === ' ') { e.preventDefault(); setPlaying(p => !p); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, onNav]);
+  // slideshow auto-advance — photos only (videos play through on their own)
+  useEffect(() => {
+    if (!playing || isVideo) return;
+    const t = setInterval(() => onAdvance(), 3500);
+    return () => clearInterval(t);
+  }, [playing, isVideo, onAdvance, index]);
   if (!a) return null;
   const isSel = selected.has(a.id);
-  const isVideo = kindOf(a) === 'video';
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(8,7,5,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {isVideo
@@ -54,6 +62,7 @@ function Lightbox({ assets, index, onClose, onNav, onDelete, selected, onToggleS
 
       <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}>
         <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, padding: '0 6px' }}>{index + 1} / {assets.length}</span>
+        <button onClick={() => setPlaying(p => !p)} style={{ ...lbPill, background: playing ? '#fff' : 'rgba(255,255,255,0.12)', color: playing ? '#14120f' : '#fff' }} title="Slideshow (Space)">{playing ? <><Pause size={14} /> Pause</> : <><Play size={14} /> Slideshow</>}</button>
         <button onClick={() => onToggleSelect(a.id)} style={{ ...lbPill, background: isSel ? '#fff' : 'rgba(255,255,255,0.12)', color: isSel ? '#14120f' : '#fff' }}><Check size={14} /> {isSel ? 'Selected' : 'Select'}</button>
         <button onClick={() => onDelete(a)} style={{ ...lbPill, background: 'rgba(212,86,74,0.18)', color: '#ff9b90' }}><Trash2 size={14} /> Delete</button>
       </div>
@@ -484,6 +493,7 @@ export default function ProjectPage() {
         <Lightbox assets={shown} index={lightbox} selected={selected}
           onClose={() => setLightbox(null)}
           onNav={(d) => setLightbox(i => Math.max(0, Math.min(shown.length - 1, i + d)))}
+          onAdvance={() => setLightbox(i => (i + 1) % shown.length)}
           onDelete={deleteOne}
           onToggleSelect={toggle} />
       )}
