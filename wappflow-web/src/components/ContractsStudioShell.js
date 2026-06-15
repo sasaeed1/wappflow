@@ -43,6 +43,8 @@ export default function ContractsStudioShell({ children }) {
         </div>
         <nav style={{ display: 'flex', gap: 2, marginLeft: 6 }}>
           <NavLink href="/contracts" label="Overview" />
+          <NavLink href="/contracts/vault" label="Client Vault" />
+          <NavLink href="/contracts/analytics" label="Analytics" />
         </nav>
         <div style={{ flex: 1 }} />
         <div ref={ref} style={{ position: 'relative' }}>

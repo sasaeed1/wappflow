@@ -383,11 +383,51 @@ export const csAPI = {
   create:         (data)      => api.post('/cs/documents', data),
   update:         (id, data)  => api.put(`/cs/documents/${id}`, data),
   remove:         (id)        => api.delete(`/cs/documents/${id}`),
+  send:           (id, channels, expireDays) => api.post(`/cs/documents/${id}/send`, { channels, expire_days: expireDays }),
+  remind:         (id, channels) => api.post(`/cs/documents/${id}/remind`, { channels }),
+  addSigner:      (id, data)    => api.post(`/cs/documents/${id}/signers`, data),
+  updateSigner:   (sid, data)   => api.put(`/cs/signers/${sid}`, data),
+  removeSigner:   (sid)         => api.delete(`/cs/signers/${sid}`),
+  requestApproval:(id, data)    => api.post(`/cs/documents/${id}/request-approval`, data || {}),
+  decideApproval: (id, data)    => api.post(`/cs/documents/${id}/decide-approval`, data || {}),
+  packs:          ()          => api.get('/cs/packs'),
+  aiAssist:       (data)      => api.post('/cs/ai/assist', data),
+  analytics:      ()          => api.get('/cs/analytics'),
+  vault:          ()          => api.get('/cs/vault'),
   templates:      ()          => api.get('/cs/templates'),
   getTemplate:    (id)        => api.get(`/cs/templates/${id}`),
   createTemplate: (data)      => api.post('/cs/templates', data),
   deleteTemplate: (id)        => api.delete(`/cs/templates/${id}`),
 };
+
+// Public document portal (no auth — token is the capability)
+export async function fetchPublicDoc(token) {
+  const r = await fetch(`${API_URL}/cs/public/${encodeURIComponent(token)}`);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || (r.status === 410 ? 'expired' : 'not_found'));
+  return r.json();
+}
+export async function signPublicDoc(token, data) {
+  const r = await fetch(`${API_URL}/cs/public/${encodeURIComponent(token)}/sign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not sign');
+  return r.json();
+}
+export async function declinePublicDoc(token, reason) {
+  const r = await fetch(`${API_URL}/cs/public/${encodeURIComponent(token)}/decline`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+  return r.ok;
+}
+export async function askPublicDoc(token, question) {
+  const r = await fetch(`${API_URL}/cs/public/${encodeURIComponent(token)}/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not answer');
+  return (await r.json()).answer;
+}
+export function trackPublicDoc(token, event, meta) {
+  try {
+    const body = JSON.stringify({ event, meta });
+    const url = `${API_URL}/cs/public/${encodeURIComponent(token)}/track`;
+    if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+    else fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true });
+  } catch { /* analytics is best-effort */ }
+}
 
 // Resolve an API-relative media path (/uploads/...) to an absolute URL.
 export function mediaUrl(p) {

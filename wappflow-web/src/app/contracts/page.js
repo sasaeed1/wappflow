@@ -163,16 +163,20 @@ function NewDocModal({ onClose, onCreated, say }) {
   const [title, setTitle] = useState('');
   const [leadId, setLeadId] = useState('');
   const [leads, setLeads] = useState([]);
+  const [packs, setPacks] = useState([]);
+  const [packId, setPackId] = useState('');
   const [q, setQ] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  useEffect(() => { leadsAPI.getAll(null).then(r => setLeads(r.data.leads || [])).catch(() => {}); }, []);
+  useEffect(() => { leadsAPI.getAll(null).then(r => setLeads(r.data.leads || [])).catch(() => {}); csAPI.packs().then(r => setPacks(r.data.packs || [])).catch(() => {}); }, []);
   const filtered = q ? leads.filter(l => (l.customer_name || '').toLowerCase().includes(q.toLowerCase())) : leads.slice(0, 6);
+
+  const pickPack = (p) => { if (packId === p.id) { setPackId(''); return; } setPackId(p.id); setType(p.type); if (!title.trim()) setTitle(p.title); };
 
   const create = async () => {
     if (!title.trim()) { setErr('Give it a title'); return; }
     setSaving(true); setErr('');
-    try { const r = await csAPI.create({ type, title: title.trim(), lead_id: leadId || undefined }); onCreated(r.data.id); }
+    try { const r = await csAPI.create({ type, title: title.trim(), lead_id: leadId || undefined, pack_id: packId || undefined }); onCreated(r.data.id); }
     catch (e) { setErr(e.response?.data?.error || 'Could not create'); setSaving(false); }
   };
 
@@ -183,6 +187,19 @@ function NewDocModal({ onClose, onCreated, say }) {
           <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>New document</h2>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
         </div>
+        {packs.length > 0 && (
+          <>
+            <label style={lbl}>Start from a pack</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+              {packs.map(p => (
+                <button key={p.id} onClick={() => pickPack(p)} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', borderRadius: 11, cursor: 'pointer', textAlign: 'left', border: `1.5px solid ${packId === p.id ? 'var(--accent)' : 'var(--border)'}`, background: packId === p.id ? 'var(--accent-light)' : 'var(--bg)' }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>{p.emoji || '📄'}</span>
+                  <div style={{ minWidth: 0 }}><div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</div><div style={{ fontSize: 10.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.industry}</div></div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <label style={lbl}>Type</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
           {TYPES.map(t => <button key={t} onClick={() => setType(t)} style={{ padding: '6px 12px', borderRadius: 999, border: `1px solid ${type === t ? 'var(--accent)' : 'var(--border)'}`, background: type === t ? 'var(--accent-light)' : 'transparent', color: type === t ? 'var(--accent)' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{t}</button>)}

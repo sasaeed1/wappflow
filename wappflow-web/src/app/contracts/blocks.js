@@ -186,12 +186,13 @@ export function BlockView({ block, editing = false, onChange = () => {}, selecte
     }
     case 'addons': {
       const items = d.items || [];
+      const isOn = (i) => editing ? !!items[i].on : (selected instanceof Set ? selected.has(i) : !!items[i].on);
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {items.map((it, i) => (
-            <div key={i} onClick={() => !editing && onSelect({ ...d, items: items.map((x, n) => n === i ? { ...x, on: !x.on } : x) })}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', border: `1px solid ${(!editing && it.on) ? 'var(--cs-accent)' : 'var(--cs-line)'}`, borderRadius: 'var(--cs-radius)', cursor: editing ? 'default' : 'pointer' }}>
-              <span style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${it.on ? 'var(--cs-accent)' : 'var(--cs-line)'}`, background: it.on ? 'var(--cs-accent)' : 'transparent', color: 'var(--cs-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>{it.on ? '✓' : ''}</span>
+            <div key={i} onClick={() => !editing && onSelect(i)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', border: `1px solid ${isOn(i) && !editing ? 'var(--cs-accent)' : 'var(--cs-line)'}`, borderRadius: 'var(--cs-radius)', cursor: editing ? 'default' : 'pointer' }}>
+              <span style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${isOn(i) ? 'var(--cs-accent)' : 'var(--cs-line)'}`, background: isOn(i) ? 'var(--cs-accent)' : 'transparent', color: 'var(--cs-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>{isOn(i) ? '✓' : ''}</span>
               {editing ? <IN v={it.label} on={t => editRow(items, i, { label: t }, x => set({ items: x }))} ph="Add-on" style={{ flex: 1, color: 'var(--cs-ink)' }} /> : <span style={{ flex: 1, color: 'var(--cs-ink)' }}>{it.label}</span>}
               {editing ? <IN v={it.price} on={t => editRow(items, i, { price: t }, x => set({ items: x }))} ph="0" style={{ width: 70, textAlign: 'right', color: 'var(--cs-ink)' }} /> : <span style={{ fontWeight: 700, color: 'var(--cs-ink)' }}>+{money(d.currency, it.price)}</span>}
               {editing && <button onClick={() => set({ items: items.filter((_, x) => x !== i) })} style={miniX}>×</button>}

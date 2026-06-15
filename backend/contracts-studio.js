@@ -10,6 +10,80 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 const crypto = require('crypto');
+let ai = null; try { ai = require('./ai-engine'); } catch { /* AI optional */ }
+let cron = null; try { cron = require('node-cron'); } catch { /* scheduler optional */ }
+
+// Allowed block types the AI may emit when drafting a document.
+const AI_BLOCK_TYPES = ['heading', 'text', 'callout', 'divider', 'pricing_table', 'package', 'addons', 'timeline', 'checklist', 'faq', 'testimonial', 'signature'];
+
+// ── Industry packs — curated starting points so the studio is never a blank page.
+const PACKS = [
+  {
+    id: 'wedding-proposal', type: 'proposal', industry: 'Photography', title: 'Wedding Photography Proposal',
+    description: 'Interactive packages, timeline & add-ons for couples.', emoji: '💍',
+    blocks: [
+      { type: 'heading', data: { text: 'Your Wedding, Beautifully Told', level: 1 } },
+      { type: 'text', data: { text: 'Thank you for considering us for your big day. Below is everything we’ll capture together — choose the collection that feels right, and add anything that makes it yours.' } },
+      { type: 'package', data: { currency: '$', selectable: true, packages: [
+        { name: 'Essential', price: '2400', features: ['6 hours coverage', '1 photographer', '400+ edited images', 'Online gallery'], featured: false },
+        { name: 'Signature', price: '3800', features: ['10 hours coverage', '2 photographers', '700+ edited images', 'Engagement session', 'Heirloom album'], featured: true },
+        { name: 'Luxe', price: '5600', features: ['Full-day coverage', '2 photographers + assistant', 'Unlimited images', 'Engagement + bridal sessions', 'Premium album + parent copies'], featured: false },
+      ] } },
+      { type: 'addons', data: { currency: '$', items: [
+        { label: 'Second shooter (extra)', price: '600', on: false },
+        { label: 'Drone aerial coverage', price: '450', on: false },
+        { label: 'Same-day highlight reel', price: '800', on: false },
+        { label: 'Extra hour of coverage', price: '350', on: false },
+      ] } },
+      { type: 'timeline', data: { items: [
+        { title: 'Booking & retainer', desc: 'Secure your date with a signed agreement + deposit' },
+        { title: 'Engagement session', desc: '6–8 weeks before' },
+        { title: 'Wedding day', desc: 'We capture every moment' },
+        { title: 'Gallery delivery', desc: '4–6 weeks after, with your album proof' },
+      ] } },
+      { type: 'faq', data: { items: [
+        { q: 'How many images will we receive?', a: 'Every keeper, fully edited — counts above are minimums.' },
+        { q: 'Do you travel?', a: 'Yes. Travel within 50mi is included; beyond that is quoted at cost.' },
+      ] } },
+      { type: 'signature', data: { label: 'Accept & sign to reserve your date' } },
+    ],
+  },
+  {
+    id: 'portrait-agreement', type: 'contract', industry: 'Photography', title: 'Portrait Session Agreement',
+    description: 'Clean session contract with usage & cancellation terms.', emoji: '📸',
+    blocks: [
+      { type: 'heading', data: { text: 'Portrait Session Agreement', level: 1 } },
+      { type: 'text', data: { text: 'This agreement sets out the terms for your portrait session. Please review and sign below.' } },
+      { type: 'pricing_table', data: { currency: '$', rows: [{ name: 'Portrait session (1hr)', desc: 'Studio or location', price: '450' }, { name: '15 edited images', desc: 'High-resolution digital delivery', price: '0' }] } },
+      { type: 'checklist', data: { items: [{ text: 'Session fee due at booking to reserve the date' }, { text: 'Rescheduling allowed up to 48h before' }, { text: 'Images delivered within 2 weeks' }, { text: 'Personal-use license included; commercial use quoted separately' }] } },
+      { type: 'callout', data: { emoji: '📅', text: 'Cancellations within 48 hours of the session forfeit the booking fee.' } },
+      { type: 'signature', data: { label: 'Sign to confirm your booking' } },
+    ],
+  },
+  {
+    id: 'commercial-sow', type: 'sow', industry: 'Commercial', title: 'Commercial Shoot — Statement of Work',
+    description: 'Scope, deliverables, usage rights & milestones.', emoji: '🎬',
+    blocks: [
+      { type: 'heading', data: { text: 'Statement of Work', level: 1 } },
+      { type: 'text', data: { text: 'This SOW defines the scope, deliverables, and commercial terms for the engagement.' } },
+      { type: 'heading', data: { text: 'Deliverables', level: 2 } },
+      { type: 'checklist', data: { items: [{ text: 'Pre-production: shot list, scheduling, location scouting' }, { text: 'Production: 1 shoot day, crew of 3' }, { text: 'Post: color grade + 3 edited deliverables' }, { text: 'Two rounds of revisions' }] } },
+      { type: 'pricing_table', data: { currency: '$', rows: [{ name: 'Pre-production', desc: '', price: '1500' }, { name: 'Production day', desc: 'Crew + equipment', price: '4500' }, { name: 'Post-production', desc: 'Edit + grade', price: '2500' }] } },
+      { type: 'callout', data: { emoji: '©️', text: 'Usage rights transfer to the client upon final payment. Raw footage retained by the studio unless purchased.' } },
+      { type: 'signature', data: { label: 'Authorize this Statement of Work' } },
+    ],
+  },
+  {
+    id: 'nda', type: 'nda', industry: 'General', title: 'Mutual Non-Disclosure Agreement',
+    description: 'Simple, balanced mutual NDA.', emoji: '🔒',
+    blocks: [
+      { type: 'heading', data: { text: 'Mutual Non-Disclosure Agreement', level: 1 } },
+      { type: 'text', data: { text: 'Both parties agree to protect confidential information shared during their discussions, as set out below.' } },
+      { type: 'checklist', data: { items: [{ text: 'Confidential information is used only for the stated purpose' }, { text: 'Information is not disclosed to third parties without consent' }, { text: 'Obligations survive for 2 years after disclosure' }, { text: 'Excludes information that is public or independently developed' }] } },
+      { type: 'signature', data: { label: 'Sign to agree to these terms' } },
+    ],
+  },
+];
 
 module.exports = function mountContractsStudio(app, db, deps = {}) {
   const {
@@ -19,8 +93,10 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     broadcastToWorkspace = () => {},
     addContactHistory = () => {},
     clientBaseUrl = process.env.FRONTEND_URL || '',
-    // injected for later phases (send/sign): sendClientMessage, sendEmail, path, fs, uploadsDir
+    sendClientMessage = async () => ({ skipped: true }),
+    sendEmail = async () => ({ skipped: true }),
   } = deps;
+  const clientIp = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS cs_documents (
@@ -111,6 +187,105 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
   }
   const getDoc = (ws, id) => db.prepare('SELECT * FROM cs_documents WHERE id = ? AND workspace_id = ?').get(id, ws);
 
+  // ── Phase 5: automations + payments ─────────────────────────────────────────
+  // The signed contract isn't a dead PDF — it acts on the relationship.
+  const workspaceOwner = (wsId, fallback) => {
+    const r = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(wsId);
+    return r?.user_id || fallback;
+  };
+
+  // Turn the client's actual selection into invoice line items + a total.
+  function selectionToInvoice(blocks, sel) {
+    let currency = '$'; const items = [];
+    const pkgs = (sel && sel.packages) || {}, adds = (sel && sel.addons) || {};
+    (blocks || []).forEach((b, idx) => {
+      const d = b.data || {};
+      if (b.type === 'pricing_table') { currency = d.currency || currency; (d.rows || []).forEach(r => { const rate = Number(r.price) || 0; items.push({ description: r.name || 'Item', qty: 1, rate, amount: rate }); }); }
+      if (b.type === 'package') {
+        currency = d.currency || currency;
+        let ci = pkgs[idx]; if (ci == null) ci = (d.packages || []).findIndex(x => x.featured); if (ci == null || ci < 0) ci = 0;
+        const p = (d.packages || [])[ci]; if (p) { const rate = Number(p.price) || 0; items.push({ description: p.name || 'Package', qty: 1, rate, amount: rate }); }
+      }
+      if (b.type === 'addons') {
+        currency = d.currency || currency;
+        const set = adds[idx] != null ? new Set(adds[idx]) : null;
+        (d.items || []).forEach((it, i) => { const on = set ? set.has(i) : !!it.on; if (on) { const rate = Number(it.price) || 0; items.push({ description: it.label || 'Add-on', qty: 1, rate, amount: rate }); } });
+      }
+    });
+    return { currency, total: items.reduce((s, it) => s + (Number(it.amount) || 0), 0), items };
+  }
+
+  // Run on full completion. Each action is isolated so one failure never aborts signing.
+  function runAutomations(doc, { selection, signerName } = {}) {
+    const s = J(doc.settings, {}); const a = s.automations || {}; const pay = s.payment || {};
+    const ran = []; const ownerId = workspaceOwner(doc.workspace_id, doc.created_by);
+    const cs = db.prepare('SELECT invoice_prefix, invoice_counter, currency, currency_symbol FROM company_settings WHERE user_id = ?').get(ownerId) || {};
+    const { currency, total, items } = selectionToInvoice(J(doc.blocks, []), selection);
+    const sym = cs.currency_symbol || currency || '$';
+
+    if (a.move_pipeline && doc.lead_id) {
+      try {
+        const stage = a.pipeline_stage || 'Closed - Won';
+        if (stage === 'Closed - Won') db.prepare('UPDATE leads SET status = ?, actual_sale = COALESCE(actual_sale, ?) WHERE id = ?').run(stage, total, doc.lead_id);
+        else db.prepare('UPDATE leads SET status = ? WHERE id = ?').run(stage, doc.lead_id);
+        addContactHistory(doc.lead_id, doc.created_by, 'pipeline', `Moved to "${stage}" — ${doc.type} signed`);
+        ran.push('pipeline');
+      } catch (e) { recordEvent(doc, 'automation_error', { actor: 'system', meta: { step: 'pipeline', error: e.message } }); }
+    }
+
+    let invoiceId = null;
+    if (a.create_invoice && items.length) {
+      try {
+        const lead = doc.lead_id ? db.prepare('SELECT customer_name, customer_phone, email FROM leads WHERE id = ?').get(doc.lead_id) : null;
+        const prefix = cs.invoice_prefix || 'INV'; const counter = (cs.invoice_counter || 1000) + 1;
+        db.prepare('UPDATE company_settings SET invoice_counter = ? WHERE user_id = ?').run(counter, ownerId);
+        const num = `${prefix}-${counter}`; invoiceId = generateId();
+        let invItems = items, invTotal = total, note = `Auto-created from signed ${doc.type}: ${doc.title}`;
+        if (pay.enabled && pay.type === 'deposit') {
+          const dep = pay.deposit_type === 'fixed' ? (Number(pay.deposit_value) || 0) : Math.round(total * ((Number(pay.deposit_value) || 0) / 100));
+          invItems = [{ description: `Deposit — ${doc.title}`, qty: 1, rate: dep, amount: dep }];
+          invTotal = dep; note = `Deposit (${pay.deposit_type === 'fixed' ? sym + dep : (pay.deposit_value || 0) + '%'}) for "${doc.title}". Balance due: ${sym}${total - dep}.`;
+        }
+        db.prepare(`INSERT INTO invoices (id, user_id, lead_id, invoice_number, customer_name, customer_email, customer_phone, items, subtotal, tax_rate, tax_amount, discount, total, currency, currency_symbol, status, notes)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(invoiceId, ownerId, doc.lead_id, num, lead?.customer_name || signerName || null, lead?.email || null, lead?.customer_phone || null,
+            JSON.stringify(invItems), invTotal, 0, 0, 0, invTotal, cs.currency || 'USD', sym, 'sent', note);
+        if (doc.lead_id) addContactHistory(doc.lead_id, doc.created_by, 'invoice', `Invoice ${num} auto-created from signed ${doc.type} — ${sym}${invTotal}`);
+        ran.push('invoice');
+      } catch (e) { recordEvent(doc, 'automation_error', { actor: 'system', meta: { step: 'invoice', error: e.message } }); }
+    }
+
+    if (a.create_project) {
+      try {
+        const pid = generateId();
+        db.prepare('INSERT INTO ms_projects (id, workspace_id, lead_id, title, project_type, status, created_by) VALUES (?,?,?,?,?,?,?)')
+          .run(pid, doc.workspace_id, doc.lead_id || null, doc.title, a.project_type || 'general', 'planning', doc.created_by);
+        ran.push('project');
+      } catch (e) { recordEvent(doc, 'automation_error', { actor: 'system', meta: { step: 'project', error: e.message } }); }
+    }
+
+    if (ran.length) { recordEvent(doc, 'automation', { actor: 'system', meta: { ran, invoiceId, total } }); logAudit(doc.workspace_id, doc.created_by, 'cs_automation', 'cs_document', doc.id, { ran }); }
+    return ran;
+  }
+
+  // Flatten blocks into readable text — AI context + client Q&A grounding.
+  const blocksToText = (blocks) => (blocks || []).map(b => {
+    const d = b.data || {};
+    switch (b.type) {
+      case 'heading': return `# ${d.text || ''}`;
+      case 'custom_section': return `# ${d.title || ''}\n${d.text || ''}`;
+      case 'text': case 'callout': return d.text || '';
+      case 'pricing_table': return (d.rows || []).map(r => `- ${r.name}: ${d.currency || '$'}${r.price}`).join('\n');
+      case 'package': return 'Packages: ' + (d.packages || []).map(p => `${p.name} (${d.currency || '$'}${p.price})`).join(', ');
+      case 'addons': return 'Optional add-ons: ' + (d.items || []).map(i => `${i.label} (+${d.currency || '$'}${i.price})`).join(', ');
+      case 'timeline': return (d.items || []).map(i => `- ${i.title}: ${i.desc || ''}`).join('\n');
+      case 'checklist': return (d.items || []).map(i => `- ${i.text}`).join('\n');
+      case 'faq': return (d.items || []).map(i => `Q: ${i.q}\nA: ${i.a}`).join('\n');
+      case 'testimonial': return `"${d.quote}" — ${d.author}`;
+      default: return '';
+    }
+  }).filter(Boolean).join('\n\n');
+
   // ── Dashboard overview (the living workspace) ───────────────────────────────
   app.get('/api/cs/overview', auth, (req, res) => {
     try {
@@ -145,11 +320,13 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       const b = req.body || {};
       if (!b.title || !String(b.title).trim()) return res.status(400).json({ error: 'Title is required' });
       let blocks = Array.isArray(b.blocks) ? b.blocks : [];
+      let packType = null;
       if (b.template_id) { const t = db.prepare('SELECT blocks, type FROM cs_templates WHERE id = ? AND workspace_id = ?').get(b.template_id, req.workspaceId); if (t) blocks = J(t.blocks, []); }
+      if (b.pack_id) { const pk = PACKS.find(p => p.id === b.pack_id); if (pk) { blocks = pk.blocks; packType = pk.type; } }
       const id = generateId();
       db.prepare(`INSERT INTO cs_documents (id, workspace_id, lead_id, type, title, blocks, theme, settings, created_by)
         VALUES (?,?,?,?,?,?,?,?,?)`).run(
-        id, req.workspaceId, b.lead_id || null, b.type || 'contract', String(b.title).slice(0, 200),
+        id, req.workspaceId, b.lead_id || null, b.type || packType || 'contract', String(b.title).slice(0, 200),
         JSON.stringify(blocks), ['monochrome', 'editorial', 'executive'].includes(b.theme) ? b.theme : 'monochrome',
         JSON.stringify(b.settings || {}), req.userId);
       // seed a client signer from the linked lead
@@ -171,7 +348,9 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       if (!d) return res.status(404).json({ error: 'Document not found' });
       const signers = db.prepare('SELECT id, role, name, email, phone, sign_order, status, signed_at FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
       const events = db.prepare('SELECT type, actor, ip, created_at, meta FROM cs_events WHERE document_id = ? ORDER BY created_at').all(d.id).map(e => ({ ...e, meta: J(e.meta, {}) }));
-      res.json({ ...shapeDoc(d, { withBlocks: true }), signers, events });
+      const approvals = db.prepare(`SELECT a.id, a.status, a.note, a.decided_at, a.created_at, a.approver_user_id, m.full_name AS approver_name
+        FROM cs_approvals a LEFT JOIN workspace_members m ON m.user_id = a.approver_user_id AND m.workspace_id = ? WHERE a.document_id = ? ORDER BY a.created_at`).all(req.workspaceId, d.id);
+      res.json({ ...shapeDoc(d, { withBlocks: true }), signers, events, approvals });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -205,6 +384,101 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Approvals (internal sign-off before a document can be sent) ──────────────
+  app.post('/api/cs/documents/:id/request-approval', auth, (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      const aid = generateId();
+      db.prepare("INSERT INTO cs_approvals (id, document_id, workspace_id, approver_user_id, status, note) VALUES (?,?,?,?,'pending',?)")
+        .run(aid, d.id, req.workspaceId, req.body.approver_user_id || null, req.body.note || null);
+      db.prepare("UPDATE cs_documents SET status = 'pending_approval', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(d.id);
+      recordEvent(d, 'approval_requested', { actor: req.userId, meta: { note: req.body.note || '' } });
+      broadcastToWorkspace(req.workspaceId, 'cs_updated', { id: d.id });
+      res.json({ ok: true, id: aid });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/cs/documents/:id/decide-approval', auth, (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      const decision = req.body.decision === 'approved' ? 'approved' : 'rejected';
+      const at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      // resolve the latest pending approval, or create one already-decided (covers solo approve)
+      const pending = db.prepare("SELECT id FROM cs_approvals WHERE document_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(d.id);
+      if (pending) db.prepare('UPDATE cs_approvals SET status = ?, note = ?, approver_user_id = COALESCE(approver_user_id, ?), decided_at = ? WHERE id = ?').run(decision, req.body.note || null, req.userId, at, pending.id);
+      else db.prepare('INSERT INTO cs_approvals (id, document_id, workspace_id, approver_user_id, status, note, decided_at) VALUES (?,?,?,?,?,?,?)').run(generateId(), d.id, req.workspaceId, req.userId, decision, req.body.note || null, at);
+      db.prepare("UPDATE cs_documents SET status = 'draft', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(d.id);
+      recordEvent(d, decision === 'approved' ? 'approved' : 'rejected', { actor: req.userId, meta: { note: req.body.note || '' } });
+      logAudit(req.workspaceId, req.userId, 'cs_' + decision, 'cs_document', d.id, {});
+      broadcastToWorkspace(req.workspaceId, 'cs_updated', { id: d.id });
+      res.json({ ok: true, status: decision });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Phase 4: multi-party signers (client / company / witness / co-signer) ────
+  const signerInWs = (sid, ws) => db.prepare('SELECT s.* FROM cs_signers s JOIN cs_documents d ON d.id = s.document_id WHERE s.id = ? AND d.workspace_id = ?').get(sid, ws);
+
+  app.post('/api/cs/documents/:id/signers', auth, (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      const b = req.body || {};
+      const order = b.sign_order != null ? b.sign_order : db.prepare('SELECT COALESCE(MAX(sign_order), -1) + 1 n FROM cs_signers WHERE document_id = ?').get(d.id).n;
+      const id = generateId();
+      db.prepare("INSERT INTO cs_signers (id, document_id, workspace_id, role, name, email, phone, sign_order, mode) VALUES (?,?,?,?,?,?,?,?,?)")
+        .run(id, d.id, req.workspaceId, b.role || 'cosigner', b.name || null, b.email || null, b.phone || null, order, b.mode || 'sequential');
+      res.json({ ok: true, id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/cs/signers/:id', auth, (req, res) => {
+    try {
+      const s = signerInWs(req.params.id, req.workspaceId);
+      if (!s) return res.status(404).json({ error: 'Signer not found' });
+      const b = req.body || {}; const set = {};
+      ['role', 'name', 'email', 'phone', 'mode'].forEach(k => { if (b[k] !== undefined) set[k] = b[k]; });
+      if (b.sign_order !== undefined) set.sign_order = b.sign_order;
+      const keys = Object.keys(set);
+      if (keys.length) db.prepare(`UPDATE cs_signers SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: s.id });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/cs/signers/:id', auth, (req, res) => {
+    try {
+      const s = signerInWs(req.params.id, req.workspaceId);
+      if (!s) return res.status(404).json({ error: 'Signer not found' });
+      db.prepare('DELETE FROM cs_signers WHERE id = ?').run(s.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Manual reminder — re-deliver the signing link to whoever hasn't signed ──
+  app.post('/api/cs/documents/:id/remind', auth, async (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      if (!d.token) return res.status(400).json({ error: 'Send the document first.' });
+      if (['signed', 'completed', 'declined', 'expired'].includes(d.status)) return res.status(400).json({ error: `Nothing to remind — this document is ${d.status}.` });
+      const link = `${clientBaseUrl}/d/${d.token}`;
+      const channels = Array.isArray(req.body.channels) && req.body.channels.length ? req.body.channels : ['whatsapp'];
+      const pending = db.prepare("SELECT * FROM cs_signers WHERE document_id = ? AND status = 'pending' ORDER BY sign_order").all(d.id);
+      const targets = pending.length ? pending : db.prepare('SELECT * FROM cs_signers WHERE document_id = ? ORDER BY sign_order LIMIT 1').all(d.id);
+      const delivery = {};
+      for (const s of targets) {
+        if (channels.includes('whatsapp') && s.phone) { try { await sendClientMessage({ lead: d.lead_id ? { id: d.lead_id, customer_phone: s.phone } : { customer_phone: s.phone }, userId: req.userId, text: `⏰ Reminder — please review & sign "${d.title}":\n${link}` }); delivery.whatsapp = 'sent'; } catch { delivery.whatsapp = 'failed'; } }
+        if (channels.includes('email') && s.email) { try { await sendEmail({ workspaceOwnerId: req.workspaceOwnerId, to: s.email, subject: `Reminder: please sign "${d.title}"`, html: `<p>Hello ${s.name || ''},</p><p>Just a gentle reminder to review and sign <strong>${d.title}</strong>.</p><p><a href="${link}" style="display:inline-block;padding:11px 20px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Open the document</a></p><p>${link}</p>`, text: `Reminder — sign "${d.title}": ${link}` }); delivery.email = 'sent'; } catch { delivery.email = 'failed'; } }
+      }
+      recordEvent(d, 'reminded', { actor: req.userId, meta: { channels, delivery } });
+      if (d.lead_id) addContactHistory(d.lead_id, req.userId, 'contract', `Reminder sent for "${d.title}"`);
+      logAudit(req.workspaceId, req.userId, 'cs_remind', 'cs_document', d.id, { channels });
+      broadcastToWorkspace(req.workspaceId, 'cs_updated', { id: d.id });
+      res.json({ ok: true, delivery });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Templates ───────────────────────────────────────────────────────────────
   app.get('/api/cs/templates', auth, (req, res) => {
     try { res.json({ templates: db.prepare('SELECT id, type, industry, title, created_at FROM cs_templates WHERE workspace_id = ? ORDER BY created_at DESC').all(req.workspaceId) }); }
@@ -226,5 +500,230 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
   app.delete('/api/cs/templates/:id', auth, (req, res) => {
     try { db.prepare('DELETE FROM cs_templates WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Industry packs — curated starting points ────────────────────────────────
+  app.get('/api/cs/packs', auth, (req, res) => {
+    res.json({ packs: PACKS.map(({ id, type, industry, title, description, emoji }) => ({ id, type, industry, title, description, emoji })) });
+  });
+
+  // ── Phase 6: AI assistant — draft / improve / explain / summarize / risks ────
+  app.post('/api/cs/ai/assist', auth, async (req, res) => {
+    if (!ai || !ai.callLLM) return res.status(503).json({ error: 'AI is not configured on this server.' });
+    try {
+      const { action, doc_id, text, instruction, type } = req.body || {};
+      const doc = doc_id ? getDoc(req.workspaceId, doc_id) : null;
+      const docText = doc ? blocksToText(J(doc.blocks, [])) : '';
+      const sys = 'You are an expert proposal & contract assistant for a creative-studio CRM. Be precise, warm and plain-spoken. You are not a lawyer; add a brief caveat only when flagging legal risk. Never invent legal guarantees.';
+
+      if (action === 'draft') {
+        const prompt = `Create a ${type || 'contract'} as a JSON array of content blocks. Allowed "type" values: ${AI_BLOCK_TYPES.join(', ')}.
+Data shapes — heading:{"text","level":1|2}; text/callout:{"text"}(callout also "emoji"); pricing_table:{"currency":"$","rows":[{"name","desc","price"}]}; package:{"currency":"$","selectable":true,"packages":[{"name","price","features":[],"featured":false}]}; addons:{"currency":"$","items":[{"label","price","on":false}]}; timeline/checklist:{"items":[...]}; faq:{"items":[{"q","a"}]}; testimonial:{"quote","author"}; signature:{"label"}.
+Return ONLY a JSON array: [{"type":"heading","data":{...}}, ...]. 8–14 blocks, ending with a signature block.
+
+Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
+        const raw = await ai.callLLM(prompt, { system: sys, temperature: 0.5, maxTokens: 2400 });
+        let blocks = ai.extractJSON(raw, 'array') || [];
+        blocks = (Array.isArray(blocks) ? blocks : []).filter(b => b && AI_BLOCK_TYPES.includes(b.type) && b.data && typeof b.data === 'object');
+        if (doc) recordEvent(doc, 'ai_assist', { actor: req.userId, meta: { action } });
+        return res.json({ blocks });
+      }
+
+      const map = {
+        improve: `Improve the writing below — clearer, warmer, more professional. Keep the meaning and a similar length. Return only the improved text, no preamble.\n\n${text || ''}`,
+        explain: `Explain the following clause in plain, friendly language a non-lawyer client would understand, in 2–4 sentences.\n\n${text || docText}`,
+        summarize: `Summarize this document for the studio owner in 3–5 short bullet points: what it covers, the price, and the key terms.\n\n${docText}`,
+        risks: `Review this document and flag missing or risky clauses (payment terms, cancellation, liability, usage/IP rights, deliverables). Give a short bullet list, then one final line exactly: "Not legal advice."\n\n${docText}`,
+      };
+      if (!map[action]) return res.status(400).json({ error: 'Unknown action' });
+      const out = await ai.callLLM(map[action], { system: sys, temperature: action === 'improve' ? 0.5 : 0.3, maxTokens: 900 });
+      if (doc) recordEvent(doc, 'ai_assist', { actor: req.userId, meta: { action } });
+      res.json({ result: (out || '').trim() });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Phase 7: Analytics (workspace-wide) ─────────────────────────────────────
+  app.get('/api/cs/analytics', auth, (req, res) => {
+    try {
+      const ws = req.workspaceId;
+      const docs = db.prepare('SELECT id, status, totals, sent_at, viewed_at, completed_at FROM cs_documents WHERE workspace_id = ?').all(ws);
+      const byStatus = {}; let revenue = 0, sent = 0, viewed = 0, completed = 0, signSecondsSum = 0, signCount = 0;
+      docs.forEach(d => {
+        byStatus[d.status] = (byStatus[d.status] || 0) + 1;
+        if (d.sent_at) sent++; if (d.viewed_at) viewed++;
+        if (['signed', 'completed'].includes(d.status)) { completed++; revenue += Number(J(d.totals, {}).total || 0); }
+        if (d.sent_at && d.completed_at) { signSecondsSum += (new Date(d.completed_at) - new Date(d.sent_at)) / 1000; signCount++; }
+      });
+      const viewEvents = db.prepare("SELECT meta FROM cs_events WHERE workspace_id = ? AND type = 'time_on_page'").all(ws).map(r => J(r.meta, {}));
+      const avgViewSeconds = viewEvents.length ? Math.round(viewEvents.reduce((s, m) => s + (Number(m.seconds) || 0), 0) / viewEvents.length) : 0;
+      const totalViews = db.prepare("SELECT COUNT(*) c FROM cs_events WHERE workspace_id = ? AND type = 'viewed'").get(ws).c;
+      const topViewed = db.prepare(`SELECT d.title, COUNT(*) views FROM cs_events e JOIN cs_documents d ON d.id = e.document_id WHERE e.workspace_id = ? AND e.type = 'viewed' GROUP BY e.document_id ORDER BY views DESC LIMIT 5`).all(ws);
+      res.json({
+        totalDocs: docs.length, funnel: { sent, viewed, completed },
+        acceptanceRate: sent ? Math.round((completed / sent) * 100) : 0,
+        revenue, totalViews, avgViewSeconds,
+        avgSignHours: signCount ? Math.round(signSecondsSum / signCount / 360) / 10 : 0,
+        byStatus, topViewed,
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Phase 7: Client Vault — every client's documents, filed together ────────
+  app.get('/api/cs/vault', auth, (req, res) => {
+    try {
+      const rows = db.prepare(`SELECT d.*, l.customer_name AS client_name, l.customer_phone, l.email FROM cs_documents d LEFT JOIN leads l ON l.id = d.lead_id WHERE d.workspace_id = ? ORDER BY d.updated_at DESC`).all(req.workspaceId);
+      const groups = {};
+      rows.forEach(d => {
+        const key = d.lead_id || '_none';
+        if (!groups[key]) groups[key] = { lead_id: d.lead_id, client_name: d.client_name || (d.lead_id ? 'Client' : 'No client linked'), phone: d.customer_phone, email: d.email, documents: [], total_value: 0, signed_count: 0 };
+        groups[key].documents.push(shapeDoc(d));
+        if (['signed', 'completed'].includes(d.status)) { groups[key].signed_count++; groups[key].total_value += Number(J(d.totals, {}).total || 0); }
+      });
+      res.json({ clients: Object.values(groups).sort((a, b) => b.documents.length - a.documents.length) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── SEND (authed) — generate the public link + deliver over WhatsApp/email ──
+  app.post('/api/cs/documents/:id/send', auth, async (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      const sset = J(d.settings, {});
+      if (sset.require_approval) {
+        const ap = db.prepare('SELECT status FROM cs_approvals WHERE document_id = ? ORDER BY created_at DESC LIMIT 1').get(d.id);
+        if (!ap || ap.status !== 'approved') return res.status(409).json({ error: 'This document needs internal approval before it can be sent.' });
+      }
+      const token = d.token || crypto.randomBytes(18).toString('hex');
+      db.prepare("UPDATE cs_documents SET token = ?, status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END, sent_at = COALESCE(sent_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(token, d.id);
+      const expDays = Number(req.body.expire_days) || 0;
+      if (expDays > 0) db.prepare('UPDATE cs_documents SET expires_at = ? WHERE id = ?').run(new Date(Date.now() + expDays * 86400000).toISOString().slice(0, 19).replace('T', ' '), d.id);
+      else if (req.body.expire_days === 0) db.prepare('UPDATE cs_documents SET expires_at = NULL WHERE id = ?').run(d.id);
+      // ensure a client signer exists (from the linked lead if any)
+      let signers = db.prepare('SELECT * FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
+      if (signers.length === 0) {
+        const lead = d.lead_id ? db.prepare('SELECT customer_name, customer_phone, email FROM leads WHERE id = ?').get(d.lead_id) : null;
+        const s = J(d.settings, {});
+        db.prepare("INSERT INTO cs_signers (id, document_id, workspace_id, role, name, email, phone, sign_order) VALUES (?,?,?,'client',?,?,?,0)")
+          .run(generateId(), d.id, req.workspaceId, lead?.customer_name || s.signer_name || null, lead?.email || s.signer_email || null, lead?.customer_phone || s.signer_phone || null);
+        signers = db.prepare('SELECT * FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
+      }
+      const fresh = db.prepare('SELECT * FROM cs_documents WHERE id = ?').get(d.id);
+      const link = `${clientBaseUrl}/d/${token}`;
+      const channels = Array.isArray(req.body.channels) && req.body.channels.length ? req.body.channels : ['whatsapp'];
+      const signer = signers[0]; const delivery = {};
+      if (channels.includes('whatsapp')) {
+        if (signer?.phone) { try { await sendClientMessage({ lead: d.lead_id ? { id: d.lead_id, customer_phone: signer.phone } : { customer_phone: signer.phone }, userId: req.userId, text: `📄 ${d.title} — please review & sign:\n${link}` }); delivery.whatsapp = 'sent'; } catch { delivery.whatsapp = 'failed'; } } else delivery.whatsapp = 'no_phone';
+      }
+      if (channels.includes('email')) {
+        if (signer?.email) { try { await sendEmail({ workspaceOwnerId: req.workspaceOwnerId, to: signer.email, subject: `Please review & sign: ${d.title}`, html: `<p>Hello ${signer.name || ''},</p><p>Please review and sign <strong>${d.title}</strong>.</p><p><a href="${link}" style="display:inline-block;padding:11px 20px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Open the document</a></p><p>${link}</p>`, text: `Review & sign "${d.title}": ${link}` }); delivery.email = 'sent'; } catch { delivery.email = 'failed'; } } else delivery.email = 'no_email';
+      }
+      recordEvent(fresh, 'sent', { actor: req.userId, meta: { channels, delivery } });
+      if (d.lead_id) addContactHistory(d.lead_id, req.userId, 'contract', `${d.type} "${d.title}" sent for signature`);
+      broadcastToWorkspace(req.workspaceId, 'cs_updated', { id: d.id });
+      logAudit(req.workspaceId, req.userId, 'cs_send', 'cs_document', d.id, { channels, delivery });
+      res.json({ ...shapeDoc(fresh), share_url: link, delivery });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── PUBLIC portal (no auth — token is the capability) ───────────────────────
+  const loadByToken = (token) => db.prepare('SELECT * FROM cs_documents WHERE token = ?').get(token);
+
+  app.get('/api/cs/public/:token', (req, res) => {
+    try {
+      const d = loadByToken(req.params.token);
+      if (!d || d.status === 'voided') return res.status(404).json({ error: 'Document not available' });
+      if (d.expires_at && new Date(d.expires_at) < new Date() && !['signed', 'completed'].includes(d.status)) return res.status(410).json({ error: 'This link has expired' });
+      if (d.status === 'sent') {
+        db.prepare("UPDATE cs_documents SET status = 'viewed', viewed_at = COALESCE(viewed_at, CURRENT_TIMESTAMP) WHERE id = ?").run(d.id);
+        recordEvent(d, 'viewed', { actor: 'client', ip: clientIp(req), ua: req.headers['user-agent'] });
+        broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
+      }
+      const fresh = db.prepare('SELECT * FROM cs_documents WHERE id = ?').get(d.id);
+      const signers = db.prepare('SELECT role, name, status, sign_order FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
+      res.json({ title: fresh.title, type: fresh.type, theme: fresh.theme, blocks: J(fresh.blocks, []), settings: J(fresh.settings, {}), totals: J(fresh.totals, {}), status: fresh.status, signers });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/cs/public/:token/sign', async (req, res) => {
+    try {
+      const d = loadByToken(req.params.token);
+      if (!d || d.status === 'voided') return res.status(404).json({ error: 'Not available' });
+      if (['signed', 'completed'].includes(d.status)) return res.status(400).json({ error: 'Already signed' });
+      const { typed_name, signature_data, consent, selection } = req.body || {};
+      if (!consent) return res.status(400).json({ error: 'Please agree to sign electronically.' });
+      if (!typed_name || !String(typed_name).trim()) return res.status(400).json({ error: 'Please type your full name.' });
+      if (!signature_data) return res.status(400).json({ error: 'Please draw your signature.' });
+      const ip = clientIp(req); const ua = req.headers['user-agent'] || ''; const at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const next = db.prepare("SELECT * FROM cs_signers WHERE document_id = ? AND status = 'pending' ORDER BY sign_order LIMIT 1").get(d.id);
+      if (next) db.prepare("UPDATE cs_signers SET status = 'signed', typed_name = ?, signature_data = ?, consent = 1, ip = ?, user_agent = ?, signed_at = ? WHERE id = ?")
+        .run(String(typed_name).slice(0, 120), signature_data, ip, ua, at, next.id);
+      const remaining = db.prepare("SELECT COUNT(*) c FROM cs_signers WHERE document_id = ? AND status = 'pending'").get(d.id).c;
+      const allSigned = remaining === 0;
+      const status = allSigned ? 'completed' : 'signed';
+      let totals = J(d.totals, {}); if (selection) totals = { ...totals, selection };
+      const hash = crypto.createHash('sha256').update(`${d.id}::${d.blocks}::${typed_name}::${signature_data}::${at}`).digest('hex');
+      db.prepare('UPDATE cs_documents SET status = ?, completed_at = COALESCE(completed_at, ?), totals = ?, doc_hash = ? WHERE id = ?')
+        .run(status, allSigned ? at : null, JSON.stringify(totals), hash, d.id);
+      recordEvent(d, 'signed', { actor: 'client', ip, ua, meta: { typed_name } });
+      if (d.lead_id) addContactHistory(d.lead_id, d.created_by, 'contract', `${d.type} "${d.title}" signed by ${typed_name}`);
+      let automations = [];
+      if (allSigned) { try { automations = runAutomations(d, { selection, signerName: typed_name }); } catch {} }
+      broadcastToWorkspace(d.workspace_id, 'cs_signed', { id: d.id, automations });
+      try { const lead = d.lead_id ? db.prepare('SELECT * FROM leads WHERE id = ?').get(d.lead_id) : null; if (lead?.customer_phone) await sendClientMessage({ lead, userId: d.created_by, text: `✅ "${d.title}" was signed. Thank you!` }); } catch {}
+      res.json({ ok: true, status, doc_hash: hash });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/cs/public/:token/decline', (req, res) => {
+    try {
+      const d = loadByToken(req.params.token);
+      if (!d) return res.status(404).json({ error: 'Not found' });
+      if (['signed', 'completed'].includes(d.status)) return res.status(400).json({ error: 'Already signed' });
+      db.prepare("UPDATE cs_documents SET status = 'declined' WHERE id = ?").run(d.id);
+      recordEvent(d, 'declined', { actor: 'client', ip: clientIp(req), ua: req.headers['user-agent'], meta: { reason: req.body.reason || '' } });
+      broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Client Q&A — grounded, plain-language answers about the document.
+  app.post('/api/cs/public/:token/ask', async (req, res) => {
+    if (!ai || !ai.callLLM) return res.status(503).json({ error: 'Live answers are unavailable right now.' });
+    try {
+      const d = loadByToken(req.params.token);
+      if (!d || d.status === 'voided') return res.status(404).json({ error: 'Not available' });
+      const q = String(req.body.question || '').slice(0, 500).trim();
+      if (!q) return res.status(400).json({ error: 'Please type a question.' });
+      const docText = blocksToText(J(d.blocks, []));
+      const prompt = `A client is reading the document below and asks a question. Answer ONLY from the document, in plain, friendly language, 1–3 sentences. If the answer is not in the document, say they should ask the sender directly — do not guess.
+
+DOCUMENT:
+${docText}
+
+QUESTION: ${q}`;
+      const answer = (await ai.callLLM(prompt, { temperature: 0.3, maxTokens: 400 })).trim();
+      recordEvent(d, 'client_question', { actor: 'client', ip: clientIp(req), meta: { q } });
+      broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
+      res.json({ answer });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Lightweight analytics beacon — time-on-page & block drop-off.
+  app.post('/api/cs/public/:token/track', (req, res) => {
+    try {
+      const d = loadByToken(req.params.token);
+      if (!d) return res.status(204).end();
+      const ev = req.body.event;
+      if (ev === 'time_on_page' || ev === 'block_viewed') recordEvent(d, ev, { actor: 'client', ip: clientIp(req), meta: req.body.meta || {} });
+      res.json({ ok: true });
+    } catch { res.status(204).end(); }
+  });
+
+  // ── Phase 4: daily expiry sweep (status only — never sends anything) ─────────
+  if (cron) cron.schedule('0 8 * * *', () => {
+    try {
+      const r = db.prepare("UPDATE cs_documents SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP AND status IN ('sent','viewed')").run();
+      if (r.changes) console.log(`📄 Contracts Studio: marked ${r.changes} document(s) expired`);
+    } catch (e) { console.error('cs expiry sweep:', e.message); }
   });
 };
