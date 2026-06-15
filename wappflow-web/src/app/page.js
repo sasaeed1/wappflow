@@ -66,6 +66,7 @@ export default function Landing() {
         <FeatureGrid />
         <AISection />
         <FluxSection />
+        <MediaStudioSection />
         <MeetingsSection />
         <HuddleSection />
         <PlatformSection />
@@ -104,6 +105,7 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
           <a href="#flux" className="lp-nav-flux">
             Flux <span className="lp-nav-flux-pill">NEW</span>
           </a>
+          <a href="#studio">Studio</a>
           <a href="#meetings">Meetings</a>
           <a href="#platforms">Channels</a>
           <a href="#pricing">Pricing</a>
@@ -134,6 +136,7 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
         <div className="lp-mobile-menu">
           <a href="#features" onClick={() => setMobileOpen(false)}>Features</a>
           <a href="#ai" onClick={() => setMobileOpen(false)}>AI</a>
+          <a href="#studio" onClick={() => setMobileOpen(false)}>Studio</a>
           <a href="#flux" onClick={() => setMobileOpen(false)} className="lp-nav-flux">
             Flux <span className="lp-nav-flux-pill">NEW</span>
           </a>
@@ -924,6 +927,90 @@ function FluxSection() {
 /* ========================================================================== */
 /* MEETINGS SECTION — Google Meet + Calendly                                  */
 /* ========================================================================== */
+
+function MediaStudioSection() {
+  return (
+    <section id="studio" className="lp-section lp-meetings-section">
+      <div className="lp-container lp-meetings-layout">
+        <div className="lp-meetings-text">
+          <Reveal>
+            <div className="lp-section-eyebrow"><Camera size={13} /> Media Studio</div>
+          </Reveal>
+          <Reveal delay={80}>
+            <h2 className="lp-section-title left">
+              A full creative studio, <span className="lp-gradient">built into your CRM</span>.
+            </h2>
+          </Reveal>
+          <Reveal delay={140}>
+            <p className="lp-section-sub left">
+              For photographers &amp; studios: ingest a shoot, cull with AI at your side (it advises — you decide),
+              deliver breathtaking client galleries, cut reels, and publish a portfolio that sells itself — every
+              shoot linked to the same client you already chat with on WhatsApp.
+            </p>
+          </Reveal>
+
+          <div className="lp-meeting-bullets">
+            <Reveal delay={60}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-google"><Wand2 size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">Cull 10× faster, AI-assisted</div>
+                  <div className="lp-mb-desc">Keyboard-first culling with focus, duplicate &amp; quality hints — advisory only, never automatic.</div>
+                </div>
+              </div>
+            </Reveal>
+            <Reveal delay={120}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-calendly"><Images size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">Client galleries &amp; a stunning portfolio</div>
+                  <div className="lp-mb-desc">Proofing, favourites, ZIP delivery, and a public portfolio with 10 themes — shareable in one click.</div>
+                </div>
+              </div>
+            </Reveal>
+            <Reveal delay={180}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-emerald"><Video size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">Reels &amp; video studio</div>
+                  <div className="lp-mb-desc">Templates, AI drafts, colour grading &amp; one-click export — a shoot becomes a reel in minutes.</div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </div>
+
+        <Reveal delay={120}>
+          <div className="lp-meeting-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ position: 'relative', height: 184, background: 'linear-gradient(135deg,#1f2937 0%,#0ea5e9 55%,#a78bfa 100%)' }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent 62%)' }} />
+              <div style={{ position: 'absolute', right: 14, top: 14, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: 'rgba(16,185,129,0.92)', color: '#fff', fontSize: 11, fontWeight: 700 }}>
+                <CheckCircle2 size={12} /> Published
+              </div>
+              <div style={{ position: 'absolute', left: 18, bottom: 16, color: '#fff' }}>
+                <div style={{ fontSize: 10.5, letterSpacing: '0.2em', textTransform: 'uppercase', opacity: 0.82 }}>Wedding · delivered</div>
+                <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.01em' }}>Ayesha &amp; Bilal</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6, padding: 12 }}>
+              {['#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899'].map((c, i) => (
+                <div key={i} style={{ aspectRatio: '1', borderRadius: 8, background: `linear-gradient(135deg, ${c}40, ${c})` }} />
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px 16px' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#94a3b8' }}>
+                <Camera size={13} /> 248 photos · 12 favourites
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#a78bfa' }}>
+                <Palette size={13} /> Open portfolio <ArrowRight size={13} />
+              </span>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
 
 function MeetingsSection() {
   return (
