@@ -233,7 +233,15 @@ html[data-ms-theme="editorial"] .ms-btn-ghost { border-color: var(--ms-ink); }
 .ms-iconbtn:disabled { opacity: 0.35; cursor: default; }
 
 /* ═══ COLLECTIONS (Projects) ═══════════════════════════════════════════════ */
-.ms-collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--ms-collection-gap) calc(var(--ms-collection-gap) * 0.7); }
+/* Pinterest masonry — varied-height tiles flow into columns, image-first */
+.ms-collection-grid { display: block; column-width: 272px; column-gap: var(--ms-collection-gap); }
+.ms-collection-grid > * { break-inside: avoid; width: 100%; margin-bottom: var(--ms-collection-gap); }
+/* staggered heights give the wall its rhythm (home shoot covers have no inline ratio) */
+.ms-collection-grid > .ms-covercard { aspect-ratio: 4 / 5; }
+.ms-collection-grid > .ms-covercard:nth-child(5n+1) { aspect-ratio: 3 / 4; }
+.ms-collection-grid > .ms-covercard:nth-child(5n+2) { aspect-ratio: 1 / 1; }
+.ms-collection-grid > .ms-covercard:nth-child(5n+3) { aspect-ratio: 4 / 6; }
+.ms-collection-grid > .ms-covercard:nth-child(5n+4) { aspect-ratio: 5 / 4; }
 .ms-collection { display: block; width: 100%; text-align: left; background: none; border: none; padding: 0; cursor: pointer; animation: ms-rise 0.55s var(--ms-ease) both; }
 .ms-cover { position: relative; aspect-ratio: 4 / 3; border-radius: var(--ms-radius-photo); overflow: hidden; background: var(--ms-surface-2); box-shadow: var(--ms-cover-shadow); transition: transform var(--ms-speed) var(--ms-ease), box-shadow var(--ms-speed) var(--ms-ease); }
 .ms-collection:hover .ms-cover { transform: translateY(var(--ms-lift)); }
@@ -311,35 +319,57 @@ html[data-ms-theme="editorial"] .ms-note { justify-content: center; }
 @keyframes ms-spin { to { transform: rotate(360deg); } }
 .ms-spin { animation: ms-spin 1s linear infinite; }
 
-/* ═══ SIGNATURE TREATMENTS (theme atmosphere + micro-interaction craft) ════ */
-
-/* smooth identity shift when switching themes */
-.ms-root, .ms-root .ms-panel, .ms-root .ms-shell, .ms-root .ms-btn-ink, .ms-root .ms-btn-ghost, .ms-root .ms-input { transition: background-color .45s ease, color .45s ease, border-color .45s ease; }
-
-/* content above the atmosphere layers */
+/* ═══ ATMOSPHERE + MOTION — alive, gradient-lit, Pinterest-immersive ═══════ */
 .ms-shell-content, .ms-shell { position: relative; z-index: 1; }
+.ms-root, .ms-root .ms-panel, .ms-root .ms-shell, .ms-root .ms-btn-ink, .ms-root .ms-btn-ghost, .ms-root .ms-input { transition: background-color .5s ease, color .5s ease, border-color .5s ease; }
 
-/* CINEMA atmosphere: film grain over the whole module + a projected vignette so
-   every screen feels framed in a darkened theatre. The media stays lit; the edges fall away. */
-html[data-ms-theme="cinema"] .ms-root::after {
-  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.06;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+/* a slow-drifting mesh-gradient backdrop on EVERY theme — the room breathes */
+.ms-root::before { content: ''; position: fixed; inset: -18%; z-index: 0; pointer-events: none; will-change: transform; animation: ms-drift 32s ease-in-out infinite alternate; }
+html[data-ms-theme="monochrome"] .ms-root::before {
+  background:
+    radial-gradient(58% 48% at 16% 10%, rgba(110,150,255,0.20), transparent 60%),
+    radial-gradient(54% 48% at 86% 16%, rgba(255,140,190,0.18), transparent 60%),
+    radial-gradient(60% 55% at 72% 92%, rgba(255,200,130,0.20), transparent 62%);
+  filter: blur(26px);
+}
+html[data-ms-theme="editorial"] .ms-root::before {
+  background:
+    radial-gradient(58% 48% at 14% 8%, rgba(226,176,112,0.26), transparent 60%),
+    radial-gradient(54% 48% at 90% 18%, rgba(214,148,138,0.22), transparent 60%),
+    radial-gradient(62% 56% at 58% 96%, rgba(196,176,146,0.24), transparent 62%);
+  filter: blur(30px);
 }
 html[data-ms-theme="cinema"] .ms-root::before {
-  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background: radial-gradient(130% 100% at 50% 38%, transparent 52%, rgba(0,0,0,0.55) 100%);
+  background:
+    radial-gradient(52% 44% at 18% 12%, rgba(38,160,180,0.34), transparent 62%),
+    radial-gradient(48% 44% at 86% 14%, rgba(226,120,56,0.30), transparent 60%),
+    radial-gradient(60% 55% at 60% 96%, rgba(122,72,206,0.26), transparent 62%),
+    radial-gradient(135% 105% at 50% 40%, transparent 48%, rgba(0,0,0,0.62) 100%);
+  filter: blur(16px);
 }
-@keyframes ms-aurora {
-  0%   { transform: translate(0, 0) scale(1); }
-  50%  { transform: translate(3%, -2%) scale(1.06); }
-  100% { transform: translate(-3%, 2%) scale(1.02); }
+/* cinema film grain rides on top of the gradient */
+html[data-ms-theme="cinema"] .ms-root::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+@keyframes ms-drift {
+  0%   { transform: translate(0, 0) scale(1) rotate(0deg); }
+  50%  { transform: translate(2.5%, -2.2%) scale(1.08) rotate(1.4deg); }
+  100% { transform: translate(-2.5%, 2.2%) scale(1.04) rotate(-1.4deg); }
+}
+@keyframes ms-aurora { 0% { transform: translate(0,0) scale(1); } 50% { transform: translate(3%,-2%) scale(1.06); } 100% { transform: translate(-3%,2%) scale(1.02); } }
 
-/* MONOCHROME: no atmosphere — flat museum wall. Panels are hairline, not lifted;
-   the photographs are the only thing with weight. */
-html[data-ms-theme="monochrome"] .ms-panel { box-shadow: none; border: 1px solid var(--ms-line); }
-html[data-ms-theme="monochrome"] .ms-btn-ink:hover { box-shadow: none; opacity: 0.85; }
-html[data-ms-theme="monochrome"] .ms-covercard:hover, html[data-ms-theme="monochrome"] .ms-photo:hover { transform: none; }
+/* MOTION — every card lifts, the image pushes in, and a light sweeps across on hover */
+.ms-covercard { transition: transform .4s var(--ms-ease), box-shadow .4s var(--ms-ease); }
+.ms-covercard:hover { transform: translateY(-6px) scale(1.012); box-shadow: 0 36px 70px -26px rgba(0,0,0,0.5); }
+.ms-covercard img { transition: transform .8s var(--ms-ease); }
+.ms-covercard:hover img { transform: scale(1.08); }
+.ms-covercard::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0; background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,0.28) 48%, transparent 64%); transform: translateX(-65%); }
+.ms-covercard:hover::after { opacity: 1; animation: ms-sheen .85s ease forwards; }
+@keyframes ms-sheen { to { transform: translateX(65%); } }
+/* entrance: sections + cards rise in on load */
+@keyframes ms-rise-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.ms-hero, .ms-projecthero, .ms-section-head, .ms-panel { animation: ms-rise-up .6s var(--ms-ease) both; }
 
 /* airy: hairline elegance + slow editorial reveals */
 html[data-ms-theme="editorial"] .ms-panel { box-shadow: 0 1px 0 rgba(25,25,22,0.03); }
