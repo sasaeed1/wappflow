@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# safe-deploy staging build dirs
+.next.staging
+.next.old
