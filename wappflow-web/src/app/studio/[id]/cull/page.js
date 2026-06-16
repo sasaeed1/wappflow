@@ -115,6 +115,8 @@ export default function CullPage() {
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isTouch, setIsTouch] = useState(false);
+  const [brain, setBrain] = useState(null);
+  const [showPicks, setShowPicks] = useState(false);
   const panDrag = useRef(null);
   const stageRef = useRef(null);
   const imgRef = useRef(null);
@@ -140,6 +142,7 @@ export default function CullPage() {
       } catch { router.push('/studio'); return; }
       setLoading(false);
       try { const r = await mediaAPI.intelligence(id); setScores(r.data.scores || {}); } catch {}
+      try { const b = await mediaAPI.brain(); setBrain(b.data.brain || {}); } catch {}
     })();
   }, [id]);
 
@@ -159,6 +162,20 @@ export default function CullPage() {
   const idx = Math.min(cursor, Math.max(0, view.length - 1));
   const current = view[idx];
   const keepers = useMemo(() => assets.filter(a => a.cull_decision === 'keep'), [assets]);
+
+  // ── Workspace Brain consumption (advisory only — never writes a decision) ─────
+  // Uses the studio's learned keep-rate to recommend roughly how many to keep,
+  // spotlighting the top photos by AI hero score. The photographer still decides.
+  const keepRate = useMemo(() => {
+    const v = brain && brain.cull_keep_rate ? Number(brain.cull_keep_rate.value) : NaN;
+    return (v > 0 && v <= 1) ? v : 0.3; // sensible default until the studio has history
+  }, [brain]);
+  const recommended = useMemo(() => {
+    const scored = assets.filter(a => heroOf(a) >= 0).sort((a, b) => heroOf(b) - heroOf(a));
+    const n = Math.max(1, Math.round(scored.length * keepRate));
+    return new Set(scored.slice(0, n).map(a => a.id));
+  }, [assets, heroOf, keepRate]);
+  const recommendedLearned = !!(brain && brain.cull_keep_rate); // distinguishes learned vs default
 
   const applyLocal = (assetId, patch) => setAssets(prev => prev.map(a => (a.id === assetId ? { ...a, ...patch } : a)));
 
@@ -479,9 +496,18 @@ export default function CullPage() {
                   <button key={m} onClick={() => { setSortMode(m); setCursor(0); }} className={sortMode === m ? 'is-active' : ''}>{label}</button>
                 ))}
               </div>
+              <button onClick={() => setShowPicks(v => !v)} title={`Spotlight the top ${Math.round(keepRate * 100)}% by AI score${recommendedLearned ? ' — learned from your keep rate' : ''}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 999, border: `1px solid ${showPicks ? '#c2a878' : 'rgba(255,255,255,0.18)'}`, background: showPicks ? 'rgba(194,168,120,0.18)' : 'transparent', color: showPicks ? '#e6cfa0' : 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <Sparkles size={12} /> Top picks {showPicks ? `· ${recommended.size}` : ''}
+              </button>
               <div style={{ flex: 1 }} />
               <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>{idx + 1} / {view.length}{zoomed ? ` · ${Math.round(scale * 100)}%` : ''}</span>
               {isTouch && !editing && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.08)', padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap' }}>Swipe ↑ keep · ↓ reject · ←→ browse</span>}
+              {showPicks && recommended.has(current.id) && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background: 'rgba(194,168,120,0.22)', border: '1px solid #c2a878', color: '#e6cfa0', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em' }}>
+                  <Sparkles size={10} /> RECOMMENDED
+                </span>
+              )}
               {current.cull_decision && DEC_META[current.cull_decision] && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999, background: DEC_META[current.cull_decision].color, color: '#fff', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em' }}>
                   {DEC_META[current.cull_decision].label}
@@ -675,6 +701,7 @@ export default function CullPage() {
                       }}>
                         {a.thumb_url ? <img src={mediaUrl(a.thumb_url)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: dec === 'reject' ? 0.35 : 1 }} /> : null}
                         {meta && <span style={{ position: 'absolute', top: 3, right: 3, width: 14, height: 14, borderRadius: '50%', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><meta.Icon size={8} color="white" /></span>}
+                        {showPicks && recommended.has(a.id) && <span style={{ position: 'absolute', top: 3, left: 3, color: '#e6cfa0', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))' }}><Sparkles size={11} /></span>}
                         {hasEdits(a) && <span style={{ position: 'absolute', bottom: 2, left: 3, fontSize: 8.5, color: '#e8cb8d' }}>✎</span>}
                       </button>
                     );
