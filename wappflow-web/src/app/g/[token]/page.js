@@ -74,6 +74,12 @@ export default function ClientGalleryPage() {
     } catch {}
   };
 
+  const [savedColl, setSavedColl] = useState(false);
+  const saveCollection = async () => {
+    const name = window.prompt('Name this selection (e.g. "For the album", "Parents\' favourites")'); if (!name) return;
+    try { const r = await fetch(`${BASE_URL}/api/media/portal/${token}/collection`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, contact: contact || 'guest', asset_ids: [...faved], pw }) }); if (r.ok) { setSavedColl(true); setTimeout(() => setSavedColl(false), 2500); } } catch {}
+  };
+
   const sendComment = async (assetId, body) => {
     if (!body.trim()) return;
     try {
@@ -159,6 +165,11 @@ export default function ClientGalleryPage() {
           <div style={{ marginTop: 14, display: 'inline-flex', gap: 2, padding: 3, borderRadius: 999, background: '#15151b', border: '1px solid #2a2a33' }}>
             <button onClick={() => { setFavOnly(false); setLightbox(null); }} style={{ padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', background: favOnly ? 'transparent' : '#c2a878', color: favOnly ? '#9aa0aa' : '#14120f', fontSize: 12.5, fontWeight: 700 }}>All {assets.length}</button>
             <button onClick={() => { setFavOnly(true); setLightbox(null); }} style={{ padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', background: favOnly ? '#c2a878' : 'transparent', color: favOnly ? '#14120f' : '#9aa0aa', fontSize: 12.5, fontWeight: 700 }}>♥ My favourites {faved.size}</button>
+          </div>
+        )}
+        {faved.size > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <button onClick={saveCollection} style={{ padding: '7px 16px', borderRadius: 999, border: '1px solid #2a2a33', background: savedColl ? '#16a34a' : '#15151b', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{savedColl ? '✓ Saved — your photographer can see it' : '+ Save selection as a collection'}</button>
           </div>
         )}
         <div style={{ marginTop: 18, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 }}>

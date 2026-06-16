@@ -169,6 +169,11 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   // server worker (now) or a desktop ONNX runtime (later) is invisible here.
   const intel = require('./analyzers')(db, { generateId });
   intel.ensureSchema();
+  // Client-named favourite collections (gallery CX 2.0)
+  db.exec(`CREATE TABLE IF NOT EXISTS ms_fav_collections (
+    id TEXT PRIMARY KEY, gallery_id TEXT NOT NULL, workspace_id TEXT, name TEXT,
+    contact_identifier TEXT, asset_ids TEXT DEFAULT '[]', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`);
 
   // PORTFOLIO — a per-user public showcase. Curated (the creator controls every
   // item), auto-fed from PUBLISHED galleries/reels (never raw), with a vanity
@@ -2452,6 +2457,33 @@ Only suggest actions that make sense for the question. If none make sense, retur
       const count = db.prepare('SELECT COUNT(*) n FROM ms_client_favorites WHERE gallery_id = ? AND asset_id = ?').get(g.id, asset_id).n;
       try { broadcastToWorkspace(g.workspace_id, 'ms_client_favorited', { gallery_id: g.id, asset_id, favorited }); } catch {}
       res.json({ favorited, favorites: count });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Save the client's favourites as a named collection (gallery CX 2.0)
+  app.post('/api/media/portal/:token/collection', (req, res) => {
+    try {
+      const g = loadPublishedGallery(req.params.token);
+      if (!g) return res.status(404).json({ error: 'Gallery not found' });
+      if (!portalAllowed(g, req.body.pw)) return res.status(401).json({ error: 'Password required' });
+      const who = (req.body.contact || 'guest').toString().slice(0, 120);
+      const name = String(req.body.name || 'My selection').slice(0, 120);
+      let assetIds = Array.isArray(req.body.asset_ids) && req.body.asset_ids.length ? req.body.asset_ids
+        : db.prepare('SELECT asset_id FROM ms_client_favorites WHERE gallery_id = ? AND contact_identifier = ?').all(g.id, who).map(r => r.asset_id);
+      if (!assetIds.length) return res.status(400).json({ error: 'Favourite some photos first.' });
+      const id = generateId();
+      db.prepare('INSERT INTO ms_fav_collections (id, gallery_id, workspace_id, name, contact_identifier, asset_ids) VALUES (?,?,?,?,?,?)')
+        .run(id, g.id, g.workspace_id, name, who, JSON.stringify(assetIds));
+      try { broadcastToWorkspace(g.workspace_id, 'ms_collection', { gallery_id: g.id, name, count: assetIds.length }); } catch {}
+      try { const proj = db.prepare('SELECT lead_id FROM ms_projects WHERE id = ?').get(g.project_id); if (proj && proj.lead_id) addContactHistory(proj.lead_id, null, 'media', `Client saved a collection "${name}" (${assetIds.length} photos)`); } catch {}
+      res.json({ ok: true, id, count: assetIds.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.get('/api/media/galleries/:id/collections', auth, (req, res) => {
+    try {
+      const g = db.prepare('SELECT id FROM ms_galleries WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!g) return res.status(404).json({ error: 'Not found' });
+      res.json({ collections: db.prepare('SELECT id, name, contact_identifier, asset_ids, created_at FROM ms_fav_collections WHERE gallery_id = ? ORDER BY created_at DESC').all(g.id).map(c => ({ ...c, asset_ids: (() => { try { return JSON.parse(c.asset_ids); } catch { return []; } })() })) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
