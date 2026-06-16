@@ -62,6 +62,9 @@ export default function StudioSettingsPage() {
         <h1 className="ms-display" style={{ fontSize: 'clamp(30px, 4.6vw, 60px)', marginBottom: 6 }}>Settings</h1>
         <p className="ms-lede" style={{ marginBottom: 36 }}>Tune how the Studio looks and behaves, manage your public portfolio, and find help.</p>
 
+        {/* STUDIO BRAIN */}
+        <StudioBrainSection say={say} />
+
         {/* APPEARANCE */}
         <Section icon={<Camera size={15} />} title="Appearance" sub="Switching theme switches the whole studio — typography, colour, motion.">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
@@ -161,6 +164,51 @@ export default function StudioSettingsPage() {
 
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 600, padding: '9px 18px', borderRadius: 999, background: 'var(--ms-ink)', color: 'var(--ms-paper)', fontSize: 13 }}>{toast}</div>}
     </NavBar>
+  );
+}
+
+const BRAIN_FIELDS = [
+  ['shooting_style', 'Shooting style', 'e.g. documentary, candid, editorial'],
+  ['preferred_lenses', 'Preferred lenses', 'e.g. 35mm, 85mm, 24-70'],
+  ['editing_style', 'Editing style', 'e.g. light & airy, dark & moody'],
+  ['album_prefs', 'Album preferences', 'e.g. 30 pages, minimal spreads'],
+  ['comms_tone', 'Client comms tone', 'e.g. warm, first-name, concise'],
+  ['pricing_notes', 'Pricing habits', 'e.g. 40% deposit, packages from $2,400'],
+];
+const INFERRED_LABELS = { cull_keep_rate: 'Keep rate', avg_delivery_count: 'Avg delivery size' };
+
+function StudioBrainSection({ say }) {
+  const [brain, setBrain] = useState({});
+  const [vals, setVals] = useState({});
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { mediaAPI.brain().then(r => { const b = r.data.brain || {}; setBrain(b); const v = {}; BRAIN_FIELDS.forEach(([k]) => { v[k] = b[k] ? (typeof b[k].value === 'string' ? b[k].value : JSON.stringify(b[k].value)) : ''; }); setVals(v); }).catch(() => {}); }, []);
+  const save = async (key) => { try { await mediaAPI.setBrain(key, vals[key]); say && say('Saved to Studio Brain'); } catch {} };
+  const refresh = async () => { setBusy(true); try { const r = await mediaAPI.deriveBrain(); setBrain(r.data.brain || {}); say && say('Insights refreshed'); } catch {} finally { setBusy(false); } };
+  const inferred = Object.entries(brain).filter(([, v]) => v && v.source === 'inferred');
+
+  return (
+    <Section icon={<Sliders size={15} />} title="Studio Brain" sub="What WappFlow remembers about how you work — it learns from your real behaviour and applies these as smart defaults. AI advises; you stay in control.">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {inferred.length === 0 ? <span style={{ fontSize: 12.5, color: 'var(--ms-ink-3)' }}>No learned insights yet — they appear as you cull and deliver.</span>
+            : inferred.map(([k, v]) => (
+              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 999, background: 'var(--ms-surface)', border: '1px solid var(--ms-line)', fontSize: 12.5, color: 'var(--ms-ink)' }}>
+                <b>{INFERRED_LABELS[k] || k}:</b> {typeof v.value === 'number' && k === 'cull_keep_rate' ? `${Math.round(v.value * 100)}%` : String(v.value)}
+                <span style={{ fontSize: 10, color: 'var(--ms-ink-3)' }}>learned</span>
+              </span>
+            ))}
+        </div>
+        <button onClick={refresh} disabled={busy} className="ms-btn-ghost" style={{ padding: '7px 13px' }}>{busy ? 'Refreshing…' : 'Refresh insights'}</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+        {BRAIN_FIELDS.map(([key, label, ph]) => (
+          <div key={key}>
+            <label className="ms-label" style={{ display: 'block', marginBottom: 5 }}>{label}</label>
+            <input value={vals[key] || ''} onChange={e => setVals(v => ({ ...v, [key]: e.target.value }))} onBlur={() => save(key)} placeholder={ph} className="ms-input" />
+          </div>
+        ))}
+      </div>
+    </Section>
   );
 }
 
