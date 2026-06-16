@@ -114,6 +114,7 @@ export default function CullPage() {
   const [toast, setToast] = useState(null);
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isTouch, setIsTouch] = useState(false);
   const panDrag = useRef(null);
   const stageRef = useRef(null);
   const imgRef = useRef(null);
@@ -179,6 +180,22 @@ export default function CullPage() {
   const next = useCallback(() => { setScale(1); setPan({ x: 0, y: 0 }); setCursor(c => Math.min(c + 1, view.length - 1)); }, [view.length]);
   const prev = useCallback(() => { setScale(1); setPan({ x: 0, y: 0 }); setCursor(c => Math.max(c - 1, 0)); }, []);
 
+  // Touch swipe culling (mobile/tablet): ←/→ navigate · ↑ keep · ↓ reject
+  const touch = useRef(null);
+  const onTouchStart = useCallback((e) => {
+    if (zoomed || editing || e.touches.length !== 1) { touch.current = null; return; }
+    touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+  }, [zoomed, editing]);
+  const onTouchEnd = useCallback((e) => {
+    const s = touch.current; touch.current = null;
+    if (!s) return;
+    const t = e.changedTouches[0]; const dx = t.clientX - s.x; const dy = t.clientY - s.y;
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    if (Math.max(adx, ady) < 45 || Date.now() - s.t > 700) return; // ignore taps / slow drags
+    if (adx > ady) { dx < 0 ? next() : prev(); }
+    else { dy < 0 ? decide('keep') : decide('reject'); }
+  }, [next, prev, decide, zoomed, editing]);
+
   const loadPendingFrom = (a) => {
     const e = parseEdits(a);
     const p = { ...ZERO_EDITS };
@@ -188,6 +205,7 @@ export default function CullPage() {
     setActivePreset(null);
   };
   useEffect(() => { setScale(1); setPan({ x: 0, y: 0 }); setCropOn(false); setBa(false); if (current) loadPendingFrom(current); }, [current?.id]); // eslint-disable-line
+  useEffect(() => { try { setIsTouch(window.matchMedia('(pointer: coarse)').matches); } catch {} }, []);
   // keep the active filmstrip thumb in view as the cursor moves (windowed for big shoots)
   useEffect(() => { const el = filmRef.current && filmRef.current.querySelector('[data-active="1"]'); if (el) el.scrollIntoView({ inline: 'center', block: 'nearest' }); }, [idx, filter]);
 
@@ -408,8 +426,9 @@ export default function CullPage() {
           <>
             {/* stage — the photograph is the page */}
             <div ref={stageRef}
-              style={{ position: 'absolute', top: 60, left: 64, right: panelOpen ? 312 : 16, bottom: 168, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: zoomed ? 'grab' : 'default', transition: 'right .25s ease' }}
-              onPointerDown={startPan} onDoubleClick={toggle100}>
+              style={{ position: 'absolute', top: 60, left: 64, right: panelOpen ? 312 : 16, bottom: 168, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: zoomed ? 'grab' : 'default', transition: 'right .25s ease', touchAction: zoomed ? 'none' : 'pan-y' }}
+              onPointerDown={startPan} onDoubleClick={toggle100}
+              onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
               <div ref={cropBoxRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', transform: zoomed ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transition: panDrag.current ? 'none' : 'transform 0.12s ease-out' }}>
                 {(() => {
                   const baActive = editing && ba && !zoomed;
@@ -462,6 +481,7 @@ export default function CullPage() {
               </div>
               <div style={{ flex: 1 }} />
               <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>{idx + 1} / {view.length}{zoomed ? ` · ${Math.round(scale * 100)}%` : ''}</span>
+              {isTouch && !editing && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.08)', padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap' }}>Swipe ↑ keep · ↓ reject · ←→ browse</span>}
               {current.cull_decision && DEC_META[current.cull_decision] && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999, background: DEC_META[current.cull_decision].color, color: '#fff', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em' }}>
                   {DEC_META[current.cull_decision].label}
