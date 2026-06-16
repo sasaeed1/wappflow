@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search, Filter, ChevronRight, Plus, Download,
@@ -811,8 +811,8 @@ export default function LeadsListPage() {
     setViews(next); writeViews(next); if (activeView === name) setActiveView(null);
   };
 
-  // ── Action queue (next-best-action) ──────────────────────────────────────────
-  const actionItems = (() => {
+  // ── Action queue (next-best-action) — memoised so typing/search doesn't re-sort ──
+  const actionItems = useMemo(() => {
     const me = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}').id : null;
     return allLeads
       .map(l => ({ lead: l, action: nextAction(l) }))
@@ -824,7 +824,7 @@ export default function LeadsListPage() {
         if (a.action.urgency !== b.action.urgency) return b.action.urgency - a.action.urgency;
         return new Date(a.lead.last_message_at || a.lead.created_at) - new Date(b.lead.last_message_at || b.lead.created_at);
       });
-  })();
+  }, [allLeads]);
 
   const memberById = (id) => members.find(m => m.user_id === id);
   const statusCounts = ALL_STATUSES.reduce((acc,s) => { acc[s] = s==='All' ? allLeads.length : allLeads.filter(l=>l.status===s).length; return acc; }, {});

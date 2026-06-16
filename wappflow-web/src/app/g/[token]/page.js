@@ -156,11 +156,23 @@ export default function ClientGalleryPage() {
   const shown = favOnly ? assets.filter(a => faved.has(a.asset_id)) : assets;
   // Story sections: group photos by folder/chapter (only in the full view, when the photographer organised them)
   const useSections = !favOnly && Array.isArray(data?.sections) && data.sections.length > 1;
-  const sectionGroups = useSections
-    ? data.sections
-        .map(s => ({ name: s.name, items: shown.map((a, i) => ({ a, i })).filter(x => (x.a.folder_id || null) === s.id) }))
-        .filter(g => g.items.length)
-    : [{ name: null, items: shown.map((a, i) => ({ a, i })) }];
+  const sectionGroups = (() => {
+    const all = shown.map((a, i) => ({ a, i }));
+    if (!useSections) return [{ name: null, items: all }];
+    const sectionIds = new Set(data.sections.map(s => s.id));
+    const groups = data.sections
+      .map(s => ({ name: s.name, items: all.filter(x => (x.a.folder_id || null) === s.id) }))
+      .filter(g => g.items.length);
+    // Safety net: never drop a photo whose folder isn't a known section (e.g. a
+    // deleted folder leaves an orphaned folder_id). Collect any leftovers.
+    const leftovers = all.filter(x => !sectionIds.has(x.a.folder_id || null));
+    if (leftovers.length) {
+      const more = groups.find(g => g.name === 'More photos');
+      if (more) leftovers.forEach(l => { if (!more.items.includes(l)) more.items.push(l); });
+      else groups.push({ name: 'More photos', items: leftovers });
+    }
+    return groups;
+  })();
   return (
     <div style={{ minHeight: '100vh', background: '#0b0b0f', color: '#fff' }}>
       {/* header */}
