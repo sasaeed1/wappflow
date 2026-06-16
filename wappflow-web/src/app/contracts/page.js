@@ -187,7 +187,7 @@ function NewDocModal({ onClose, onCreated, say }) {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, padding: 24, boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, padding: 24, boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>New document</h2>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
@@ -197,9 +197,12 @@ function NewDocModal({ onClose, onCreated, say }) {
             <label style={lbl}>Start from a pack</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
               {packs.map(p => (
-                <button key={p.id} onClick={() => pickPack(p)} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', borderRadius: 11, cursor: 'pointer', textAlign: 'left', border: `1.5px solid ${packId === p.id ? 'var(--accent)' : 'var(--border)'}`, background: packId === p.id ? 'var(--accent-light)' : 'var(--bg)' }}>
-                  <span style={{ fontSize: 20, flexShrink: 0 }}>{p.emoji || '📄'}</span>
-                  <div style={{ minWidth: 0 }}><div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</div><div style={{ fontSize: 10.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.industry}</div></div>
+                <button key={p.id} onClick={() => pickPack(p)} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0, minHeight: 62, padding: '11px 13px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', border: `1.5px solid ${packId === p.id ? 'var(--accent)' : 'var(--border)'}`, background: packId === p.id ? 'var(--accent-light)' : 'var(--bg)' }}>
+                  <span style={{ fontSize: 19, flexShrink: 0, lineHeight: 1.2 }}>{p.emoji || '📄'}</span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.title}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.industry}</div>
+                  </div>
                 </button>
               ))}
             </div>
