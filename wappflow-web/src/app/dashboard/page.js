@@ -665,55 +665,54 @@ export default function DashboardPage() {
       if (sseRetryRef.current) { clearTimeout(sseRetryRef.current); sseRetryRef.current = null; }
     };
 
-    es.addEventListener('lead_created', (e) => {
-      const data = JSON.parse(e.data);
-      // Add to live events
-      const event = { id: Date.now(), type: 'lead_created', data, time: new Date().toISOString() };
-      setLiveEvents(prev => [event, ...prev].slice(0, 20));
-      setNotifBadge(prev => prev + 1);
-
-      // Sound
-      if (soundEnabledRef.current) playSound('newLead');
-
-      // Toast
-      showToast(`New lead: ${data.customer_name || 'Unknown'}`, '#6366f1', '👤');
-
-      // Highlight new lead
-      setNewLeadIds(prev => new Set([...prev, data.lead_id || data.id]));
-      setTimeout(() => setNewLeadIds(prev => { const n = new Set(prev); n.delete(data.lead_id || data.id); return n; }), 8000);
-
-      // Refresh lead list
-      fetchLeads();
-    });
-
-    es.addEventListener('new_message', (e) => {
-      const data = JSON.parse(e.data);
-      const event = { id: Date.now(), type: 'new_message', data, time: new Date().toISOString() };
-      setLiveEvents(prev => [event, ...prev].slice(0, 20));
-      setNotifBadge(prev => prev + 1);
-      if (soundEnabledRef.current) playSound(data.platform === 'whatsapp' || !data.platform ? 'whatsapp' : 'system');
-      showToast(`New message from ${data.customer_name || 'Unknown'}`, '#10b981', '💬');
-      // Update message count optimistically
-      setAllLeads(prev => prev.map(l => l.id === (data.lead_id || data.id) ? { ...l, total_messages: (l.total_messages || 0) + 1 } : l));
-    });
-
-    es.addEventListener('lead_updated', (e) => {
-      const data = JSON.parse(e.data);
-      const updated = data.lead || data;
-      if (!updated?.id) return;
-      setAllLeads(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
-    });
-
-    es.addEventListener('missed_sync_complete', (e) => {
-      const data = JSON.parse(e.data);
-      if (data.totalImported > 0 || data.leadsCreated > 0) {
-        const parts = [];
-        if (data.leadsCreated > 0) parts.push(`${data.leadsCreated} new lead${data.leadsCreated > 1 ? 's' : ''}`);
-        if (data.totalImported > 0) parts.push(`${data.totalImported} message${data.totalImported > 1 ? 's' : ''}`);
-        showToast(`📥 Catch-up sync: imported ${parts.join(' & ')} from downtime`, '#f59e0b', '📥');
-        fetchLeads();
+    // The server emits UNNAMED SSE frames (`data: {type, ...}`) — so we route on
+    // data.type via onmessage. (Named addEventListener handlers never fired, since
+    // there's no `event:` line; this is the same pattern FloatingChat already uses.)
+    es.onmessage = (e) => {
+      let data; try { data = JSON.parse(e.data); } catch { return; }
+      switch (data.type) {
+        case 'lead_created':
+        case 'new_lead': {
+          const lead = data.lead || data;
+          const lid = lead.lead_id || lead.id || data.lead_id || data.id;
+          setLiveEvents(prev => [{ id: Date.now(), type: 'lead_created', data, time: new Date().toISOString() }, ...prev].slice(0, 20));
+          setNotifBadge(prev => prev + 1);
+          if (soundEnabledRef.current) playSound('newLead');
+          showToast(`New lead: ${lead.customer_name || data.customer_name || 'Unknown'}`, '#6366f1', '👤');
+          if (lid) {
+            setNewLeadIds(prev => new Set([...prev, lid]));
+            setTimeout(() => setNewLeadIds(prev => { const n = new Set(prev); n.delete(lid); return n; }), 8000);
+          }
+          fetchLeads();
+          break;
+        }
+        case 'new_message': {
+          setLiveEvents(prev => [{ id: Date.now(), type: 'new_message', data, time: new Date().toISOString() }, ...prev].slice(0, 20));
+          setNotifBadge(prev => prev + 1);
+          if (soundEnabledRef.current) playSound(data.platform === 'whatsapp' || !data.platform ? 'whatsapp' : 'system');
+          showToast(`New message from ${data.customer_name || 'Unknown'}`, '#10b981', '💬');
+          setAllLeads(prev => prev.map(l => l.id === (data.lead_id || data.id) ? { ...l, total_messages: (l.total_messages || 0) + 1 } : l));
+          break;
+        }
+        case 'lead_updated': {
+          const updated = data.lead || data;
+          if (!updated?.id) return;
+          setAllLeads(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
+          break;
+        }
+        case 'missed_sync_complete': {
+          if (data.totalImported > 0 || data.leadsCreated > 0) {
+            const parts = [];
+            if (data.leadsCreated > 0) parts.push(`${data.leadsCreated} new lead${data.leadsCreated > 1 ? 's' : ''}`);
+            if (data.totalImported > 0) parts.push(`${data.totalImported} message${data.totalImported > 1 ? 's' : ''}`);
+            showToast(`📥 Catch-up sync: imported ${parts.join(' & ')} from downtime`, '#f59e0b', '📥');
+            fetchLeads();
+          }
+          break;
+        }
+        default: break; // connected / notification / lead_deleted / etc.
       }
-    });
+    };
 
     es.onerror = () => {
       setSseConnected(false);

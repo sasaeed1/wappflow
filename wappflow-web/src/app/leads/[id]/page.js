@@ -731,8 +731,13 @@ const [aiError, setAiError] = useState('');
         setLead(prev => ({ ...prev, ...updated }));
       } catch {}
     };
-    es.addEventListener('new_message', onNewMessage);
-    es.addEventListener('lead_updated', onLeadUpdated);
+    // Server emits unnamed `data: {type,...}` frames — route via onmessage
+    // (named addEventListener never fired; the polling fallback below masked it).
+    es.onmessage = (e) => {
+      let data; try { data = JSON.parse(e.data); } catch { return; }
+      if (data.type === 'new_message') onNewMessage(e);
+      else if (data.type === 'lead_updated') onLeadUpdated(e);
+    };
     return () => { es.close(); };
   }, [leadId]);
 
