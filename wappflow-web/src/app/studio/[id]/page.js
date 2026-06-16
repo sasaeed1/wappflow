@@ -697,7 +697,7 @@ function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
           <select value={reelLen} onChange={e => setReelLen(Number(e.target.value))} style={aiSel}>{[15, 30, 60, 90].map(n => <option key={n} value={n}>{n}s</option>)}</select>
           <button onClick={makeReel} disabled={!!busy} style={chip}>{busy === 'reel' ? 'Planning…' : 'Generate reel plan'}</button>
         </div>
-        {reel && <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--ms-ink-3,#888)' }}>{reel.plan.timeline.length} clips · {reel.plan.aspect} · {reel.plan.length_s}s{reel.template ? ` · ${reel.template}` : ''}</div>}
+        {reel && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 12.5, color: 'var(--ms-ink-3,#888)' }}>{reel.plan.timeline.length} clips · {reel.plan.aspect} · {reel.plan.length_s}s{reel.template ? ` · ${reel.template}` : ''}</span><a href={`/studio/${projectId}/reel/${reel.reel_id}`} style={{ ...chip, textDecoration: 'none', background: 'var(--ms-ink,#14120f)', color: '#fff', border: 'none', padding: '6px 12px' }}>Edit timeline →</a></div>}
 
         {note && <p style={{ marginTop: 14, fontSize: 13, color: 'var(--ms-ink,#14120f)', background: 'var(--ms-line,#f2f2f4)', padding: '10px 12px', borderRadius: 9 }}>{note}</p>}
       </div>

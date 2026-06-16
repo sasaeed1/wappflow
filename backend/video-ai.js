@@ -176,6 +176,25 @@ module.exports = function mountVideoAI(app, db, deps = {}) {
       res.json({ ok: true, reel_id: id, story_id: storyId, template: tpl ? tpl.name : null, plan });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
+  app.get('/api/video-ai/reels/:id', auth, (req, res) => {
+    try {
+      const r = db.prepare('SELECT * FROM ms_reel_plans WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!r) return res.status(404).json({ error: 'Reel not found' });
+      res.json({ reel: { ...r, plan: J(r.plan, {}) } });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.put('/api/video-ai/reels/:id', auth, (req, res) => {
+    try {
+      const r = db.prepare('SELECT id FROM ms_reel_plans WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!r) return res.status(404).json({ error: 'Reel not found' });
+      const set = {};
+      if (req.body.plan !== undefined) { set.plan = JSON.stringify(req.body.plan); if (req.body.plan.length_s) set.length_s = req.body.plan.length_s; }
+      if (req.body.status !== undefined) set.status = req.body.status;
+      const keys = Object.keys(set);
+      if (keys.length) db.prepare(`UPDATE ms_reel_plans SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: r.id });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
   app.get('/api/video-ai/projects/:id/reels', auth, (req, res) => {
     try {
       const project = getProject(req.workspaceId, req.params.id);

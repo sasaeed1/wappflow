@@ -468,6 +468,8 @@ export const videoAiAPI = {
   story: (id) => api.post(`/video-ai/projects/${id}/story`),
   reel: (id, body) => api.post(`/video-ai/projects/${id}/reel`, body),
   reels: (id) => api.get(`/video-ai/projects/${id}/reels`),
+  getReel: (reelId) => api.get(`/video-ai/reels/${reelId}`),
+  updateReel: (reelId, body) => api.put(`/video-ai/reels/${reelId}`, body),
 };
 // Marketplace packs (P16) + Payments
 export const packsAPI = {
