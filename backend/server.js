@@ -717,6 +717,30 @@ db.exec(`
   );
 `);
 
+// ── Hot-path indexes (idempotent). The core CRM tables shipped without these;
+//    on a populated DB the inbox, lead profile, and inbound-message routing were
+//    doing full table scans. These cover every per-lead child lookup + the
+//    workspace+phone resolution that runs on every inbound WhatsApp/IG/FB message.
+//    Each is guarded independently so a column that only exists after a later
+//    safeAlter migration can never block the rest.
+for (const ix of [
+  'CREATE INDEX IF NOT EXISTS idx_leads_ws ON leads(workspace_id)',
+  'CREATE INDEX IF NOT EXISTS idx_leads_ws_phone ON leads(workspace_id, customer_phone)',
+  'CREATE INDEX IF NOT EXISTS idx_messages_lead ON messages(lead_id)',
+  'CREATE INDEX IF NOT EXISTS idx_notes_lead ON notes(lead_id)',
+  'CREATE INDEX IF NOT EXISTS idx_reminders_lead ON reminders(lead_id)',
+  'CREATE INDEX IF NOT EXISTS idx_lead_tags_lead ON lead_tags(lead_id)',
+  'CREATE INDEX IF NOT EXISTS idx_contact_history_lead ON contact_history(lead_id)',
+  'CREATE INDEX IF NOT EXISTS idx_activity_timeline_lead ON activity_timeline(lead_id)',
+  'CREATE INDEX IF NOT EXISTS idx_invoices_user ON invoices(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_invoices_lead ON invoices(lead_id)',
+  'CREATE INDEX IF NOT EXISTS idx_lead_emails_lead ON lead_emails(lead_id)',
+  'CREATE INDEX IF NOT EXISTS idx_audit_logs_ws ON audit_logs(workspace_id, created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_platform_accounts_ws ON platform_accounts(workspace_id)',
+  'CREATE INDEX IF NOT EXISTS idx_workspace_members_ws ON workspace_members(workspace_id)',
+  'CREATE INDEX IF NOT EXISTS idx_chat_messages_channel ON chat_messages(channel_id)',
+]) { try { db.exec(ix); } catch (e) { console.error('Index skipped:', e.message); } }
+
 // ── Migrate password_hash → password for databases created with old schema ──
 safeAlter('ALTER TABLE users ADD COLUMN password TEXT');
 try {
@@ -894,18 +918,22 @@ function attachAccountInfo(lead) {
   return lead;
 }
 
-function attachTags(leads) {
-  return leads.map(lead => {
-    const enriched = {
-      ...lead,
-      tags: db.prepare(`
-        SELECT t.id, t.name, t.color FROM tags t
-        JOIN lead_tags lt ON t.id = lt.tag_id
-        WHERE lt.lead_id = ? ORDER BY t.name
-      `).all(lead.id)
-    };
-    return attachAccountInfo(enriched);
-  });
+// Batch-attach tags to a list of leads in a SINGLE query (was N+1: one query per
+// lead + a per-lead account lookup). Scoped by workspace so it never trips the
+// SQLite bound-parameter limit on large lists. Account enrichment is the caller's
+// job (the list handler prefetches a map; the single-lead path uses attachAccountInfo).
+function attachTags(leads, workspaceId) {
+  if (!leads.length) return leads;
+  const byLead = {};
+  db.prepare(`
+    SELECT lt.lead_id AS lead_id, t.id, t.name, t.color
+    FROM lead_tags lt
+    JOIN tags t  ON t.id = lt.tag_id
+    JOIN leads l ON l.id = lt.lead_id
+    WHERE l.workspace_id = ?
+    ORDER BY t.name
+  `).all(workspaceId).forEach(r => { (byLead[r.lead_id] ||= []).push({ id: r.id, name: r.name, color: r.color }); });
+  return leads.map(lead => ({ ...lead, tags: byLead[lead.id] || [] }));
 }
 
 function getCurrencySymbol(userId) {
@@ -1442,7 +1470,7 @@ app.get('/api/leads', auth, (req, res) => {
     if (platform && platform !== 'all') { query += ' AND platform_source = ?'; params.push(platform); }
     if (account_id) { query += ' AND platform_account_id = ?'; params.push(account_id); }
     query += ' ORDER BY last_message_at DESC';
-    const leads = attachTags(db.prepare(query).all(...params));
+    const leads = attachTags(db.prepare(query).all(...params), req.workspaceId);
 
     // Attach assignee name from workspace_members
     const members = db.prepare('SELECT user_id, full_name FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL').all(req.workspaceId);

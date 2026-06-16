@@ -33,7 +33,6 @@
     "nodemailer": "^8.0.7",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.15.0",
-    "pg": "^8.20.0",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "web-push": "^3.6.7",
