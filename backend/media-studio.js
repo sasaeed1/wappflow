@@ -36,6 +36,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     logAudit = () => {},
     broadcastToWorkspace = () => {},
     addContactHistory = () => {},
+    notify = () => {},
     multer = require('multer'),
     path = require('path'),
     fs = require('fs'),
@@ -2488,7 +2489,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
       db.prepare('INSERT INTO ms_fav_collections (id, gallery_id, workspace_id, name, contact_identifier, asset_ids) VALUES (?,?,?,?,?,?)')
         .run(id, g.id, g.workspace_id, name, who, JSON.stringify(assetIds));
       try { broadcastToWorkspace(g.workspace_id, 'ms_collection', { gallery_id: g.id, name, count: assetIds.length }); } catch {}
-      try { const proj = db.prepare('SELECT lead_id FROM ms_projects WHERE id = ?').get(g.project_id); if (proj && proj.lead_id) addContactHistory(proj.lead_id, null, 'media', `Client saved a collection "${name}" (${assetIds.length} photos)`); } catch {}
+      let leadId = null; try { const proj = db.prepare('SELECT lead_id FROM ms_projects WHERE id = ?').get(g.project_id); if (proj && proj.lead_id) { leadId = proj.lead_id; addContactHistory(proj.lead_id, null, 'media', `Client saved a collection "${name}" (${assetIds.length} photos)`); } } catch {}
+      try { notify(g.workspace_id, { type: 'gallery', title: 'Client saved a collection', body: `"${name}" — ${assetIds.length} photo${assetIds.length > 1 ? 's' : ''} in ${g.title}`, url: leadId ? `/leads/${leadId}` : '/studio', icon: '⭐' }); } catch {}
       res.json({ ok: true, id, count: assetIds.length });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -2511,6 +2513,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       db.prepare('INSERT INTO ms_client_comments (id, gallery_id, asset_id, contact_identifier, body) VALUES (?, ?, ?, ?, ?)')
         .run(id, g.id, asset_id || null, (contact || 'guest').toString().slice(0, 120), body.trim().slice(0, 2000));
       try { broadcastToWorkspace(g.workspace_id, 'ms_client_commented', { gallery_id: g.id, asset_id }); } catch {}
+      try { let leadId = null; const proj = db.prepare('SELECT lead_id FROM ms_projects WHERE id = ?').get(g.project_id); if (proj && proj.lead_id) leadId = proj.lead_id; notify(g.workspace_id, { type: 'gallery', title: 'New gallery comment', body: `${(contact || 'A client')} commented on ${g.title}`, url: leadId ? `/leads/${leadId}` : '/studio', icon: '💬' }); } catch {}
       res.status(201).json(db.prepare('SELECT * FROM ms_client_comments WHERE id = ?').get(id));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

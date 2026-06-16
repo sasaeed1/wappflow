@@ -92,6 +92,7 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     logAudit = () => {},
     broadcastToWorkspace = () => {},
     addContactHistory = () => {},
+    notify = () => {},
     clientBaseUrl = process.env.FRONTEND_URL || '',
     sendClientMessage = async () => ({ skipped: true }),
     sendEmail = async () => ({ skipped: true }),
@@ -967,6 +968,7 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
         } catch { /* PDF is best-effort */ }
       }
       broadcastToWorkspace(d.workspace_id, 'cs_signed', { id: d.id, automations });
+      try { notify(d.workspace_id, { type: 'contract', title: allSigned ? 'Contract fully signed' : 'Contract signed', body: `${typed_name} signed "${d.title}"`, url: d.lead_id ? `/leads/${d.lead_id}` : '/contracts', icon: '✍️' }); } catch {}
       try { const lead = d.lead_id ? db.prepare('SELECT * FROM leads WHERE id = ?').get(d.lead_id) : null; if (lead?.customer_phone) await sendClientMessage({ lead, userId: d.created_by, text: `✅ "${d.title}" was signed. Thank you!` }); } catch {}
       res.json({ ok: true, status, doc_hash: hash });
     } catch (e) { res.status(500).json({ error: e.message }); }

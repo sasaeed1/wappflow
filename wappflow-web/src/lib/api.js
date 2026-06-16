@@ -86,6 +86,12 @@ export const leadsAPI = {
   createEmailWorkflow: (id, data) => api.post(`/leads/${id}/email-workflows`, data),
 };
 
+export const notificationsAPI = {
+  get: () => api.get('/notifications'),
+  readAll: () => api.post('/notifications/read-all'),
+  read: (id) => api.post(`/notifications/${id}/read`),
+};
+
 export const tagsAPI = {
   getAll: () => api.get('/tags'),
   create: (data) => api.post('/tags', data),

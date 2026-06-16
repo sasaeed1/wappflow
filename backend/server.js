@@ -815,6 +815,26 @@ async function sendPushToUser(userId, title, body, data = {}) {
   } catch (e) { console.error('Push error:', e.message); }
 }
 
+// ── Unified notification center ───────────────────────────────────────────────
+// One persistent feed across every module. notify() inserts a row and pushes a
+// live SSE event; modules emit through the DI seam so this stays additive.
+db.exec(`CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, user_id TEXT,
+  type TEXT, title TEXT, body TEXT, url TEXT, icon TEXT,
+  is_read INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)`);
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_ws ON notifications(workspace_id, created_at)'); } catch {}
+
+function notify(workspaceId, { type, title, body, url, icon, userId } = {}) {
+  if (!workspaceId || !title) return;
+  try {
+    const id = generateId();
+    db.prepare('INSERT INTO notifications (id, workspace_id, user_id, type, title, body, url, icon) VALUES (?,?,?,?,?,?,?,?)')
+      .run(id, workspaceId, userId || null, type || 'info', title, body || '', url || '', icon || '');
+    broadcastToWorkspace(workspaceId, 'notification', { id, type: type || 'info', title, body: body || '', url: url || '', icon: icon || '', created_at: new Date().toISOString() });
+  } catch (e) { /* notifications are best-effort, never block the action */ }
+}
+
 // ════════════════════════════════════════════════════════════
 //  HELPERS
 // ════════════════════════════════════════════════════════════
@@ -1753,6 +1773,7 @@ app.post('/api/leads', auth, (req, res) => {
     addContactHistory(leadId, req.userId, 'created', 'Lead created');
     broadcastToWorkspace(req.workspaceId, 'lead_created', { lead });
     sendPushToUser(req.userId, '👤 New Lead', `${lead.customer_name || 'Unknown'} just came in`, { url: `/leads/${leadId}` });
+    notify(req.workspaceId, { type: 'lead', title: 'New lead', body: `${lead.customer_name || 'Unknown'} just came in`, url: `/leads/${leadId}`, icon: '👤' });
     res.status(201).json(lead);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2518,6 +2539,32 @@ app.post('/api/push/test', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Notification center feed ──────────────────────────────────────────────────
+// GET /api/notifications — recent feed + unread count for the current viewer
+app.get('/api/notifications', auth, (req, res) => {
+  try {
+    const rows = db.prepare(`SELECT * FROM notifications WHERE workspace_id = ? AND (user_id IS NULL OR user_id = ?) ORDER BY created_at DESC LIMIT 60`).all(req.workspaceId, req.userId);
+    const unread = rows.filter(r => !r.is_read).length;
+    res.json({ notifications: rows, unread });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/notifications/read-all — clear the unread badge
+app.post('/api/notifications/read-all', auth, (req, res) => {
+  try {
+    db.prepare(`UPDATE notifications SET is_read = 1 WHERE workspace_id = ? AND (user_id IS NULL OR user_id = ?)`).run(req.workspaceId, req.userId);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/notifications/:id/read — mark one read
+app.post('/api/notifications/:id/read', auth, (req, res) => {
+  try {
+    db.prepare(`UPDATE notifications SET is_read = 1 WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ════════════════════════════════════════════════════════════
 //  INTERNAL CHAT ROUTES
 // ════════════════════════════════════════════════════════════
@@ -3163,7 +3210,7 @@ cron.schedule('* * * * *', async () => {
   try {
     const now = new Date().toISOString();
     const dueReminders = db.prepare(`
-      SELECT r.*, l.customer_name, l.customer_phone, l.id as lead_id
+      SELECT r.*, l.customer_name, l.customer_phone, l.id as lead_id, l.workspace_id as ws_id
       FROM reminders r
       LEFT JOIN leads l ON l.id = r.lead_id
       WHERE r.is_completed = 0
@@ -3187,6 +3234,7 @@ AND r.reminder_date >= datetime(?, '-2 minutes')
         lead_id: reminder.lead_id,
         customer_name: reminder.customer_name,
       });
+      if (reminder.ws_id) notify(reminder.ws_id, { type: 'reminder', title: 'Reminder due', body: `${reminder.title || reminder.message} — ${reminder.customer_name || 'Lead'}`, url: `/leads/${reminder.lead_id}`, icon: '⏰', userId: reminder.user_id });
 
       console.log(`⏰ Reminder fired: ${reminder.title} for ${reminder.customer_name}`);
     }
@@ -4339,6 +4387,7 @@ app.post('/api/webhooks/instagram', (req, res) => {
 
           const wsClients = sseClients.get(account.workspace_id) || [];
           wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+          notify(account.workspace_id, { type: 'lead', title: 'New Instagram lead', body: `${lead.customer_name || 'Instagram User'} messaged you`, url: `/leads/${lead.id}`, icon: '📸' });
         }
 
         if (text) {
@@ -4396,6 +4445,7 @@ app.post('/api/webhooks/facebook', (req, res) => {
 
           const wsClients = sseClients.get(account.workspace_id) || [];
           wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+          notify(account.workspace_id, { type: 'lead', title: 'New Facebook lead', body: `${lead.customer_name || 'Facebook User'} messaged you`, url: `/leads/${lead.id}`, icon: '💬' });
         }
 
         if (text) {
@@ -5197,7 +5247,7 @@ app.get('/api/leads/:leadId/meetings', auth, (req, res) => {
 //  MEDIA STUDIO  (additive module — owns the ms_* namespace, touches no core table)
 // ════════════════════════════════════════════════════════════
 require('./media-studio')(app, db, {
-  auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
+  auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,
   multer, path, fs, uploadsDir,
   ai: aiEngine, // Studio Copilot reuses the existing text-AI provider chain
   clientBaseUrl: process.env.FRONTEND_URL || '',
@@ -5264,7 +5314,7 @@ const bookingSend = async ({ lead, userId, text }) => {
   return { sent: true };
 };
 require('./booking')(app, db, {
-  auth, generateId, broadcastToWorkspace, addContactHistory,
+  auth, generateId, broadcastToWorkspace, addContactHistory, notify,
   clientBaseUrl: process.env.FRONTEND_URL || '',
   sendClientMessage: bookingSend,
 });
@@ -5278,7 +5328,7 @@ require('./studio-experience')(app, db, { auth, generateId, broadcastToWorkspace
 require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, clientBaseUrl: process.env.FRONTEND_URL || '' });
 
 require('./contracts-studio')(app, db, {
-  auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
+  auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,
   path, fs, uploadsDir, multer,
   clientBaseUrl: process.env.FRONTEND_URL || '',
   sendClientMessage: async ({ lead, userId, text }) => {

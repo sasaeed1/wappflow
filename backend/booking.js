@@ -16,6 +16,7 @@ module.exports = function mountBooking(app, db, deps = {}) {
     generateId = () => crypto.randomUUID(),
     broadcastToWorkspace = () => {},
     addContactHistory = () => {},
+    notify = () => {},
     sendClientMessage = async () => ({ skipped: true }),
     clientBaseUrl = process.env.FRONTEND_URL || '',
   } = deps;
@@ -162,6 +163,7 @@ module.exports = function mountBooking(app, db, deps = {}) {
       try { addContactHistory(lead.id, ownerId, 'booking', `Booked ${svc.name} for ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`); } catch {}
       try { if (lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `✅ You're booked: ${svc.name} on ${new Date(start_at.replace(' ', 'T')).toLocaleString()}.\nManage/reschedule: ${manageUrl}` }); } catch {}
       broadcastToWorkspace(ws, 'booking_created', { id: bid, lead_id: lead.id });
+      try { notify(ws, { type: 'booking', title: 'New booking', body: `${name} booked ${svc.name} · ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`, url: `/leads/${lead.id}`, icon: '📅' }); } catch {}
       res.json({ ok: true, service: svc.name, start_at, manage_url: manageUrl });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

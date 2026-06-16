@@ -13,7 +13,7 @@ import {
 
 // Flux — sibling AI content engine. Opens in a new tab.
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
-import { leadsAPI, remindersAPI, displayPhone, BASE_URL, platformAccountsAPI, ssoAPI } from '../lib/api';
+import { leadsAPI, remindersAPI, displayPhone, BASE_URL, platformAccountsAPI, ssoAPI, notificationsAPI } from '../lib/api';
 import { usePlan } from '@/lib/plan';
 import FloatingChat from './FloatingChat';
 import AppSwitcher from './AppSwitcher';
@@ -229,6 +229,7 @@ export default function NavBar({ children }) {
   const [notifBadge, setNotifBadge]         = useState(0);
   const [reminders, setReminders]           = useState([]);
   const [todayLeads, setTodayLeads]         = useState([]);
+  const [feed, setFeed]                     = useState([]);
   const [mobileOpen, setMobileOpen]         = useState(false);
   const [showMore, setShowMore]             = useState(false);
   const [showUserMenu, setShowUserMenu]     = useState(false);
@@ -273,6 +274,8 @@ export default function NavBar({ children }) {
     if (wsData) setWorkspace(JSON.parse(wsData));
     loadNotifData();
     loadPlatformAccounts();
+    const poll = setInterval(loadNotifData, 60000);
+    return () => clearInterval(poll);
   }, []);
 
   useEffect(() => {
@@ -302,12 +305,17 @@ export default function NavBar({ children }) {
         return (due - now) / 36e5 <= 24;
       });
       setReminders(urgent);
+      // Persistent notification feed (contracts signed, bookings, gallery activity, cross-platform leads)
+      let feedItems = [], feedUnread = 0;
+      try { const nr = await notificationsAPI.get(); feedItems = nr.data.notifications || []; feedUnread = nr.data.unread || 0; setFeed(feedItems); } catch {}
+      // Dedupe derived lead cards against feed entries that already point at the same lead
+      const feedLeadUrls = new Set(feedItems.map(f => f.url).filter(Boolean));
       const dismissed = new Set(JSON.parse(localStorage.getItem('wf_dismissed_notifications') || '[]'));
-      const count = [
-        ...today.map(l => `lead-${l.id}`),
+      const derivedCount = [
+        ...today.filter(l => !feedLeadUrls.has(`/leads/${l.id}`)).map(l => `lead-${l.id}`),
         ...urgent.map(r => `rem-${r.id}`),
       ].filter(id => !dismissed.has(id)).length;
-      setNotifBadge(count);
+      setNotifBadge(derivedCount + feedUnread);
     } catch {}
   };
 
@@ -471,6 +479,7 @@ export default function NavBar({ children }) {
                 <MiniNotifPanel
                   todayLeads={todayLeads}
                   reminders={reminders}
+                  feed={feed}
                   onClose={() => setShowNotifications(false)}
                   onNavigate={(path) => { router.push(path); setShowNotifications(false); }}
                   onMarkAllRead={() => {
@@ -479,6 +488,8 @@ export default function NavBar({ children }) {
                       ...reminders.map(r => `rem-${r.id}`),
                     ];
                     localStorage.setItem('wf_dismissed_notifications', JSON.stringify(all));
+                    notificationsAPI.readAll().catch(() => {});
+                    setFeed(f => f.map(n => ({ ...n, is_read: 1 })));
                     setNotifBadge(0);
                     setShowNotifications(false);
                   }}
@@ -936,12 +947,21 @@ export default function NavBar({ children }) {
   );
 }
 
-function MiniNotifPanel({ todayLeads, reminders, onClose, onNavigate, onMarkAllRead }) {
+function MiniNotifPanel({ todayLeads, reminders, feed = [], onClose, onNavigate, onMarkAllRead }) {
   const now       = new Date();
   const dismissed = new Set(JSON.parse(localStorage.getItem('wf_dismissed_notifications') || '[]'));
+  const feedLeadUrls = new Set(feed.map(f => f.url).filter(Boolean));
+
+  const feedItems = feed.map(n => ({
+    id: `notif-${n.id}`, type: n.type || 'info', emoji: n.icon || '🔔',
+    title: n.title, sub: n.body || '',
+    color: '#6366f1', bg: 'rgba(99,102,241,0.12)',
+    href: n.url || null, unread: !n.is_read,
+  }));
 
   const items = [
-    ...todayLeads.map(l => ({
+    ...feedItems,
+    ...todayLeads.filter(l => !feedLeadUrls.has(`/leads/${l.id}`)).map(l => ({
       id: `lead-${l.id}`, type: 'lead',
       title: `New lead: ${l.customer_name || 'Unknown'}`,
       sub: displayPhone(l.customer_phone, l.platform_source),
@@ -999,15 +1019,17 @@ function MiniNotifPanel({ todayLeads, reminders, onClose, onNavigate, onMarkAllR
             onMouseEnter={e => { if (item.href) e.currentTarget.style.background = 'var(--surface2)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: item.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              {item.type === 'lead'
-                ? <Users size={13} color={item.color} />
-                : <Clock size={13} color={item.color} />
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: item.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 15 }}>
+              {item.emoji
+                ? <span>{item.emoji}</span>
+                : item.type === 'lead'
+                  ? <Users size={13} color={item.color} />
+                  : <Clock size={13} color={item.color} />
               }
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</p>
-              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>{item.sub}</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>{item.title}{item.unread && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}</p>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.sub}</p>
             </div>
           </div>
         ))}
