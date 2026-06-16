@@ -1863,6 +1863,85 @@ app.delete('/api/leads/trash/cleanup', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Duplicate detection & merge ──────────────────────────────────────────────
+const normPhone = (p) => (p || '').replace(/\D/g, '').replace(/^0+/, '');
+const normName  = (n) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+// GET /api/leads/duplicates — groups of likely duplicates (read-only)
+app.get('/api/leads/duplicates', auth, (req, res) => {
+  try {
+    const leads = db.prepare(`SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)`).all(req.workspaceId);
+    const byPhone = new Map();
+    for (const l of leads) { const k = normPhone(l.customer_phone); if (k && k.length >= 6) { (byPhone.get(k) || byPhone.set(k, []).get(k)).push(l); } }
+    const groups = [];
+    const grouped = new Set();
+    for (const [k, arr] of byPhone) {
+      if (arr.length > 1) { groups.push({ key: k, reason: 'Same phone number', leads: arr }); arr.forEach(l => grouped.add(l.id)); }
+    }
+    // Name matches (only leads not already grouped by phone)
+    const byName = new Map();
+    for (const l of leads) { if (grouped.has(l.id)) continue; const k = normName(l.customer_name); if (k && k.length >= 3) { (byName.get(k) || byName.set(k, []).get(k)).push(l); } }
+    for (const [k, arr] of byName) {
+      if (arr.length > 1) groups.push({ key: k, reason: 'Same name', leads: arr });
+    }
+    res.json({ groups });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/leads/merge — fold duplicate_ids into primary_id (WhatsApp-safe)
+//   • reassigns every child row (any table with a lead_id column) to the primary
+//   • the survivor keeps/inherits the routing phone so inbound WhatsApp is unaffected
+//   • duplicates are soft-deleted (trash, restorable for 90 days), never hard-deleted
+app.post('/api/leads/merge', auth, (req, res) => {
+  try {
+    const { primary_id, duplicate_ids } = req.body || {};
+    if (!primary_id || !Array.isArray(duplicate_ids) || duplicate_ids.length === 0) return res.status(400).json({ error: 'primary_id and duplicate_ids[] required' });
+    if (duplicate_ids.includes(primary_id)) return res.status(400).json({ error: 'primary cannot be in duplicate_ids' });
+
+    const primary = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(primary_id, req.workspaceId);
+    if (!primary) return res.status(404).json({ error: 'Primary lead not found' });
+    const dups = duplicate_ids.map(id => db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(id, req.workspaceId)).filter(Boolean);
+    if (dups.length === 0) return res.status(404).json({ error: 'No valid duplicate leads' });
+
+    // Tables that carry a lead_id FK (discovered, so new modules are covered automatically)
+    const fkTables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()
+      .map(t => t.name).filter(name => name !== 'leads')
+      .filter(name => { try { return db.prepare(`PRAGMA table_info(${name})`).all().some(c => c.name === 'lead_id'); } catch { return false; } });
+
+    const leadCols = db.prepare(`PRAGMA table_info(leads)`).all().map(c => c.name);
+    const fillable = ['customer_phone','customer_email','email','customer_address','address','lead_source','platform_source','platform_account_id','account_id','estimated_value','actual_sale','assigned_to','instagram_handle','company','notes'].filter(c => leadCols.includes(c));
+
+    const merge = db.transaction(() => {
+      for (const dup of dups) {
+        // 1) Move every child row to the primary (OR IGNORE skips unique-constraint clashes, e.g. lead_tags)
+        for (const t of fkTables) db.prepare(`UPDATE OR IGNORE ${t} SET lead_id = ? WHERE lead_id = ?`).run(primary_id, dup.id);
+        // 2) Backfill blank fields on the primary from the duplicate (keeps routing phone if primary lacks one)
+        for (const c of fillable) {
+          const pv = primary[c]; const dv = dup[c];
+          const blank = pv === null || pv === undefined || pv === '' || (['estimated_value','actual_sale'].includes(c) && !pv);
+          if (blank && dv !== null && dv !== undefined && dv !== '') {
+            db.prepare(`UPDATE leads SET ${c} = ? WHERE id = ?`).run(dv, primary_id);
+            primary[c] = dv;
+          }
+        }
+        // 3) Soft-delete the duplicate (to trash — recoverable, and excluded from inbound routing)
+        db.prepare(`UPDATE leads SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND workspace_id = ?`).run(dup.id, req.workspaceId);
+      }
+      // 4) Refresh the primary's last-activity timestamp now that messages moved
+      try { db.prepare(`UPDATE leads SET last_message_at = (SELECT MAX(timestamp) FROM messages WHERE lead_id = ?) WHERE id = ? AND (SELECT MAX(timestamp) FROM messages WHERE lead_id = ?) IS NOT NULL`).run(primary_id, primary_id, primary_id); } catch {}
+    });
+    merge();
+
+    try { addContactHistory(primary_id, req.userId, 'merge', `Merged ${dups.length} duplicate lead${dups.length > 1 ? 's' : ''} (${dups.map(d => d.customer_name || 'Unknown').join(', ')}) into this contact`); } catch {}
+    logAudit(req.workspaceId, req.userId, 'merge', 'lead', primary_id, { merged: dups.map(d => d.id) });
+    dups.forEach(d => broadcastToWorkspace(req.workspaceId, 'lead_deleted', { id: d.id }));
+    broadcastToWorkspace(req.workspaceId, 'lead_updated', { id: primary_id });
+
+    const updated = db.prepare('SELECT * FROM leads WHERE id = ?').get(primary_id);
+    res.json({ message: `Merged ${dups.length} lead${dups.length > 1 ? 's' : ''}`, lead: updated, merged: dups.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ════════════════════════════════════════════════════════════
 //  NOTES & REMINDERS
 // ════════════════════════════════════════════════════════════

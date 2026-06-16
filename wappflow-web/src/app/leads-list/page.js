@@ -38,6 +38,32 @@ const SORT_OPTIONS = [
   { value: 'value_desc',           label: 'Highest Value' },
 ];
 
+// ── Saved views (per-browser; survives reloads) ──────────────────────────────
+const VIEWS_KEY = 'wf_lead_views';
+const readViews = () => { if (typeof window === 'undefined') return []; try { return JSON.parse(localStorage.getItem(VIEWS_KEY) || '[]'); } catch { return []; } };
+const writeViews = (v) => { try { localStorage.setItem(VIEWS_KEY, JSON.stringify(v)); } catch {} };
+
+// ── Next-best-action engine (heuristic — no LLM, instant & deterministic) ─────
+// Returns { label, reason, urgency } for leads that need attention, else null.
+function nextAction(lead) {
+  const status = lead.status || 'New';
+  if (status === 'Closed - Won' || status === 'Closed - Lost') return null;
+  if (isLeadUnread(lead)) return { label: 'Reply', reason: 'New unread message', urgency: 3 };
+  const now = Date.now();
+  const created = lead.created_at ? new Date(lead.created_at).getTime() : now;
+  const lastMs = lead.last_message_at ? new Date(lead.last_message_at).getTime() : 0;
+  const quietDays = Math.round((now - (lastMs || created)) / 86400000);
+  if (status === 'New') {
+    const hoursSince = (now - created) / 3600000;
+    return hoursSince > 1 ? { label: 'Send first reply', reason: 'New lead awaiting first response', urgency: 3 } : null;
+  }
+  if (status === 'Negotiating' && quietDays >= 2) return { label: 'Follow up', reason: `Negotiating · quiet ${quietDays}d`, urgency: 3 };
+  if (status === 'Interested' && quietDays >= 3) return { label: 'Follow up', reason: `Interested · quiet ${quietDays}d`, urgency: 2 };
+  if (status === 'Contacted' && quietDays >= 2) return { label: 'Nudge', reason: `Contacted · no reply ${quietDays}d`, urgency: 2 };
+  if (quietDays >= 10) return { label: 'Check in', reason: `No activity ${quietDays}d`, urgency: 1 };
+  return null;
+}
+
 // ── Bulk Assign Modal ───────────────────────────────────────────────────────
 function BulkAssignModal({ leadIds, members, onClose, onDone }) {
   const confirm = useConfirm();
@@ -557,6 +583,102 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
   );
 }
 
+// ── Merge Duplicates Modal ───────────────────────────────────────────────────
+function MergeDuplicatesModal({ onClose, onDone }) {
+  const [groups, setGroups] = useState(null);
+  const [busy, setBusy] = useState(null);   // group key currently merging
+  const [primaryByKey, setPrimaryByKey] = useState({});
+  const [doneCount, setDoneCount] = useState(0);
+
+  useEffect(() => {
+    leadsAPI.getDuplicates().then(r => {
+      const g = r.data.groups || [];
+      setGroups(g);
+      // default primary = lead with the most recent activity in each group
+      const pk = {};
+      g.forEach(grp => { pk[grp.key] = [...grp.leads].sort((a, b) => new Date(b.last_message_at || b.created_at) - new Date(a.last_message_at || a.created_at))[0]?.id; });
+      setPrimaryByKey(pk);
+    }).catch(() => setGroups([]));
+  }, []);
+
+  const mergeGroup = async (grp) => {
+    const primaryId = primaryByKey[grp.key];
+    if (!primaryId) return;
+    const dupIds = grp.leads.filter(l => l.id !== primaryId).map(l => l.id);
+    if (dupIds.length === 0) return;
+    const primary = grp.leads.find(l => l.id === primaryId);
+    const phones = new Set(grp.leads.map(l => (l.customer_phone || '').replace(/\D/g, '')).filter(Boolean));
+    const warn = phones.size > 1
+      ? `\n\n⚠ These leads have different phone numbers. After merging, the survivor keeps "${primary.customer_phone || '—'}". Future WhatsApp messages to the other number(s) will start a fresh lead.`
+      : '';
+    if (!window.confirm(`Merge ${dupIds.length} duplicate${dupIds.length > 1 ? 's' : ''} into "${primary.customer_name || 'Unknown'}"?\n\nAll messages, notes, invoices, tags & history move to the survivor. The other${dupIds.length > 1 ? 's go' : ' goes'} to Trash (restorable for 90 days).${warn}`)) return;
+    setBusy(grp.key);
+    try {
+      await leadsAPI.merge(primaryId, dupIds);
+      setGroups(gs => gs.filter(x => x.key !== grp.key));
+      setDoneCount(c => c + 1);
+    } catch (e) { window.alert(e.response?.data?.error || 'Merge failed'); }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }} onClick={() => onClose(doneCount)}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, maxWidth: 640, width: '100%', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#f59e0b,#ef4444)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <UsersRound size={20} color="white" />
+          </div>
+          <div>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Merge duplicates</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0 }}>Pick the contact to keep — the rest fold into it.</p>
+          </div>
+          <button onClick={() => onClose(doneCount)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={18} /></button>
+        </div>
+
+        {groups === null ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)', fontSize: 14 }}>Scanning for duplicates…</div>
+        ) : groups.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <UserCheck size={32} color="#10b981" style={{ margin: '0 auto 10px', display: 'block' }} />
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{doneCount > 0 ? 'All cleaned up!' : 'No duplicates found'}</p>
+            <p style={{ fontSize: 12.5, color: 'var(--text-dim)', marginTop: 4 }}>{doneCount > 0 ? `Merged ${doneCount} group${doneCount > 1 ? 's' : ''}.` : 'Your contacts look unique.'}</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {groups.map(grp => (
+              <div key={grp.key} style={{ border: '1.5px solid var(--border)', borderRadius: 14, padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#b45309', background: 'rgba(245,158,11,0.14)', padding: '3px 10px', borderRadius: 20 }}>{grp.reason}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{grp.leads.length} matches</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {grp.leads.map(l => {
+                    const isPrimary = primaryByKey[grp.key] === l.id;
+                    const sc = STATUS_META[l.status] || STATUS_META['New'];
+                    return (
+                      <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${isPrimary ? '#10b981' : 'var(--border)'}`, background: isPrimary ? 'rgba(16,185,129,0.08)' : 'var(--surface2)' }}>
+                        <input type="radio" name={`p-${grp.key}`} checked={isPrimary} onChange={() => setPrimaryByKey(p => ({ ...p, [grp.key]: l.id }))} style={{ accentColor: '#10b981' }} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.customer_name || 'Unknown'} {isPrimary && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#059669' }}>· KEEP</span>}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{displayPhone(l.customer_phone || '') || 'no phone'} · {l.status || 'New'} · active {formatDate(l.last_message_at || l.created_at)}</div>
+                        </div>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: sc.dot, flexShrink: 0 }} />
+                      </label>
+                    );
+                  })}
+                </div>
+                <button onClick={() => mergeGroup(grp)} disabled={busy === grp.key} style={{ marginTop: 10, width: '100%', padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer', background: busy === grp.key ? 'var(--surface2)' : 'linear-gradient(135deg,#6366f1,#4f46e5)', color: busy === grp.key ? 'var(--text-dim)' : 'white', fontSize: 13, fontWeight: 700 }}>
+                  {busy === grp.key ? 'Merging…' : `Merge ${grp.leads.length - 1} into selected`}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ───────────────────────────────────────────────────────────────
 export default function LeadsListPage() {
   const router = useRouter();
@@ -586,6 +708,10 @@ export default function LeadsListPage() {
   const [showTrashConfirm, setShowTrashConfirm] = useState(false);
   const [bulkTrashing, setBulkTrashing] = useState(false);
   const [toast, setToast] = useState(null);
+  const [views, setViews] = useState([]);
+  const [activeView, setActiveView] = useState(null);
+  const [showActionQueue, setShowActionQueue] = useState(true);
+  const [showDupModal, setShowDupModal] = useState(false);
   const showToast = (msg, type = 'success') => { setToast({ msg, type, ts: Date.now() }); setTimeout(() => setToast(t => (t && t.ts) ? null : t), 3500); };
   // Auto-clear toast
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), 3500); return () => clearTimeout(id); }, [toast]);
@@ -598,6 +724,7 @@ export default function LeadsListPage() {
     const ac = params.get('account');
     if (pf) setPlatformFilter(pf);
     if (ac) setAccountFilter(ac);
+    setViews(readViews());
     fetchAll(pf, ac);
     platformAccountsAPI.getAll().then(r => setPlatformAccounts(r.data.accounts || [])).catch(() => {});
   }, []);
@@ -663,6 +790,41 @@ export default function LeadsListPage() {
     });
     setLeads(filtered);
   };
+
+  // ── Saved views ────────────────────────────────────────────────────────────
+  const currentFilters = () => ({ statusFilter, tagFilter, assignedFilter, dateFrom, dateTo, sortBy, search });
+  const applyView = (v) => {
+    const f = v.f || {};
+    setStatusFilter(f.statusFilter ?? 'All'); setTagFilter(f.tagFilter ?? null);
+    setAssignedFilter(f.assignedFilter ?? 'all'); setDateFrom(f.dateFrom ?? ''); setDateTo(f.dateTo ?? '');
+    setSortBy(f.sortBy ?? 'last_message_at_desc'); setSearch(f.search ?? '');
+    setActiveView(v.name);
+  };
+  const saveCurrentView = () => {
+    const name = window.prompt('Name this view (e.g. "Hot — needs follow-up")'); if (!name) return;
+    const next = [...views.filter(v => v.name !== name), { name, f: currentFilters() }];
+    setViews(next); writeViews(next); setActiveView(name);
+    showToast(`View "${name}" saved`, 'success');
+  };
+  const deleteView = (name) => {
+    const next = views.filter(v => v.name !== name);
+    setViews(next); writeViews(next); if (activeView === name) setActiveView(null);
+  };
+
+  // ── Action queue (next-best-action) ──────────────────────────────────────────
+  const actionItems = (() => {
+    const me = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}').id : null;
+    return allLeads
+      .map(l => ({ lead: l, action: nextAction(l) }))
+      .filter(x => x.action)
+      // prioritise leads assigned to me, then by urgency, then by oldest activity
+      .sort((a, b) => {
+        const am = a.lead.assigned_to === me ? 1 : 0, bm = b.lead.assigned_to === me ? 1 : 0;
+        if (am !== bm) return bm - am;
+        if (a.action.urgency !== b.action.urgency) return b.action.urgency - a.action.urgency;
+        return new Date(a.lead.last_message_at || a.lead.created_at) - new Date(b.lead.last_message_at || b.lead.created_at);
+      });
+  })();
 
   const memberById = (id) => members.find(m => m.user_id === id);
   const statusCounts = ALL_STATUSES.reduce((acc,s) => { acc[s] = s==='All' ? allLeads.length : allLeads.filter(l=>l.status===s).length; return acc; }, {});
@@ -732,6 +894,10 @@ export default function LeadsListPage() {
           >
             <Download style={{ width: 14, height: 14 }} /> Export CSV {leads.length > 0 && `(${leads.length})`}
           </button>
+          <button onClick={() => setShowDupModal(true)} title="Find & merge duplicate contacts"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text-muted)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            <UsersRound style={{ width: 14, height: 14 }} /> Merge duplicates
+          </button>
           {(() => {
             const limit = plan.limits?.leads;
             const usage = plan.usage?.leads || allLeads.length;
@@ -755,6 +921,41 @@ export default function LeadsListPage() {
       </div>
 
       <main style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 24px' }}>
+
+        {/* Action queue — next best actions across the pipeline */}
+        {!loading && actionItems.length > 0 && (
+          <div style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.10), rgba(6,182,212,0.06))', border: '1.5px solid #c7d2fe', borderRadius: 16, padding: '14px 18px', marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#6366f1,#06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <TrendingUp size={15} color="white" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Next best actions</p>
+                <p style={{ fontSize: 11.5, color: 'var(--text-dim)', margin: 0 }}>{actionItems.length} lead{actionItems.length > 1 ? 's' : ''} need attention right now</p>
+              </div>
+              <button onClick={() => setShowActionQueue(v => !v)} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                {showActionQueue ? <>Hide <ChevronDown size={13} /></> : <>Show {actionItems.length} <ChevronRight size={13} /></>}
+              </button>
+            </div>
+            {showActionQueue && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+                {actionItems.slice(0, 6).map(({ lead, action }) => {
+                  const uColor = action.urgency >= 3 ? '#ef4444' : action.urgency === 2 ? '#f59e0b' : '#6366f1';
+                  return (
+                    <div key={lead.id} onClick={() => router.push(`/leads/${lead.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = uColor + '88'}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: uColor, flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0, maxWidth: 180 }}>{lead.customer_name || 'Unknown'}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-dim)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{action.reason}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 800, color: uColor, background: uColor + '18', padding: '4px 11px', borderRadius: 20, flexShrink: 0 }}>{action.label} →</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Bulk action bar — shown when items selected */}
         {selected.size > 0 && (
@@ -881,6 +1082,21 @@ export default function LeadsListPage() {
             ))}
           </div>
         )}
+
+        {/* Saved views */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Views:</span>
+          {views.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>Save a filter combination to reuse it.</span>}
+          {views.map(v => (
+            <span key={v.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 6px 4px 12px', borderRadius: 20, border: `1.5px solid ${activeView === v.name ? '#6366f1' : 'var(--border)'}`, background: activeView === v.name ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: activeView === v.name ? '#4338ca' : 'var(--text-muted)', fontSize: 11.5, fontWeight: 700 }}>
+              <span onClick={() => applyView(v)} style={{ cursor: 'pointer' }}>{v.name}</span>
+              <button onClick={() => deleteView(v.name)} title="Delete view" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', padding: 0 }}><X size={12} /></button>
+            </span>
+          ))}
+          <button onClick={saveCurrentView} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20, border: '1.5px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+            <Plus size={12} /> Save current
+          </button>
+        </div>
 
         {/* Status tabs */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
@@ -1059,6 +1275,13 @@ export default function LeadsListPage() {
           onClose={() => setShowGroupModal(false)}
           onDone={(msg) => { setShowGroupModal(false); clearSelection(); showToast(msg, 'success'); }}
           onError={(msg) => showToast(msg, 'error')}
+        />
+      )}
+
+      {showDupModal && (
+        <MergeDuplicatesModal
+          onClose={(merged) => { setShowDupModal(false); if (merged > 0) { fetchAll(); showToast(`Merged ${merged} duplicate group${merged > 1 ? 's' : ''}`, 'success'); } }}
+          onDone={() => {}}
         />
       )}
 

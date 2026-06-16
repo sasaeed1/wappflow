@@ -57,6 +57,8 @@ export const leadsAPI = {
   bulkAssign: (lead_ids, assigned_to) => api.post('/leads/bulk-assign', { lead_ids, assigned_to }),
   roundRobin: (lead_ids, user_ids) => api.post('/leads/round-robin', { lead_ids, ...(user_ids ? { user_ids } : {}) }),
   bulkTrash: (lead_ids) => api.post('/leads/bulk-trash', { lead_ids }),
+  getDuplicates: () => api.get('/leads/duplicates'),
+  merge: (primary_id, duplicate_ids) => api.post('/leads/merge', { primary_id, duplicate_ids }),
 
   // Messages
   getMessages: (id, platform) => api.get(`/leads/${id}/messages`, { params: platform ? { platform } : {} }),
