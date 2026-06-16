@@ -16,7 +16,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_URL, platformAccountsAPI } from '../../lib/api';
+import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_URL, platformAccountsAPI, settingsAPI } from '../../lib/api';
 import { isLeadUnread } from '../../lib/unread';
 import AddLeadModal from '../../components/AddLeadModal';
 import { TagChip, TagPicker } from '../../components/TagPicker';
@@ -293,7 +293,7 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
 }
 
 // ── Lead Card ─────────────────────────────────────────────────────────────────
-function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew }) {
+function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew, sym = '$' }) {
   const sc = STATUS_COLORS[lead.status] || STATUS_COLORS['New'];
   const tags = lead.tags || [];
   return (
@@ -424,7 +424,7 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
                 {(lead.actual_sale || lead.estimated_value) && (
                   <span style={{ fontSize: 12, fontWeight: 800, color: sc.dot }}>
-                    Rs {(lead.actual_sale || lead.estimated_value)?.toLocaleString()}
+                    {sym} {(lead.actual_sale || lead.estimated_value)?.toLocaleString()}
                   </span>
                 )}
                 {allTags.length > 0 && (
@@ -440,7 +440,7 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew }) {
 }
 
 // ── Kanban Column ─────────────────────────────────────────────────────────────
-function KanbanColumn({ column, leads, onLeadClick, allTags, onTagToggle, newLeadIds }) {
+function KanbanColumn({ column, leads, onLeadClick, allTags, onTagToggle, newLeadIds, sym = '$' }) {
   return (
     <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'sticky', top: 117, zIndex: 30, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '6px 4px' }}>
@@ -463,7 +463,7 @@ function KanbanColumn({ column, leads, onLeadClick, allTags, onTagToggle, newLea
             transition: 'all 0.2s ease',
           }}>
             {leads.map((lead, index) => (
-              <LeadCard key={lead.id} lead={lead} index={index} onClick={onLeadClick} allTags={allTags} onTagToggle={onTagToggle} isNew={newLeadIds.has(lead.id)} />
+              <LeadCard key={lead.id} lead={lead} index={index} onClick={onLeadClick} allTags={allTags} onTagToggle={onTagToggle} isNew={newLeadIds.has(lead.id)} sym={sym} />
             ))}
             {provided.placeholder}
             {leads.length === 0 && !snapshot.isDraggingOver && (
@@ -601,14 +601,14 @@ function SSEStatus({ connected }) {
 }
 
 // ── Custom bar tooltip ────────────────────────────────────────────────────────
-function CustomTooltip({ active, payload, label }) {
+function CustomTooltip({ active, payload, label, sym = '$' }) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 10, padding: '8px 14px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', fontSize: 12 }}>
       <p style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{label}</p>
       {payload.map(p => (
         <p key={p.dataKey} style={{ color: p.fill, margin: '2px 0', fontWeight: 600 }}>
-          {p.name}: {p.dataKey === 'revenue' ? `Rs ${p.value.toLocaleString()}` : p.value}
+          {p.name}: {p.dataKey === 'revenue' ? `${sym} ${p.value.toLocaleString()}` : p.value}
         </p>
       ))}
     </div>
@@ -629,6 +629,10 @@ export default function DashboardPage() {
   const [leads, setLeads] = useState([]);
   const [allLeads, setAllLeads] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [company, setCompany] = useState(null);
+  // Use the workspace's configured currency symbol everywhere money is shown
+  // (was hardcoded "Rs" — inconsistent with invoices/reports/lead pages).
+  const sym = company?.currency_symbol || '$';
   const [viewMode, setViewMode] = useState('kanban');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -771,6 +775,7 @@ export default function DashboardPage() {
     if (!userData) { router.push('/login'); return; }
     setUser(JSON.parse(userData));
     fetchAll();
+    settingsAPI.getCompany().then(r => setCompany(r.data.company || {})).catch(() => {});
     connectSSE();
 
     return () => {
@@ -976,7 +981,7 @@ export default function DashboardPage() {
           const wonPct = totalForecast ? (wonRevenue / totalForecast) * 100 : 0;
           const projPct = totalForecast ? (projectedRevenue / totalForecast) * 100 : 0;
           const lostPct = totalForecast ? (lostRevenue / totalForecast) * 100 : 0;
-          const fmt = (n) => 'Rs ' + Math.round(n).toLocaleString();
+          const fmt = (n) => sym + ' ' + Math.round(n).toLocaleString();
 
           // Build 6-month revenue trend (won deals by month)
           const now = new Date();
@@ -1092,7 +1097,7 @@ export default function DashboardPage() {
               <BarChart data={barData} barSize={20}>
                 <XAxis dataKey="status" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis hide />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<CustomTooltip sym={sym} />} />
                 <Bar dataKey="count" name="Leads" radius={[6, 6, 0, 0]}>
                   {barData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Bar>
@@ -1243,7 +1248,7 @@ export default function DashboardPage() {
           <DragDropContext onDragEnd={handleDragEnd}>
             <div style={{ display: 'flex', gap: 12, paddingBottom: 20, alignItems: 'stretch' }}>
               {COLUMNS.map(col => (
-                <KanbanColumn key={col.id} column={col} leads={getLeadsByStatus(col.id)} onLeadClick={id => router.push(`/leads/${id}`)} allTags={allTags} onTagToggle={handleTagToggle} newLeadIds={newLeadIds} />
+                <KanbanColumn key={col.id} column={col} leads={getLeadsByStatus(col.id)} onLeadClick={id => router.push(`/leads/${id}`)} allTags={allTags} onTagToggle={handleTagToggle} newLeadIds={newLeadIds} sym={sym} />
               ))}
             </div>
           </DragDropContext>
@@ -1299,7 +1304,7 @@ export default function DashboardPage() {
                   </div>
                   {(lead.actual_sale || lead.estimated_value) && (
                     <span style={{ fontSize: 14, fontWeight: 800, color: sc.dot, flexShrink: 0 }}>
-                      Rs {(lead.actual_sale || lead.estimated_value)?.toLocaleString()}
+                      {sym} {(lead.actual_sale || lead.estimated_value)?.toLocaleString()}
                     </span>
                   )}
                   {isLeadUnread(lead) && (

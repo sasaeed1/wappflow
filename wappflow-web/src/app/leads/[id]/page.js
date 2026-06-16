@@ -1831,7 +1831,7 @@ useEffect(() => {
                       )}
                       <p style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 3, textAlign: 'right', margin: 0, marginTop: 3 }}>
                         {formatTime(msg.timestamp)}
-                        {msg.from_me && <span style={{ color: '#34b7f1', marginLeft: 4 }}>✓✓</span>}
+                        {!!msg.from_me && <span style={{ color: '#34b7f1', marginLeft: 4 }}>✓✓</span>}
                       </p>
                     </div>
                     </div>
