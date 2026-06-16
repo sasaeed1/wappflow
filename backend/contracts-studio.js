@@ -187,6 +187,10 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_cs_versions_doc ON cs_versions(document_id);
+    CREATE TABLE IF NOT EXISTS cs_clauses (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, title TEXT, body TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE TABLE IF NOT EXISTS cs_settings (
       workspace_id TEXT PRIMARY KEY,
       letterhead_url TEXT,               -- workspace letterhead image (optional)
@@ -641,6 +645,15 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       res.json({ versions, current: d.version || 1 });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
+  app.get('/api/cs/documents/:id/versions/:vid', auth, (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      const v = db.prepare('SELECT * FROM cs_versions WHERE id = ? AND document_id = ?').get(req.params.vid, d.id);
+      if (!v) return res.status(404).json({ error: 'Version not found' });
+      res.json({ version: { id: v.id, version: v.version, label: v.label, text: blocksToText(J(v.blocks, [])) }, current_text: blocksToText(J(d.blocks, [])) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
   app.post('/api/cs/documents/:id/versions/:vid/restore', auth, (req, res) => {
     try {
       const d = getDoc(req.workspaceId, req.params.id);
@@ -651,6 +664,61 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       recordEvent(d, 'version_restored', { actor: req.userId, meta: { version: v.version } });
       broadcastToWorkspace(req.workspaceId, 'cs_updated', { id: d.id });
       res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Clause library ──────────────────────────────────────────────────────────
+  app.get('/api/cs/clauses', auth, (req, res) => {
+    try { res.json({ clauses: db.prepare('SELECT id, title, body, created_at FROM cs_clauses WHERE workspace_id = ? ORDER BY title').all(req.workspaceId) }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/cs/clauses', auth, (req, res) => {
+    try { const id = generateId(); db.prepare('INSERT INTO cs_clauses (id, workspace_id, title, body) VALUES (?,?,?,?)').run(id, req.workspaceId, String(req.body.title || 'Clause').slice(0, 160), req.body.body || ''); res.json({ ok: true, id }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.put('/api/cs/clauses/:id', auth, (req, res) => {
+    try { const c = db.prepare('SELECT id FROM cs_clauses WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId); if (!c) return res.status(404).json({ error: 'Not found' });
+      const set = {}; if (req.body.title !== undefined) set.title = req.body.title; if (req.body.body !== undefined) set.body = req.body.body;
+      const keys = Object.keys(set); if (keys.length) db.prepare(`UPDATE cs_clauses SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: c.id }); res.json({ ok: true }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.delete('/api/cs/clauses/:id', auth, (req, res) => {
+    try { db.prepare('DELETE FROM cs_clauses WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Bulk send — one template/pack to many leads, created + delivered ─────────
+  app.post('/api/cs/bulk-send', auth, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const leadIds = Array.isArray(b.lead_ids) ? b.lead_ids : [];
+      if (!leadIds.length) return res.status(400).json({ error: 'Pick at least one client' });
+      let blocks = [], type = b.type || 'contract', baseTitle = b.title || 'Document';
+      if (b.template_id) { const t = db.prepare('SELECT blocks, type, title FROM cs_templates WHERE id = ? AND workspace_id = ?').get(b.template_id, req.workspaceId); if (t) { blocks = J(t.blocks, []); type = t.type || type; baseTitle = b.title || t.title; } }
+      else if (b.pack_id) { const pk = PACKS.find(p => p.id === b.pack_id); if (pk) { blocks = pk.blocks; type = pk.type; baseTitle = b.title || pk.title; } }
+      const channels = Array.isArray(b.channels) && b.channels.length ? b.channels : ['whatsapp', 'email'];
+      const ownerId = workspaceOwner(req.workspaceId, req.userId);
+      let sent = 0; const results = [];
+      for (const leadId of leadIds) {
+        const lead = db.prepare('SELECT customer_name, customer_phone, email FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+        if (!lead) continue;
+        const id = generateId(); const token = crypto.randomBytes(18).toString('hex');
+        db.prepare("INSERT INTO cs_documents (id, workspace_id, lead_id, type, title, blocks, status, token, sent_at, created_by) VALUES (?,?,?,?,?,?, 'sent', ?, CURRENT_TIMESTAMP, ?)")
+          .run(id, req.workspaceId, leadId, type, baseTitle, JSON.stringify(blocks), token, req.userId);
+        db.prepare("INSERT INTO cs_signers (id, document_id, workspace_id, role, name, email, phone, sign_order) VALUES (?,?,?,'client',?,?,?,0)")
+          .run(generateId(), id, req.workspaceId, lead.customer_name || null, lead.email || null, lead.customer_phone || null);
+        const doc = db.prepare('SELECT * FROM cs_documents WHERE id = ?').get(id);
+        recordEvent(doc, 'sent', { actor: req.userId, meta: { bulk: true, channels } });
+        const link = `${clientBaseUrl}/d/${token}`;
+        try {
+          if (channels.includes('whatsapp') && lead.customer_phone) await sendClientMessage({ lead: { id: leadId, customer_phone: lead.customer_phone }, userId: req.userId, text: `📄 ${baseTitle} — please review & sign:\n${link}` });
+          if (channels.includes('email') && lead.email) await sendEmail({ workspaceOwnerId: ownerId, to: lead.email, subject: `Please review & sign: ${baseTitle}`, html: `<p>Hello ${lead.customer_name || ''},</p><p>Please review and sign <strong>${baseTitle}</strong>.</p><p><a href="${link}">Open the document</a></p>`, text: `Review & sign "${baseTitle}": ${link}` });
+        } catch {}
+        if (leadId) addContactHistory(leadId, req.userId, 'contract', `${type} "${baseTitle}" sent (bulk)`);
+        results.push({ lead_id: leadId, id }); sent++;
+      }
+      broadcastToWorkspace(req.workspaceId, 'cs_updated', {});
+      res.json({ ok: true, sent, results });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
