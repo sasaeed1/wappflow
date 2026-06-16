@@ -5163,13 +5163,17 @@ app.get('/api/client-portal/public/:token', (req, res) => {
     const invoices = db.prepare('SELECT invoice_number, total, currency_symbol, status, created_at FROM invoices WHERE lead_id = ? ORDER BY created_at DESC').all(lead.id);
     const owner = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(p.workspace_id);
     let cs = null; try { cs = owner ? db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(owner.user_id) : null; } catch {}
+    // Client Portal 2.0 (P15): albums, orders, milestones/delivery progress
+    let albums = [], orders = [], milestones = [];
+    try { if (projIds.length) albums = db.prepare(`SELECT title, page_count, status FROM ms_albums WHERE project_id IN (${projIds.map(() => '?').join(',')})`).all(...projIds); } catch {}
+    try { orders = db.prepare("SELECT items, total, currency_symbol, status, created_at FROM ms_print_orders WHERE lead_id = ? ORDER BY created_at DESC").all(lead.id).map(o => { try { o.items = JSON.parse(o.items); } catch { o.items = []; } return o; }); } catch {}
+    try { if (projIds.length) milestones = db.prepare(`SELECT title, status, due_date FROM ms_milestones WHERE project_id IN (${projIds.map(() => '?').join(',')}) ORDER BY sort_order`).all(...projIds); } catch {}
     res.json({
       client_name: lead.customer_name || 'there',
       brand: (cs && cs.company_name) || 'WappFlow',
       galleries: galleries.filter(g => g.share_token).map(g => ({ title: g.title, url: `/g/${g.share_token}` })),
       documents: documents.filter(d => d.token).map(d => ({ title: d.title, type: d.type, status: d.status, url: `/d/${d.token}` })),
-      invoices,
-      projects,
+      invoices, albums, orders, milestones, projects,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -5191,6 +5195,8 @@ require('./print-store')(app, db, {
 });
 require('./studio-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./video-ai')(app, db, { auth, generateId, broadcastToWorkspace });
+require('./studio-experience')(app, db, { auth, generateId, broadcastToWorkspace });
+require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, clientBaseUrl: process.env.FRONTEND_URL || '' });
 
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
