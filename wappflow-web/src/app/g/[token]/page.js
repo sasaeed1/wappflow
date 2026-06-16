@@ -154,6 +154,13 @@ export default function ClientGalleryPage() {
 
   const assets = data?.assets || [];
   const shown = favOnly ? assets.filter(a => faved.has(a.asset_id)) : assets;
+  // Story sections: group photos by folder/chapter (only in the full view, when the photographer organised them)
+  const useSections = !favOnly && Array.isArray(data?.sections) && data.sections.length > 1;
+  const sectionGroups = useSections
+    ? data.sections
+        .map(s => ({ name: s.name, items: shown.map((a, i) => ({ a, i })).filter(x => (x.a.folder_id || null) === s.id) }))
+        .filter(g => g.items.length)
+    : [{ name: null, items: shown.map((a, i) => ({ a, i })) }];
   return (
     <div style={{ minHeight: '100vh', background: '#0b0b0f', color: '#fff' }}>
       {/* header */}
@@ -205,34 +212,45 @@ export default function ClientGalleryPage() {
         </div>
       )}
 
-      {/* masonry grid */}
-      <main style={{ padding: 16, columnGap: 10, columnWidth: 280 }}>
+      {/* masonry grid — grouped into story sections when the photographer organised the gallery */}
+      <main style={{ padding: 16 }}>
         {shown.length === 0 && <p style={{ textAlign: 'center', color: '#71717a', fontSize: 13, padding: 24 }}>No favourites yet — tap the heart on the photos you love.</p>}
-        {shown.map((a, i) => (
-          <figure key={a.asset_id} style={{ margin: '0 0 10px', breakInside: 'avoid', position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#15151b' }}>
-            <img src={imgUrl(a.web_url)} alt={a.filename} loading="lazy" onClick={() => setLightbox(i)} style={{ width: '100%', display: 'block', cursor: 'zoom-in' }} />
-            {selectable && (
-              <button onClick={(e) => { e.stopPropagation(); toggleSelect(a.asset_id); }} title="Select for your order"
-                style={{ position: 'absolute', top: 10, left: 10, zIndex: 2, width: 30, height: 30, borderRadius: '50%', border: '2px solid #fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: sel.has(a.asset_id) ? '#10b981' : 'rgba(0,0,0,0.45)' }}>
-                {sel.has(a.asset_id) && <Check size={16} color="#fff" />}
-              </button>
+        {sectionGroups.map((g, gi) => (
+          <section key={g.name || `sec-${gi}`} style={{ marginBottom: g.name ? 28 : 0 }}>
+            {g.name && (
+              <h2 style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#c2a878', margin: '8px 4px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                {g.name}<span style={{ flex: 1, height: 1, background: 'rgba(194,168,120,0.25)' }} /><span style={{ fontSize: 11, color: '#71717a', letterSpacing: 0 }}>{g.items.length}</span>
+              </h2>
             )}
-            <figcaption style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: 10, background: 'linear-gradient(to top, rgba(0,0,0,0.5), transparent 45%)', opacity: 0, transition: 'opacity 0.18s' }}
-              onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <IconCircle onClick={(e) => { e.stopPropagation(); toggleFav(a.asset_id); }} active={faved.has(a.asset_id)}>
-                  <Heart size={16} fill={faved.has(a.asset_id) ? '#c2a878' : 'none'} color={faved.has(a.asset_id) ? '#c2a878' : '#fff'} />
-                  {counts[a.asset_id] > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{counts[a.asset_id]}</span>}
-                </IconCircle>
-                <IconCircle onClick={(e) => { e.stopPropagation(); setCommentFor(a.asset_id); }}><MessageSquare size={15} color="#fff" /></IconCircle>
-              </div>
-              {a.download_url && (
-                <a href={imgUrl(a.download_url)} download onClick={e => e.stopPropagation()} style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
-                  <Download size={15} color="#fff" />
-                </a>
-              )}
-            </figcaption>
-          </figure>
+            <div style={{ columnGap: 10, columnWidth: 280 }}>
+              {g.items.map(({ a, i }) => (
+                <figure key={a.asset_id} style={{ margin: '0 0 10px', breakInside: 'avoid', position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#15151b' }}>
+                  <img src={imgUrl(a.web_url)} alt={a.filename} loading="lazy" onClick={() => setLightbox(i)} style={{ width: '100%', display: 'block', cursor: 'zoom-in' }} />
+                  {selectable && (
+                    <button onClick={(e) => { e.stopPropagation(); toggleSelect(a.asset_id); }} title="Select for your order"
+                      style={{ position: 'absolute', top: 10, left: 10, zIndex: 2, width: 30, height: 30, borderRadius: '50%', border: '2px solid #fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: sel.has(a.asset_id) ? '#10b981' : 'rgba(0,0,0,0.45)' }}>
+                      {sel.has(a.asset_id) && <Check size={16} color="#fff" />}
+                    </button>
+                  )}
+                  <figcaption style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: 10, background: 'linear-gradient(to top, rgba(0,0,0,0.5), transparent 45%)', opacity: 0, transition: 'opacity 0.18s' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <IconCircle onClick={(e) => { e.stopPropagation(); toggleFav(a.asset_id); }} active={faved.has(a.asset_id)}>
+                        <Heart size={16} fill={faved.has(a.asset_id) ? '#c2a878' : 'none'} color={faved.has(a.asset_id) ? '#c2a878' : '#fff'} />
+                        {counts[a.asset_id] > 0 && <span style={{ fontSize: 11, fontWeight: 700 }}>{counts[a.asset_id]}</span>}
+                      </IconCircle>
+                      <IconCircle onClick={(e) => { e.stopPropagation(); setCommentFor(a.asset_id); }}><MessageSquare size={15} color="#fff" /></IconCircle>
+                    </div>
+                    {a.download_url && (
+                      <a href={imgUrl(a.download_url)} download onClick={e => e.stopPropagation()} style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+                        <Download size={15} color="#fff" />
+                      </a>
+                    )}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </section>
         ))}
       </main>
 

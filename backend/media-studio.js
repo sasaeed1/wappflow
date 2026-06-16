@@ -1310,6 +1310,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       web_url: variants.watermarked || variants.web || publicUrl(row.storage_key),
       download_url: downloadUrl,
       sort_order: row.sort_order,
+      folder_id: row.folder_id || null,
       favorites: favCounts[row.id] || 0,
     };
   }
@@ -2432,11 +2433,23 @@ Only suggest actions that make sense for the question. If none make sense, retur
         proofing = { id: pset.id, title: pset.title, quota: pset.quota, instructions: pset.instructions, status: pset.status, selected_asset_ids: sel, selected_count: sel.length };
       }
       let storeEnabled = false; try { storeEnabled = db.prepare("SELECT COUNT(*) c FROM ms_print_products WHERE workspace_id = ? AND active = 1").get(g.workspace_id).c > 0; } catch {}
+      // Story sections — render the gallery as named chapters when the photographer organised photos into folders
+      let sections = [];
+      try {
+        const present = new Set(rows.map(r => r.folder_id).filter(Boolean));
+        if (present.size > 0) {
+          const folders = db.prepare('SELECT id, name FROM ms_folders WHERE project_id = ? ORDER BY sort_order, name').all(g.project_id).filter(f => present.has(f.id));
+          if (folders.length > 1 || (folders.length === 1 && rows.some(r => !r.folder_id))) {
+            sections = folders.map(f => ({ id: f.id, name: f.name }));
+            if (rows.some(r => !r.folder_id)) sections.push({ id: null, name: 'More photos' });
+          }
+        }
+      } catch {}
       res.json({
         title: g.title, version: g.version,
         download_policy: settings.download_policy || 'web',
         watermark: !!settings.watermark,
-        proofing, store_enabled: storeEnabled,
+        proofing, store_enabled: storeEnabled, sections,
         assets: rows.map(r => shapePublicAsset(r, favCounts, settings)),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
