@@ -12,7 +12,7 @@ import {
   Link, Unlink, Copy, Wifi, WifiOff, Layers, QrCode, Key,
   Plug, Calendar, Video, Volume2, Play
 } from 'lucide-react';
-import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, BASE_URL } from '../../lib/api';
+import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, auditAPI, BASE_URL } from '../../lib/api';
 import { Send as SendIcon } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
@@ -68,6 +68,7 @@ const TABS = [
   { id: 'notifications', label: 'Notifications', icon: Bell, color: '#ef4444' },
   { id: 'integrations', label: 'Integrations', icon: Plug, color: '#22c55e' },
   { id: 'workspace', label: 'Workspace', icon: Users, color: '#8b5cf6' },
+  { id: 'data', label: 'Data & Privacy', icon: Shield, color: '#0ea5e9' },
   { id: 'ai_command', label: 'AI Command', icon: Sparkles, color: '#8b5cf6' },
   { id: 'password', label: 'Change Password', icon: Lock, color: '#ef4444' },
 ];
@@ -1237,6 +1238,63 @@ const ROLE_INFO = {
   user:        { label: 'User',        color: '#10b981' },
 };
 
+function DataPrivacyTab({ showToast }) {
+  const [exporting, setExporting] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(true);
+
+  useEffect(() => {
+    auditAPI.getLogs({ limit: 100 }).then(r => setLogs(r.data.logs || [])).catch(() => {}).finally(() => setLoadingLogs(false));
+  }, []);
+
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const r = await fetch(workspaceAPI.exportUrl(), { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) throw new Error('failed');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `wappflow-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      showToast('Your data export has downloaded');
+    } catch { showToast('Export failed — try again', 'error'); } finally { setExporting(false); }
+  };
+
+  const fmtAction = (a) => (a || '').replace(/_/g, ' ');
+  const fmtWhen = (t) => { try { return new Date(t).toLocaleString(); } catch { return t; } };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <SectionCard icon={Shield} title="Export your data" subtitle="Download everything in this workspace as a portable JSON file — leads, conversations, invoices, contracts, bookings, gallery metadata and the audit trail." color="#0ea5e9">
+        <button onClick={doExport} disabled={exporting}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', borderRadius: 12, border: 'none', cursor: exporting ? 'default' : 'pointer', background: exporting ? 'var(--surface2)' : 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: exporting ? 'var(--text-dim)' : '#fff', fontSize: 13.5, fontWeight: 700 }}>
+          <FileText size={16} /> {exporting ? 'Preparing…' : 'Export all data (JSON)'}
+        </button>
+        <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 10 }}>Your data is yours. Export anytime — no lock-in.</p>
+      </SectionCard>
+
+      <SectionCard icon={Clock} title="Audit log" subtitle="A record of important actions taken in this workspace." color="#8b5cf6">
+        {loadingLogs ? (
+          <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>Loading…</p>
+        ) : logs.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>No activity recorded yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 380, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 12 }}>
+            {logs.map((l, i) => (
+              <div key={l.id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: i < logs.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 9px', borderRadius: 20, background: 'var(--surface2)', color: 'var(--text)', textTransform: 'capitalize', flexShrink: 0 }}>{fmtAction(l.action)}</span>
+                <span style={{ fontSize: 12.5, color: 'var(--text-muted)', minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.entity_type}{l.entity_id ? ` · ${String(l.entity_id).slice(0, 8)}` : ''} {l.user_email ? `— ${l.user_email}` : ''}</span>
+                <span style={{ fontSize: 11.5, color: 'var(--text-dim)', flexShrink: 0 }}>{fmtWhen(l.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
 function WorkspaceTab({ showToast, router }) {
   const [workspace, setWorkspace] = useState(null);
   const [members, setMembers] = useState([]);
@@ -2324,6 +2382,7 @@ export default function SettingsPage() {
               {activeTab === 'notifications' && <NotificationsTab showToast={showToast} />}
               {activeTab === 'integrations' && <IntegrationsTab showToast={showToast} />}
               {activeTab === 'workspace' && <WorkspaceTab showToast={showToast} router={router} />}
+              {activeTab === 'data' && <DataPrivacyTab showToast={showToast} />}
               {activeTab === 'ai_command' && <AICommandTab showToast={showToast} />}
               {activeTab === 'password' && <PasswordTab showToast={showToast} />}
             </>

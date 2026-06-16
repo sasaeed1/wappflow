@@ -2378,6 +2378,38 @@ app.get('/api/audit-logs', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/workspace/export — full data export (portability / backup) as JSON
+app.get('/api/workspace/export', auth, (req, res) => {
+  try {
+    const ws = req.workspaceId, owner = req.workspaceOwnerId;
+    const safe = (sql, ...args) => { try { return db.prepare(sql).all(...args); } catch { return []; } };
+    const leads = safe('SELECT * FROM leads WHERE workspace_id = ?', ws);
+    const leadIds = leads.map(l => l.id);
+    const inClause = leadIds.length ? `(${leadIds.map(() => '?').join(',')})` : '(NULL)';
+    const bulk = (sql) => leadIds.length ? safe(sql, ...leadIds) : [];
+    const data = {
+      exported_at: new Date().toISOString(),
+      workspace_id: ws,
+      leads,
+      notes:            bulk(`SELECT * FROM notes WHERE lead_id IN ${inClause}`),
+      reminders:        bulk(`SELECT * FROM reminders WHERE lead_id IN ${inClause}`),
+      contact_history:  bulk(`SELECT * FROM contact_history WHERE lead_id IN ${inClause}`),
+      messages:         bulk(`SELECT id, lead_id, body, from_me, media_type, platform, timestamp FROM messages WHERE lead_id IN ${inClause}`),
+      invoices:         safe('SELECT * FROM invoices WHERE user_id = ?', owner),
+      tags:             safe('SELECT * FROM tags WHERE user_id = ?', owner),
+      bookings:         safe('SELECT * FROM bookings WHERE workspace_id = ?', ws),
+      contracts:        safe('SELECT id, lead_id, title, type, status, created_at, completed_at FROM cs_documents WHERE workspace_id = ?', ws),
+      media_projects:   safe('SELECT id, lead_id, title, status, created_at FROM ms_projects WHERE workspace_id = ?', ws),
+      galleries:        safe('SELECT id, project_id, title, visibility, status, created_at FROM ms_galleries WHERE workspace_id = ?', ws),
+      audit_logs:       safe('SELECT * FROM audit_logs WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 2000', ws),
+    };
+    logAudit(ws, req.userId, 'export', 'workspace', ws, { leads: leads.length });
+    res.setHeader('Content-Disposition', `attachment; filename="wappflow-export-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify(data, null, 2));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ════════════════════════════════════════════════════════════
 //  TAGS & PRESETS
 // ════════════════════════════════════════════════════════════

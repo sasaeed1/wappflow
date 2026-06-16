@@ -150,6 +150,7 @@ export const workspaceAPI = {
   getRolePermissions: () => api.get('/workspace/role-permissions'),
   updateRolePermissions: (role, permissions) => api.put('/workspace/role-permissions', { role, permissions }),
   getPlan: () => api.get('/workspace/plan'),
+  exportUrl: () => `${BASE_URL}/api/workspace/export`,
 };
 
 // Cross-app SSO — mints a Flux session token. Server gates it by plan tier.
