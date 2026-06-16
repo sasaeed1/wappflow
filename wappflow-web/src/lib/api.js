@@ -531,6 +531,20 @@ export async function createBooking(slug, data) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not book');
   return r.json();
 }
+export async function fetchBookingManage(token) {
+  const r = await fetch(`${API_URL}/booking/manage/${encodeURIComponent(token)}`);
+  if (!r.ok) throw new Error('not_found');
+  return r.json();
+}
+export async function rescheduleBookingPublic(token, start_at) {
+  const r = await fetch(`${API_URL}/booking/manage/${encodeURIComponent(token)}/reschedule`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_at }) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not reschedule');
+  return r.json();
+}
+export async function cancelBookingPublic(token) {
+  const r = await fetch(`${API_URL}/booking/manage/${encodeURIComponent(token)}/cancel`, { method: 'POST' });
+  return r.ok;
+}
 export async function fetchClientPortal(token) {
   const r = await fetch(`${API_URL}/client-portal/public/${encodeURIComponent(token)}`);
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'not_found');

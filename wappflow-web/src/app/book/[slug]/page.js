@@ -15,6 +15,7 @@ export default function BookingPage() {
   const [day, setDay] = useState(null);
   const [time, setTime] = useState(null);
   const [form, setForm] = useState({ name: '', phone: '', email: '', notes: '' });
+  const [intake, setIntake] = useState({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [done, setDone] = useState(null);
@@ -29,7 +30,7 @@ export default function BookingPage() {
   const book = async () => {
     setErr(''); if (!time) { setErr('Pick a time'); return; } if (!form.name || !(form.phone || form.email)) { setErr('Name and a phone or email are required'); return; }
     setBusy(true);
-    try { const r = await createBooking(slug, { service, start_at: time, ...form }); setDone(r); }
+    try { const r = await createBooking(slug, { service, start_at: time, ...form, intake }); setDone(r); }
     catch (e) { setErr(e.message || 'Could not book'); setBusy(false); }
   };
 
@@ -86,7 +87,11 @@ export default function BookingPage() {
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" style={inp} />
                 <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="Phone (for WhatsApp confirmation)" style={inp} />
                 <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="Email (optional)" style={inp} />
+                {(data.intake || []).map((q, i) => (
+                  <input key={i} value={intake[q.label] || ''} onChange={e => setIntake(s => ({ ...s, [q.label]: e.target.value }))} placeholder={q.label + (q.required ? ' *' : '')} style={inp} />
+                ))}
                 <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Anything we should know? (optional)" rows={2} style={{ ...inp, resize: 'vertical' }} />
+                {data.timezone && <p style={{ fontSize: 12, color: '#8a8a93', margin: 0 }}>Times shown in {data.timezone}.</p>}
               </div>
               {err && <p style={{ color: '#dc2626', fontSize: 13, margin: '10px 0 0' }}>{err}</p>}
               <button onClick={book} disabled={busy} style={{ width: '100%', marginTop: 14, padding: '14px', borderRadius: 12, border: 'none', cursor: 'pointer', background: '#16161a', color: '#fff', fontWeight: 800, fontSize: 15 }}>{busy ? 'Booking…' : time ? `Confirm ${fmtTime(time)}` : 'Confirm booking'}</button>

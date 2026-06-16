@@ -91,6 +91,30 @@ export default function BookingsPage() {
           </div>
         </div>
 
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 14px' }}>Scheduling rules</h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', marginBottom: 14 }}>
+            <label style={{ fontSize: 13, color: 'var(--text)' }}>Buffer between bookings <input type="number" value={settings.buffer_min || 0} onChange={e => setSettings(s => ({ ...s, buffer_min: Number(e.target.value) }))} style={{ ...fld, width: 70, marginLeft: 6 }} /> min</label>
+            <label style={{ fontSize: 13, color: 'var(--text)' }}>Timezone label <input value={settings.timezone || ''} onChange={e => setSettings(s => ({ ...s, timezone: e.target.value }))} placeholder="Asia/Karachi" style={{ ...fld, width: 160, marginLeft: 6 }} /></label>
+          </div>
+          <label className="ms-label" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Blackout dates (YYYY-MM-DD, one per line)</label>
+          <textarea value={(settings.blackout || []).join('\n')} onChange={e => setSettings(s => ({ ...s, blackout: e.target.value.split(/\s+/).map(x => x.trim()).filter(Boolean) }))} rows={2} placeholder="2026-12-25" style={{ width: '100%', maxWidth: 320, ...fld, resize: 'vertical', boxSizing: 'border-box' }} />
+        </div>
+
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 14px' }}>Intake questions</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(settings.intake || []).map((q, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input value={q.label} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} placeholder="e.g. What's the occasion?" style={{ flex: 1, ...fld }} />
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><input type="checkbox" checked={!!q.required} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, required: e.target.checked } : x) }))} /> required</label>
+                <button onClick={() => setSettings(s => ({ ...s, intake: s.intake.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={15} /></button>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setSettings(s => ({ ...s, intake: [...(s.intake || []), { label: 'Question', required: false }] }))} style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Plus size={14} /> Add question</button>
+        </div>
+
         <button onClick={save} style={{ padding: '12px 22px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontWeight: 800, fontSize: 14.5 }}>Save &amp; publish</button>
 
         <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '28px 0 12px' }}>Upcoming</h2>
