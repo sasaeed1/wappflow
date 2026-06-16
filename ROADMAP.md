@@ -48,10 +48,21 @@ Status of the 17-phase intelligence/quality roadmap + Track 0 + payments. Built 
 - ✅ **RAW pipeline** — embedded-preview extraction (exiftool/dcraw/exifr) → variants + CV scores; RAW shoots viewable & cullable.
 - ✅ **Worker observability/scale** — `/api/media/jobs` health + System panel + retry-failed; lease-based claiming + stale-job reaper (multi-worker safe).
 
-## What still needs work (for the next pass)
-1. **The desktop app** — the long-term moat: package `media-worker`'s analyzer interface into an Electron/ONNX app that runs face/eye/smile/scene/aesthetic + video ML locally and POSTs to `/scores`. The `face-detect.js` seam + ingestion endpoints are ready.
-2. **Stripe go-live**: set `STRIPE_SECRET_KEY` (+ `STRIPE_WEBHOOK_SECRET`); harden the webhook to verify the signature over the raw body.
-3. **Library grid virtualization** — the cull filmstrip is windowed; the project library grid still renders all (lazy) — true windowing for 5k+ is the remaining perf item.
+## Polish tail (completed — "complete it, skip desktop+payments")
+- ✅ **Contracts depth** — bulk-send (template/pack → many leads), clause library, version content/diff compare.
+- ✅ **Booking 2.0** — timezone label, buffers, blackout dates, intake questions, self-serve reschedule/cancel via manage link.
+- ✅ **Gallery CX 2.0** — named favourite collections (client save → studio view) + story sections (folders → named chapters in the client gallery) + "Order prints" button when a store exists.
+- ✅ **CRM depth** — next-best-action queue (heuristic, instant), saved views (persist filter combos), WhatsApp-safe duplicate merge (reassign child rows, keep routing phone, soft-delete dupes to trash).
+- ✅ **Unified notification center** — `notifications` table + `notify()` helper + DI seam; emits new lead (API/IG/FB), reminder due, booking, contract signed, gallery collection/comment; navbar bell merges persistent feed (60s poll, mark-all-read). WhatsApp message flow untouched.
+- ✅ **Data & Privacy** — full workspace JSON export (`GET /api/workspace/export`) + audit-log viewer in Settings.
+- ✅ **Touch cull** — swipe gestures on the cull stage (↑ keep · ↓ reject · ←→ browse) + coarse-pointer hint.
+- ✅ **Brain consumption** — cull "Top picks" spotlights the studio's learned `cull_keep_rate` % by AI hero score (advisory only; never writes a decision).
+- ✅ **Library grid** — incremental render (show-more) + 10k cap for 5k+ shoots.
+
+## What still needs work (deferred by request)
+1. **The desktop app** — the long-term moat: package `media-worker`'s analyzer interface into an Electron/ONNX app that runs face/eye/smile/scene/aesthetic + video ML locally and POSTs to `/scores`. The `face-detect.js` seam + ingestion endpoints are ready. _(deferred until further notice)_
+2. **Stripe go-live**: set `STRIPE_SECRET_KEY` (+ `STRIPE_WEBHOOK_SECRET`); harden the webhook to verify the signature over the raw body. _(deferred until further notice)_
+3. **Booking ↔ Google Calendar 2-way sync** — needs OAuth.
 4. **AI cost governor + opt-in cloud tier** for any future server-side cloud vision; **P4 apply-edit UI** + portfolio auto-publish + gallery-surfaced print recs.
 
 See `ECOSYSTEM.md` for the full feature/architecture reference of the shipped product.
