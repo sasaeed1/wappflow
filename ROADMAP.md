@@ -42,12 +42,16 @@ Status of the 17-phase intelligence/quality roadmap + Track 0 + payments. Built 
 - Experience: `/api/packs`, `/api/media/projects/:id/{milestones,print-recommendations}`, `/api/media/milestones/:id`.
 - Payments: `POST /api/payments/link`, `GET /api/payments`, `POST /api/payments/:id/mark-paid`, `GET /api/payments/public/:token`, `POST /api/payments/webhook`.
 
+## Done since (this build)
+- ✅ **Fast cull** — AI-hero sort + score badges/reasons in cull; **windowed filmstrip** + 10k asset cap for 5k+ shoots.
+- ✅ **Frontend depth** — album layout editor, reel timeline editor, style-profile manager, Studio Brain panel, gallery "My favourites" filter.
+- ✅ **RAW pipeline** — embedded-preview extraction (exiftool/dcraw/exifr) → variants + CV scores; RAW shoots viewable & cullable.
+- ✅ **Worker observability/scale** — `/api/media/jobs` health + System panel + retry-failed; lease-based claiming + stale-job reaper (multi-worker safe).
+
 ## What still needs work (for the next pass)
 1. **The desktop app** — the long-term moat: package `media-worker`'s analyzer interface into an Electron/ONNX app that runs face/eye/smile/scene/aesthetic + video ML locally and POSTs to `/scores`. The `face-detect.js` seam + ingestion endpoints are ready.
-2. **Fast keyboard cull UI** (highest-ROI polish): virtualized 5k-grid, arrows + 1–5 + P/X/U + color, compare/loupe, "filter by AI score" (consume `/intelligence`). The data is all there.
-3. **Frontend depth**: album layout editor, style-profile manager, video culling/story timeline UI, portfolio auto-publish, print-recs surfaced in the gallery.
-4. **Stripe go-live**: set `STRIPE_SECRET_KEY` (+ `STRIPE_WEBHOOK_SECRET`); harden the webhook to verify the signature over the raw body.
-5. **RAW pipeline** (libraw/dcraw) + **worker observability/scale/cost-governor** (Part A of the architecture audit).
-6. **AI cost governor + opt-in cloud tier** for any future server-side cloud vision.
+2. **Stripe go-live**: set `STRIPE_SECRET_KEY` (+ `STRIPE_WEBHOOK_SECRET`); harden the webhook to verify the signature over the raw body.
+3. **Library grid virtualization** — the cull filmstrip is windowed; the project library grid still renders all (lazy) — true windowing for 5k+ is the remaining perf item.
+4. **AI cost governor + opt-in cloud tier** for any future server-side cloud vision; **P4 apply-edit UI** + portfolio auto-publish + gallery-surfaced print recs.
 
 See `ECOSYSTEM.md` for the full feature/architecture reference of the shipped product.
