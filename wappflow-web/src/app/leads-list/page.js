@@ -766,6 +766,16 @@ export default function LeadsListPage() {
             <button onClick={() => setShowAssignModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#6366f1', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               <UserCheck size={14} /> Assign
             </button>
+            <select defaultValue="" onChange={async (e) => {
+              const status = e.target.value; if (!status) return;
+              const ids = [...selected];
+              for (const id of ids) { try { await leadsAPI.updateStatus(id, { status }); } catch {} }
+              setAllLeads(prev => prev.map(l => (ids.includes(l.id) ? { ...l, status } : l)));
+              clearSelection(); showToast(`Moved ${ids.length} lead${ids.length > 1 ? 's' : ''} to ${status}`, 'success'); e.target.value = '';
+            }} style={{ padding: '7px 12px', background: '#312e81', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }} title="Move selected to a pipeline stage">
+              <option value="" disabled>Move to stage…</option>
+              {['New', 'Contacted', 'Interested', 'Negotiating', 'Closed - Won', 'Closed - Lost'].map(s => <option key={s} value={s} style={{ color: '#111' }}>{s}</option>)}
+            </select>
             <button
               onClick={() => setShowGroupModal(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#16a34a', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
