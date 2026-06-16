@@ -171,6 +171,8 @@ export default function ProjectPage() {
   const photoCount = assets.filter(a => kindOf(a) === 'photo').length;
   const videoCount = assets.length - photoCount;
   const shown = mediaTab === 'all' ? assets : assets.filter(a => kindOf(a) === mediaTab);
+  const [visibleCount, setVisibleCount] = useState(400); // incremental render for huge shoots
+  useEffect(() => { setVisibleCount(400); }, [mediaTab]);
 
   const refreshAssets = useCallback(async () => {
     try { const r = await mediaAPI.listAssets(id, { limit: 5000 }); setAssets(r.data.assets || []); return r.data.assets || []; } catch { return []; }
@@ -478,7 +480,7 @@ export default function ProjectPage() {
             style={viewSize === 'c'
               ? { columnWidth: 250, columnGap: 'var(--ms-grid-gap)' }
               : { gridTemplateColumns: `repeat(auto-fill, minmax(${VIEW_SIZES[viewSize]}px, 1fr))` }}>
-            {shown.map((a, i) => {
+            {shown.slice(0, visibleCount).map((a, i) => {
               const isSel = selected.has(a.id);
               const collage = viewSize === 'c';
               const isVideo = kindOf(a) === 'video';
@@ -509,6 +511,11 @@ export default function ProjectPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+        {shown.length > visibleCount && (
+          <div style={{ textAlign: 'center', marginTop: 18 }}>
+            <button onClick={() => setVisibleCount(c => c + 400)} className="ms-btn-ghost" style={{ padding: '9px 18px' }}>Show {Math.min(400, shown.length - visibleCount)} more · {visibleCount}/{shown.length}</button>
           </div>
         )}
 

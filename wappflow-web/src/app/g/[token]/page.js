@@ -169,6 +169,9 @@ export default function ClientGalleryPage() {
               <Download size={15} /> {dl?.status === 'pending' ? 'Preparing ZIP…' : dl?.status === 'ready' ? 'Download ready ✓' : dl?.status === 'error' ? 'Try again' : 'Download all'}
             </button>
           )}
+          {data?.store_enabled && (
+            <a href={`/shop/${token}`} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 10, border: '1px solid #2a2a33', background: '#15151b', color: '#fff', fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>🛍️ Order prints</a>
+          )}
         </div>
       </header>
 

@@ -2426,11 +2426,12 @@ Only suggest actions that make sense for the question. If none make sense, retur
         const sel = db.prepare('SELECT asset_id FROM ms_proofing_selections WHERE set_id = ?').all(pset.id).map(r => r.asset_id);
         proofing = { id: pset.id, title: pset.title, quota: pset.quota, instructions: pset.instructions, status: pset.status, selected_asset_ids: sel, selected_count: sel.length };
       }
+      let storeEnabled = false; try { storeEnabled = db.prepare("SELECT COUNT(*) c FROM ms_print_products WHERE workspace_id = ? AND active = 1").get(g.workspace_id).c > 0; } catch {}
       res.json({
         title: g.title, version: g.version,
         download_policy: settings.download_policy || 'web',
         watermark: !!settings.watermark,
-        proofing,
+        proofing, store_enabled: storeEnabled,
         assets: rows.map(r => shapePublicAsset(r, favCounts, settings)),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
