@@ -6,13 +6,13 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
   Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
-  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause, Droplets,
+  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause, Droplets, Wand2,
 } from 'lucide-react';
 
 // photo | video — RAW and stills both live under "photo"
 const kindOf = (a) => (a?.type === 'video' ? 'video' : 'photo');
 const fmtDur = (ms) => { if (!ms) return null; const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-import { mediaAPI, mediaUrl } from '../../../lib/api';
+import { mediaAPI, mediaUrl, studioAiAPI, videoAiAPI } from '../../../lib/api';
 import NavBar from '../../../components/StudioShell';
 
 function FocusChip({ sharpness }) {
@@ -161,6 +161,7 @@ export default function ProjectPage() {
   const [aiHints, setAiHints] = useState(true);    // Settings → Defaults: show advisory AI badges
   const [lightbox, setLightbox] = useState(null); // index into the SHOWN list
   const [wmModal, setWmModal] = useState(false);
+  const [aiPanel, setAiPanel] = useState(false);
 
   // apply per-device studio preferences (set in Studio → Settings)
   useEffect(() => {
@@ -456,6 +457,7 @@ export default function ProjectPage() {
                 <span style={{ width: 1, height: 16, background: 'var(--ms-line)' }} />
               </>
             )}
+            <button onClick={() => setAiPanel(true)} className="ms-btn-ghost" style={{ padding: '7px 12px' }} title="AI selections, albums, reels"><Wand2 size={14} /> Studio AI</button>
             <button onClick={autoOrganize} className="ms-btn-ghost" style={{ padding: '7px 12px' }} title="Group photos into folders by capture time"><Sparkles size={14} /> Auto-organize</button>
             <div className="ms-seg" style={{ padding: 3 }}>
               {[['s', Grid3x3, 'Small grid'], ['m', Grid2x2, 'Medium grid'], ['l', LayoutGrid, 'Large grid'], ['c', LayoutDashboard, 'Collage (natural sizes)']].map(([sz, Icon, label]) => (
@@ -528,6 +530,7 @@ export default function ProjectPage() {
       {showNewGallery && <CreateGalleryModal onClose={() => setShowNewGallery(false)} onCreate={createGallery} />}
       {proofingFor && <ProofingRequestModal gallery={proofingFor} onClose={() => setProofingFor(null)} onCreate={createProof} />}
       {wmModal && <WatermarkModal projectId={id} count={selected.size} initial={project?.settings?.watermark} sampleUrl={(() => { const a = assets.find(x => selected.has(x.id) && kindOf(x) === 'photo'); return a ? mediaUrl(a.thumb_url || a.url) : null; })()} onClose={() => setWmModal(false)} onApply={applyWatermark} onRemove={removeWatermark} />}
+      {aiPanel && <StudioAIModal projectId={id} onClose={() => setAiPanel(false)} onGallery={refreshGalleries} setBanner={setBanner} />}
     </NavBar>
   );
 }
@@ -640,6 +643,69 @@ function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply
     </div>
   );
 }
+function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
+  const [busy, setBusy] = useState('');
+  const [sels, setSels] = useState([]);
+  const [note, setNote] = useState('');
+  const [pages, setPages] = useState(30);
+  const [reelLen, setReelLen] = useState(30);
+  const [reel, setReel] = useState(null);
+  const KINDS = [['best_of', 'Best Of'], ['highlights', 'Highlights'], ['portfolio', 'Portfolio'], ['album', 'Album'], ['delivery', 'Delivery']];
+
+  const analyze = async () => { setBusy('analyze'); try { const r = await mediaAPI.analyzeProject(projectId); setNote(`Scored ${r.data.scored}/${r.data.total} photos.`); } catch { setNote('Analyze failed.'); } finally { setBusy(''); } };
+  const gen = async (kind) => { setBusy(kind); try { const r = await studioAiAPI.generateSelection(projectId, kind); setSels(s => [{ ...r.data, kind }, ...s.filter(x => x.kind !== kind)]); setNote(`${r.data.label}: ${r.data.count} photos selected.`); } catch (e) { setNote(e?.response?.data?.error || 'Failed.'); } finally { setBusy(''); } };
+  const buildGallery = async (sel) => { setBusy('gal-' + sel.kind); try { await studioAiAPI.galleryFromSelection(projectId, { selection_id: sel.id }); setBanner && setBanner({ type: 'ok', msg: `Gallery built from ${sel.label} (${sel.count}).` }); onGallery && onGallery(); } catch { setNote('Gallery build failed.'); } finally { setBusy(''); } };
+  const album = async () => { setBusy('album'); try { const r = await studioAiAPI.album(projectId, { pages }); setNote(`Album draft: ${r.data.spreads} spreads, ${r.data.images} images.`); } catch { setNote('Album failed.'); } finally { setBusy(''); } };
+  const makeReel = async () => { setBusy('reel'); try { const r = await videoAiAPI.reel(projectId, { length_s: reelLen }); setReel(r.data); setNote(`Reel plan: ${r.data.plan.timeline.length} clips${r.data.template ? ' · ' + r.data.template : ''}.`); } catch (e) { setNote(e?.response?.data?.error || 'Reel failed.'); } finally { setBusy(''); } };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '88vh', overflowY: 'auto', background: 'var(--ms-paper,#fff)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ms-ink,#14120f)', display: 'inline-flex', alignItems: 'center', gap: 8 }}><Wand2 size={18} /> Studio AI</h3>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ms-ink-3,#888)' }}><X size={17} /></button>
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3,#888)', margin: '0 0 14px' }}>AI advises — you confirm. Selections are explainable and non-destructive.</p>
+
+        <button onClick={analyze} disabled={!!busy} style={btnGhostWide}>{busy === 'analyze' ? 'Analyzing…' : 'Re-score this project'}</button>
+
+        <div style={aiLbl}>Smart selections</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {KINDS.map(([k, l]) => <button key={k} onClick={() => gen(k)} disabled={!!busy} style={chip}>{busy === k ? '…' : l}</button>)}
+        </div>
+        {sels.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+            {sels.map(s => (
+              <div key={s.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid var(--ms-line,#ddd)', borderRadius: 10 }}>
+                <span style={{ flex: 1, fontSize: 13, color: 'var(--ms-ink,#14120f)' }}><b>{s.label}</b> · {s.count} photos</span>
+                <button onClick={() => buildGallery(s)} disabled={!!busy} style={{ ...chip, background: 'var(--ms-ink,#14120f)', color: '#fff', border: 'none' }}>{busy === 'gal-' + s.kind ? '…' : 'Build gallery'}</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={aiLbl}>Album draft</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <select value={pages} onChange={e => setPages(Number(e.target.value))} style={aiSel}>{[20, 30, 40, 60].map(n => <option key={n} value={n}>{n} pages</option>)}</select>
+          <button onClick={album} disabled={!!busy} style={chip}>{busy === 'album' ? 'Generating…' : 'Generate album'}</button>
+        </div>
+
+        <div style={aiLbl}>Reel (Story Engine)</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <select value={reelLen} onChange={e => setReelLen(Number(e.target.value))} style={aiSel}>{[15, 30, 60, 90].map(n => <option key={n} value={n}>{n}s</option>)}</select>
+          <button onClick={makeReel} disabled={!!busy} style={chip}>{busy === 'reel' ? 'Planning…' : 'Generate reel plan'}</button>
+        </div>
+        {reel && <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--ms-ink-3,#888)' }}>{reel.plan.timeline.length} clips · {reel.plan.aspect} · {reel.plan.length_s}s{reel.template ? ` · ${reel.template}` : ''}</div>}
+
+        {note && <p style={{ marginTop: 14, fontSize: 13, color: 'var(--ms-ink,#14120f)', background: 'var(--ms-line,#f2f2f4)', padding: '10px 12px', borderRadius: 9 }}>{note}</p>}
+      </div>
+    </div>
+  );
+}
+const btnGhostWide = { width: '100%', padding: '10px', borderRadius: 10, border: '1px solid var(--ms-line,#ddd)', background: 'transparent', color: 'var(--ms-ink,#14120f)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 6 };
+const aiLbl = { fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ms-ink-3,#888)', margin: '16px 0 8px' };
+const chip = { padding: '8px 13px', borderRadius: 9, border: '1px solid var(--ms-line,#ddd)', background: 'var(--ms-paper,#fff)', color: 'var(--ms-ink,#14120f)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' };
+const aiSel = { padding: '8px 10px', borderRadius: 9, border: '1px solid var(--ms-line,#ddd)', background: 'var(--ms-paper,#fff)', color: 'var(--ms-ink,#14120f)', fontSize: 13, outline: 'none' };
 const wmLbl = { display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--ms-ink-3,#888)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 6px' };
 const wmInp = { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid var(--ms-line,#ddd)', background: 'var(--ms-paper,#fff)', color: 'var(--ms-ink,#14120f)', fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 12 };
 

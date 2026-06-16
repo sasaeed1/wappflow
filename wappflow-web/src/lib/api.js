@@ -294,6 +294,18 @@ export const mediaAPI = {
   removeWatermark: (id, assetIds) => api.post(`/media/projects/${id}/watermark/remove`, { assetIds }),
   autoFolders:     (id, gap)     => api.post(`/media/projects/${id}/auto-folders`, { gap_minutes: gap }),
   albumFromFavorites: (galleryId) => api.post(`/media/galleries/${galleryId}/album-from-favorites`),
+  // Track 0 intelligence
+  analyzeProject:  (id)          => api.post(`/media/projects/${id}/analyze`),
+  intelligence:    (id)          => api.get(`/media/projects/${id}/intelligence`),
+  uploadScores:    (assetId, data) => api.post(`/media/assets/${assetId}/scores`, data),
+  brain:           ()            => api.get('/media/brain'),
+  setBrain:        (key, value, confidence) => api.put('/media/brain', { key, value, confidence }),
+  deriveBrain:     ()            => api.post('/media/brain/derive'),
+  milestones:      (id)          => api.get(`/media/projects/${id}/milestones`),
+  addMilestone:    (id, data)    => api.post(`/media/projects/${id}/milestones`, data),
+  updateMilestone: (mid, data)   => api.put(`/media/milestones/${mid}`, data),
+  removeMilestone: (mid)         => api.delete(`/media/milestones/${mid}`),
+  printRecommendations: (id)     => api.get(`/media/projects/${id}/print-recommendations`),
   // trash (soft-delete → 30-day restore)
   listTrash:       ()            => api.get('/media/trash'),
   restoreAsset:    (id)          => api.post(`/media/assets/${id}/restore`),
@@ -432,6 +444,46 @@ export async function declinePublicDoc(token, reason) {
 export const clientPortalAPI = {
   link: (leadId) => api.post(`/client-portal/${leadId}`),
 };
+// Studio AI — photo generation (P2–P6, P13)
+export const studioAiAPI = {
+  generateSelection: (id, kind, opts) => api.post(`/studio-ai/projects/${id}/selections`, { kind, ...(opts || {}) }),
+  selections: (id) => api.get(`/studio-ai/projects/${id}/selections`),
+  galleryFromSelection: (id, body) => api.post(`/studio-ai/projects/${id}/gallery-from-selection`, body),
+  album: (id, body) => api.post(`/studio-ai/projects/${id}/album`, body),
+  albums: (id) => api.get(`/studio-ai/projects/${id}/albums`),
+  portfolioPicks: () => api.get('/studio-ai/portfolio-picks'),
+  styles: () => api.get('/studio-ai/styles'),
+  createStyle: (data) => api.post('/studio-ai/styles', data),
+  updateStyle: (sid, data) => api.put(`/studio-ai/styles/${sid}`, data),
+  deleteStyle: (sid) => api.delete(`/studio-ai/styles/${sid}`),
+  autoEdit: (assetId, body) => api.post(`/studio-ai/assets/${assetId}/auto-edit`, body || {}),
+};
+// Video AI — Story/Reel/templates (P7–P11)
+export const videoAiAPI = {
+  templates: () => api.get('/video-ai/templates'),
+  createTemplate: (data) => api.post('/video-ai/templates', data),
+  cull: (id, kind) => api.post(`/video-ai/projects/${id}/cull`, { kind }),
+  story: (id) => api.post(`/video-ai/projects/${id}/story`),
+  reel: (id, body) => api.post(`/video-ai/projects/${id}/reel`, body),
+  reels: (id) => api.get(`/video-ai/projects/${id}/reels`),
+};
+// Marketplace packs (P16) + Payments
+export const packsAPI = {
+  list: (kind) => api.get('/packs', { params: kind ? { kind } : {} }),
+  create: (data) => api.post('/packs', data),
+  update: (id, data) => api.put(`/packs/${id}`, data),
+  remove: (id) => api.delete(`/packs/${id}`),
+};
+export const paymentsAPI = {
+  link: (data) => api.post('/payments/link', data),
+  list: () => api.get('/payments'),
+  markPaid: (id) => api.post(`/payments/${id}/mark-paid`),
+};
+export async function fetchPayment(token) {
+  const r = await fetch(`${API_URL}/payments/public/${encodeURIComponent(token)}`);
+  if (!r.ok) throw new Error('not_found');
+  return r.json();
+}
 export const bookingAPI = {
   settings: () => api.get('/booking/settings'),
   updateSettings: (settings, slug) => api.put('/booking/settings', { settings, slug }),

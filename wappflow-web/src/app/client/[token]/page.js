@@ -52,6 +52,14 @@ export default function ClientPortalPage() {
           <p style={{ fontSize: 14.5, color: '#70707a', margin: '8px 0 0' }}>Everything for your project, in one place.</p>
         </header>
 
+        {(data.milestones || []).length > 0 && (
+          <Section title="Progress">
+            {data.milestones.map((m, i) => (
+              <Row key={i} icon={m.status === 'done' ? '✅' : m.status === 'in_progress' ? '⏳' : '○'} title={m.title} sub={m.due_date ? `Due ${m.due_date}` : ''} right={<span style={{ fontSize: 12, color: m.status === 'done' ? '#10b981' : '#8a8a93', textTransform: 'capitalize' }}>{(m.status || '').replace('_', ' ')}</span>} />
+            ))}
+          </Section>
+        )}
+
         <Section title="Documents" empty={data.documents.length ? null : 'No documents yet.'}>
           {data.documents.map((d, i) => <Row key={i} href={d.url} icon="📄" title={d.title} sub={d.type} right={<Pill map={DOC_STATUS} s={d.status} />} />)}
         </Section>
@@ -60,9 +68,21 @@ export default function ClientPortalPage() {
           {data.galleries.map((g, i) => <Row key={i} href={g.url} icon="🖼️" title={g.title} sub="View & download" right={<span style={{ fontSize: 13, color: '#6366f1', fontWeight: 700 }}>Open →</span>} />)}
         </Section>
 
+        {(data.albums || []).length > 0 && (
+          <Section title="Albums">
+            {data.albums.map((a, i) => <Row key={i} icon="📔" title={a.title || 'Album'} sub={a.page_count ? `${a.page_count} pages` : ''} right={<span style={{ fontSize: 12, color: '#8a8a93', textTransform: 'capitalize' }}>{a.status}</span>} />)}
+          </Section>
+        )}
+
         <Section title="Invoices" empty={data.invoices.length ? null : 'No invoices yet.'}>
           {data.invoices.map((inv, i) => <Row key={i} icon="💳" title={inv.invoice_number} sub={new Date(inv.created_at + 'Z').toLocaleDateString()} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(inv.currency_symbol, inv.total)}</b><Pill map={INV_STATUS} s={inv.status} /></span>} />)}
         </Section>
+
+        {(data.orders || []).length > 0 && (
+          <Section title="Orders">
+            {data.orders.map((o, i) => <Row key={i} icon="🛍️" title={(o.items || []).map(it => `${it.qty}× ${it.name}`).join(', ') || 'Order'} sub={new Date(o.created_at + 'Z').toLocaleDateString()} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(o.currency_symbol, o.total)}</b><span style={{ fontSize: 12, color: '#8a8a93', textTransform: 'capitalize' }}>{o.status}</span></span>} />)}
+          </Section>
+        )}
 
         {data.projects.length > 0 && (
           <Section title="Projects">
