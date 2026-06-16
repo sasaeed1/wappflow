@@ -1,5 +1,8 @@
 import './studio.css';
 
+// Tab title for every /studio/* route (absolute → overrides the root template).
+export const metadata = { title: { absolute: 'Media Studio' } };
+
 // Studio is its own module. Each page renders <StudioShell> (its own nav bar);
 // this layout only loads the design system and sets the saved theme before paint
 // (no flash). WappFlow Core is untouched.

@@ -204,6 +204,11 @@ export default function NavBar({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
   const planInfo = usePlan();
+  // CRM tab title. The studio/contracts modules set their own via route metadata,
+  // so don't clobber those even if a page happens to render the CRM navbar.
+  useEffect(() => {
+    if (!pathname || (!pathname.startsWith('/studio') && !pathname.startsWith('/contracts'))) document.title = 'WappFlow CRM';
+  }, [pathname]);
   const notifRef   = useRef(null);
   const moreRef    = useRef(null);
   const platformRef = useRef(null);
