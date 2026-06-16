@@ -292,6 +292,8 @@ export const mediaAPI = {
   uploadWatermarkLogo: (id, formData) => api.post(`/media/projects/${id}/watermark/logo`, formData, { headers: { 'Content-Type': undefined } }),
   applyWatermark:  (id, assetIds, config) => api.post(`/media/projects/${id}/watermark/apply`, { assetIds, config }),
   removeWatermark: (id, assetIds) => api.post(`/media/projects/${id}/watermark/remove`, { assetIds }),
+  autoFolders:     (id, gap)     => api.post(`/media/projects/${id}/auto-folders`, { gap_minutes: gap }),
+  albumFromFavorites: (galleryId) => api.post(`/media/galleries/${galleryId}/album-from-favorites`),
   // trash (soft-delete → 30-day restore)
   listTrash:       ()            => api.get('/media/trash'),
   restoreAsset:    (id)          => api.post(`/media/assets/${id}/restore`),

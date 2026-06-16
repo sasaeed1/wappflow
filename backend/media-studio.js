@@ -583,6 +583,58 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Auto-organize: cluster photos into folders by capture-time gaps ──────────
+  app.post('/api/media/projects/:id/auto-folders', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const gapMin = Math.max(10, Number(req.body.gap_minutes) || 90);
+      const parseT = (s) => { if (!s) return null; let v = String(s).trim(); const m = v.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}:\d{2}:\d{2})/); if (m) v = `${m[1]}-${m[2]}-${m[3]}T${m[4]}`; const t = Date.parse(v); return isNaN(t) ? null : t; };
+      const assets = db.prepare("SELECT id, capture_time, created_at FROM ms_assets WHERE project_id = ? AND deleted_at IS NULL AND type = 'photo' ORDER BY capture_time IS NULL, capture_time, created_at").all(project.id);
+      if (!assets.length) return res.json({ ok: true, folders: 0, message: 'No photos to organize.' });
+      const clusters = []; let cur = []; let prev = null;
+      for (const a of assets) {
+        const t = parseT(a.capture_time);
+        if (cur.length && prev != null && t != null && (t - prev) > gapMin * 60000) { clusters.push(cur); cur = []; }
+        cur.push(a); if (t != null) prev = t;
+      }
+      if (cur.length) clusters.push(cur);
+      if (clusters.length < 2) return res.json({ ok: true, folders: 0, message: 'These photos look like one session — nothing to split (needs capture times from EXIF).' });
+      let order = db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 n FROM ms_folders WHERE project_id = ?').get(project.id).n;
+      const mkFolder = db.prepare('INSERT INTO ms_folders (id, workspace_id, project_id, name, sort_order) VALUES (?,?,?,?,?)');
+      const setFolder = db.prepare('UPDATE ms_assets SET folder_id = ? WHERE id = ?');
+      db.transaction(() => {
+        clusters.forEach((cl, i) => {
+          const firstT = cl.map(x => parseT(x.capture_time)).find(Boolean);
+          const label = firstT ? new Date(firstT).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : `Session ${i + 1}`;
+          const fid = generateId();
+          mkFolder.run(fid, req.workspaceId, project.id, `${label} · ${cl.length}`, order++);
+          cl.forEach(a => setFolder.run(fid, a.id));
+        });
+      })();
+      logAudit(req.workspaceId, req.userId, 'auto_folders', 'ms_project', project.id, { folders: clusters.length });
+      broadcastToWorkspace(req.workspaceId, 'ms_assets_added', { project_id: project.id });
+      res.json({ ok: true, folders: clusters.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Build a gallery from a gallery's client-favourited photos ────────────────
+  app.post('/api/media/galleries/:id/album-from-favorites', auth, (req, res) => {
+    try {
+      const g = db.prepare('SELECT * FROM ms_galleries WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!g) return res.status(404).json({ error: 'Gallery not found' });
+      const favs = db.prepare('SELECT DISTINCT asset_id FROM ms_client_favorites WHERE gallery_id = ?').all(g.id).map(r => r.asset_id);
+      if (!favs.length) return res.status(400).json({ error: 'No client favourites yet.' });
+      const ngid = generateId();
+      db.prepare('INSERT INTO ms_galleries (id, workspace_id, project_id, title, visibility) VALUES (?,?,?,?,?)')
+        .run(ngid, req.workspaceId, g.project_id, `${g.title || 'Gallery'} — Favourites`, g.visibility || 'private');
+      const ins = db.prepare('INSERT OR IGNORE INTO ms_gallery_assets (gallery_id, asset_id, sort_order) VALUES (?,?,?)');
+      db.transaction(() => { favs.forEach((aid, i) => ins.run(ngid, aid, i)); })();
+      broadcastToWorkspace(req.workspaceId, 'ms_gallery_created', { project_id: g.project_id });
+      res.json({ ok: true, gallery_id: ngid, count: favs.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Library listing ────────────────────────────────────────────────────────
   app.get('/api/media/projects/:id/assets', auth, (req, res) => {
     try {

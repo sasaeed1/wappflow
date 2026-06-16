@@ -8,6 +8,11 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(clients.claim());
 });
 
+// Minimal passthrough fetch handler — required for PWA installability.
+// Intentionally no caching: this is an auth-heavy, live app, so we never serve
+// stale responses; requests go straight to the network.
+self.addEventListener('fetch', () => { /* network passthrough */ });
+
 self.addEventListener('push', (event) => {
   if (!event.data) return;
 

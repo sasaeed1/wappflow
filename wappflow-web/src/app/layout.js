@@ -48,6 +48,7 @@ export default function RootLayout({ children }) {
             }
             sessionStorage.setItem('wf_alive', '1');
           } catch(e) {}
+          try { if ('serviceWorker' in navigator) window.addEventListener('load', function(){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }); } catch(e) {}
         ` }} />
       </head>
       <body>

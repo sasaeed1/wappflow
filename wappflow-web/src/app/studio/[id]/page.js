@@ -232,6 +232,13 @@ export default function ProjectPage() {
       setTimeout(refreshAssets, 4000); setTimeout(refreshAssets, 12000);
     } catch (e) { setBanner({ type: 'error', msg: e.response?.data?.error || 'Could not watermark' }); }
   };
+  const autoOrganize = async () => {
+    try {
+      const r = await mediaAPI.autoFolders(id);
+      setBanner({ type: r.data.folders ? 'ok' : 'info', msg: r.data.folders ? `Organized into ${r.data.folders} folders by capture time.` : (r.data.message || 'Nothing to organize.') });
+      if (r.data.folders) refreshAssets();
+    } catch (e) { setBanner({ type: 'error', msg: e.response?.data?.error || 'Could not organize' }); }
+  };
   const removeWatermark = async () => {
     const ids = Array.from(selected); if (ids.length === 0) return;
     setWmModal(false);
@@ -449,6 +456,7 @@ export default function ProjectPage() {
                 <span style={{ width: 1, height: 16, background: 'var(--ms-line)' }} />
               </>
             )}
+            <button onClick={autoOrganize} className="ms-btn-ghost" style={{ padding: '7px 12px' }} title="Group photos into folders by capture time"><Sparkles size={14} /> Auto-organize</button>
             <div className="ms-seg" style={{ padding: 3 }}>
               {[['s', Grid3x3, 'Small grid'], ['m', Grid2x2, 'Medium grid'], ['l', LayoutGrid, 'Large grid'], ['c', LayoutDashboard, 'Collage (natural sizes)']].map(([sz, Icon, label]) => (
                 <button key={sz} onClick={() => setViewSize(sz)} className={viewSize === sz ? 'is-active' : ''} style={{ padding: '6px 9px' }} title={label}><Icon size={15} /></button>
