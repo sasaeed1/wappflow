@@ -6,12 +6,12 @@ import {
   Search, UserCheck, MessageCircle, ArrowRight, Undo2, Phone, Calendar,
   TrendingUp, Users, Award,
 } from 'lucide-react';
-import { leadsAPI, displayPhone } from '../../lib/api';
+import { leadsAPI, displayPhone, settingsAPI } from '../../lib/api';
 import NavBar from '../../components/NavBar';
 
-const fmtMoney = (n) => {
+const fmtMoney = (n, sym = '$') => {
   if (!n) return null;
-  try { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n); } catch { return String(n); }
+  try { return sym + ' ' + new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n); } catch { return sym + ' ' + n; }
 };
 const fmtDate = (d) => { if (!d) return null; try { return new Date(d).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }); } catch { return null; } };
 const initial = (s) => (s || '?').trim()[0]?.toUpperCase() || '?';
@@ -25,12 +25,15 @@ export default function ClientsPage() {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(null);
   const [toast, setToast] = useState(null);
+  const [company, setCompany] = useState(null);
+  const sym = company?.currency_symbol || '$';
 
   const say = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/clients'); return; }
     load();
+    settingsAPI.getCompany().then(r => setCompany(r.data.company || {})).catch(() => {});
   }, []);
 
   const load = async () => {
@@ -69,7 +72,7 @@ export default function ClientsPage() {
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <StatCard icon={<Users size={15} />} label="Clients" value={clients.length} />
-            {revenue > 0 && <StatCard icon={<TrendingUp size={15} />} label="Lifetime revenue" value={fmtMoney(revenue)} />}
+            {revenue > 0 && <StatCard icon={<TrendingUp size={15} />} label="Lifetime revenue" value={fmtMoney(revenue, sym)} />}
           </div>
         </div>
 
@@ -110,7 +113,7 @@ export default function ClientsPage() {
                 <div style={{ display: 'flex', gap: 18, marginBottom: 16, flexWrap: 'wrap' }}>
                   {c.actual_sale ? (
                     <div>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>{fmtMoney(c.actual_sale)}</div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>{fmtMoney(c.actual_sale, sym)}</div>
                       <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Deal value</div>
                     </div>
                   ) : null}
