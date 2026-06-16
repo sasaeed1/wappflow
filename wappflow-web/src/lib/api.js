@@ -429,6 +429,15 @@ export async function declinePublicDoc(token, reason) {
   const r = await fetch(`${API_URL}/cs/public/${encodeURIComponent(token)}/decline`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
   return r.ok;
 }
+export const clientPortalAPI = {
+  link: (leadId) => api.post(`/client-portal/${leadId}`),
+};
+export async function fetchClientPortal(token) {
+  const r = await fetch(`${API_URL}/client-portal/public/${encodeURIComponent(token)}`);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'not_found');
+  return r.json();
+}
+
 export async function askPublicDoc(token, question) {
   const r = await fetch(`${API_URL}/cs/public/${encodeURIComponent(token)}/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not answer');

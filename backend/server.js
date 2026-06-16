@@ -5133,6 +5133,47 @@ require('./media-studio')(app, db, {
 });
 
 // ── Contracts Studio module (additive; owns the cs_* tables) ──
+// ── Unified Client Portal — one branded link per client across all modules ───
+db.exec(`CREATE TABLE IF NOT EXISTS client_portals (
+  lead_id TEXT PRIMARY KEY, workspace_id TEXT, token TEXT UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)`);
+
+app.post('/api/client-portal/:leadId', auth, (req, res) => {
+  try {
+    const lead = db.prepare('SELECT id FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.leadId, req.workspaceId);
+    if (!lead) return res.status(404).json({ error: 'Client not found' });
+    let row = db.prepare('SELECT * FROM client_portals WHERE lead_id = ?').get(lead.id);
+    if (!row) { const token = crypto.randomBytes(18).toString('hex'); db.prepare('INSERT INTO client_portals (lead_id, workspace_id, token) VALUES (?,?,?)').run(lead.id, req.workspaceId, token); row = { token }; }
+    res.json({ token: row.token, url: `${process.env.FRONTEND_URL || ''}/client/${row.token}` });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/client-portal/public/:token', (req, res) => {
+  try {
+    const p = db.prepare('SELECT * FROM client_portals WHERE token = ?').get(req.params.token);
+    if (!p) return res.status(404).json({ error: 'Not available' });
+    const lead = db.prepare('SELECT id, customer_name FROM leads WHERE id = ?').get(p.lead_id);
+    if (!lead) return res.status(404).json({ error: 'Not available' });
+    const projects = db.prepare('SELECT id, title, status FROM ms_projects WHERE lead_id = ?').all(lead.id);
+    const projIds = projects.map(x => x.id);
+    let galleries = [];
+    if (projIds.length) galleries = db.prepare(`SELECT title, share_token FROM ms_galleries WHERE status = 'published' AND project_id IN (${projIds.map(() => '?').join(',')})`).all(...projIds);
+    let documents = [];
+    try { documents = db.prepare('SELECT title, type, status, token FROM cs_documents WHERE lead_id = ? ORDER BY created_at DESC').all(lead.id); } catch {}
+    const invoices = db.prepare('SELECT invoice_number, total, currency_symbol, status, created_at FROM invoices WHERE lead_id = ? ORDER BY created_at DESC').all(lead.id);
+    const owner = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(p.workspace_id);
+    let cs = null; try { cs = owner ? db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(owner.user_id) : null; } catch {}
+    res.json({
+      client_name: lead.customer_name || 'there',
+      brand: (cs && cs.company_name) || 'WappFlow',
+      galleries: galleries.filter(g => g.share_token).map(g => ({ title: g.title, url: `/g/${g.share_token}` })),
+      documents: documents.filter(d => d.token).map(d => ({ title: d.title, type: d.type, status: d.status, url: `/d/${d.token}` })),
+      invoices,
+      projects,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
   path, fs, uploadsDir, multer,

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, FileText, ChevronRight, Phone, Mail } from 'lucide-react';
-import { csAPI } from '../../../lib/api';
+import { Search, FileText, ChevronRight, Phone, Mail, Link2, Check } from 'lucide-react';
+import { csAPI, clientPortalAPI } from '../../../lib/api';
 import ContractsStudioShell from '../../../components/ContractsStudioShell';
 
 const STATUS = {
@@ -18,6 +18,10 @@ export default function VaultPage() {
   const [clients, setClients] = useState(null);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState({});
+  const [portalCopied, setPortalCopied] = useState('');
+  const copyPortal = async (leadId) => {
+    try { const r = await clientPortalAPI.link(leadId); const url = r.data.url || (window.location.origin + '/client/' + r.data.token); await navigator.clipboard.writeText(url); setPortalCopied(leadId); setTimeout(() => setPortalCopied(''), 1800); } catch {}
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/contracts/vault'); return; }
@@ -59,12 +63,11 @@ export default function VaultPage() {
                 </button>
                 {isOpen && (
                   <div style={{ borderTop: '1px solid var(--border)', padding: '6px 10px 10px' }}>
-                    {(c.phone || c.email) && (
-                      <div style={{ display: 'flex', gap: 16, padding: '8px 8px 10px', fontSize: 12.5, color: 'var(--text-muted)' }}>
-                        {c.phone && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Phone size={12} /> {c.phone}</span>}
-                        {c.email && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Mail size={12} /> {c.email}</span>}
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '8px 8px 10px', fontSize: 12.5, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                      {c.phone && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Phone size={12} /> {c.phone}</span>}
+                      {c.email && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Mail size={12} /> {c.email}</span>}
+                      {c.lead_id && <button onClick={() => copyPortal(c.lead_id)} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 8, border: '1px solid var(--border)', background: portalCopied === c.lead_id ? '#10b981' : 'transparent', color: portalCopied === c.lead_id ? '#fff' : 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{portalCopied === c.lead_id ? <><Check size={12} /> Copied</> : <><Link2 size={12} /> Copy client portal link</>}</button>}
+                    </div>
                     {c.documents.map(d => (
                       <button key={d.id} onClick={() => router.push(`/contracts/${d.id}`)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 10px', borderRadius: 9, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
                         onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
