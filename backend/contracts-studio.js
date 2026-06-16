@@ -177,6 +177,16 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       created_by TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS cs_versions (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      workspace_id TEXT,
+      version INTEGER,
+      title TEXT, blocks TEXT, theme TEXT, settings TEXT,
+      label TEXT, created_by TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_cs_versions_doc ON cs_versions(document_id);
     CREATE TABLE IF NOT EXISTS cs_settings (
       workspace_id TEXT PRIMARY KEY,
       letterhead_url TEXT,               -- workspace letterhead image (optional)
@@ -621,6 +631,29 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Version history ──────────────────────────────────────────────────────────
+  app.get('/api/cs/documents/:id/versions', auth, (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      const versions = db.prepare(`SELECT v.id, v.version, v.label, v.created_at, m.full_name AS author
+        FROM cs_versions v LEFT JOIN workspace_members m ON m.user_id = v.created_by AND m.workspace_id = ? WHERE v.document_id = ? ORDER BY v.created_at DESC`).all(req.workspaceId, d.id);
+      res.json({ versions, current: d.version || 1 });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/cs/documents/:id/versions/:vid/restore', auth, (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      const v = db.prepare('SELECT * FROM cs_versions WHERE id = ? AND document_id = ?').get(req.params.vid, d.id);
+      if (!v) return res.status(404).json({ error: 'Version not found' });
+      db.prepare('UPDATE cs_documents SET blocks = ?, title = ?, theme = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(v.blocks, v.title, v.theme, d.id);
+      recordEvent(d, 'version_restored', { actor: req.userId, meta: { version: v.version } });
+      broadcastToWorkspace(req.workspaceId, 'cs_updated', { id: d.id });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Industry packs — curated starting points ────────────────────────────────
   app.get('/api/cs/packs', auth, (req, res) => {
     res.json({ packs: PACKS.map(({ id, type, industry, title, description, emoji }) => ({ id, type, industry, title, description, emoji })) });
@@ -776,6 +809,13 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       const expDays = Number(req.body.expire_days) || 0;
       if (expDays > 0) db.prepare('UPDATE cs_documents SET expires_at = ? WHERE id = ?').run(new Date(Date.now() + expDays * 86400000).toISOString().slice(0, 19).replace('T', ' '), d.id);
       else if (req.body.expire_days === 0) db.prepare('UPDATE cs_documents SET expires_at = NULL WHERE id = ?').run(d.id);
+      // snapshot the sent state into version history, then advance the working version
+      try {
+        const ver = d.version || 1;
+        db.prepare('INSERT INTO cs_versions (id, document_id, workspace_id, version, title, blocks, theme, settings, label, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)')
+          .run(generateId(), d.id, req.workspaceId, ver, d.title, d.blocks, d.theme, d.settings, `Sent · v${ver}`, req.userId);
+        db.prepare('UPDATE cs_documents SET version = version + 1 WHERE id = ?').run(d.id);
+      } catch { /* versioning is best-effort */ }
       // ensure a client signer exists (from the linked lead if any)
       let signers = db.prepare('SELECT * FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
       if (signers.length === 0) {

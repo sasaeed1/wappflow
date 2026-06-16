@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Eye, X, Check, Cloud, Send, Copy, MessageCircle, Mail, Settings, Zap, CreditCard, ShieldCheck, FolderPlus, Sparkles, Wand2, AlertTriangle, FileText, Clock, Users, UserPlus, Bell, Paperclip, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Eye, X, Check, Cloud, Send, Copy, MessageCircle, Mail, Settings, Zap, CreditCard, ShieldCheck, FolderPlus, Sparkles, Wand2, AlertTriangle, FileText, Clock, Users, UserPlus, Bell, Paperclip, Image as ImageIcon, BookMarked, History, RotateCcw } from 'lucide-react';
 import { csAPI, mediaUrl } from '../../../lib/api';
 import ContractsStudioShell from '../../../components/ContractsStudioShell';
 import { BLOCK_TYPES, defaultData, BlockView, DocFrame, computeTotals } from '../blocks';
@@ -28,6 +28,8 @@ export default function BuilderPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
+  const [showVersions, setShowVersions] = useState(false);
+  const [tplSaved, setTplSaved] = useState(false);
   const [wsLetterhead, setWsLetterhead] = useState(null);
   const [wsDefaults, setWsDefaults] = useState({});
   const first = useRef(true);
@@ -53,6 +55,7 @@ export default function BuilderPage() {
   const addBlock = (type) => { const nb = { id: uid(), type, data: defaultData(type) }; setBlocks(bs => { const n = [...bs]; n.splice(addAt ?? n.length, 0, nb); return n; }); setSelected(nb.id); setAddAt(null); };
   const move = (i, dir) => setBlocks(bs => { const n = [...bs]; const j = i + dir; if (j < 0 || j >= n.length) return n; [n[i], n[j]] = [n[j], n[i]]; return n; });
   const del = (bid) => { setBlocks(bs => bs.filter(b => b.id !== bid)); setSelected(null); };
+  const saveAsTemplate = async () => { try { await csAPI.createTemplate({ title: title || 'Untitled', type: doc.type, blocks }); setTplSaved(true); setTimeout(() => setTplSaved(false), 2200); } catch {} };
 
   if (!doc) return <ContractsStudioShell><p style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</p></ContractsStudioShell>;
   const outerBg = theme === 'executive' ? '#080b12' : theme === 'editorial' ? '#efe9dd' : '#eceef2';
@@ -78,6 +81,8 @@ export default function BuilderPage() {
         </span>
         <button onClick={() => setShowAI(true)} title="AI assistant" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 9, border: '1px solid transparent', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}><Sparkles size={14} /> AI</button>
         <button onClick={() => setShowPeople(true)} title="Signers & activity" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Users size={14} /></button>
+        <button onClick={() => setShowVersions(true)} title="Version history" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><History size={14} /></button>
+        <button onClick={saveAsTemplate} title="Save as template" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: tplSaved ? '#10b981' : 'transparent', color: tplSaved ? '#fff' : 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{tplSaved ? <><Check size={14} /> Saved</> : <BookMarked size={14} />}</button>
         <button onClick={() => setShowSettings(true)} title="Automations & settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Settings size={14} /></button>
         <button onClick={() => setPreview(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Eye size={14} /> Preview</button>
         <button onClick={() => setShowSend(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 9, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}><Send size={14} /> Send</button>
@@ -155,7 +160,45 @@ export default function BuilderPage() {
       {showSettings && <SettingsModal id={id} settings={settings} setSettings={setSettings} hasLead={!!doc.lead_id} wsLetterhead={wsLetterhead} onClose={() => setShowSettings(false)} />}
       {showAI && <AIModal id={id} type={doc.type} blocks={blocks} setBlocks={setBlocks} selectedBlock={blocks.find(b => b.id === selected)} updateBlock={updateBlock} onClose={() => setShowAI(false)} />}
       {showPeople && <PeopleModal id={id} onClose={() => setShowPeople(false)} />}
+      {showVersions && <VersionsModal id={id} onClose={() => setShowVersions(false)} />}
     </ContractsStudioShell>
+  );
+}
+
+function VersionsModal({ id, onClose }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState('');
+  useEffect(() => { csAPI.versions(id).then(r => setData(r.data)).catch(() => setData({ versions: [] })); }, []); // eslint-disable-line
+  const restore = async (vid) => {
+    if (!window.confirm('Restore this version? Your current content will be replaced (sent copies are unaffected).')) return;
+    setBusy(vid);
+    try { await csAPI.restoreVersion(id, vid); window.location.reload(); } catch { setBusy(''); }
+  };
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '82vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><History size={18} style={{ color: 'var(--accent)' }} /> Version history</h3>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '0 0 14px' }}>A snapshot is saved every time you send. Restore brings back that content.</p>
+        {!data ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p>
+          : data.versions.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No snapshots yet — they’re created each time you send this document.</p>
+          : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {data.versions.map(v => (
+                <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 13px', border: '1px solid var(--border)', borderRadius: 11, background: 'var(--bg)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{v.label || `v${v.version}`}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{new Date(v.created_at + 'Z').toLocaleString()}{v.author ? ` · ${v.author}` : ''}</div>
+                  </div>
+                  <button onClick={() => restore(v.id)} disabled={busy === v.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontWeight: 600 }}><RotateCcw size={13} /> {busy === v.id ? 'Restoring…' : 'Restore'}</button>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+    </div>
   );
 }
 

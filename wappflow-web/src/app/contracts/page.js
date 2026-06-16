@@ -165,20 +165,27 @@ function NewDocModal({ onClose, onCreated, say }) {
   const [leads, setLeads] = useState([]);
   const [packs, setPacks] = useState([]);
   const [packId, setPackId] = useState('');
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState('');
   const [q, setQ] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  useEffect(() => { leadsAPI.getAll(null).then(r => setLeads(r.data.leads || [])).catch(() => {}); csAPI.packs().then(r => setPacks(r.data.packs || [])).catch(() => {}); }, []);
+  useEffect(() => {
+    leadsAPI.getAll(null).then(r => setLeads(r.data.leads || [])).catch(() => {});
+    csAPI.packs().then(r => setPacks(r.data.packs || [])).catch(() => {});
+    csAPI.templates().then(r => setTemplates(r.data.templates || [])).catch(() => {});
+  }, []);
   const filtered = q ? leads.filter(l => (l.customer_name || '').toLowerCase().includes(q.toLowerCase())) : leads.slice(0, 6);
 
   const [file, setFile] = useState(null);
-  const pickPack = (p) => { if (packId === p.id) { setPackId(''); return; } setPackId(p.id); setType(p.type); if (!title.trim()) setTitle(p.title); };
+  const pickPack = (p) => { setTemplateId(''); if (packId === p.id) { setPackId(''); return; } setPackId(p.id); setType(p.type); if (!title.trim()) setTitle(p.title); };
+  const pickTemplate = (t) => { setPackId(''); if (templateId === t.id) { setTemplateId(''); return; } setTemplateId(t.id); setType(t.type || 'contract'); if (!title.trim()) setTitle(t.title); };
 
   const create = async () => {
     if (!title.trim()) { setErr('Give it a title'); return; }
     setSaving(true); setErr('');
     try {
-      const r = await csAPI.create({ type, title: title.trim(), lead_id: leadId || undefined, pack_id: file ? undefined : (packId || undefined) });
+      const r = await csAPI.create({ type, title: title.trim(), lead_id: leadId || undefined, pack_id: file ? undefined : (packId || undefined), template_id: file ? undefined : (templateId || undefined) });
       if (file) { const fd = new FormData(); fd.append('file', file); try { await csAPI.uploadDocFile(r.data.id, fd); } catch {} }
       onCreated(r.data.id);
     }
@@ -203,6 +210,18 @@ function NewDocModal({ onClose, onCreated, say }) {
                     <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.title}</div>
                     <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.industry}</div>
                   </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {templates.length > 0 && (
+          <>
+            <label style={lbl}>Your templates</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              {templates.map(t => (
+                <button key={t.id} onClick={() => pickTemplate(t)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, maxWidth: '100%', padding: '8px 12px', borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${templateId === t.id ? 'var(--accent)' : 'var(--border)'}`, background: templateId === t.id ? 'var(--accent-light)' : 'var(--bg)', color: 'var(--text)', fontSize: 12.5, fontWeight: 600 }}>
+                  <FileText size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
                 </button>
               ))}
             </div>
