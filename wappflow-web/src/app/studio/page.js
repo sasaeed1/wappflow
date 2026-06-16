@@ -181,6 +181,7 @@ export default function StudioPage() {
                   <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search shoots…" aria-label="Search shoots" />
                   {query && <button onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}
                 </div>
+                <button onClick={() => router.push('/studio/store')} className="ms-btn-ghost">Print store</button>
                 <button onClick={() => setShowNew(true)} className="ms-btn-ink"><Plus size={16} /> New shoot</button>
               </div>
             </div>

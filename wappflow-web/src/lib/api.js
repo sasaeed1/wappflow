@@ -438,6 +438,25 @@ export const bookingAPI = {
   list: () => api.get('/booking/list'),
   cancel: (id) => api.post(`/booking/${id}/cancel`),
 };
+export const storeAPI = {
+  products: () => api.get('/store/products'),
+  createProduct: (data) => api.post('/store/products', data),
+  updateProduct: (id, data) => api.put(`/store/products/${id}`, data),
+  deleteProduct: (id) => api.delete(`/store/products/${id}`),
+  orders: () => api.get('/store/orders'),
+  orderStatus: (id, status) => api.post(`/store/orders/${id}/status`, { status }),
+};
+export async function fetchShop(token) {
+  const r = await fetch(`${API_URL}/store/public/${encodeURIComponent(token)}`);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'not_found');
+  return r.json();
+}
+export async function createOrder(token, data) {
+  const r = await fetch(`${API_URL}/store/public/${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not place order');
+  return r.json();
+}
+
 export async function fetchBookingPublic(slug) {
   const r = await fetch(`${API_URL}/booking/public/${encodeURIComponent(slug)}`);
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'not_found');

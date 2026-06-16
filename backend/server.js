@@ -5174,15 +5174,20 @@ app.get('/api/client-portal/public/:token', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+const bookingSend = async ({ lead, userId, text }) => {
+  if (!lead || !lead.customer_phone) return { skipped: true };
+  await whatsappService.sendMessage(lead.customer_phone, text);
+  try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text); } catch {}
+  return { sent: true };
+};
 require('./booking')(app, db, {
   auth, generateId, broadcastToWorkspace, addContactHistory,
   clientBaseUrl: process.env.FRONTEND_URL || '',
-  sendClientMessage: async ({ lead, userId, text }) => {
-    if (!lead || !lead.customer_phone) return { skipped: true };
-    await whatsappService.sendMessage(lead.customer_phone, text);
-    try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text); } catch {}
-    return { sent: true };
-  },
+  sendClientMessage: bookingSend,
+});
+require('./print-store')(app, db, {
+  auth, generateId, broadcastToWorkspace, addContactHistory,
+  sendClientMessage: bookingSend,
 });
 
 require('./contracts-studio')(app, db, {
