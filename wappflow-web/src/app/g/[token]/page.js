@@ -21,15 +21,17 @@ export default function ClientGalleryPage() {
   const [lightbox, setLightbox] = useState(null); // index into assets | null
   const [playing, setPlaying] = useState(false);
   const [commentFor, setCommentFor] = useState(null);
+  const [favOnly, setFavOnly] = useState(false);
 
   // client slideshow — auto-advance every 3.5s while the lightbox is open
   useEffect(() => {
     if (lightbox == null || !playing) return;
-    const n = (data?.assets || []).length;
+    const all = data?.assets || [];
+    const n = (favOnly ? all.filter(a => faved.has(a.asset_id)) : all).length;
     if (n <= 1) return;
     const t = setInterval(() => setLightbox(i => (i + 1) % n), 3500);
     return () => clearInterval(t);
-  }, [lightbox, playing, data]);
+  }, [lightbox, playing, data, favOnly, faved]);
   const [dl, setDl] = useState(null); // { status, url }
   const [proof, setProof] = useState(null);          // active selection set
   const [sel, setSel] = useState(() => new Set());   // selected asset ids
@@ -145,6 +147,7 @@ export default function ClientGalleryPage() {
   }
 
   const assets = data?.assets || [];
+  const shown = favOnly ? assets.filter(a => faved.has(a.asset_id)) : assets;
   return (
     <div style={{ minHeight: '100vh', background: '#0b0b0f', color: '#fff' }}>
       {/* header */}
@@ -152,6 +155,12 @@ export default function ClientGalleryPage() {
         <p style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#c2a878', margin: '0 0 12px', fontWeight: 600 }}>Your Gallery</p>
         <h1 className="ghero" style={{ fontSize: 'clamp(32px, 5.5vw, 60px)', fontWeight: 400, margin: 0, letterSpacing: '-0.02em', lineHeight: 1.04 }}>{data?.title}</h1>
         <p style={{ fontSize: 13, color: '#71717a', margin: '12px 0 0' }}>{assets.length} photos · tap the heart to mark your favourites</p>
+        {faved.size > 0 && (
+          <div style={{ marginTop: 14, display: 'inline-flex', gap: 2, padding: 3, borderRadius: 999, background: '#15151b', border: '1px solid #2a2a33' }}>
+            <button onClick={() => { setFavOnly(false); setLightbox(null); }} style={{ padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', background: favOnly ? 'transparent' : '#c2a878', color: favOnly ? '#9aa0aa' : '#14120f', fontSize: 12.5, fontWeight: 700 }}>All {assets.length}</button>
+            <button onClick={() => { setFavOnly(true); setLightbox(null); }} style={{ padding: '6px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', background: favOnly ? '#c2a878' : 'transparent', color: favOnly ? '#14120f' : '#9aa0aa', fontSize: 12.5, fontWeight: 700 }}>♥ My favourites {faved.size}</button>
+          </div>
+        )}
         <div style={{ marginTop: 18, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 }}>
           <input value={contact} onChange={e => saveContact(e.target.value)} placeholder="Your name (optional)"
             style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid #2a2a33', background: '#15151b', color: '#fff', fontSize: 12.5, outline: 'none', width: 200 }} />
@@ -184,7 +193,8 @@ export default function ClientGalleryPage() {
 
       {/* masonry grid */}
       <main style={{ padding: 16, columnGap: 10, columnWidth: 280 }}>
-        {assets.map((a, i) => (
+        {shown.length === 0 && <p style={{ textAlign: 'center', color: '#71717a', fontSize: 13, padding: 24 }}>No favourites yet — tap the heart on the photos you love.</p>}
+        {shown.map((a, i) => (
           <figure key={a.asset_id} style={{ margin: '0 0 10px', breakInside: 'avoid', position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#15151b' }}>
             <img src={imgUrl(a.web_url)} alt={a.filename} loading="lazy" onClick={() => setLightbox(i)} style={{ width: '100%', display: 'block', cursor: 'zoom-in' }} />
             {selectable && (
@@ -215,7 +225,7 @@ export default function ClientGalleryPage() {
       <footer style={{ textAlign: 'center', padding: '30px 20px 50px', color: '#52525b', fontSize: 12 }}>Delivered with WappFlow Media Studio</footer>
 
       {/* floating slideshow launcher */}
-      {assets.length > 1 && lightbox == null && (
+      {shown.length > 1 && lightbox == null && (
         <button onClick={() => { setLightbox(0); setPlaying(true); }} title="Play slideshow"
           style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 290, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 800, fontSize: 13, boxShadow: '0 12px 32px rgba(0,0,0,0.4)' }}>
           <Play size={16} /> Slideshow
@@ -223,14 +233,14 @@ export default function ClientGalleryPage() {
       )}
 
       {/* lightbox + slideshow */}
-      {lightbox != null && assets[lightbox] && (
+      {lightbox != null && shown[lightbox] && (
         <div onClick={() => { setLightbox(null); setPlaying(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 20 }}>
           <button onClick={(e) => { e.stopPropagation(); setLightbox(null); setPlaying(false); }} style={{ position: 'absolute', top: 18, right: 18, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}><X size={26} /></button>
-          <button onClick={(e) => { e.stopPropagation(); setLightbox(i => (i - 1 + assets.length) % assets.length); }} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', width: 46, height: 46, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={26} /></button>
-          <img src={imgUrl(assets[lightbox].web_url)} alt={assets[lightbox].filename} onClick={e => e.stopPropagation()} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8 }} />
-          <button onClick={(e) => { e.stopPropagation(); setLightbox(i => (i + 1) % assets.length); }} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', width: 46, height: 46, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={26} /></button>
+          <button onClick={(e) => { e.stopPropagation(); setLightbox(i => (i - 1 + shown.length) % shown.length); }} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', width: 46, height: 46, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={26} /></button>
+          <img src={imgUrl(shown[lightbox].web_url)} alt={shown[lightbox].filename} onClick={e => e.stopPropagation()} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8 }} />
+          <button onClick={(e) => { e.stopPropagation(); setLightbox(i => (i + 1) % shown.length); }} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', width: 46, height: 46, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={26} /></button>
           <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}>
-            <span style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12 }}>{lightbox + 1} / {assets.length}</span>
+            <span style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12 }}>{lightbox + 1} / {shown.length}</span>
             <button onClick={() => setPlaying(p => !p)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', background: playing ? '#fff' : 'rgba(255,255,255,0.14)', color: playing ? '#14120f' : '#fff', fontSize: 12.5, fontWeight: 700 }}>{playing ? <><Pause size={14} /> Pause</> : <><Play size={14} /> Slideshow</>}</button>
           </div>
         </div>
