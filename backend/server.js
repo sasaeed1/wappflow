@@ -5190,6 +5190,7 @@ require('./print-store')(app, db, {
   sendClientMessage: bookingSend,
 });
 require('./studio-ai')(app, db, { auth, generateId, broadcastToWorkspace });
+require('./video-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
