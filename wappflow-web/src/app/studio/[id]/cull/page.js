@@ -118,6 +118,7 @@ export default function CullPage() {
   const stageRef = useRef(null);
   const imgRef = useRef(null);
   const cropBoxRef = useRef(null);
+  const filmRef = useRef(null);
 
   const editing = tool === 'edit' || tool === 'presets';
   const zoomed = scale > 1.001;
@@ -125,7 +126,7 @@ export default function CullPage() {
   const say = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
 
   const refreshAssets = useCallback(async () => {
-    try { const r = await mediaAPI.listAssets(id, { limit: 500 }); setAssets(r.data.assets || []); return r.data.assets || []; } catch { return []; }
+    try { const r = await mediaAPI.listAssets(id, { limit: 5000 }); setAssets(r.data.assets || []); return r.data.assets || []; } catch { return []; }
   }, [id]);
 
   useEffect(() => {
@@ -133,7 +134,7 @@ export default function CullPage() {
     try { const c = localStorage.getItem('ms-copied-edits'); if (c) setCopied(JSON.parse(c)); } catch {}
     (async () => {
       try {
-        const [p, a] = await Promise.all([mediaAPI.getProject(id), mediaAPI.listAssets(id, { limit: 500 })]);
+        const [p, a] = await Promise.all([mediaAPI.getProject(id), mediaAPI.listAssets(id, { limit: 5000 })]);
         setProject(p.data); setAssets(a.data.assets || []);
       } catch { router.push('/studio'); return; }
       setLoading(false);
@@ -187,6 +188,8 @@ export default function CullPage() {
     setActivePreset(null);
   };
   useEffect(() => { setScale(1); setPan({ x: 0, y: 0 }); setCropOn(false); setBa(false); if (current) loadPendingFrom(current); }, [current?.id]); // eslint-disable-line
+  // keep the active filmstrip thumb in view as the cursor moves (windowed for big shoots)
+  useEffect(() => { const el = filmRef.current && filmRef.current.querySelector('[data-active="1"]'); if (el) el.scrollIntoView({ inline: 'center', block: 'nearest' }); }, [idx, filter]);
 
   // saved (server) edit state for the current photo, and whether pending differs
   const savedEdits = useMemo(() => {
@@ -635,29 +638,31 @@ export default function CullPage() {
               <DockBtn onClick={() => decide('keep')} active={current.cull_decision === 'keep'} color="#2f9e6e" Icon={Check} label="Keep" hint="P" />
             </div>
 
-            {/* filmstrip dock */}
-            <div className="ms-hud ms-filmdock">
-              {view.map((a, i) => {
-                const dec = a.cull_decision;
-                const meta = dec && DEC_META[dec];
-                return (
-                  <button key={a.id} onClick={() => setCursor(i)} style={{
-                    position: 'relative', flexShrink: 0, width: 62, height: 62, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', padding: 0,
-                    outline: i === idx ? '2px solid #fff' : '1px solid rgba(255,255,255,0.1)', outlineOffset: -1, border: 'none', background: 'rgba(255,255,255,0.05)',
-                  }}>
-                    {a.thumb_url
-                      ? <img src={mediaUrl(a.thumb_url)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: dec === 'reject' ? 0.35 : 1 }} />
-                      : null}
-                    {meta && (
-                      <span style={{ position: 'absolute', top: 3, right: 3, width: 14, height: 14, borderRadius: '50%', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <meta.Icon size={8} color="white" />
-                      </span>
-                    )}
-                    {hasEdits(a) && <span style={{ position: 'absolute', bottom: 2, left: 3, fontSize: 8.5, color: '#e8cb8d' }}>✎</span>}
-                  </button>
-                );
-              })}
-            </div>
+            {/* filmstrip dock — windowed for large shoots (only render thumbs near the cursor) */}
+            {(() => {
+              const big = view.length > 300;
+              const start = big ? Math.max(0, idx - 70) : 0;
+              const end = big ? Math.min(view.length, start + 160) : view.length;
+              return (
+                <div ref={filmRef} className="ms-hud ms-filmdock">
+                  {start > 0 && <span style={{ flexShrink: 0, alignSelf: 'center', color: 'rgba(255,255,255,0.35)', fontSize: 10, padding: '0 6px' }}>+{start}</span>}
+                  {view.slice(start, end).map((a, li) => {
+                    const i = start + li; const dec = a.cull_decision; const meta = dec && DEC_META[dec];
+                    return (
+                      <button key={a.id} data-active={i === idx ? '1' : '0'} onClick={() => setCursor(i)} style={{
+                        position: 'relative', flexShrink: 0, width: 62, height: 62, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', padding: 0,
+                        outline: i === idx ? '2px solid #fff' : '1px solid rgba(255,255,255,0.1)', outlineOffset: -1, border: 'none', background: 'rgba(255,255,255,0.05)',
+                      }}>
+                        {a.thumb_url ? <img src={mediaUrl(a.thumb_url)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: dec === 'reject' ? 0.35 : 1 }} /> : null}
+                        {meta && <span style={{ position: 'absolute', top: 3, right: 3, width: 14, height: 14, borderRadius: '50%', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><meta.Icon size={8} color="white" /></span>}
+                        {hasEdits(a) && <span style={{ position: 'absolute', bottom: 2, left: 3, fontSize: 8.5, color: '#e8cb8d' }}>✎</span>}
+                      </button>
+                    );
+                  })}
+                  {end < view.length && <span style={{ flexShrink: 0, alignSelf: 'center', color: 'rgba(255,255,255,0.35)', fontSize: 10, padding: '0 6px' }}>+{view.length - end}</span>}
+                </div>
+              );
+            })()}
 
             {/* status overlays */}
             {rendering && (

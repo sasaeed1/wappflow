@@ -730,7 +730,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       const project = getProject(req.workspaceId, req.params.id);
       if (!project) return res.status(404).json({ error: 'Project not found' });
 
-      const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+      const limit = Math.min(parseInt(req.query.limit, 10) || 100, 10000); // high cap for full-shoot culling
       const offset = parseInt(req.query.offset, 10) || 0;
       const params = [project.id];
       let where = 'a.project_id = ? AND a.deleted_at IS NULL';

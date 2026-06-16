@@ -173,7 +173,7 @@ export default function ProjectPage() {
   const shown = mediaTab === 'all' ? assets : assets.filter(a => kindOf(a) === mediaTab);
 
   const refreshAssets = useCallback(async () => {
-    try { const r = await mediaAPI.listAssets(id, { limit: 500 }); setAssets(r.data.assets || []); return r.data.assets || []; } catch { return []; }
+    try { const r = await mediaAPI.listAssets(id, { limit: 5000 }); setAssets(r.data.assets || []); return r.data.assets || []; } catch { return []; }
   }, [id]);
   const refreshGalleries = useCallback(async () => {
     try { const r = await mediaAPI.listGalleries(id); setGalleries(r.data.galleries || []); } catch {}
