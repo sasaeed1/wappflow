@@ -12,16 +12,16 @@ Status of the 17-phase intelligence/quality roadmap + Track 0 + payments. Built 
 | **Track 0** | Analyzer abstraction, analyze-once ledger, reasons, composites, Learning System, Workspace Brain | ✅ | n/a | `backend/analyzers/index.js`; worker hooked; feedback from cull decisions |
 | **P1** | Intelligence layer (scores) | ✅ | n/a | technical/dedup live in worker; vision/video = desktop ONNX (seam ready) |
 | **P2** | Culling 2.0 (selections) | ✅ | ✅ Studio AI panel | best_of/highlights/portfolio/album/delivery, niche-weighted, explainable, dup-safe |
-| **P3** | Style learning (profiles) | ✅ | ⏳ minimal | `ms_style_profiles` CRUD; learning-from-RAW pairs = desktop |
+| **P3** | Style learning (profiles) | ✅ | ✅ manager | style manager in studio settings; learning-from-RAW pairs = desktop |
 | **P4** | AI editing | ✅ suggestions | ⏳ | non-destructive params via existing edit pipeline; apply UI pending |
 | **P5** | Gallery builder | ✅ | ✅ (panel) | gallery-from-selection |
-| **P6** | Album Studio | ✅ drafts | ⏳ viewer | story-ordered, dup-safe spreads; layout editor pending |
+| **P6** | Album Studio | ✅ drafts | ✅ editor | `/studio/[id]/album/[albumId]` — spreads reorder, add/remove from tray |
 | **P7** | Video intelligence | ✅ ingest | n/a | scores via Track-0 ingestion (desktop/cloud) |
 | **P8** | Video culling | ✅ | ⏳ | best moments/clips/reactions/action/interview/drone |
 | **P9** | Template system (data-driven) | ✅ seeded | ⏳ editor | 7 niche system templates; CRUD |
 | **P10** | Story Engine | ✅ | ✅ (panel) | narrative spec hook→build→peak→resolve |
-| **P11** | Reel Studio | ✅ plan | ✅ (panel) | fills template→render plan for existing video-engine |
-| **P12** | Client experience 2.0 | ✅ milestones | ✅ portal | favorites/comments already existed; milestones new |
+| **P11** | Reel Studio | ✅ plan | ✅ panel + timeline editor | `/studio/[id]/reel/[reelId]` — reorder/retime clips, transitions/motion |
+| **P12** | Client experience 2.0 | ✅ milestones | ✅ portal + gallery favourites filter | "My favourites" view in client gallery; milestones in portal |
 | **P13** | Portfolio engine | ✅ picks | ⏳ | portfolio-grade recommendations endpoint |
 | **P14** | Print Store 2.0 | ✅ recs | ⏳ | recommendations from project intelligence |
 | **P15** | Client Portal 2.0 | ✅ | ✅ | portal now shows progress/albums/orders + docs/galleries/invoices/projects |
