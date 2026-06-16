@@ -7,7 +7,7 @@ import {
   Aperture, BookOpen, Clapperboard, User, Globe, Copy, ExternalLink, MessageSquare,
   Sliders, HelpCircle, LogOut, Check, Image as ImageIcon, Film, Shield, Camera,
 } from 'lucide-react';
-import { mediaAPI, leadsAPI } from '../../../lib/api';
+import { mediaAPI, leadsAPI, studioAiAPI } from '../../../lib/api';
 import NavBar from '../../../components/StudioShell';
 
 const THEMES = [
@@ -64,6 +64,9 @@ export default function StudioSettingsPage() {
 
         {/* STUDIO BRAIN */}
         <StudioBrainSection say={say} />
+
+        {/* STYLE PROFILES */}
+        <StyleProfilesSection say={say} />
 
         {/* APPEARANCE */}
         <Section icon={<Camera size={15} />} title="Appearance" sub="Switching theme switches the whole studio — typography, colour, motion.">
@@ -208,6 +211,47 @@ function StudioBrainSection({ say }) {
           </div>
         ))}
       </div>
+    </Section>
+  );
+}
+
+const STYLE_SLIDERS = [['exposure', 'Exposure'], ['contrast', 'Contrast'], ['warmth', 'Warmth'], ['saturation', 'Saturation'], ['shadows', 'Shadows'], ['highlights', 'Highlights']];
+function StyleProfilesSection({ say }) {
+  const [styles, setStyles] = useState([]);
+  const [open, setOpen] = useState(null);
+  const load = () => studioAiAPI.styles().then(r => setStyles(r.data.styles || [])).catch(() => {});
+  useEffect(() => { load(); }, []);
+  const add = async () => { await studioAiAPI.createStyle({ name: 'New style', params: { exposure: 0, contrast: 0, warmth: 0, saturation: 0, shadows: 0, highlights: 0 } }); load(); say && say('Style added'); };
+  const patch = (id, p) => setStyles(s => s.map(x => x.id === id ? { ...x, ...p, params: { ...x.params, ...(p.params || {}) } } : x));
+  const save = async (st) => { await studioAiAPI.updateStyle(st.id, { name: st.name, params: st.params, is_default: st.is_default }); say && say('Saved'); load(); };
+  const del = async (id) => { await studioAiAPI.deleteStyle(id); load(); };
+
+  return (
+    <Section icon={<Sliders size={15} />} title="Style profiles" sub="Your signature looks — used as defaults for editing, albums, slideshows & reels. (Learning from RAW/edited pairs arrives with the desktop app.)">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {styles.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3)', margin: 0 }}>No styles yet — add your first signature look.</p>}
+        {styles.map(st => (
+          <div key={st.id} style={{ border: '1px solid var(--ms-line)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px' }}>
+              <input value={st.name} onChange={e => patch(st.id, { name: e.target.value })} onBlur={() => save(st)} className="ms-input" style={{ flex: 1, padding: '6px 9px' }} />
+              <button onClick={() => { patch(st.id, { is_default: true }); save({ ...st, is_default: true }); }} title="Set default" style={{ background: 'none', border: 'none', cursor: 'pointer', color: st.is_default ? 'var(--ms-accent)' : 'var(--ms-ink-3)', fontWeight: 700, fontSize: 12 }}>{st.is_default ? '★ Default' : '☆'}</button>
+              <button onClick={() => setOpen(open === st.id ? null : st.id)} className="ms-btn-ghost" style={{ padding: '6px 10px' }}>{open === st.id ? 'Close' : 'Edit'}</button>
+              <button onClick={() => del(st.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d4564a' }}><Check style={{ display: 'none' }} /><span style={{ fontSize: 16 }}>×</span></button>
+            </div>
+            {open === st.id && (
+              <div style={{ padding: '4px 13px 13px', borderTop: '1px solid var(--ms-line)' }}>
+                {STYLE_SLIDERS.map(([k, label]) => (
+                  <div key={k} style={{ marginTop: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--ms-ink-3)', marginBottom: 2 }}><span>{label}</span><span>{Math.round((st.params?.[k] || 0) * 100)}</span></div>
+                    <input type="range" min={-100} max={100} value={Math.round((st.params?.[k] || 0) * 100)} onChange={e => patch(st.id, { params: { [k]: Number(e.target.value) / 100 } })} onMouseUp={() => save(st)} onTouchEnd={() => save(st)} style={{ width: '100%' }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <button onClick={add} className="ms-btn-ghost" style={{ marginTop: 12, padding: '8px 14px' }}>+ Add style profile</button>
     </Section>
   );
 }
