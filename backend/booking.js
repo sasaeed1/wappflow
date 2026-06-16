@@ -159,7 +159,9 @@ module.exports = function mountBooking(app, db, deps = {}) {
       db.prepare('INSERT INTO bookings (id, workspace_id, lead_id, service, start_at, duration_min, name, phone, email, notes, intake, token) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
         .run(bid, ws, lead.id, svc.name, start_at, svc.duration || 30, name, phone || null, email || null, notes || null, JSON.stringify(intake || {}), token);
       const manageUrl = `${clientBaseUrl}/booking/manage/${token}`;
-      try { db.prepare('INSERT INTO reminders (id, lead_id, user_id, title, due_date) VALUES (?,?,?,?,?)').run(generateId(), lead.id, ownerId, `${svc.name} with ${name}`, start_at); } catch {}
+      // Write reminder_date too — the reminder cron fires on reminder_date, so a
+      // due_date-only row would silently never notify.
+      try { db.prepare('INSERT INTO reminders (id, lead_id, user_id, title, due_date, reminder_date) VALUES (?,?,?,?,?,?)').run(generateId(), lead.id, ownerId, `${svc.name} with ${name}`, start_at, start_at); } catch {}
       try { addContactHistory(lead.id, ownerId, 'booking', `Booked ${svc.name} for ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`); } catch {}
       try { if (lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `✅ You're booked: ${svc.name} on ${new Date(start_at.replace(' ', 'T')).toLocaleString()}.\nManage/reschedule: ${manageUrl}` }); } catch {}
       broadcastToWorkspace(ws, 'booking_created', { id: bid, lead_id: lead.id });
