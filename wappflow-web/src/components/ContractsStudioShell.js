@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { FileSignature, LogOut, Settings, User } from 'lucide-react';
+import { FileSignature, LogOut, Settings, User, HelpCircle } from 'lucide-react';
 import AppSwitcher from './AppSwitcher';
 
 // Contracts Studio is its own module (opened from the app-switcher, own tab).
@@ -57,8 +57,9 @@ export default function ContractsStudioShell({ children }) {
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{user?.full_name || user?.email || 'Account'}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{user?.email || ''}</div>
               </div>
+              <button onClick={() => { setMenu(false); router.push('/contracts/settings'); }} style={menuItem}><Settings size={14} /> Studio settings</button>
+              <button onClick={() => { setMenu(false); router.push('/contracts/help'); }} style={menuItem}><HelpCircle size={14} /> Help &amp; guide</button>
               <button onClick={() => { setMenu(false); router.push('/profile'); }} style={menuItem}><User size={14} /> My profile</button>
-              <button onClick={() => { setMenu(false); window.open('/settings', '_blank'); }} style={menuItem}><Settings size={14} /> Settings</button>
               <button onClick={signOut} style={{ ...menuItem, color: '#ef4444' }}><LogOut size={14} /> Sign out</button>
             </div>
           )}

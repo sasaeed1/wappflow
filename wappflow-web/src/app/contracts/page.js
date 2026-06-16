@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   FileSignature, Plus, X, Search, CheckCircle2, TrendingUp, FileText,
-  Trash2, Activity, Send, FileEdit,
+  Trash2, Activity, Send, FileEdit, Upload,
 } from 'lucide-react';
 import { csAPI, leadsAPI } from '../../lib/api';
 import ContractsStudioShell from '../../components/ContractsStudioShell';
@@ -171,12 +171,17 @@ function NewDocModal({ onClose, onCreated, say }) {
   useEffect(() => { leadsAPI.getAll(null).then(r => setLeads(r.data.leads || [])).catch(() => {}); csAPI.packs().then(r => setPacks(r.data.packs || [])).catch(() => {}); }, []);
   const filtered = q ? leads.filter(l => (l.customer_name || '').toLowerCase().includes(q.toLowerCase())) : leads.slice(0, 6);
 
+  const [file, setFile] = useState(null);
   const pickPack = (p) => { if (packId === p.id) { setPackId(''); return; } setPackId(p.id); setType(p.type); if (!title.trim()) setTitle(p.title); };
 
   const create = async () => {
     if (!title.trim()) { setErr('Give it a title'); return; }
     setSaving(true); setErr('');
-    try { const r = await csAPI.create({ type, title: title.trim(), lead_id: leadId || undefined, pack_id: packId || undefined }); onCreated(r.data.id); }
+    try {
+      const r = await csAPI.create({ type, title: title.trim(), lead_id: leadId || undefined, pack_id: file ? undefined : (packId || undefined) });
+      if (file) { const fd = new FormData(); fd.append('file', file); try { await csAPI.uploadDocFile(r.data.id, fd); } catch {} }
+      onCreated(r.data.id);
+    }
     catch (e) { setErr(e.response?.data?.error || 'Could not create'); setSaving(false); }
   };
 
@@ -206,6 +211,13 @@ function NewDocModal({ onClose, onCreated, say }) {
         </div>
         <label style={lbl}>Title</label>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Wedding Photography Proposal" style={inp} autoFocus />
+        <label style={lbl}>Or upload a file to sign (optional)</label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 9, border: `1px dashed ${file ? 'var(--accent)' : 'var(--border)'}`, background: file ? 'var(--accent-light)' : 'var(--bg)', cursor: 'pointer', marginBottom: 4 }}>
+          <Upload size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: file ? 'var(--text)' : 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file ? file.name : 'PDF or image — attach an existing document'}</span>
+          {file && <button type="button" onClick={(e) => { e.preventDefault(); setFile(null); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16 }}>×</button>}
+          <input type="file" accept="application/pdf,image/*" onChange={e => setFile(e.target.files?.[0] || null)} style={{ display: 'none' }} />
+        </label>
         <label style={lbl}>Client (optional)</label>
         <div style={{ position: 'relative', marginBottom: 6 }}>
           <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: 'var(--text-muted)' }} />

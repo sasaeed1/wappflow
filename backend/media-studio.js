@@ -243,6 +243,44 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   });
   // ─────────────────────────── end STORAGE SEAM ──────────────────────────────
 
+  // ── Watermark helpers (jimp; non-destructive — writes a separate variant) ────
+  const keyToPath = (u) => path.join(uploadsDir, String(u || '').replace(/^https?:\/\/[^/]+/, '').replace(/^\/?uploads\//, ''));
+  const pickWmFont = (Jimp, cfg) => Jimp[`FONT_SANS_128_${(cfg.color || 'white') === 'black' ? 'BLACK' : 'WHITE'}`];
+  async function buildMark(Jimp, W, H, cfg, logoImg, font) {
+    let mark;
+    if (cfg.type === 'logo' && logoImg) {
+      mark = logoImg.clone();
+      mark.resize(Math.max(40, Math.round(W * ((Number(cfg.size) || 28) / 100))), Jimp.AUTO);
+    } else if (font) {
+      const text = (cfg.text || 'PROOF').slice(0, 60);
+      const tw = Jimp.measureText(font, text) || 10;
+      const th = Jimp.measureTextHeight(font, text, tw) || 10;
+      mark = new Jimp(tw, th, 0x00000000);
+      mark.print(font, 0, 0, text);
+      mark.resize(Math.max(40, Math.round(W * ((Number(cfg.size) || 35) / 100))), Jimp.AUTO);
+    } else { return null; }
+    mark.opacity(Math.max(0.05, Math.min(1, Number(cfg.opacity) || 0.5)));
+    return mark;
+  }
+  async function applyWatermark(Jimp, img, cfg, logoImg, font) {
+    const W = img.bitmap.width, H = img.bitmap.height;
+    const mark = await buildMark(Jimp, W, H, cfg, logoImg, font);
+    if (!mark) return;
+    const margin = Math.round(Math.min(W, H) * 0.04);
+    const mw = mark.bitmap.width, mh = mark.bitmap.height;
+    const pos = cfg.position || 'bottom-right';
+    if (pos === 'tiled') {
+      const stepX = mw + Math.round(W * 0.10), stepY = mh + Math.round(H * 0.12);
+      for (let y = -mh; y < H; y += stepY) for (let x = -mw; x < W; x += stepX) img.composite(mark, x, y);
+      return;
+    }
+    let x = margin, y = margin;
+    if (pos.includes('right')) x = W - mw - margin;
+    if (pos.includes('bottom')) y = H - mh - margin;
+    if (pos === 'center') { x = Math.round((W - mw) / 2); y = Math.round((H - mh) / 2); }
+    img.composite(mark, x, y);
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // 3. HELPERS
   // ───────────────────────────────────────────────────────────────────────────
@@ -266,6 +304,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       variants,
       url: variants.original || publicUrl(a.storage_key),
       thumb_url: variants.thumb || variants.web || publicUrl(a.storage_key),
+      watermarked: !!variants.watermarked,
     };
   }
 
@@ -473,6 +512,74 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       logAudit(req.workspaceId, req.userId, 'upload', 'ms_project', project.id, { count: created.length });
       broadcastToWorkspace(req.workspaceId, 'ms_assets_added', { project_id: project.id, count: created.length });
       res.status(201).json({ uploaded: created.length, assets: created });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Watermark (apply / bulk apply — non-destructive, originals preserved) ────
+  app.post('/api/media/projects/:id/watermark/logo', auth, mediaUpload.single('file'), (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      if (!req.file) return res.status(400).json({ error: 'No file' });
+      res.json({ ok: true, url: publicUrl(`media/${path.basename(req.file.path)}`) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/media/projects/:id/watermark/apply', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      let Jimp; try { Jimp = require('jimp'); } catch { return res.status(503).json({ error: 'Image processing unavailable' }); }
+      const cfg = req.body.config || {};
+      const ids = Array.isArray(req.body.assetIds) ? req.body.assetIds.slice(0, 2000) : [];
+      // persist the watermark config onto the project
+      let ps = {}; try { ps = JSON.parse(project.settings || '{}'); } catch {}
+      ps.watermark = { ...cfg, enabled: true };
+      db.prepare('UPDATE ms_projects SET settings = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(ps), project.id);
+      res.json({ ok: true, queued: ids.length });
+
+      // process in the background so large batches never time out the request
+      (async () => {
+        let logoImg = null, font = null;
+        try { if (cfg.type === 'logo' && cfg.logo_url) logoImg = await Jimp.read(keyToPath(cfg.logo_url)); } catch {}
+        try { if (cfg.type !== 'logo') font = await Jimp.loadFont(pickWmFont(Jimp, cfg)); } catch {}
+        let done = 0;
+        for (const aid of ids) {
+          try {
+            const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND project_id = ? AND workspace_id = ?').get(aid, project.id, req.workspaceId);
+            if (!a || a.type !== 'photo') continue;
+            const src = keyToPath(a.storage_key);
+            if (!fs.existsSync(src)) continue;
+            const img = await Jimp.read(src);
+            if (img.bitmap.width > 2400) img.resize(2400, Jimp.AUTO);
+            await applyWatermark(Jimp, img, cfg, logoImg, font);
+            const outKey = `media/wm-${a.id}.jpg`;
+            img.quality(82); await img.writeAsync(keyToPath(outKey));
+            let v = {}; try { v = JSON.parse(a.variants || '{}'); } catch {}
+            v.watermarked = publicUrl(outKey);
+            db.prepare('UPDATE ms_assets SET variants = ? WHERE id = ?').run(JSON.stringify(v), a.id);
+            done++;
+          } catch { /* skip this asset */ }
+        }
+        try { broadcastToWorkspace(req.workspaceId, 'ms_watermark_done', { project_id: project.id, count: done }); } catch {}
+      })();
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/media/projects/:id/watermark/remove', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const ids = Array.isArray(req.body.assetIds) ? req.body.assetIds : [];
+      let removed = 0;
+      for (const aid of ids) {
+        const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND project_id = ?').get(aid, project.id);
+        if (!a) continue;
+        let v = {}; try { v = JSON.parse(a.variants || '{}'); } catch {}
+        if (v.watermarked) { try { fs.unlinkSync(keyToPath(v.watermarked)); } catch {} delete v.watermarked; db.prepare('UPDATE ms_assets SET variants = ? WHERE id = ?').run(JSON.stringify(v), a.id); removed++; }
+      }
+      broadcastToWorkspace(req.workspaceId, 'ms_watermark_done', { project_id: project.id, count: removed });
+      res.json({ ok: true, removed });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -1042,14 +1149,16 @@ Only suggest actions that make sense for the question. If none make sense, retur
     let variants = {};
     try { variants = JSON.parse(row.variants || '{}'); } catch {}
     const policy = settings.download_policy || 'web';
+    // A watermarked variant (when present) replaces web/thumb so the client only ever
+    // sees protected images; high-res downloads still get the clean original.
     const downloadUrl = policy === 'none' ? null
-      : (policy === 'high-res' ? (variants.original || null) : (variants.web || variants.original || null));
+      : (policy === 'high-res' ? (variants.original || null) : (variants.watermarked || variants.web || variants.original || null));
     return {
       asset_id: row.id,
       filename: row.filename,
       type: row.type,
-      thumb_url: variants.thumb || variants.web || publicUrl(row.storage_key),
-      web_url: variants.web || publicUrl(row.storage_key),
+      thumb_url: variants.watermarked || variants.thumb || variants.web || publicUrl(row.storage_key),
+      web_url: variants.watermarked || variants.web || publicUrl(row.storage_key),
       download_url: downloadUrl,
       sort_order: row.sort_order,
       favorites: favCounts[row.id] || 0,

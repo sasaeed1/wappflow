@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchPublicDoc, signPublicDoc, declinePublicDoc, askPublicDoc, trackPublicDoc } from '../../../lib/api';
-import { BlockView } from '../../contracts/blocks';
+import { BlockView, DocFrame } from '../../contracts/blocks';
 import '../../contracts/contracts.css';
 
 const money = (c, n) => `${c || '$'}${(Number(n) || 0).toLocaleString()}`;
@@ -91,6 +91,7 @@ export default function PublicDocPage() {
       <div style={{ padding: 'clamp(20px,4vw,52px) 14px', paddingBottom: hasPricing && !done ? 120 : 60 }}>
         <div className={`cs-doc cs-theme-${data.theme}`}>
           <div className="cs-body" style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+            <DocFrame letterhead={data.letterhead} upload={data.settings?.upload} />
             {done && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 'var(--cs-radius)', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)' }}>
                 <span style={{ width: 30, height: 30, borderRadius: 999, background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>✓</span>

@@ -5135,7 +5135,7 @@ require('./media-studio')(app, db, {
 // ── Contracts Studio module (additive; owns the cs_* tables) ──
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory,
-  path, fs, uploadsDir,
+  path, fs, uploadsDir, multer,
   clientBaseUrl: process.env.FRONTEND_URL || '',
   sendClientMessage: async ({ lead, userId, text }) => {
     if (!lead || !lead.customer_phone) return { skipped: true };

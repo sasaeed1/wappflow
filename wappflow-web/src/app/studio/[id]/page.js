@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
   Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
-  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause,
+  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause, Droplets,
 } from 'lucide-react';
 
 // photo | video — RAW and stills both live under "photo"
@@ -160,6 +160,7 @@ export default function ProjectPage() {
   const [mediaTab, setMediaTab] = useState('all'); // all | photo | video — works like a filter, reads like sections
   const [aiHints, setAiHints] = useState(true);    // Settings → Defaults: show advisory AI badges
   const [lightbox, setLightbox] = useState(null); // index into the SHOWN list
+  const [wmModal, setWmModal] = useState(false);
 
   // apply per-device studio preferences (set in Studio → Settings)
   useEffect(() => {
@@ -220,6 +221,23 @@ export default function ProjectPage() {
     next.has(assetId) ? next.delete(assetId) : next.add(assetId);
     return next;
   });
+
+  const applyWatermark = async (config) => {
+    const ids = Array.from(selected); if (ids.length === 0) return;
+    setWmModal(false);
+    try {
+      await mediaAPI.applyWatermark(id, ids, config);
+      setBanner({ type: 'ok', msg: `Watermarking ${ids.length} photo${ids.length === 1 ? '' : 's'} — they’ll update shortly.` });
+      setSelected(new Set());
+      setTimeout(refreshAssets, 4000); setTimeout(refreshAssets, 12000);
+    } catch (e) { setBanner({ type: 'error', msg: e.response?.data?.error || 'Could not watermark' }); }
+  };
+  const removeWatermark = async () => {
+    const ids = Array.from(selected); if (ids.length === 0) return;
+    setWmModal(false);
+    try { await mediaAPI.removeWatermark(id, ids); setBanner({ type: 'ok', msg: 'Watermark removed.' }); setSelected(new Set()); setTimeout(refreshAssets, 1500); }
+    catch (e) { setBanner({ type: 'error', msg: e.response?.data?.error || 'Could not remove' }); }
+  };
 
   const deleteSelected = async () => {
     if (selected.size === 0) return;
@@ -425,6 +443,7 @@ export default function ProjectPage() {
             {selected.size > 0 && (
               <>
                 <span style={{ fontSize: 12.5, color: 'var(--ms-ink-3)' }}>{selected.size} selected</span>
+                <button onClick={() => setWmModal(true)} className="ms-btn-text"><Droplets size={13} /> Watermark</button>
                 <button onClick={deleteSelected} className="ms-btn-text" style={{ color: '#b3261e' }}><Trash2 size={13} /> Delete</button>
                 <button onClick={() => setSelected(new Set())} className="ms-btn-text">Clear</button>
                 <span style={{ width: 1, height: 16, background: 'var(--ms-line)' }} />
@@ -476,6 +495,7 @@ export default function ProjectPage() {
                     {aiHints && a.dup_group && <span className="ms-chip-float" style={{ background: 'rgba(10,8,6,0.55)' }} title="Possible duplicate (perceptual hash) — advisory"><span style={{ width: 5, height: 5, borderRadius: 9, background: '#9bb0e6' }} /> Dup?</span>}
                   </div>
                   {a.type === 'raw' && <span className="ms-chip-float" style={{ top: 8, left: 'auto', right: 8, bottom: 'auto', background: 'rgba(10,8,6,0.6)' }}>RAW</span>}
+                  {a.watermarked && <span className="ms-chip-float" style={{ top: 8, left: 'auto', right: 8, bottom: 'auto', background: 'rgba(14,165,233,0.85)', display: 'inline-flex', alignItems: 'center', gap: 3 }} title="Watermark applied (client gallery only)"><Droplets size={10} /> WM</span>}
                 </div>
               );
             })}
@@ -499,9 +519,73 @@ export default function ProjectPage() {
       )}
       {showNewGallery && <CreateGalleryModal onClose={() => setShowNewGallery(false)} onCreate={createGallery} />}
       {proofingFor && <ProofingRequestModal gallery={proofingFor} onClose={() => setProofingFor(null)} onCreate={createProof} />}
+      {wmModal && <WatermarkModal projectId={id} count={selected.size} initial={project?.settings?.watermark} onClose={() => setWmModal(false)} onApply={applyWatermark} onRemove={removeWatermark} />}
     </NavBar>
   );
 }
+
+function WatermarkModal({ projectId, count, initial, onClose, onApply, onRemove }) {
+  const [cfg, setCfg] = useState(() => ({ type: 'text', text: 'PROOF', color: 'white', position: 'tiled', opacity: 0.35, size: 32, logo_url: '', ...(initial || {}) }));
+  const [uploading, setUploading] = useState(false);
+  const set = (patch) => setCfg(c => ({ ...c, ...patch }));
+  const pickLogo = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return; setUploading(true);
+    try { const fd = new FormData(); fd.append('file', f); const r = await mediaAPI.uploadWatermarkLogo(projectId, fd); set({ logo_url: r.data.url, type: 'logo' }); }
+    catch {} finally { setUploading(false); }
+  };
+  const POS = [['top-left', '↖'], ['top-right', '↗'], ['center', '◉'], ['bottom-left', '↙'], ['bottom-right', '↘'], ['tiled', '▦']];
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '88vh', overflowY: 'auto', background: 'var(--ms-paper, #fff)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ms-ink, #14120f)', display: 'inline-flex', alignItems: 'center', gap: 8 }}><Droplets size={18} /> Watermark</h3>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ms-ink-3, #888)' }}><X size={17} /></button>
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3, #888)', margin: '0 0 16px' }}>Applies to {count} selected photo{count === 1 ? '' : 's'}. Originals are kept clean — only the client gallery shows the watermark.</p>
+
+        <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--ms-line, #eee)', marginBottom: 14 }}>
+          {[['text', 'Text'], ['logo', 'Logo']].map(([t, l]) => <button key={t} onClick={() => set({ type: t })} style={{ padding: '6px 16px', borderRadius: 7, border: 'none', cursor: 'pointer', background: cfg.type === t ? 'var(--ms-ink, #14120f)' : 'transparent', color: cfg.type === t ? '#fff' : 'var(--ms-ink-3, #888)', fontSize: 12.5, fontWeight: 700 }}>{l}</button>)}
+        </div>
+
+        {cfg.type === 'text' ? (
+          <>
+            <label style={wmLbl}>Text</label>
+            <input value={cfg.text} onChange={e => set({ text: e.target.value })} placeholder="PROOF" style={wmInp} />
+            <label style={wmLbl}>Color</label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              {[['white', 'White'], ['black', 'Black']].map(([c, l]) => <button key={c} onClick={() => set({ color: c })} style={{ flex: 1, padding: '9px', borderRadius: 9, border: `1.5px solid ${cfg.color === c ? '#0ea5e9' : 'var(--ms-line,#ddd)'}`, background: c === 'white' ? '#fff' : '#14120f', color: c === 'white' ? '#14120f' : '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>{l}</button>)}
+            </div>
+          </>
+        ) : (
+          <>
+            <label style={wmLbl}>Logo image (PNG with transparency works best)</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 9, border: `1px dashed ${cfg.logo_url ? '#0ea5e9' : 'var(--ms-line,#ddd)'}`, cursor: 'pointer', marginBottom: 12 }}>
+              <Upload size={15} style={{ color: '#0ea5e9' }} />
+              <span style={{ fontSize: 13, color: 'var(--ms-ink-3,#888)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploading ? 'Uploading…' : cfg.logo_url ? 'Logo uploaded ✓ — replace' : 'Upload a logo'}</span>
+              <input type="file" accept="image/*" onChange={pickLogo} style={{ display: 'none' }} />
+            </label>
+          </>
+        )}
+
+        <label style={wmLbl}>Position</label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 6, marginBottom: 14 }}>
+          {POS.map(([p, ic]) => <button key={p} onClick={() => set({ position: p })} title={p} style={{ padding: '10px 0', borderRadius: 9, border: `1.5px solid ${cfg.position === p ? '#0ea5e9' : 'var(--ms-line,#ddd)'}`, background: cfg.position === p ? 'rgba(14,165,233,0.1)' : 'transparent', cursor: 'pointer', fontSize: 15 }}>{ic}</button>)}
+        </div>
+
+        <label style={wmLbl}>Size — {cfg.size}% of width</label>
+        <input type="range" min={8} max={80} value={cfg.size} onChange={e => set({ size: Number(e.target.value) })} style={{ width: '100%', marginBottom: 12 }} />
+        <label style={wmLbl}>Opacity — {Math.round(cfg.opacity * 100)}%</label>
+        <input type="range" min={5} max={100} value={Math.round(cfg.opacity * 100)} onChange={e => set({ opacity: Number(e.target.value) / 100 })} style={{ width: '100%', marginBottom: 16 }} />
+
+        <button onClick={() => onApply(cfg)} disabled={cfg.type === 'logo' && !cfg.logo_url} style={{ width: '100%', padding: '13px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--ms-ink, #14120f)', color: '#fff', fontWeight: 800, fontSize: 15, opacity: (cfg.type === 'logo' && !cfg.logo_url) ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Droplets size={15} /> Apply to {count} photo{count === 1 ? '' : 's'}</button>
+        <button onClick={onRemove} style={{ width: '100%', marginTop: 8, padding: '11px', borderRadius: 11, border: '1px solid var(--ms-line,#ddd)', cursor: 'pointer', background: 'transparent', color: 'var(--ms-ink-3,#888)', fontWeight: 600, fontSize: 13.5 }}>Remove watermark from selection</button>
+      </div>
+    </div>
+  );
+}
+const wmLbl = { display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--ms-ink-3,#888)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 6px' };
+const wmInp = { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid var(--ms-line,#ddd)', background: 'var(--ms-paper,#fff)', color: 'var(--ms-ink,#14120f)', fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 12 };
 
 const lbBtn = { position: 'absolute', top: 18, right: 18, width: 42, height: 42, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const lbArrow = { position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: 48, height: 48, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' };

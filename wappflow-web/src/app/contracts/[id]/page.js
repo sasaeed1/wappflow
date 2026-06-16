@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Eye, X, Check, Cloud, Send, Copy, MessageCircle, Mail, Settings, Zap, CreditCard, ShieldCheck, FolderPlus, Sparkles, Wand2, AlertTriangle, FileText, Clock, Users, UserPlus, Bell } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Eye, X, Check, Cloud, Send, Copy, MessageCircle, Mail, Settings, Zap, CreditCard, ShieldCheck, FolderPlus, Sparkles, Wand2, AlertTriangle, FileText, Clock, Users, UserPlus, Bell, Paperclip, Image as ImageIcon } from 'lucide-react';
 import { csAPI } from '../../../lib/api';
 import ContractsStudioShell from '../../../components/ContractsStudioShell';
-import { BLOCK_TYPES, defaultData, BlockView, computeTotals } from '../blocks';
+import { BLOCK_TYPES, defaultData, BlockView, DocFrame, computeTotals } from '../blocks';
 import '../contracts.css';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -28,12 +28,15 @@ export default function BuilderPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
+  const [wsLetterhead, setWsLetterhead] = useState(null);
+  const [wsDefaults, setWsDefaults] = useState({});
   const first = useRef(true);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/contracts'); return; }
     csAPI.get(id).then(r => { setDoc(r.data); setTitle(r.data.title || ''); setBlocks((r.data.blocks || []).map(b => b.id ? b : { ...b, id: uid() })); setTheme(r.data.theme || 'monochrome'); setSettings(r.data.settings || {}); })
       .catch(() => router.push('/contracts'));
+    csAPI.getSettings().then(r => { setWsLetterhead(r.data.letterhead_url || null); setWsDefaults(r.data.settings || {}); }).catch(() => {});
   }, [id]);
 
   // debounced autosave
@@ -53,6 +56,7 @@ export default function BuilderPage() {
 
   if (!doc) return <ContractsStudioShell><p style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</p></ContractsStudioShell>;
   const outerBg = theme === 'executive' ? '#080b12' : theme === 'editorial' ? '#efe9dd' : '#eceef2';
+  const docLetterhead = (settings.letterhead !== false && wsLetterhead) ? wsLetterhead : null;
 
   const AddBtn = ({ at }) => (
     <button onClick={() => setAddAt(at)} title="Add block" style={{ alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, border: '1px dashed var(--cs-line)', background: 'transparent', color: 'var(--cs-ink-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: 0.7 }}>
@@ -83,7 +87,8 @@ export default function BuilderPage() {
       <div style={{ background: outerBg, minHeight: 'calc(100vh - 110px)', padding: 'clamp(20px,4vw,48px) 16px 140px' }}>
         <div className={`cs-doc cs-theme-${theme}`}>
           <div className="cs-body" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            {blocks.length === 0 && (
+            <DocFrame letterhead={docLetterhead} upload={settings.upload} />
+            {blocks.length === 0 && !settings.upload && (
               <div style={{ textAlign: 'center', padding: '40px 0' }}>
                 <p style={{ color: 'var(--cs-ink-2)', fontSize: 14, marginBottom: 16 }}>An empty canvas. Add your first block.</p>
                 <AddBtn at={0} />
@@ -138,6 +143,7 @@ export default function BuilderPage() {
           <div style={{ padding: 'clamp(24px,5vw,60px) 16px 80px' }}>
             <div className={`cs-doc cs-theme-${theme}`}>
               <div className="cs-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <DocFrame letterhead={docLetterhead} upload={settings.upload} />
                 {blocks.map(b => <BlockView key={b.id} block={b} />)}
               </div>
             </div>
@@ -145,8 +151,8 @@ export default function BuilderPage() {
         </div>
       )}
 
-      {showSend && <SendModal id={id} doc={doc} hasLead={!!doc.lead_id} onClose={() => setShowSend(false)} />}
-      {showSettings && <SettingsModal id={id} settings={settings} setSettings={setSettings} hasLead={!!doc.lead_id} onClose={() => setShowSettings(false)} />}
+      {showSend && <SendModal id={id} doc={doc} hasLead={!!doc.lead_id} defaultExpire={wsDefaults.default_expire_days || 0} onClose={() => setShowSend(false)} />}
+      {showSettings && <SettingsModal id={id} settings={settings} setSettings={setSettings} hasLead={!!doc.lead_id} wsLetterhead={wsLetterhead} onClose={() => setShowSettings(false)} />}
       {showAI && <AIModal id={id} type={doc.type} blocks={blocks} setBlocks={setBlocks} selectedBlock={blocks.find(b => b.id === selected)} updateBlock={updateBlock} onClose={() => setShowAI(false)} />}
       {showPeople && <PeopleModal id={id} onClose={() => setShowPeople(false)} />}
     </ContractsStudioShell>
@@ -348,14 +354,23 @@ const SRow = ({ icon: Icon, title, sub, on, toggle, children, disabled }) => (
   </div>
 );
 
-function SettingsModal({ id, settings, setSettings, hasLead, onClose }) {
+function SettingsModal({ id, settings, setSettings, hasLead, wsLetterhead, onClose }) {
   const a = settings.automations || {};
   const pay = settings.payment || {};
   const setA = (patch) => setSettings(s => ({ ...s, automations: { ...(s.automations || {}), ...patch } }));
   const setPay = (patch) => setSettings(s => ({ ...s, payment: { ...(s.payment || {}), ...patch } }));
   const [approve, setApprove] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
 
   const doApprove = async () => { setApprove('working'); try { await csAPI.decideApproval(id, { decision: 'approved' }); setApprove('done'); } catch { setApprove('err'); } };
+  const onPickFile = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    setUploading(true);
+    try { const fd = new FormData(); fd.append('file', f); const r = await csAPI.uploadDocFile(id, fd); setSettings(s => ({ ...s, upload: r.data.upload })); }
+    catch {} finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+  const removeFile = async () => { await csAPI.removeDocFile(id); setSettings(s => { const n = { ...s }; delete n.upload; return n; }); };
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -366,7 +381,17 @@ function SettingsModal({ id, settings, setSettings, hasLead, onClose }) {
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '0 0 8px' }}>What happens the moment this document is signed — the contract acts on the relationship.</p>
 
-        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '14px 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}><Zap size={12} /> When signed</div>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '14px 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={12} /> Document</div>
+        <SRow icon={Paperclip} title="Attach a file to sign" sub={settings.upload ? settings.upload.filename : 'Upload a PDF or image and send it for signing'}>
+        </SRow>
+        <div style={{ marginTop: -6, marginBottom: 4, marginLeft: 29, display: 'flex', gap: 8 }}>
+          <input ref={fileRef} type="file" accept="application/pdf,image/*" onChange={onPickFile} style={{ display: 'none' }} />
+          <button onClick={() => fileRef.current?.click()} disabled={uploading} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg)', color: 'var(--text)', fontSize: 12.5, fontWeight: 600 }}>{uploading ? 'Uploading…' : settings.upload ? 'Replace file' : 'Upload file'}</button>
+          {settings.upload && <button onClick={removeFile} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', background: 'transparent', color: '#ef4444', fontSize: 12.5, fontWeight: 600 }}>Remove</button>}
+        </div>
+        <SRow icon={ImageIcon} title="Show letterhead" sub={wsLetterhead ? 'Display your workspace letterhead on this document' : 'Upload a letterhead in Contracts Studio settings first'} on={settings.letterhead !== false && !!wsLetterhead} toggle={() => setSettings(s => ({ ...s, letterhead: s.letterhead === false ? true : false }))} disabled={!wsLetterhead} />
+
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '18px 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}><Zap size={12} /> When signed</div>
         <SRow icon={Zap} title="Move the client down the pipeline" sub={hasLead ? 'Update the linked lead’s stage automatically' : 'Link a client to enable'} on={!!a.move_pipeline} toggle={() => setA({ move_pipeline: !a.move_pipeline })} disabled={!hasLead}>
           <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Move to</span>
           <Sel value={a.pipeline_stage || 'Closed - Won'} onChange={e => setA({ pipeline_stage: e.target.value })}>{STAGES.map(s => <option key={s} value={s}>{s}</option>)}</Sel>
@@ -398,9 +423,9 @@ function SettingsModal({ id, settings, setSettings, hasLead, onClose }) {
   );
 }
 
-function SendModal({ id, doc, hasLead, onClose }) {
+function SendModal({ id, doc, hasLead, defaultExpire = 0, onClose }) {
   const [channels, setChannels] = useState(hasLead ? ['whatsapp', 'email'] : []);
-  const [expireDays, setExpireDays] = useState(0);
+  const [expireDays, setExpireDays] = useState(defaultExpire);
   const [phase, setPhase] = useState('compose'); // compose | sending | sent
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');

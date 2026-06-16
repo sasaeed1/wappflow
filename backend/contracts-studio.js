@@ -95,8 +95,24 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     clientBaseUrl = process.env.FRONTEND_URL || '',
     sendClientMessage = async () => ({ skipped: true }),
     sendEmail = async () => ({ skipped: true }),
+    path = require('path'),
+    fs = require('fs'),
+    uploadsDir = path.join(__dirname, 'uploads'),
+    multer = require('multer'),
   } = deps;
   const clientIp = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+
+  // Upload sink for contract files + letterheads (served statically at /uploads).
+  const csDir = path.join(uploadsDir, 'cs');
+  try { fs.mkdirSync(csDir, { recursive: true }); } catch { /* exists */ }
+  const csUpload = multer({
+    storage: multer.diskStorage({
+      destination: csDir,
+      filename: (req, file, cb) => { const safe = (file.originalname || 'file').normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100); cb(null, `${Date.now()}-${Math.random().toString(16).slice(2, 8)}-${safe}`); },
+    }),
+    limits: { fileSize: 50 * 1024 * 1024 },
+  });
+  const csFileUrl = (filename) => `/uploads/cs/${filename}`;
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS cs_documents (
@@ -160,6 +176,12 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       blocks TEXT DEFAULT '[]',
       created_by TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS cs_settings (
+      workspace_id TEXT PRIMARY KEY,
+      letterhead_url TEXT,               -- workspace letterhead image (optional)
+      settings TEXT DEFAULT '{}',        -- JSON: default theme/expiry/sender/letterhead_on
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_cs_docs_ws ON cs_documents(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_cs_docs_token ON cs_documents(token);
@@ -507,6 +529,65 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     res.json({ packs: PACKS.map(({ id, type, industry, title, description, emoji }) => ({ id, type, industry, title, description, emoji })) });
   });
 
+  // ── Workspace settings (letterhead + defaults) ──────────────────────────────
+  const getSettings = (ws) => db.prepare('SELECT * FROM cs_settings WHERE workspace_id = ?').get(ws) || { workspace_id: ws, letterhead_url: null, settings: '{}' };
+
+  app.get('/api/cs/settings', auth, (req, res) => {
+    try { const s = getSettings(req.workspaceId); res.json({ letterhead_url: s.letterhead_url, settings: J(s.settings, {}) }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/cs/settings', auth, (req, res) => {
+    try {
+      const cur = getSettings(req.workspaceId);
+      const merged = { ...J(cur.settings, {}), ...(req.body.settings || {}) };
+      db.prepare(`INSERT INTO cs_settings (workspace_id, letterhead_url, settings, updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(workspace_id) DO UPDATE SET settings = excluded.settings, updated_at = CURRENT_TIMESTAMP`)
+        .run(req.workspaceId, cur.letterhead_url || null, JSON.stringify(merged));
+      res.json({ ok: true, settings: merged });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/cs/settings/letterhead', auth, csUpload.single('file'), (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const url = csFileUrl(req.file.filename); const cur = getSettings(req.workspaceId);
+      db.prepare(`INSERT INTO cs_settings (workspace_id, letterhead_url, settings, updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(workspace_id) DO UPDATE SET letterhead_url = excluded.letterhead_url, updated_at = CURRENT_TIMESTAMP`)
+        .run(req.workspaceId, url, cur.settings || '{}');
+      res.json({ ok: true, letterhead_url: url });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/cs/settings/letterhead', auth, (req, res) => {
+    try { db.prepare('UPDATE cs_settings SET letterhead_url = NULL WHERE workspace_id = ?').run(req.workspaceId); res.json({ ok: true }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Upload a file onto a document (PDF/image) to send for signing ────────────
+  app.post('/api/cs/documents/:id/upload', auth, csUpload.single('file'), (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const s = J(d.settings, {});
+      s.upload = { url: csFileUrl(req.file.filename), filename: req.file.originalname || req.file.filename, mime: req.file.mimetype };
+      db.prepare('UPDATE cs_documents SET settings = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(s), d.id);
+      recordEvent(d, 'file_uploaded', { actor: req.userId, meta: { filename: s.upload.filename } });
+      res.json({ ok: true, upload: s.upload });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/cs/documents/:id/upload', auth, (req, res) => {
+    try {
+      const d = getDoc(req.workspaceId, req.params.id);
+      if (!d) return res.status(404).json({ error: 'Document not found' });
+      const s = J(d.settings, {}); delete s.upload;
+      db.prepare('UPDATE cs_documents SET settings = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(s), d.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Phase 6: AI assistant — draft / improve / explain / summarize / risks ────
   app.post('/api/cs/ai/assist', auth, async (req, res) => {
     if (!ai || !ai.callLLM) return res.status(503).json({ error: 'AI is not configured on this server.' });
@@ -640,7 +721,10 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       }
       const fresh = db.prepare('SELECT * FROM cs_documents WHERE id = ?').get(d.id);
       const signers = db.prepare('SELECT role, name, status, sign_order FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
-      res.json({ title: fresh.title, type: fresh.type, theme: fresh.theme, blocks: J(fresh.blocks, []), settings: J(fresh.settings, {}), totals: J(fresh.totals, {}), status: fresh.status, signers });
+      const fSettings = J(fresh.settings, {});
+      const wsSettings = getSettings(fresh.workspace_id);
+      const letterhead = (fSettings.letterhead !== false && wsSettings.letterhead_url) ? wsSettings.letterhead_url : null;
+      res.json({ title: fresh.title, type: fresh.type, theme: fresh.theme, blocks: J(fresh.blocks, []), settings: fSettings, totals: J(fresh.totals, {}), status: fresh.status, signers, letterhead });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

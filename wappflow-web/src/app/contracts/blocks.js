@@ -291,6 +291,23 @@ function toEmbed(url) {
 const miniX = { width: 22, height: 22, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--cs-ink-2)', cursor: 'pointer', fontSize: 16, flexShrink: 0 };
 const addRow = { width: '100%', padding: '10px', border: 'none', background: 'transparent', color: 'var(--cs-ink-2)', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'center' };
 
+// Letterhead banner + uploaded PDF/image — shared by the builder preview & portal.
+export function DocFrame({ letterhead, upload }) {
+  if (!letterhead && !upload) return null;
+  return (
+    <>
+      {letterhead && <img src={mediaUrl(letterhead)} alt="" style={{ width: '100%', display: 'block', borderRadius: 'var(--cs-radius)', marginBottom: 4 }} />}
+      {upload && (/pdf/i.test(upload.mime || upload.url) ? (
+        <object data={mediaUrl(upload.url)} type="application/pdf" style={{ width: '100%', height: '78vh', borderRadius: 'var(--cs-radius)', border: '1px solid var(--cs-line)' }}>
+          <a href={mediaUrl(upload.url)} target="_blank" rel="noreferrer" style={{ color: 'var(--cs-accent)' }}>Open {upload.filename || 'document'}</a>
+        </object>
+      ) : (
+        <img src={mediaUrl(upload.url)} alt={upload.filename || ''} style={{ width: '100%', display: 'block', borderRadius: 'var(--cs-radius)', border: '1px solid var(--cs-line)' }} />
+      ))}
+    </>
+  );
+}
+
 // Compute live totals from package selection + add-ons (used by builder + portal).
 export function computeTotals(blocks, selection = {}) {
   let total = 0; let currency = '$';

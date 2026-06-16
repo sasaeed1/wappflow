@@ -288,6 +288,10 @@ export const mediaAPI = {
   listAssets:      (id, params)  => api.get(`/media/projects/${id}/assets`, { params }),
   uploadAssets:    (id, formData)=> api.post(`/media/projects/${id}/assets`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   deleteAsset:     (id)          => api.delete(`/media/assets/${id}`),
+  // watermark (non-destructive — generates a protected variant; originals untouched)
+  uploadWatermarkLogo: (id, formData) => api.post(`/media/projects/${id}/watermark/logo`, formData, { headers: { 'Content-Type': undefined } }),
+  applyWatermark:  (id, assetIds, config) => api.post(`/media/projects/${id}/watermark/apply`, { assetIds, config }),
+  removeWatermark: (id, assetIds) => api.post(`/media/projects/${id}/watermark/remove`, { assetIds }),
   // trash (soft-delete → 30-day restore)
   listTrash:       ()            => api.get('/media/trash'),
   restoreAsset:    (id)          => api.post(`/media/assets/${id}/restore`),
@@ -394,6 +398,12 @@ export const csAPI = {
   aiAssist:       (data)      => api.post('/cs/ai/assist', data),
   analytics:      ()          => api.get('/cs/analytics'),
   vault:          ()          => api.get('/cs/vault'),
+  getSettings:    ()          => api.get('/cs/settings'),
+  updateSettings: (settings)  => api.put('/cs/settings', { settings }),
+  uploadLetterhead: (formData) => api.post('/cs/settings/letterhead', formData, { headers: { 'Content-Type': undefined } }),
+  removeLetterhead: ()        => api.delete('/cs/settings/letterhead'),
+  uploadDocFile:  (id, formData) => api.post(`/cs/documents/${id}/upload`, formData, { headers: { 'Content-Type': undefined } }),
+  removeDocFile:  (id)        => api.delete(`/cs/documents/${id}/upload`),
   templates:      ()          => api.get('/cs/templates'),
   getTemplate:    (id)        => api.get(`/cs/templates/${id}`),
   createTemplate: (data)      => api.post('/cs/templates', data),
