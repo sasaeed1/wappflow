@@ -36,7 +36,7 @@ export default function ContractsStudioShell({ children }) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 100, height: 58, display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
-        <AppSwitcher />
+        <AppSwitcher align="left" />
         <div onClick={() => router.push('/contracts')} style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', marginRight: 6 }}>
           <span style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileSignature size={15} color="#fff" /></span>
           <b style={{ fontSize: 15.5, color: 'var(--text)', letterSpacing: '-0.3px' }}>Contracts Studio</b>

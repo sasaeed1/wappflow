@@ -8,7 +8,7 @@ const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 
 // Google-style app-switcher for WappFlow Core's nav. Studio is a separate module,
 // so it opens in a new tab from here (not an in-app nav link).
-export default function AppSwitcher() {
+export default function AppSwitcher({ align = 'right' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const pathname = usePathname() || '';
@@ -44,7 +44,7 @@ export default function AppSwitcher() {
         <LayoutGrid size={18} />
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, minWidth: 248, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.2)', padding: 8, zIndex: 300 }}>
+        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', [align]: 0, minWidth: 248, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.2)', padding: 8, zIndex: 300 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '6px 10px 8px' }}>Switch app</div>
           {/* current app is highlighted and non-navigating; others open in their own tab */}
           {item(Users, 'linear-gradient(135deg,#6366f1,#4f46e5)', 'WappFlow CRM', inCRM ? {} : { href: '/dashboard' }, inCRM)}
