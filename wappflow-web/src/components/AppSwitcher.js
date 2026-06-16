@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { LayoutGrid, Users, Camera, Zap, ArrowUpRight, FileSignature } from 'lucide-react';
 
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
@@ -10,6 +11,10 @@ const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 export default function AppSwitcher() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const pathname = usePathname() || '';
+  const inStudio = pathname.startsWith('/studio');
+  const inContracts = pathname.startsWith('/contracts');
+  const inCRM = !inStudio && !inContracts;
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
@@ -41,10 +46,10 @@ export default function AppSwitcher() {
       {open && (
         <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, minWidth: 248, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.2)', padding: 8, zIndex: 300 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '6px 10px 8px' }}>Switch app</div>
-          {item(Users, 'linear-gradient(135deg,#6366f1,#4f46e5)', 'WappFlow CRM', { href: '/dashboard' }, true)}
-          {/* same-origin: keep the referrer so the new tab inherits the signed-in session */}
-          {item(Camera, 'linear-gradient(135deg,#0e0e11,#3a3a44)', 'Media Studio', { href: '/studio', target: '_blank' }, false)}
-          {item(FileSignature, 'linear-gradient(135deg,#0ea5e9,#6366f1)', 'Contracts Studio', { href: '/contracts', target: '_blank' }, false)}
+          {/* current app is highlighted and non-navigating; others open in their own tab */}
+          {item(Users, 'linear-gradient(135deg,#6366f1,#4f46e5)', 'WappFlow CRM', inCRM ? {} : { href: '/dashboard' }, inCRM)}
+          {item(Camera, 'linear-gradient(135deg,#0e0e11,#3a3a44)', 'Media Studio', inStudio ? {} : { href: '/studio', target: '_blank' }, inStudio)}
+          {item(FileSignature, 'linear-gradient(135deg,#0ea5e9,#6366f1)', 'Contracts Studio', inContracts ? {} : { href: '/contracts', target: '_blank' }, inContracts)}
           {item(Zap, 'linear-gradient(135deg,#A78BFA,#22D3EE,#EC4899)', 'Flux', { href: FLUX_URL, target: '_blank', rel: 'noreferrer' }, false)}
         </div>
       )}
