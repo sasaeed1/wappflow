@@ -178,6 +178,26 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
       res.json({ ok: true, album_id: albumId, pages, spreads: spreads.length, images: seq.length });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
+  app.get('/api/studio-ai/albums/:id', auth, (req, res) => {
+    try {
+      const a = db.prepare('SELECT * FROM ms_albums WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!a) return res.status(404).json({ error: 'Album not found' });
+      res.json({ album: { ...a, spec: J(a.spec, {}) } });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.put('/api/studio-ai/albums/:id', auth, (req, res) => {
+    try {
+      const a = db.prepare('SELECT * FROM ms_albums WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!a) return res.status(404).json({ error: 'Album not found' });
+      const set = {};
+      if (req.body.title !== undefined) set.title = req.body.title;
+      if (req.body.status !== undefined) set.status = req.body.status;
+      if (req.body.spec !== undefined) { set.spec = JSON.stringify(req.body.spec); if (req.body.spec.pages) set.page_count = req.body.spec.pages; }
+      const keys = Object.keys(set);
+      if (keys.length) db.prepare(`UPDATE ms_albums SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: a.id });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
   app.get('/api/studio-ai/projects/:id/albums', auth, (req, res) => {
     try {
       const project = getProject(req.workspaceId, req.params.id);

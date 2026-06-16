@@ -650,12 +650,13 @@ function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
   const [pages, setPages] = useState(30);
   const [reelLen, setReelLen] = useState(30);
   const [reel, setReel] = useState(null);
+  const [albumId, setAlbumId] = useState(null);
   const KINDS = [['best_of', 'Best Of'], ['highlights', 'Highlights'], ['portfolio', 'Portfolio'], ['album', 'Album'], ['delivery', 'Delivery']];
 
   const analyze = async () => { setBusy('analyze'); try { const r = await mediaAPI.analyzeProject(projectId); setNote(`Scored ${r.data.scored}/${r.data.total} photos.`); } catch { setNote('Analyze failed.'); } finally { setBusy(''); } };
   const gen = async (kind) => { setBusy(kind); try { const r = await studioAiAPI.generateSelection(projectId, kind); setSels(s => [{ ...r.data, kind }, ...s.filter(x => x.kind !== kind)]); setNote(`${r.data.label}: ${r.data.count} photos selected.`); } catch (e) { setNote(e?.response?.data?.error || 'Failed.'); } finally { setBusy(''); } };
   const buildGallery = async (sel) => { setBusy('gal-' + sel.kind); try { await studioAiAPI.galleryFromSelection(projectId, { selection_id: sel.id }); setBanner && setBanner({ type: 'ok', msg: `Gallery built from ${sel.label} (${sel.count}).` }); onGallery && onGallery(); } catch { setNote('Gallery build failed.'); } finally { setBusy(''); } };
-  const album = async () => { setBusy('album'); try { const r = await studioAiAPI.album(projectId, { pages }); setNote(`Album draft: ${r.data.spreads} spreads, ${r.data.images} images.`); } catch { setNote('Album failed.'); } finally { setBusy(''); } };
+  const album = async () => { setBusy('album'); try { const r = await studioAiAPI.album(projectId, { pages }); setAlbumId(r.data.album_id); setNote(`Album draft: ${r.data.spreads} spreads, ${r.data.images} images.`); } catch { setNote('Album failed.'); } finally { setBusy(''); } };
   const makeReel = async () => { setBusy('reel'); try { const r = await videoAiAPI.reel(projectId, { length_s: reelLen }); setReel(r.data); setNote(`Reel plan: ${r.data.plan.timeline.length} clips${r.data.template ? ' · ' + r.data.template : ''}.`); } catch (e) { setNote(e?.response?.data?.error || 'Reel failed.'); } finally { setBusy(''); } };
 
   return (
@@ -688,6 +689,7 @@ function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <select value={pages} onChange={e => setPages(Number(e.target.value))} style={aiSel}>{[20, 30, 40, 60].map(n => <option key={n} value={n}>{n} pages</option>)}</select>
           <button onClick={album} disabled={!!busy} style={chip}>{busy === 'album' ? 'Generating…' : 'Generate album'}</button>
+          {albumId && <a href={`/studio/${projectId}/album/${albumId}`} style={{ ...chip, textDecoration: 'none', background: 'var(--ms-ink,#14120f)', color: '#fff', border: 'none' }}>Open editor →</a>}
         </div>
 
         <div style={aiLbl}>Reel (Story Engine)</div>
