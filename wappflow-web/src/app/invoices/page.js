@@ -7,7 +7,7 @@ import {
   Clock, AlertCircle, DollarSign, Building2, User, Calendar,
   ArrowLeft, Download, Send, Trash2,
 } from 'lucide-react';
-import { invoicesAPI, settingsAPI, displayPhone, BASE_URL } from '../../lib/api';
+import { invoicesAPI, settingsAPI, displayPhone, BASE_URL, paymentsAPI } from '../../lib/api';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { formatDate } from '../../lib/datetime';
@@ -114,6 +114,14 @@ function buildInvoiceHTML(invoice, company) {
 function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, onDelete }) {
   const sym = company?.currency_symbol || '$';
   const sc = STATUS_COLORS[invoice.status] || STATUS_COLORS.draft;
+  const [payLink, setPayLink] = useState('');
+  const makePayLink = async () => {
+    try {
+      const r = await paymentsAPI.link({ kind: 'invoice', ref_id: invoice.id, lead_id: invoice.lead_id, amount: invoice.total, currency: invoice.currency, currency_symbol: sym, description: `Invoice ${invoice.invoice_number || invoice.id}` });
+      const url = r.data.url || r.data.pay_page;
+      setPayLink(url); try { await navigator.clipboard.writeText(url); } catch {}
+    } catch {}
+  };
 
   const handlePrint = () => {
     const win = window.open('', '_blank');
@@ -230,6 +238,11 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
           <button onClick={() => onSendEmail(invoice)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', border: 'none', borderRadius: 12, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
             <Send size={14} /> Send via Email
           </button>
+          {invoice.status !== 'paid' && (
+            <button onClick={makePayLink} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'transparent', color: 'var(--text)', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+              {payLink ? '✓ Link copied' : '💳 Payment link'}
+            </button>
+          )}
           {invoice.status !== 'paid' && (
             <button onClick={() => onMarkPaid(invoice.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', border: 'none', borderRadius: 12, background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
               <CheckCircle size={14} /> Mark as Paid
