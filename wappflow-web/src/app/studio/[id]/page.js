@@ -519,20 +519,52 @@ export default function ProjectPage() {
       )}
       {showNewGallery && <CreateGalleryModal onClose={() => setShowNewGallery(false)} onCreate={createGallery} />}
       {proofingFor && <ProofingRequestModal gallery={proofingFor} onClose={() => setProofingFor(null)} onCreate={createProof} />}
-      {wmModal && <WatermarkModal projectId={id} count={selected.size} initial={project?.settings?.watermark} onClose={() => setWmModal(false)} onApply={applyWatermark} onRemove={removeWatermark} />}
+      {wmModal && <WatermarkModal projectId={id} count={selected.size} initial={project?.settings?.watermark} sampleUrl={(() => { const a = assets.find(x => selected.has(x.id) && kindOf(x) === 'photo'); return a ? mediaUrl(a.thumb_url || a.url) : null; })()} onClose={() => setWmModal(false)} onApply={applyWatermark} onRemove={removeWatermark} />}
     </NavBar>
   );
 }
 
-function WatermarkModal({ projectId, count, initial, onClose, onApply, onRemove }) {
+function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply, onRemove }) {
   const [cfg, setCfg] = useState(() => ({ type: 'text', text: 'PROOF', color: 'white', position: 'tiled', opacity: 0.35, size: 32, logo_url: '', ...(initial || {}) }));
   const [uploading, setUploading] = useState(false);
+  const [presets, setPresets] = useState(() => { try { return JSON.parse(localStorage.getItem('ms-wm-presets') || '[]'); } catch { return []; } });
+  const canvasRef = useRef(null);
   const set = (patch) => setCfg(c => ({ ...c, ...patch }));
   const pickLogo = async (e) => {
     const f = e.target.files?.[0]; if (!f) return; setUploading(true);
     try { const fd = new FormData(); fd.append('file', f); const r = await mediaAPI.uploadWatermarkLogo(projectId, fd); set({ logo_url: r.data.url, type: 'logo' }); }
     catch {} finally { setUploading(false); }
   };
+  const savePreset = () => { const name = (window.prompt('Name this watermark preset') || '').trim(); if (!name) return; const next = [...presets.filter(p => p.name !== name), { name, cfg }]; setPresets(next); try { localStorage.setItem('ms-wm-presets', JSON.stringify(next)); } catch {} };
+  const delPreset = (name) => { const next = presets.filter(p => p.name !== name); setPresets(next); try { localStorage.setItem('ms-wm-presets', JSON.stringify(next)); } catch {} };
+
+  // live preview — mirrors the server's placement so what you see is what applies
+  useEffect(() => {
+    const cv = canvasRef.current; if (!cv) return;
+    const ctx = cv.getContext('2d'); const W = cv.width, H = cv.height;
+    const place = (mw, mh, draw) => {
+      const m = Math.min(W, H) * 0.04, p = cfg.position || 'bottom-right';
+      if (p === 'tiled') { const sx = mw + W * 0.10, sy = mh + H * 0.12; for (let y = -mh; y < H; y += sy) for (let x = -mw; x < W; x += sx) draw(x, y); return; }
+      let x = m, y = m; if (p.includes('right')) x = W - mw - m; if (p.includes('bottom')) y = H - mh - m; if (p === 'center') { x = (W - mw) / 2; y = (H - mh) / 2; } draw(x, y);
+    };
+    const drawMark = () => {
+      ctx.save(); ctx.globalAlpha = Math.max(0.05, Math.min(1, Number(cfg.opacity) || 0.5));
+      if (cfg.type === 'logo' && cfg.logo_url) {
+        const logo = new Image(); logo.crossOrigin = 'anonymous';
+        logo.onload = () => { const mw = W * ((Number(cfg.size) || 28) / 100), mh = mw * (logo.height / Math.max(1, logo.width)); place(mw, mh, (x, y) => ctx.drawImage(logo, x, y, mw, mh)); ctx.restore(); };
+        logo.onerror = () => ctx.restore(); logo.src = mediaUrl(cfg.logo_url); return;
+      }
+      const text = cfg.text || 'PROOF'; let fs = 48; ctx.font = `bold ${fs}px sans-serif`;
+      const w0 = ctx.measureText(text).width || 1; fs = fs * ((W * ((Number(cfg.size) || 35) / 100)) / w0); ctx.font = `bold ${fs}px sans-serif`;
+      ctx.fillStyle = cfg.color === 'black' ? '#000' : '#fff'; ctx.textBaseline = 'top';
+      place(ctx.measureText(text).width, fs, (x, y) => ctx.fillText(text, x, y)); ctx.restore();
+    };
+    const bg = () => { const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#cbd5e1'); g.addColorStop(1, '#94a3b8'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); };
+    ctx.clearRect(0, 0, W, H);
+    if (sampleUrl) { const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => { const r = Math.max(W / img.width, H / img.height), w = img.width * r, h = img.height * r; ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h); drawMark(); }; img.onerror = () => { bg(); drawMark(); }; img.src = sampleUrl; }
+    else { bg(); drawMark(); }
+  }, [cfg, sampleUrl]);
+
   const POS = [['top-left', '↖'], ['top-right', '↗'], ['center', '◉'], ['bottom-left', '↙'], ['bottom-right', '↘'], ['tiled', '▦']];
 
   return (
@@ -542,7 +574,20 @@ function WatermarkModal({ projectId, count, initial, onClose, onApply, onRemove 
           <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ms-ink, #14120f)', display: 'inline-flex', alignItems: 'center', gap: 8 }}><Droplets size={18} /> Watermark</h3>
           <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ms-ink-3, #888)' }}><X size={17} /></button>
         </div>
-        <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3, #888)', margin: '0 0 16px' }}>Applies to {count} selected photo{count === 1 ? '' : 's'}. Originals are kept clean — only the client gallery shows the watermark.</p>
+        <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3, #888)', margin: '0 0 12px' }}>Applies to {count} selected photo{count === 1 ? '' : 's'}. Originals are kept clean — only the client gallery shows the watermark.</p>
+
+        <canvas ref={canvasRef} width={460} height={290} style={{ width: '100%', height: 'auto', borderRadius: 12, border: '1px solid var(--ms-line, #ddd)', display: 'block', marginBottom: 12, background: '#e2e8f0' }} />
+
+        {presets.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+            {presets.map(p => (
+              <span key={p.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 6px 5px 11px', borderRadius: 999, border: '1px solid var(--ms-line,#ddd)', fontSize: 12, fontWeight: 600, color: 'var(--ms-ink,#14120f)' }}>
+                <button onClick={() => setCfg(c => ({ ...c, ...p.cfg }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontWeight: 600, fontSize: 12, padding: 0 }}>{p.name}</button>
+                <button onClick={() => delPreset(p.name)} title="Delete preset" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3,#888)', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--ms-line, #eee)', marginBottom: 14 }}>
           {[['text', 'Text'], ['logo', 'Logo']].map(([t, l]) => <button key={t} onClick={() => set({ type: t })} style={{ padding: '6px 16px', borderRadius: 7, border: 'none', cursor: 'pointer', background: cfg.type === t ? 'var(--ms-ink, #14120f)' : 'transparent', color: cfg.type === t ? '#fff' : 'var(--ms-ink-3, #888)', fontSize: 12.5, fontWeight: 700 }}>{l}</button>)}
@@ -578,7 +623,10 @@ function WatermarkModal({ projectId, count, initial, onClose, onApply, onRemove 
         <label style={wmLbl}>Opacity — {Math.round(cfg.opacity * 100)}%</label>
         <input type="range" min={5} max={100} value={Math.round(cfg.opacity * 100)} onChange={e => set({ opacity: Number(e.target.value) / 100 })} style={{ width: '100%', marginBottom: 16 }} />
 
-        <button onClick={() => onApply(cfg)} disabled={cfg.type === 'logo' && !cfg.logo_url} style={{ width: '100%', padding: '13px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--ms-ink, #14120f)', color: '#fff', fontWeight: 800, fontSize: 15, opacity: (cfg.type === 'logo' && !cfg.logo_url) ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Droplets size={15} /> Apply to {count} photo{count === 1 ? '' : 's'}</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => onApply(cfg)} disabled={cfg.type === 'logo' && !cfg.logo_url} style={{ flex: 1, padding: '13px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--ms-ink, #14120f)', color: '#fff', fontWeight: 800, fontSize: 15, opacity: (cfg.type === 'logo' && !cfg.logo_url) ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Droplets size={15} /> Apply to {count} photo{count === 1 ? '' : 's'}</button>
+          <button onClick={savePreset} title="Save these settings as a preset" style={{ padding: '13px 16px', borderRadius: 11, border: '1px solid var(--ms-line,#ddd)', cursor: 'pointer', background: 'transparent', color: 'var(--ms-ink,#14120f)', fontWeight: 700, fontSize: 13.5 }}>Save preset</button>
+        </div>
         <button onClick={onRemove} style={{ width: '100%', marginTop: 8, padding: '11px', borderRadius: 11, border: '1px solid var(--ms-line,#ddd)', cursor: 'pointer', background: 'transparent', color: 'var(--ms-ink-3,#888)', fontWeight: 600, fontSize: 13.5 }}>Remove watermark from selection</button>
       </div>
     </div>
