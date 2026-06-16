@@ -155,6 +155,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (!String(e.message || '').includes('duplicate column')) throw e;
     }
   }
+  safeAlter('ALTER TABLE ms_jobs ADD COLUMN lease_until TIMESTAMP'); // worker lease → stale-job reaper (multi-worker scale)
   safeAlter('ALTER TABLE ms_assets ADD COLUMN edits TEXT'); // non-destructive edit params (JSON)
   safeAlter('ALTER TABLE ms_assets ADD COLUMN deleted_at TIMESTAMP'); // soft-delete → Trash (30-day restore)
   // Video metadata (filled by the worker's ffprobe pass) + proxy/poster for the editor.
@@ -702,6 +703,26 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   app.get('/api/media/brain', auth, (req, res) => { try { res.json({ brain: intel.brainGet(req.workspaceId) }); } catch (e) { res.status(500).json({ error: e.message }); } });
   app.put('/api/media/brain', auth, (req, res) => { try { const { key, value, confidence } = req.body || {}; if (!key) return res.status(400).json({ error: 'key required' }); intel.brainSet(req.workspaceId, key, value, { confidence: confidence == null ? 1 : confidence }); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
   app.post('/api/media/brain/derive', auth, (req, res) => { try { res.json({ brain: intel.deriveBrain(req.workspaceId) }); } catch (e) { res.status(500).json({ error: e.message }); } });
+
+  // ── Worker observability — job queue health for this workspace ───────────────
+  app.get('/api/media/jobs', auth, (req, res) => {
+    try {
+      const ws = req.workspaceId;
+      const byStatus = {};
+      db.prepare('SELECT status, COUNT(*) c FROM ms_jobs WHERE workspace_id = ? GROUP BY status').all(ws).forEach(r => { byStatus[r.status] = r.c; });
+      const byType = db.prepare("SELECT type, status, COUNT(*) c FROM ms_jobs WHERE workspace_id = ? GROUP BY type, status").all(ws);
+      const throughputHr = db.prepare("SELECT COUNT(*) c FROM ms_jobs WHERE workspace_id = ? AND status = 'done' AND finished_at >= datetime('now','-1 hour')").get(ws).c;
+      const oldestPending = db.prepare("SELECT created_at FROM ms_jobs WHERE workspace_id = ? AND status = 'pending' ORDER BY created_at LIMIT 1").get(ws);
+      const failures = db.prepare("SELECT id, type, asset_id, error_message, retry_count, created_at FROM ms_jobs WHERE workspace_id = ? AND status = 'failed' ORDER BY created_at DESC LIMIT 20").all(ws);
+      res.json({ byStatus, byType, throughputHr, oldestPendingAt: oldestPending ? oldestPending.created_at : null, failures });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/media/jobs/retry-failed', auth, (req, res) => {
+    try {
+      const r = db.prepare("UPDATE ms_jobs SET status = 'pending', retry_count = 0, error_message = NULL, next_retry_at = NULL WHERE workspace_id = ? AND status = 'failed'").run(req.workspaceId);
+      res.json({ ok: true, requeued: r.changes });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
 
   // ── Library listing ────────────────────────────────────────────────────────
   app.get('/api/media/projects/:id/assets', auth, (req, res) => {

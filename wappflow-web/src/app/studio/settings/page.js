@@ -68,6 +68,9 @@ export default function StudioSettingsPage() {
         {/* STYLE PROFILES */}
         <StyleProfilesSection say={say} />
 
+        {/* SYSTEM / PROCESSING */}
+        <SystemSection say={say} />
+
         {/* APPEARANCE */}
         <Section icon={<Camera size={15} />} title="Appearance" sub="Switching theme switches the whole studio — typography, colour, motion.">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
@@ -252,6 +255,40 @@ function StyleProfilesSection({ say }) {
         ))}
       </div>
       <button onClick={add} className="ms-btn-ghost" style={{ marginTop: 12, padding: '8px 14px' }}>+ Add style profile</button>
+    </Section>
+  );
+}
+
+function SystemSection({ say }) {
+  const [j, setJ] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => mediaAPI.jobs().then(r => setJ(r.data)).catch(() => setJ({ byStatus: {}, failures: [] }));
+  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
+  const retry = async () => { setBusy(true); try { const r = await mediaAPI.retryFailedJobs(); say && say(`Re-queued ${r.data.requeued} job${r.data.requeued === 1 ? '' : 's'}`); load(); } catch {} finally { setBusy(false); } };
+  if (!j) return null;
+  const bs = j.byStatus || {};
+  const chip = (label, n, color) => <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: 'var(--ms-surface)', border: '1px solid var(--ms-line)', fontSize: 12.5, color: 'var(--ms-ink)' }}><b style={{ color }}>{n || 0}</b> {label}</span>;
+  return (
+    <Section icon={<Sliders size={15} />} title="Processing & system health" sub="The media engine analyzes every upload once (variants, EXIF, AI scores). Here's the queue.">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        {chip('pending', bs.pending, '#e6b455')}
+        {chip('running', bs.running, '#0ea5e9')}
+        {chip('done', bs.done, '#5fd0a0')}
+        {chip('failed', bs.failed, '#d4564a')}
+        {chip('done/hr', j.throughputHr, 'var(--ms-ink)')}
+      </div>
+      {j.oldestPendingAt && <p style={{ fontSize: 12, color: 'var(--ms-ink-3)', margin: '0 0 12px' }}>Oldest pending since {new Date(j.oldestPendingAt + 'Z').toLocaleString()}</p>}
+      {(j.failures || []).length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ms-ink-3)', marginBottom: 6 }}>Recent failures</div>
+          {j.failures.slice(0, 6).map(f => (
+            <div key={f.id} style={{ fontSize: 12, color: 'var(--ms-ink-3)', padding: '4px 0', borderBottom: '1px solid var(--ms-line)' }}>
+              <b style={{ color: 'var(--ms-ink)' }}>{f.type}</b> · {f.error_message || 'unknown error'} <span style={{ opacity: 0.6 }}>(×{f.retry_count})</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <button onClick={retry} disabled={busy || !(bs.failed > 0)} className="ms-btn-ghost" style={{ padding: '8px 14px' }}>{busy ? 'Re-queuing…' : `Retry failed${bs.failed ? ` (${bs.failed})` : ''}`}</button>
     </Section>
   );
 }

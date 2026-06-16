@@ -306,6 +306,8 @@ export const mediaAPI = {
   updateMilestone: (mid, data)   => api.put(`/media/milestones/${mid}`, data),
   removeMilestone: (mid)         => api.delete(`/media/milestones/${mid}`),
   printRecommendations: (id)     => api.get(`/media/projects/${id}/print-recommendations`),
+  jobs:            ()            => api.get('/media/jobs'),
+  retryFailedJobs: ()            => api.post('/media/jobs/retry-failed'),
   // trash (soft-delete → 30-day restore)
   listTrash:       ()            => api.get('/media/trash'),
   restoreAsset:    (id)          => api.post(`/media/assets/${id}/restore`),

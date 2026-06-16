@@ -669,8 +669,14 @@ module.exports = function createMediaWorker(db, deps = {}) {
 
   // ── job runner (claim → run → done/retry) ───────────────────────────────────
   function claim(jobId) {
-    const r = db.prepare("UPDATE ms_jobs SET status = 'running' WHERE id = ? AND status = 'pending'").run(jobId);
+    // atomic: only one worker's conditional UPDATE can win. Sets a 10-min lease so
+    // a crashed worker's job is reclaimable by the reaper.
+    const r = db.prepare("UPDATE ms_jobs SET status = 'running', lease_until = datetime('now','+10 minutes') WHERE id = ? AND status = 'pending'").run(jobId);
     return r.changes === 1;
+  }
+  // Reaper — return jobs orphaned by a crashed/hung worker back to the queue.
+  function reapStale() {
+    try { db.prepare("UPDATE ms_jobs SET status = 'pending' WHERE status = 'running' AND lease_until IS NOT NULL AND lease_until < datetime('now')").run(); } catch {}
   }
 
   async function runJob(job) {
@@ -704,6 +710,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
 
   /** Drain up to `batch` due jobs once. Returns the number processed. Used by the timer AND tests. */
   async function processOnce(batch = 10) {
+    reapStale();
     const due = db.prepare(`
       SELECT * FROM ms_jobs
       WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
