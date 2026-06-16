@@ -49,6 +49,11 @@ module.exports = function createMediaWorker(db, deps = {}) {
   const variantsDir = path.join(uploadsDir, 'media', 'variants');
   try { fs.mkdirSync(variantsDir, { recursive: true }); } catch {}
 
+  // Media Intelligence — same Analyzer abstraction the API uses. The worker is just
+  // one execution tier (server CPU); the ledger + composites flow through here too.
+  const intel = require('./analyzers')(db, { generateId });
+  try { intel.ensureSchema(); } catch { /* media-studio mount already ensured it */ }
+
   const MAX_RETRIES = 3;
   const PHASH_DUP_DISTANCE = 6; // ≤6 bits different on a 64-bit aHash ≈ near-duplicate
 
@@ -221,6 +226,14 @@ module.exports = function createMediaWorker(db, deps = {}) {
         if (fd && fd.smile != null) addScore.run(generateId(), asset.workspace_id, asset.id, 'smile', fd.smile, null);
       } catch { /* detector failure must never break ingest */ }
     }
+
+    // Record the ledger for the server analyzers (so "analyze once" holds) and
+    // derive composite scores (hero/portfolio/album/storytelling) from primitives.
+    try {
+      intel.markAnalyzed(asset.id, 'technical', intel.ANALYZERS.technical.modelVersion, 'server');
+      intel.markAnalyzed(asset.id, 'dedup', intel.ANALYZERS.dedup.modelVersion, 'server');
+      intel.computeComposites(asset.workspace_id, asset.id);
+    } catch { /* intelligence is advisory — never break ingest */ }
 
     return { note: 'ok', variants, scores: { ...cv }, group: groupKey };
   }

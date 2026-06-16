@@ -163,6 +163,12 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     safeAlter(`ALTER TABLE ms_assets ADD COLUMN ${col}`);
   }
 
+  // ── Media Intelligence (Track 0) — the swappable Analyzer abstraction.
+  // Business logic only ever reads ms_asset_scores; whether a score came from the
+  // server worker (now) or a desktop ONNX runtime (later) is invisible here.
+  const intel = require('./analyzers')(db, { generateId });
+  intel.ensureSchema();
+
   // PORTFOLIO — a per-user public showcase. Curated (the creator controls every
   // item), auto-fed from PUBLISHED galleries/reels (never raw), with a vanity
   // share link. Owns ms_portfolios + ms_portfolio_items only.
@@ -635,6 +641,68 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Media Intelligence: scores in (server/desktop/cloud) + scores out + brain ──
+  // External ingestion — the desktop ONNX runtime / cloud worker uploads scores.
+  app.post('/api/media/assets/:id/scores', auth, (req, res) => {
+    try {
+      const a = db.prepare('SELECT id, workspace_id FROM ms_assets WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!a) return res.status(404).json({ error: 'Asset not found' });
+      const { analyzer_id, model_version, scores, source } = req.body || {};
+      if (!analyzer_id || !Array.isArray(scores)) return res.status(400).json({ error: 'analyzer_id + scores[] required' });
+      const n = intel.recordScores(a.workspace_id, a.id, analyzer_id, model_version, scores, source || 'desktop');
+      intel.computeComposites(a.workspace_id, a.id);
+      broadcastToWorkspace(req.workspaceId, 'ms_scored', { asset_id: a.id });
+      res.json({ ok: true, stored: n });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  // Batch ingestion — a whole shoot's results from the desktop app.
+  app.post('/api/media/projects/:id/scores', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      let stored = 0;
+      for (const it of (Array.isArray(req.body.items) ? req.body.items : [])) {
+        const a = db.prepare('SELECT id FROM ms_assets WHERE id = ? AND project_id = ?').get(it.asset_id, project.id);
+        if (!a) continue;
+        stored += intel.recordScores(req.workspaceId, a.id, it.analyzer_id, it.model_version, it.scores || [], it.source || 'desktop');
+        intel.computeComposites(req.workspaceId, a.id);
+      }
+      broadcastToWorkspace(req.workspaceId, 'ms_scored', { project_id: project.id });
+      res.json({ ok: true, stored });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  // Recompute composites (cheap, server-side) from whatever primitives exist.
+  app.post('/api/media/projects/:id/analyze', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const assets = db.prepare('SELECT id FROM ms_assets WHERE project_id = ? AND deleted_at IS NULL').all(project.id);
+      let done = 0; for (const a of assets) { if (intel.computeComposites(req.workspaceId, a.id)) done++; }
+      res.json({ ok: true, scored: done, total: assets.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  // Scores out — per-asset map for the cull UI ("filter by AI score") + desktop sync.
+  app.get('/api/media/projects/:id/intelligence', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const rows = db.prepare(`SELECT s.asset_id, s.score_type, s.value, s.group_key, s.reasons
+        FROM ms_asset_scores s JOIN ms_assets a ON a.id = s.asset_id WHERE a.project_id = ?`).all(project.id);
+      const byAsset = {};
+      for (const r of rows) { (byAsset[r.asset_id] = byAsset[r.asset_id] || {})[r.score_type] = { value: r.value, group_key: r.group_key, reasons: r.reasons ? JSON.parse(r.reasons) : null }; }
+      const pending = {};
+      db.prepare('SELECT id FROM ms_assets WHERE project_id = ? AND deleted_at IS NULL').all(project.id).forEach(a => {
+        const todo = Object.keys(intel.ANALYZERS).filter(k => intel.ANALYZERS[k].where === 'client' && intel.needsAnalysis(a.id, k));
+        if (todo.length) pending[a.id] = todo;
+      });
+      res.json({ scores: byAsset, pending, analyzers: intel.ANALYZERS });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  // Workspace Brain — the studio's learned preferences (explicit + inferred).
+  app.get('/api/media/brain', auth, (req, res) => { try { res.json({ brain: intel.brainGet(req.workspaceId) }); } catch (e) { res.status(500).json({ error: e.message }); } });
+  app.put('/api/media/brain', auth, (req, res) => { try { const { key, value, confidence } = req.body || {}; if (!key) return res.status(400).json({ error: 'key required' }); intel.brainSet(req.workspaceId, key, value, { confidence: confidence == null ? 1 : confidence }); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
+  app.post('/api/media/brain/derive', auth, (req, res) => { try { res.json({ brain: intel.deriveBrain(req.workspaceId) }); } catch (e) { res.status(500).json({ error: e.message }); } });
+
   // ── Library listing ────────────────────────────────────────────────────────
   app.get('/api/media/projects/:id/assets', auth, (req, res) => {
     try {
@@ -772,6 +840,9 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
         .run(generateId(), asset.workspace_id, asset.id, asset.project_id, userId,
              patch.decision ?? null, patch.rating ?? 0, patch.color_label ?? null, patch.flagged ? 1 : 0);
     }
+    // Learning System (Track 0): capture every human signal so future AI can learn.
+    const action = patch.decision !== undefined ? (patch.decision || 'undecide') : (patch.rating !== undefined ? 'rate' : patch.flagged !== undefined ? 'flag' : 'label');
+    intel.logFeedback(asset.workspace_id, userId, 'asset', asset.id, action, patch);
   }
 
   app.put('/api/media/assets/:id/cull', auth, (req, res) => {
