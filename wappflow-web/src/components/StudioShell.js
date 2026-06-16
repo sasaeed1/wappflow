@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { LayoutGrid, Aperture, BookOpen, Clapperboard, Settings, LogOut, Users, Zap, Camera, ArrowUpRight, HelpCircle, User, Trash2 } from 'lucide-react';
+import { LayoutGrid, Aperture, BookOpen, Clapperboard, Settings, LogOut, Users, Zap, Camera, ArrowUpRight, HelpCircle, User, Trash2, FileSignature } from 'lucide-react';
 import StudioCopilot from './StudioCopilot';
 
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
@@ -68,6 +68,10 @@ export default function StudioShell({ children }) {
                 <span className="ms-menu-ico" style={{ background: 'var(--ms-accent)', color: 'var(--ms-on-accent)' }}><Camera size={15} /></span>
                 <span style={{ flex: 1, fontWeight: 600 }}>Media Studio</span>
               </div>
+              <a className="ms-menu-item" href="/contracts" target="_blank" onClick={() => setMenu(false)}>
+                <span className="ms-menu-ico" style={{ background: 'linear-gradient(135deg,#0ea5e9,#6366f1)' }}><FileSignature size={15} /></span>
+                <span style={{ flex: 1 }}>Contracts Studio</span><ArrowUpRight size={14} style={{ opacity: 0.4 }} />
+              </a>
               <a className="ms-menu-item" href={FLUX_URL} target="_blank" rel="noreferrer" onClick={() => setMenu(false)}>
                 <span className="ms-menu-ico" style={{ background: 'linear-gradient(135deg,#A78BFA,#22D3EE,#EC4899)' }}><Zap size={15} /></span>
                 <span style={{ flex: 1 }}>Flux</span><ArrowUpRight size={14} style={{ opacity: 0.4 }} />
