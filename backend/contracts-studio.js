@@ -308,6 +308,110 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     }
   }).filter(Boolean).join('\n\n');
 
+  // ── Signed PDF + Certificate of Completion (pdfkit) ─────────────────────────
+  function renderBlocksToPdf(d, blocks) {
+    (blocks || []).forEach(b => {
+      const x = b.data || {};
+      switch (b.type) {
+        case 'heading': d.moveDown(0.4).fontSize(x.level === 2 ? 13 : 16).fillColor('#111').text(x.text || ''); break;
+        case 'custom_section': d.moveDown(0.4).fontSize(14).fillColor('#111').text(x.title || ''); if (x.text) d.fontSize(10.5).fillColor('#333').text(x.text); break;
+        case 'text': d.fontSize(10.5).fillColor('#333').text(x.text || ''); break;
+        case 'callout': d.fontSize(10.5).fillColor('#333').text(`${x.emoji || '•'} ${x.text || ''}`); break;
+        case 'pricing_table': (x.rows || []).forEach(r => d.fontSize(10.5).fillColor('#333').text(`${r.name}    ${x.currency || '$'}${r.price}`)); break;
+        case 'package': (x.packages || []).forEach(p => d.fontSize(10.5).fillColor('#333').text(`${p.name}: ${x.currency || '$'}${p.price}`)); break;
+        case 'addons': (x.items || []).forEach(it => d.fontSize(10.5).fillColor('#333').text(`+ ${it.label}: ${x.currency || '$'}${it.price}`)); break;
+        case 'timeline': (x.items || []).forEach(it => d.fontSize(10.5).fillColor('#333').text(`• ${it.title} — ${it.desc || ''}`)); break;
+        case 'checklist': (x.items || []).forEach(it => d.fontSize(10.5).fillColor('#333').text(`☐ ${it.text}`)); break;
+        case 'faq': (x.items || []).forEach(it => { d.fontSize(10.5).fillColor('#111').text(`Q: ${it.q}`); d.fontSize(10).fillColor('#444').text(`A: ${it.a}`); }); break;
+        case 'testimonial': d.fontSize(11).fillColor('#444').text(`"${x.quote}" — ${x.author}`); break;
+        case 'divider': d.moveDown(0.3); break;
+        default: break;
+      }
+      d.moveDown(0.2);
+    });
+  }
+  function generateSignedPdf(doc, signers) {
+    return new Promise((resolve, reject) => {
+      let PDFDocument; try { PDFDocument = require('pdfkit'); } catch (e) { return reject(e); }
+      try {
+        const pdf = new PDFDocument({ size: 'A4', margin: 50 });
+        const outName = `signed-${doc.id}.pdf`;
+        const stream = fs.createWriteStream(path.join(csDir, outName));
+        pdf.pipe(stream);
+        // letterhead
+        try {
+          const ws = db.prepare('SELECT letterhead_url FROM cs_settings WHERE workspace_id = ?').get(doc.workspace_id);
+          if (ws && ws.letterhead_url) { const lp = path.join(uploadsDir, ws.letterhead_url.replace(/^\/?uploads\//, '')); if (fs.existsSync(lp)) { pdf.image(lp, { fit: [495, 110], align: 'center' }); pdf.moveDown(); } }
+        } catch { /* letterhead optional */ }
+        pdf.fontSize(20).fillColor('#111').text(doc.title || 'Document');
+        pdf.fontSize(10).fillColor('#666').text(`${(doc.type || 'document').toUpperCase()} · Completed ${new Date().toLocaleString()}`);
+        pdf.moveDown();
+        const settings = J(doc.settings, {});
+        if (settings.upload) pdf.fontSize(11).fillColor('#333').text(`Attached document: ${settings.upload.filename}`).moveDown();
+        renderBlocksToPdf(pdf, J(doc.blocks, []));
+        // signatures
+        pdf.addPage().fontSize(16).fillColor('#111').text('Signatures').moveDown(0.5);
+        (signers || []).filter(s => s.status === 'signed').forEach(s => {
+          pdf.fontSize(11).fillColor('#111').text(`${s.typed_name || s.name || '—'}  ·  ${s.role}`);
+          pdf.fontSize(9).fillColor('#666').text(`Signed ${s.signed_at || ''}${s.ip ? `  ·  IP ${s.ip}` : ''}`);
+          if (s.signature_data && String(s.signature_data).startsWith('data:image')) { try { pdf.image(Buffer.from(s.signature_data.split(',')[1], 'base64'), { fit: [200, 70] }); } catch { /* bad sig */ } }
+          pdf.moveDown();
+        });
+        // certificate of completion
+        pdf.addPage().fontSize(16).fillColor('#111').text('Certificate of Completion').moveDown(0.5);
+        pdf.fontSize(9).fillColor('#444');
+        pdf.text(`Document ID: ${doc.id}`);
+        pdf.text(`Version: ${doc.version || 1}`);
+        pdf.text(`Integrity hash (SHA-256): ${doc.doc_hash || ''}`);
+        pdf.moveDown(0.5).fontSize(11).fillColor('#111').text('Audit trail').moveDown(0.3).fontSize(8.5).fillColor('#555');
+        db.prepare('SELECT type, actor, ip, created_at FROM cs_events WHERE document_id = ? ORDER BY created_at').all(doc.id)
+          .forEach(e => pdf.text(`${e.created_at}   ·   ${e.type}${e.actor ? `   ·   ${e.actor}` : ''}${e.ip ? `   ·   ${e.ip}` : ''}`));
+        pdf.end();
+        stream.on('finish', () => resolve(csFileUrl(outName)));
+        stream.on('error', reject);
+      } catch (e) { reject(e); }
+    });
+  }
+
+  // Deliver the signing link to whoever hasn't signed — shared by manual + auto reminders.
+  async function sendReminder(d, channels) {
+    const link = `${clientBaseUrl}/d/${d.token}`;
+    const pending = db.prepare("SELECT * FROM cs_signers WHERE document_id = ? AND status = 'pending' ORDER BY sign_order").all(d.id);
+    const targets = pending.length ? pending : db.prepare('SELECT * FROM cs_signers WHERE document_id = ? ORDER BY sign_order LIMIT 1').all(d.id);
+    const ownerId = workspaceOwner(d.workspace_id, d.created_by);
+    const delivery = {};
+    for (const s of targets) {
+      if (channels.includes('whatsapp') && s.phone) { try { await sendClientMessage({ lead: d.lead_id ? { id: d.lead_id, customer_phone: s.phone } : { customer_phone: s.phone }, userId: d.created_by, text: `⏰ Reminder — please review & sign "${d.title}":\n${link}` }); delivery.whatsapp = 'sent'; } catch { delivery.whatsapp = 'failed'; } }
+      if (channels.includes('email') && s.email) { try { await sendEmail({ workspaceOwnerId: ownerId, to: s.email, subject: `Reminder: please sign "${d.title}"`, html: `<p>Hello ${s.name || ''},</p><p>Just a gentle reminder to review and sign <strong>${d.title}</strong>.</p><p><a href="${link}" style="display:inline-block;padding:11px 20px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Open the document</a></p><p>${link}</p>`, text: `Reminder — sign "${d.title}": ${link}` }); delivery.email = 'sent'; } catch { delivery.email = 'failed'; } }
+    }
+    return delivery;
+  }
+
+  // Daily auto-reminder cadence — opt-in per document (settings.auto_remind).
+  async function autoReminderSweep() {
+    const rows = db.prepare("SELECT * FROM cs_documents WHERE token IS NOT NULL AND status IN ('sent','viewed')").all();
+    for (const d of rows) {
+      try {
+        const ar = J(d.settings, {}).auto_remind;
+        if (!ar || !ar.enabled) continue;
+        const every = Math.max(1, Number(ar.every_days) || 3);
+        const max = Math.max(1, Number(ar.max) || 2);
+        const sentCount = db.prepare("SELECT COUNT(*) c FROM cs_events WHERE document_id = ? AND type = 'reminded' AND meta LIKE '%\"auto\":true%'").get(d.id).c;
+        if (sentCount >= max) continue;
+        const lastRem = db.prepare("SELECT MAX(created_at) m FROM cs_events WHERE document_id = ? AND type = 'reminded'").get(d.id).m;
+        const since = lastRem || d.sent_at;
+        if (!since) continue;
+        const days = (Date.now() - new Date(String(since).replace(' ', 'T') + 'Z').getTime()) / 86400000;
+        if (days < every) continue;
+        const channels = Array.isArray(ar.channels) && ar.channels.length ? ar.channels : ['whatsapp', 'email'];
+        const delivery = await sendReminder(d, channels);
+        recordEvent(d, 'reminded', { actor: 'system', meta: { auto: true, channels, delivery } });
+        if (d.lead_id) addContactHistory(d.lead_id, d.created_by, 'contract', `Auto-reminder sent for "${d.title}"`);
+        broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
+      } catch { /* skip this doc */ }
+    }
+  }
+
   // ── Dashboard overview (the living workspace) ───────────────────────────────
   app.get('/api/cs/overview', auth, (req, res) => {
     try {
@@ -484,15 +588,8 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       if (!d) return res.status(404).json({ error: 'Document not found' });
       if (!d.token) return res.status(400).json({ error: 'Send the document first.' });
       if (['signed', 'completed', 'declined', 'expired'].includes(d.status)) return res.status(400).json({ error: `Nothing to remind — this document is ${d.status}.` });
-      const link = `${clientBaseUrl}/d/${d.token}`;
       const channels = Array.isArray(req.body.channels) && req.body.channels.length ? req.body.channels : ['whatsapp'];
-      const pending = db.prepare("SELECT * FROM cs_signers WHERE document_id = ? AND status = 'pending' ORDER BY sign_order").all(d.id);
-      const targets = pending.length ? pending : db.prepare('SELECT * FROM cs_signers WHERE document_id = ? ORDER BY sign_order LIMIT 1').all(d.id);
-      const delivery = {};
-      for (const s of targets) {
-        if (channels.includes('whatsapp') && s.phone) { try { await sendClientMessage({ lead: d.lead_id ? { id: d.lead_id, customer_phone: s.phone } : { customer_phone: s.phone }, userId: req.userId, text: `⏰ Reminder — please review & sign "${d.title}":\n${link}` }); delivery.whatsapp = 'sent'; } catch { delivery.whatsapp = 'failed'; } }
-        if (channels.includes('email') && s.email) { try { await sendEmail({ workspaceOwnerId: req.workspaceOwnerId, to: s.email, subject: `Reminder: please sign "${d.title}"`, html: `<p>Hello ${s.name || ''},</p><p>Just a gentle reminder to review and sign <strong>${d.title}</strong>.</p><p><a href="${link}" style="display:inline-block;padding:11px 20px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Open the document</a></p><p>${link}</p>`, text: `Reminder — sign "${d.title}": ${link}` }); delivery.email = 'sent'; } catch { delivery.email = 'failed'; } }
-      }
+      const delivery = await sendReminder(d, channels);
       recordEvent(d, 'reminded', { actor: req.userId, meta: { channels, delivery } });
       if (d.lead_id) addContactHistory(d.lead_id, req.userId, 'contract', `Reminder sent for "${d.title}"`);
       logAudit(req.workspaceId, req.userId, 'cs_remind', 'cs_document', d.id, { channels });
@@ -751,7 +848,16 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       recordEvent(d, 'signed', { actor: 'client', ip, ua, meta: { typed_name } });
       if (d.lead_id) addContactHistory(d.lead_id, d.created_by, 'contract', `${d.type} "${d.title}" signed by ${typed_name}`);
       let automations = [];
-      if (allSigned) { try { automations = runAutomations(d, { selection, signerName: typed_name }); } catch {} }
+      if (allSigned) {
+        try { automations = runAutomations(d, { selection, signerName: typed_name }); } catch {}
+        try {
+          const freshDoc = db.prepare('SELECT * FROM cs_documents WHERE id = ?').get(d.id);
+          const allSigners = db.prepare('SELECT * FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
+          const pdfUrl = await generateSignedPdf(freshDoc, allSigners);
+          const s2 = J(freshDoc.settings, {}); s2.signed_pdf = pdfUrl;
+          db.prepare('UPDATE cs_documents SET settings = ? WHERE id = ?').run(JSON.stringify(s2), d.id);
+        } catch { /* PDF is best-effort */ }
+      }
       broadcastToWorkspace(d.workspace_id, 'cs_signed', { id: d.id, automations });
       try { const lead = d.lead_id ? db.prepare('SELECT * FROM leads WHERE id = ?').get(d.lead_id) : null; if (lead?.customer_phone) await sendClientMessage({ lead, userId: d.created_by, text: `✅ "${d.title}" was signed. Thank you!` }); } catch {}
       res.json({ ok: true, status, doc_hash: hash });
@@ -804,10 +910,11 @@ QUESTION: ${q}`;
   });
 
   // ── Phase 4: daily expiry sweep (status only — never sends anything) ─────────
-  if (cron) cron.schedule('0 8 * * *', () => {
+  if (cron) cron.schedule('0 8 * * *', async () => {
     try {
       const r = db.prepare("UPDATE cs_documents SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP AND status IN ('sent','viewed')").run();
       if (r.changes) console.log(`📄 Contracts Studio: marked ${r.changes} document(s) expired`);
     } catch (e) { console.error('cs expiry sweep:', e.message); }
+    try { await autoReminderSweep(); } catch (e) { console.error('cs auto-reminder sweep:', e.message); }
   });
 };

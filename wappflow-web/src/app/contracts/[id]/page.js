@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Eye, X, Check, Cloud, Send, Copy, MessageCircle, Mail, Settings, Zap, CreditCard, ShieldCheck, FolderPlus, Sparkles, Wand2, AlertTriangle, FileText, Clock, Users, UserPlus, Bell, Paperclip, Image as ImageIcon } from 'lucide-react';
-import { csAPI } from '../../../lib/api';
+import { csAPI, mediaUrl } from '../../../lib/api';
 import ContractsStudioShell from '../../../components/ContractsStudioShell';
 import { BLOCK_TYPES, defaultData, BlockView, DocFrame, computeTotals } from '../blocks';
 import '../contracts.css';
@@ -194,6 +194,9 @@ function PeopleModal({ id, onClose }) {
 
         {!data ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p> : (
           <>
+            {data.settings?.signed_pdf && (
+              <a href={mediaUrl(data.settings.signed_pdf)} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', marginBottom: 16, padding: '11px', borderRadius: 11, background: '#10b981', color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none' }}><FileText size={15} /> Download signed PDF &amp; certificate</a>
+            )}
             {canRemind && (
               <button onClick={remind} disabled={remindState === 'working'} style={{ width: '100%', marginBottom: 16, padding: '11px', borderRadius: 11, border: 'none', cursor: 'pointer', background: remindState === 'done' ? '#10b981' : 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 {remindState === 'done' ? <><Check size={15} /> Reminder sent</> : <><Bell size={15} /> {remindState === 'working' ? 'Sending…' : 'Send a reminder to pending signers'}</>}
@@ -415,6 +418,15 @@ function SettingsModal({ id, settings, setSettings, hasLead, wsLetterhead, onClo
         <SRow icon={ShieldCheck} title="Require internal approval before sending" sub="Lock sending until someone signs off" on={!!settings.require_approval} toggle={() => setSettings(s => ({ ...s, require_approval: !s.require_approval }))}>
           {approve === 'done' ? <span style={{ fontSize: 12.5, color: '#10b981', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Check size={14} /> Approved — ready to send</span>
             : <button onClick={doApprove} disabled={approve === 'working'} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 700 }}>{approve === 'working' ? 'Approving…' : 'Approve now'}</button>}
+        </SRow>
+
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', margin: '18px 0 2px', display: 'flex', alignItems: 'center', gap: 6 }}><Bell size={12} /> Reminders</div>
+        <SRow icon={Bell} title="Auto-remind unsigned signers" sub="Nudge over WhatsApp & email on a schedule until they sign" on={!!(settings.auto_remind && settings.auto_remind.enabled)} toggle={() => setSettings(s => ({ ...s, auto_remind: { ...(s.auto_remind || {}), enabled: !(s.auto_remind && s.auto_remind.enabled) } }))}>
+          <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Every</span>
+          <Sel value={(settings.auto_remind && settings.auto_remind.every_days) || 3} onChange={e => setSettings(s => ({ ...s, auto_remind: { ...(s.auto_remind || {}), every_days: Number(e.target.value) } }))}>{[2, 3, 5, 7].map(n => <option key={n} value={n}>{n}</option>)}</Sel>
+          <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>days · up to</span>
+          <Sel value={(settings.auto_remind && settings.auto_remind.max) || 2} onChange={e => setSettings(s => ({ ...s, auto_remind: { ...(s.auto_remind || {}), max: Number(e.target.value) } }))}>{[1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}</Sel>
+          <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>times</span>
         </SRow>
 
         <button onClick={onClose} style={{ width: '100%', marginTop: 18, padding: '12px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontWeight: 800, fontSize: 14.5 }}>Done</button>

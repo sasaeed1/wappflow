@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { fetchPublicDoc, signPublicDoc, declinePublicDoc, askPublicDoc, trackPublicDoc } from '../../../lib/api';
+import { fetchPublicDoc, signPublicDoc, declinePublicDoc, askPublicDoc, trackPublicDoc, mediaUrl } from '../../../lib/api';
 import { BlockView, DocFrame } from '../../contracts/blocks';
 import '../../contracts/contracts.css';
 
@@ -93,9 +93,10 @@ export default function PublicDocPage() {
           <div className="cs-body" style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
             <DocFrame letterhead={data.letterhead} upload={data.settings?.upload} />
             {done && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 'var(--cs-radius)', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 'var(--cs-radius)', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', flexWrap: 'wrap' }}>
                 <span style={{ width: 30, height: 30, borderRadius: 999, background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>✓</span>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cs-ink)' }}>Signed — thank you. A copy has been recorded.</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cs-ink)', flex: 1 }}>Signed — thank you. A copy has been recorded.</div>
+                {data.settings?.signed_pdf && <a href={mediaUrl(data.settings.signed_pdf)} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: '#10b981', padding: '8px 14px', borderRadius: 9, textDecoration: 'none' }}>Download signed PDF</a>}
               </div>
             )}
             {blocks.map((b, idx) => (
