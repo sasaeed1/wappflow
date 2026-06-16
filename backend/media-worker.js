@@ -61,11 +61,41 @@ module.exports = function createMediaWorker(db, deps = {}) {
   function publicUrl(relUnderUploads) {
     return '/' + ['uploads', relUnderUploads].join('/').replace(/\/+/g, '/');
   }
+  const RAW_EXTS = ['cr2', 'cr3', 'nef', 'arw', 'raf', 'rw2', 'dng', 'orf', 'srw', 'pef'];
+  const isRawFile = (filename = '') => RAW_EXTS.includes((filename.split('.').pop() || '').toLowerCase());
   function isProcessableImage(mime = '', filename = '') {
-    const ext = (filename.split('.').pop() || '').toLowerCase();
-    const raw = ['cr2', 'cr3', 'nef', 'arw', 'raf', 'rw2', 'dng', 'orf', 'srw', 'pef'];
-    if (raw.includes(ext)) return false;            // RAW → no JS preview
+    if (isRawFile(filename)) return false;          // RAW → handled by the RAW pipeline
     return mime.startsWith('image/');
+  }
+
+  // Run a binary and capture stdout as a Buffer (null on any failure). Used to
+  // shell out to exiftool/dcraw for RAW preview extraction — both OPTIONAL.
+  function runCapture(cmd, args) {
+    return new Promise((resolve) => {
+      try {
+        const p = spawn(cmd, args); const chunks = [];
+        p.stdout.on('data', d => chunks.push(d)); p.stderr.on('data', () => {});
+        p.on('error', () => resolve(null));
+        p.on('close', (code) => resolve(code === 0 && chunks.length ? Buffer.concat(chunks) : null));
+      } catch { resolve(null); }
+    });
+  }
+  // RAW → JPEG preview buffer. Prefers the embedded full-size preview (instant,
+  // no decode): exiftool → dcraw → exifr thumbnail. Returns null if none work.
+  async function extractRawPreview(absPath) {
+    const EXIFTOOL = process.env.EXIFTOOL_PATH || 'exiftool';
+    for (const tag of ['-PreviewImage', '-JpgFromRaw', '-ThumbnailImage']) {
+      const buf = await runCapture(EXIFTOOL, ['-b', tag, absPath]);
+      if (buf && buf.length > 2000) return buf;
+    }
+    const DCRAW = process.env.DCRAW_PATH || 'dcraw';
+    try {
+      await new Promise((res) => { const p = spawn(DCRAW, ['-e', absPath]); p.on('error', res); p.on('close', res); });
+      const thumb = absPath.replace(/\.[^.]+$/, '.thumb.jpg');
+      if (fs.existsSync(thumb)) { const b = fs.readFileSync(thumb); try { fs.unlinkSync(thumb); } catch {} if (b.length > 2000) return b; }
+    } catch { /* dcraw absent */ }
+    if (exifr && exifr.thumbnail) { try { const b = await exifr.thumbnail(absPath); if (b && b.length > 1000) return Buffer.from(b); } catch {} }
+    return null;
   }
   function hamming(a, b) {
     if (!a || !b || a.length !== b.length) return 64;
@@ -147,18 +177,27 @@ module.exports = function createMediaWorker(db, deps = {}) {
     if (!asset) return { note: 'asset-gone' };
     const absPath = path.join(uploadsDir, asset.storage_key);
 
-    if (!Jimp || !isProcessableImage(asset.mime, asset.filename) || !fs.existsSync(absPath)) {
-      // RAW/video/missing-lib → keep original as-is, no JS image preview.
+    // Acquire a Jimp image: a normal raster directly, or a RAW's embedded preview.
+    let image = null, rawDerived = false;
+    if (Jimp && fs.existsSync(absPath)) {
+      if (isProcessableImage(asset.mime, asset.filename)) {
+        try { image = await Jimp.read(absPath); } catch { image = null; }
+      } else if (isRawFile(asset.filename)) {
+        const buf = await extractRawPreview(absPath);
+        if (buf) { try { image = await Jimp.read(buf); rawDerived = true; } catch { image = null; } }
+      }
+    }
+
+    if (!image) {
+      // video/audio/missing-lib/undecodable RAW → keep original as-is.
       db.prepare("UPDATE ms_assets SET status = 'ready' WHERE id = ?").run(asset.id);
-      // Video + audio assets enter the ffmpeg lane: probe (→ poster/proxy if it has video).
       if (['video', 'audio'].includes(asset.type) || /^(video|audio)\//.test(asset.mime || '')) {
         enqueue('video_probe', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
         return { note: 'media-queued' };
       }
-      return { note: Jimp ? 'no-preview' : 'degraded-no-jimp' };
+      return { note: Jimp ? (isRawFile(asset.filename) ? 'raw-no-preview' : 'no-preview') : 'degraded-no-jimp' };
     }
 
-    const image = await Jimp.read(absPath);
     const width = image.bitmap.width, height = image.bitmap.height;
 
     // variants
@@ -170,6 +209,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
       original: publicUrl(asset.storage_key),
       web: publicUrl(webRel),
       thumb: publicUrl(thumbRel),
+      ...(rawDerived ? { raw_preview: true } : {}),
     };
 
     // exif + cv
