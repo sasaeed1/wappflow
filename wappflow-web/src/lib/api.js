@@ -432,6 +432,22 @@ export async function declinePublicDoc(token, reason) {
 export const clientPortalAPI = {
   link: (leadId) => api.post(`/client-portal/${leadId}`),
 };
+export const bookingAPI = {
+  settings: () => api.get('/booking/settings'),
+  updateSettings: (settings, slug) => api.put('/booking/settings', { settings, slug }),
+  list: () => api.get('/booking/list'),
+  cancel: (id) => api.post(`/booking/${id}/cancel`),
+};
+export async function fetchBookingPublic(slug) {
+  const r = await fetch(`${API_URL}/booking/public/${encodeURIComponent(slug)}`);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'not_found');
+  return r.json();
+}
+export async function createBooking(slug, data) {
+  const r = await fetch(`${API_URL}/booking/public/${encodeURIComponent(slug)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not book');
+  return r.json();
+}
 export async function fetchClientPortal(token) {
   const r = await fetch(`${API_URL}/client-portal/public/${encodeURIComponent(token)}`);
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'not_found');

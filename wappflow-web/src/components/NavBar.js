@@ -8,7 +8,7 @@ import {
   MessageCircle, X, Clock, CheckCircle, CheckCircle2, Brain,
   FileText, Inbox, Menu, ChevronDown,
   Camera, Globe, MonitorSmartphone, Sparkles,
-  Crown, Lock
+  Crown, Lock, Calendar
 } from 'lucide-react';
 
 // Flux — sibling AI content engine. Opens in a new tab.
@@ -170,6 +170,7 @@ const NAV_ITEMS = [
   { label: 'Clients',   icon: UserCheck,       path: '/clients' },
   { label: 'Inbox',     icon: Inbox,           path: '/chat' },
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
+  { label: 'Bookings',  icon: Calendar,        path: '/bookings' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports',
     lockFeature: 'analytics', requiredPlan: 'Growth' },
 ];
