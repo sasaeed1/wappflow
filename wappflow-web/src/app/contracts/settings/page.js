@@ -14,12 +14,19 @@ export default function ContractsSettingsPage() {
   const [settings, setSettings] = useState({});
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [clauses, setClauses] = useState([]);
   const fileRef = useRef(null);
 
+  const loadClauses = () => csAPI.clauses().then(r => setClauses(r.data.clauses || [])).catch(() => {});
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/contracts/settings'); return; }
     csAPI.getSettings().then(r => { setLetterhead(r.data.letterhead_url || null); setSettings(r.data.settings || {}); }).catch(() => {});
+    loadClauses();
   }, []); // eslint-disable-line
+  const addClause = async () => { await csAPI.createClause({ title: 'New clause', body: '' }); loadClauses(); };
+  const saveClause = async (c) => { await csAPI.updateClause(c.id, { title: c.title, body: c.body }); setSaved(true); setTimeout(() => setSaved(false), 1200); };
+  const delClause = async (id) => { await csAPI.deleteClause(id); setClauses(cs => cs.filter(x => x.id !== id)); };
+  const patchClause = (id, p) => setClauses(cs => cs.map(x => x.id === id ? { ...x, ...p } : x));
 
   const save = async (patch) => {
     const next = { ...settings, ...patch }; setSettings(next);
@@ -83,6 +90,22 @@ export default function ContractsSettingsPage() {
 
         <Card icon={FileText} title="Sender name" sub="Shown to clients on delivery emails (defaults to your company name).">
           <input value={settings.sender_name || ''} onChange={e => setSettings(s => ({ ...s, sender_name: e.target.value }))} onBlur={e => save({ sender_name: e.target.value })} placeholder="e.g. Sami Studios" style={{ width: '100%', maxWidth: 360, padding: '10px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+        </Card>
+
+        <Card icon={FileText} title="Clause library" sub="Reusable clauses you can drop into any document from the builder.">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {clauses.length === 0 && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>No clauses yet — add cancellation, usage rights, payment terms…</p>}
+            {clauses.map(c => (
+              <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                  <input value={c.title} onChange={e => patchClause(c.id, { title: e.target.value })} onBlur={() => saveClause(c)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, fontWeight: 600, outline: 'none' }} />
+                  <button onClick={() => delClause(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={15} /></button>
+                </div>
+                <textarea value={c.body} onChange={e => patchClause(c.id, { body: e.target.value })} onBlur={() => saveClause(c)} rows={2} placeholder="Clause text…" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+              </div>
+            ))}
+          </div>
+          <button onClick={addClause} style={{ ...btn, marginTop: 12 }}>+ Add clause</button>
         </Card>
       </div>
     </ContractsStudioShell>

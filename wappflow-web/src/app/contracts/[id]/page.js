@@ -29,6 +29,7 @@ export default function BuilderPage() {
   const [showAI, setShowAI] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
+  const [showClauses, setShowClauses] = useState(false);
   const [tplSaved, setTplSaved] = useState(false);
   const [wsLetterhead, setWsLetterhead] = useState(null);
   const [wsDefaults, setWsDefaults] = useState({});
@@ -82,6 +83,7 @@ export default function BuilderPage() {
         <button onClick={() => setShowAI(true)} title="AI assistant" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 9, border: '1px solid transparent', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}><Sparkles size={14} /> AI</button>
         <button onClick={() => setShowPeople(true)} title="Signers & activity" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Users size={14} /></button>
         <button onClick={() => setShowVersions(true)} title="Version history" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><History size={14} /></button>
+        <button onClick={() => setShowClauses(true)} title="Insert a saved clause" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>¶</button>
         <button onClick={saveAsTemplate} title="Save as template" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: tplSaved ? '#10b981' : 'transparent', color: tplSaved ? '#fff' : 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{tplSaved ? <><Check size={14} /> Saved</> : <BookMarked size={14} />}</button>
         <button onClick={() => setShowSettings(true)} title="Automations & settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Settings size={14} /></button>
         <button onClick={() => setPreview(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Eye size={14} /> Preview</button>
@@ -161,14 +163,44 @@ export default function BuilderPage() {
       {showAI && <AIModal id={id} type={doc.type} blocks={blocks} setBlocks={setBlocks} selectedBlock={blocks.find(b => b.id === selected)} updateBlock={updateBlock} onClose={() => setShowAI(false)} />}
       {showPeople && <PeopleModal id={id} onClose={() => setShowPeople(false)} />}
       {showVersions && <VersionsModal id={id} onClose={() => setShowVersions(false)} />}
+      {showClauses && <ClausePickerModal onClose={() => setShowClauses(false)} onInsert={(c) => { setBlocks(bs => [...bs, { id: uid(), type: 'heading', data: { text: c.title, level: 2 } }, { id: uid(), type: 'text', data: { text: c.body } }]); setShowClauses(false); }} />}
     </ContractsStudioShell>
+  );
+}
+
+function ClausePickerModal({ onClose, onInsert }) {
+  const [clauses, setClauses] = useState(null);
+  useEffect(() => { csAPI.clauses().then(r => setClauses(r.data.clauses || [])).catch(() => setClauses([])); }, []);
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, maxHeight: '80vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Insert a clause</h3>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+        </div>
+        {!clauses ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p>
+          : clauses.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No clauses yet — add them in Contracts Studio → Settings → Clause library.</p>
+          : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {clauses.map(c => (
+                <button key={c.id} onClick={() => onInsert(c)} style={{ textAlign: 'left', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer' }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{c.title}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.body}</div>
+                </button>
+              ))}
+            </div>
+          )}
+      </div>
+    </div>
   );
 }
 
 function VersionsModal({ id, onClose }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState('');
+  const [viewing, setViewing] = useState(null);
   useEffect(() => { csAPI.versions(id).then(r => setData(r.data)).catch(() => setData({ versions: [] })); }, []); // eslint-disable-line
+  const viewDiff = async (vid) => { try { const r = await csAPI.getVersion(id, vid); setViewing(r.data); } catch {} };
   const restore = async (vid) => {
     if (!window.confirm('Restore this version? Your current content will be replaced (sent copies are unaffected).')) return;
     setBusy(vid);
@@ -192,15 +224,29 @@ function VersionsModal({ id, onClose }) {
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>{v.label || `v${v.version}`}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{new Date(v.created_at + 'Z').toLocaleString()}{v.author ? ` · ${v.author}` : ''}</div>
                   </div>
+                  <button onClick={() => viewDiff(v.id)} style={{ padding: '7px 11px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', background: 'transparent', color: 'var(--text-muted)', fontSize: 12.5, fontWeight: 600 }}>Compare</button>
                   <button onClick={() => restore(v.id)} disabled={busy === v.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', background: 'transparent', color: 'var(--text)', fontSize: 12.5, fontWeight: 600 }}><RotateCcw size={13} /> {busy === v.id ? 'Restoring…' : 'Restore'}</button>
                 </div>
               ))}
             </div>
           )}
+        {viewing && (
+          <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>{viewing.version.label || `v${viewing.version.version}`} vs current</span>
+              <button onClick={() => setViewing(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12.5 }}>Close</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div><div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>This version</div><pre style={diffPre}>{viewing.version.text || '(empty)'}</pre></div>
+              <div><div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: 4 }}>Current</div><pre style={diffPre}>{viewing.current_text || '(empty)'}</pre></div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+const diffPre = { whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11, lineHeight: 1.5, color: 'var(--text)', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, maxHeight: 240, overflowY: 'auto', margin: 0, fontFamily: 'inherit' };
 
 const SIGNER_ROLES = [['client', 'Client'], ['company', 'Company'], ['witness', 'Witness'], ['cosigner', 'Co-signer']];
 const EVENT_LABEL = {
