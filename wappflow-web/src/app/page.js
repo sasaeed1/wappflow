@@ -67,6 +67,7 @@ export default function Landing() {
         <AISection />
         <FluxSection />
         <MediaStudioSection />
+        <ContractsStudioSection />
         <MeetingsSection />
         <HuddleSection />
         <PlatformSection />
@@ -106,6 +107,7 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
             Flux <span className="lp-nav-flux-pill">NEW</span>
           </a>
           <a href="#studio">Studio</a>
+          <a href="#contracts">Contracts</a>
           <a href="#meetings">Meetings</a>
           <a href="#platforms">Channels</a>
           <a href="#pricing">Pricing</a>
@@ -137,6 +139,7 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
           <a href="#features" onClick={() => setMobileOpen(false)}>Features</a>
           <a href="#ai" onClick={() => setMobileOpen(false)}>AI</a>
           <a href="#studio" onClick={() => setMobileOpen(false)}>Studio</a>
+          <a href="#contracts" onClick={() => setMobileOpen(false)}>Contracts</a>
           <a href="#flux" onClick={() => setMobileOpen(false)} className="lp-nav-flux">
             Flux <span className="lp-nav-flux-pill">NEW</span>
           </a>
@@ -977,6 +980,15 @@ function MediaStudioSection() {
                 </div>
               </div>
             </Reveal>
+            <Reveal delay={240}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon" style={{ background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff' }}><Lock size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">Watermark &amp; protect, in one click</div>
+                  <div className="lp-mb-desc">Bulk-apply a logo or text watermark to client previews — your originals stay pristine, the gallery stays protected.</div>
+                </div>
+              </div>
+            </Reveal>
           </div>
         </div>
 
@@ -984,8 +996,9 @@ function MediaStudioSection() {
           <div className="lp-meeting-card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ position: 'relative', height: 184, background: 'linear-gradient(135deg,#1f2937 0%,#0ea5e9 55%,#a78bfa 100%)' }}>
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent 62%)' }} />
-              <div style={{ position: 'absolute', right: 14, top: 14, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: 'rgba(16,185,129,0.92)', color: '#fff', fontSize: 11, fontWeight: 700 }}>
-                <CheckCircle2 size={12} /> Published
+              <div style={{ position: 'absolute', right: 14, top: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 999, background: 'rgba(14,165,233,0.92)', color: '#fff', fontSize: 10.5, fontWeight: 700 }}><Lock size={11} /> Watermarked</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: 'rgba(16,185,129,0.92)', color: '#fff', fontSize: 11, fontWeight: 700 }}><CheckCircle2 size={12} /> Published</span>
               </div>
               <div style={{ position: 'absolute', left: 18, bottom: 16, color: '#fff' }}>
                 <div style={{ fontSize: 10.5, letterSpacing: '0.2em', textTransform: 'uppercase', opacity: 0.82 }}>Wedding · delivered</div>
@@ -1007,6 +1020,150 @@ function MediaStudioSection() {
             </div>
           </div>
         </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function ContractsStudioSection() {
+  const PKGS = [
+    { name: 'Essential', price: 2400 },
+    { name: 'Signature', price: 3800, popular: true },
+    { name: 'Luxe', price: 5600 },
+  ];
+  const ADDONS = [
+    { label: 'Second shooter', price: 600 },
+    { label: 'Drone coverage', price: 450 },
+  ];
+  const [pkg, setPkg] = useState(1);
+  const [addons, setAddons] = useState({ 0: false, 1: false });
+  const [signed, setSigned] = useState(false);
+  const total = PKGS[pkg].price + ADDONS.reduce((s, a, i) => s + (addons[i] ? a.price : 0), 0);
+  const money = (n) => `$${n.toLocaleString()}`;
+
+  return (
+    <section id="contracts" className="lp-section lp-meetings-section">
+      <div className="lp-meetings-orb" aria-hidden />
+      <div className="lp-container lp-meetings-layout">
+        {/* Interactive proposal mock — the client experience, live */}
+        <Reveal delay={120}>
+          <div className="lp-meeting-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid rgba(99,102,241,0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '13px 16px', borderBottom: '1px solid rgba(148,163,184,0.16)', background: 'linear-gradient(135deg, rgba(14,165,233,0.14), rgba(99,102,241,0.14))' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}><FileText size={14} /></div>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: '#e2e8f0' }}>Wedding Photography Proposal</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10.5, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Live</span>
+            </div>
+
+            <div style={{ padding: 14 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 8 }}>Choose your collection</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7 }}>
+                {PKGS.map((p, i) => {
+                  const on = pkg === i;
+                  return (
+                    <button key={i} onClick={() => { setPkg(i); setSigned(false); }} style={{ position: 'relative', textAlign: 'left', cursor: 'pointer', padding: '11px 10px', borderRadius: 11, background: on ? 'rgba(99,102,241,0.16)' : 'rgba(148,163,184,0.06)', border: `1.5px solid ${on ? '#6366f1' : 'rgba(148,163,184,0.18)'}`, transition: 'all .15s' }}>
+                      {p.popular && <span style={{ position: 'absolute', top: -8, right: 8, fontSize: 8.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#fff', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', padding: '2px 7px', borderRadius: 999 }}>Popular</span>}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>{p.name}</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: on ? '#a5b4fc' : '#cbd5e1', marginTop: 2 }}>{money(p.price)}</div>
+                      <div style={{ marginTop: 6, fontSize: 10, fontWeight: 700, color: on ? '#a5b4fc' : '#64748b' }}>{on ? '✓ Selected' : 'Select'}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#94a3b8', margin: '14px 0 8px' }}>Add-ons</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {ADDONS.map((a, i) => {
+                  const on = addons[i];
+                  return (
+                    <button key={i} onClick={() => { setAddons(s => ({ ...s, [i]: !s[i] })); setSigned(false); }} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '9px 12px', borderRadius: 10, background: on ? 'rgba(99,102,241,0.12)' : 'rgba(148,163,184,0.06)', border: `1px solid ${on ? '#6366f1' : 'rgba(148,163,184,0.18)'}` }}>
+                      <span style={{ width: 17, height: 17, borderRadius: 5, border: `1.5px solid ${on ? '#6366f1' : '#475569'}`, background: on ? '#6366f1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{on && <Check size={11} color="#fff" />}</span>
+                      <span style={{ flex: 1, fontSize: 12.5, color: '#cbd5e1', textAlign: 'left' }}>{a.label}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#94a3b8' }}>+{money(a.price)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, padding: '12px 14px', borderRadius: 12, background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(148,163,184,0.16)' }}>
+                <div>
+                  <div style={{ fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#64748b' }}>Total</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: '#fff', lineHeight: 1, letterSpacing: '-0.02em' }}>{money(total)}</div>
+                </div>
+                <button onClick={() => setSigned(true)} style={{ padding: '12px 20px', borderRadius: 11, border: 'none', cursor: 'pointer', background: signed ? '#10b981' : 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff', fontWeight: 800, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 7, transition: 'background .2s' }}>
+                  {signed ? <><Check size={15} /> Signed</> : <><Crown size={14} /> Accept &amp; sign</>}
+                </button>
+              </div>
+
+              <div style={{ marginTop: 10, display: 'flex', gap: 7 }}>
+                {[['Pipeline', Target], ['Invoice', CreditCard], ['Project', Camera]].map(([label, Icon], i) => (
+                  <div key={i} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 9, fontSize: 11, fontWeight: 700, transition: 'all .3s', transitionDelay: `${i * 90}ms`, background: signed ? 'rgba(16,185,129,0.14)' : 'rgba(148,163,184,0.06)', color: signed ? '#34d399' : '#64748b', border: `1px solid ${signed ? 'rgba(16,185,129,0.4)' : 'rgba(148,163,184,0.14)'}` }}>
+                    {signed ? <Check size={12} /> : <Icon size={12} />} {label}
+                  </div>
+                ))}
+              </div>
+              <div style={{ textAlign: 'center', fontSize: 10.5, color: signed ? '#34d399' : '#64748b', marginTop: 8, transition: 'color .3s' }}>
+                {signed ? 'Signed → pipeline moved, invoice & project created automatically' : 'On signing, the contract runs your business for you'}
+              </div>
+            </div>
+          </div>
+        </Reveal>
+
+        <div className="lp-meetings-text">
+          <Reveal>
+            <div className="lp-section-eyebrow"><FileText size={13} /> Contracts Studio</div>
+          </Reveal>
+          <Reveal delay={80}>
+            <h2 className="lp-section-title left">
+              Proposals &amp; contracts that <span className="lp-gradient">close themselves</span>.
+            </h2>
+          </Reveal>
+          <Reveal delay={140}>
+            <p className="lp-section-sub left">
+              Not a PDF you email and chase. Build stunning, interactive documents block-by-block, let clients pick
+              packages and sign on a beautiful page — then watch the signed deal move your pipeline, raise the invoice
+              and spin up the project, all on its own. Try the live proposal &rarr;
+            </p>
+          </Reveal>
+
+          <div className="lp-meeting-bullets">
+            <Reveal delay={60}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-google"><Layers size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">Block-based builder &amp; interactive proposals</div>
+                  <div className="lp-mb-desc">19 block types, 3 luxury themes, selectable packages &amp; add-ons with a live total — or upload a PDF and send it to sign.</div>
+                </div>
+              </div>
+            </Reveal>
+            <Reveal delay={120}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-emerald"><CheckCircle2 size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">Sign in seconds, legally binding</div>
+                  <div className="lp-mb-desc">Draw or type a signature with ESIGN/UETA consent, multi-party signing, reminders, expiry &amp; a sealed audit trail.</div>
+                </div>
+              </div>
+            </Reveal>
+            <Reveal delay={180}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon lp-mb-calendly"><Workflow size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">It runs your business on signature</div>
+                  <div className="lp-mb-desc">Auto-move the pipeline, create the invoice (with deposits), and launch a Media Studio project — delivered over WhatsApp &amp; email.</div>
+                </div>
+              </div>
+            </Reveal>
+            <Reveal delay={240}>
+              <div className="lp-meeting-bullet">
+                <div className="lp-mb-icon" style={{ background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff' }}><Sparkles size={16} /></div>
+                <div>
+                  <div className="lp-mb-title">AI drafting, client Q&amp;A &amp; analytics</div>
+                  <div className="lp-mb-desc">Draft a whole contract from a line, let clients ask questions on the page, and track views, time-on-page &amp; acceptance.</div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </div>
       </div>
     </section>
   );
