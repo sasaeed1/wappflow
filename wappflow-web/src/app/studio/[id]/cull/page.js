@@ -94,6 +94,8 @@ export default function CullPage() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
   const [assets, setAssets] = useState([]);
+  const [scores, setScores] = useState({}); // Track-0 composites per asset
+  const [sortMode, setSortMode] = useState('order'); // order | hero | rating
   const [filter, setFilter] = useState('all');
   const [cursor, setCursor] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -135,6 +137,7 @@ export default function CullPage() {
         setProject(p.data); setAssets(a.data.assets || []);
       } catch { router.push('/studio'); return; }
       setLoading(false);
+      try { const r = await mediaAPI.intelligence(id); setScores(r.data.scores || {}); } catch {}
     })();
   }, [id]);
 
@@ -144,10 +147,13 @@ export default function CullPage() {
     return c;
   }, [assets]);
 
-  const view = useMemo(
-    () => (filter === 'all' ? assets : assets.filter(a => (a.cull_decision || 'undecided') === filter)),
-    [assets, filter]
-  );
+  const heroOf = useCallback((a) => (scores[a?.id] && scores[a.id].hero ? Number(scores[a.id].hero.value) : -1), [scores]);
+  const view = useMemo(() => {
+    let v = filter === 'all' ? assets : assets.filter(a => (a.cull_decision || 'undecided') === filter);
+    if (sortMode === 'hero') v = [...v].sort((a, b) => heroOf(b) - heroOf(a));
+    else if (sortMode === 'rating') v = [...v].sort((a, b) => (b.cull_rating || 0) - (a.cull_rating || 0));
+    return v;
+  }, [assets, filter, sortMode, heroOf]);
   const idx = Math.min(cursor, Math.max(0, view.length - 1));
   const current = view[idx];
   const keepers = useMemo(() => assets.filter(a => a.cull_decision === 'keep'), [assets]);
@@ -446,6 +452,11 @@ export default function CullPage() {
                   </button>
                 ))}
               </div>
+              <div className="ms-hud-seg" title="Sort order">
+                {[['order', 'Order'], ['hero', '✦ AI'], ['rating', '★']].map(([m, label]) => (
+                  <button key={m} onClick={() => { setSortMode(m); setCursor(0); }} className={sortMode === m ? 'is-active' : ''}>{label}</button>
+                ))}
+              </div>
               <div style={{ flex: 1 }} />
               <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>{idx + 1} / {view.length}{zoomed ? ` · ${Math.round(scale * 100)}%` : ''}</span>
               {current.cull_decision && DEC_META[current.cull_decision] && (
@@ -454,6 +465,9 @@ export default function CullPage() {
                 </span>
               )}
               {hasEdits(current) && <span style={{ padding: '3px 9px', borderRadius: 999, background: 'rgba(232,203,141,0.15)', color: '#e8cb8d', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em' }}>EDITED</span>}
+              {scores[current.id] && scores[current.id].hero && (
+                <span title="AI hero score" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 999, background: 'linear-gradient(135deg,rgba(14,165,233,0.25),rgba(99,102,241,0.25))', color: '#bcd4ff', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em' }}>✦ {Math.round(scores[current.id].hero.value * 100)}</span>
+              )}
               {counts.keep > 0 && (
                 <button onClick={() => setShowGallery(true)} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10', padding: '7px 14px', fontSize: 11.5 }}>
                   <Images size={14} /> Gallery · {counts.keep}
@@ -577,6 +591,14 @@ export default function CullPage() {
                         <HudRow label="Exposure" value={expoLabel} color={expoColor} />
                         {q != null && <HudRow label="Quality" value={qualLabel} color={qualColor} />}
                         {current.dup_group && <HudRow label="Duplicate" value={`${dupMembers ? dupMembers.length : 2} similar`} color="rgba(255,255,255,0.7)" icon={<Dup size={11} />} />}
+                        {scores[current.id] && (scores[current.id].hero || scores[current.id].portfolio) && (
+                          <div style={{ marginTop: 4 }}>
+                            {['hero', 'portfolio', 'album'].map(k => scores[current.id][k] ? <HudRow key={k} label={k[0].toUpperCase() + k.slice(1)} value={Math.round(scores[current.id][k].value * 100)} color="#bcd4ff" /> : null)}
+                            {scores[current.id].hero && scores[current.id].hero.reasons && scores[current.id].hero.reasons.length > 0 && (
+                              <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0', lineHeight: 1.5 }}>Why: {scores[current.id].hero.reasons.join(' · ')}</p>
+                            )}
+                          </div>
+                        )}
                       </>
                     )}
                     {aiSuggestion && (
