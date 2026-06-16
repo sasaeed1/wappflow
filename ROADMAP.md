@@ -1,0 +1,53 @@
+# WappFlow — Intelligence Roadmap: build status
+
+Status of the 17-phase intelligence/quality roadmap + Track 0 + payments. Built this session, **committed & pushed to `main`, not yet deployed** (run `bash deploy.sh` when ready). All new tables self-create on boot.
+
+## Architecture decision (locked)
+**Hybrid-first, desktop-bound, behind a swappable Analyzer abstraction.** Server does cheap CPU analysis now (`media-worker`, jimp/exifr); a future **desktop app runs heavy ONNX locally and uploads results** to the same store. Business logic only ever reads `ms_asset_scores` — it never knows or cares who computed a score. Invariants everywhere: **advisory-only, analyze-once, human-owned decisions, non-destructive.**
+
+## Status by phase
+
+| Phase | Scope | Backend | Frontend | Notes |
+|---|---|---|---|---|
+| **Track 0** | Analyzer abstraction, analyze-once ledger, reasons, composites, Learning System, Workspace Brain | ✅ | n/a | `backend/analyzers/index.js`; worker hooked; feedback from cull decisions |
+| **P1** | Intelligence layer (scores) | ✅ | n/a | technical/dedup live in worker; vision/video = desktop ONNX (seam ready) |
+| **P2** | Culling 2.0 (selections) | ✅ | ✅ Studio AI panel | best_of/highlights/portfolio/album/delivery, niche-weighted, explainable, dup-safe |
+| **P3** | Style learning (profiles) | ✅ | ⏳ minimal | `ms_style_profiles` CRUD; learning-from-RAW pairs = desktop |
+| **P4** | AI editing | ✅ suggestions | ⏳ | non-destructive params via existing edit pipeline; apply UI pending |
+| **P5** | Gallery builder | ✅ | ✅ (panel) | gallery-from-selection |
+| **P6** | Album Studio | ✅ drafts | ⏳ viewer | story-ordered, dup-safe spreads; layout editor pending |
+| **P7** | Video intelligence | ✅ ingest | n/a | scores via Track-0 ingestion (desktop/cloud) |
+| **P8** | Video culling | ✅ | ⏳ | best moments/clips/reactions/action/interview/drone |
+| **P9** | Template system (data-driven) | ✅ seeded | ⏳ editor | 7 niche system templates; CRUD |
+| **P10** | Story Engine | ✅ | ✅ (panel) | narrative spec hook→build→peak→resolve |
+| **P11** | Reel Studio | ✅ plan | ✅ (panel) | fills template→render plan for existing video-engine |
+| **P12** | Client experience 2.0 | ✅ milestones | ✅ portal | favorites/comments already existed; milestones new |
+| **P13** | Portfolio engine | ✅ picks | ⏳ | portfolio-grade recommendations endpoint |
+| **P14** | Print Store 2.0 | ✅ recs | ⏳ | recommendations from project intelligence |
+| **P15** | Client Portal 2.0 | ✅ | ✅ | portal now shows progress/albums/orders + docs/galleries/invoices/projects |
+| **P16** | Marketplace foundations | ✅ `ms_pack` | n/a (by design) | generic pack catalog; no store UI per instruction |
+| **P17** | Learning system | ✅ | n/a | `ms_feedback` + `workspace_brain` + derive |
+| **Payments** | Stripe seam (biggest gap) | ✅ | ✅ pay page + invoice link | manual now; set `STRIPE_SECRET_KEY` to enable Checkout |
+
+## New backend modules (all mounted in server.js, additive)
+`analyzers/index.js` (intelligence), `studio-ai.js` (P2–P6,P13), `video-ai.js` (P7–P11), `studio-experience.js` (P12/P14/P16), `payments.js`. Plus client-portal endpoints inline.
+
+## New tables (self-create)
+`ms_asset_analysis` (ledger), `ms_feedback`, `workspace_brain`, `ms_selections`, `ms_style_profiles`, `ms_albums`, `ms_template_library`, `ms_story_specs`, `ms_reel_plans`, `ms_pack`, `ms_milestones`, `payments`. (+ `reasons` column on `ms_asset_scores`.)
+
+## Key new endpoints
+- Intelligence: `POST /api/media/assets/:id/scores` & `/projects/:id/scores` (desktop ingestion), `POST /projects/:id/analyze`, `GET /projects/:id/intelligence`, `GET/PUT/POST /api/media/brain[/derive]`.
+- Studio AI: `/api/studio-ai/projects/:id/{selections,gallery-from-selection,album,albums}`, `/portfolio-picks`, `/styles`, `/assets/:id/auto-edit`.
+- Video AI: `/api/video-ai/{templates}`, `/projects/:id/{cull,story,reel,reels}`.
+- Experience: `/api/packs`, `/api/media/projects/:id/{milestones,print-recommendations}`, `/api/media/milestones/:id`.
+- Payments: `POST /api/payments/link`, `GET /api/payments`, `POST /api/payments/:id/mark-paid`, `GET /api/payments/public/:token`, `POST /api/payments/webhook`.
+
+## What still needs work (for the next pass)
+1. **The desktop app** — the long-term moat: package `media-worker`'s analyzer interface into an Electron/ONNX app that runs face/eye/smile/scene/aesthetic + video ML locally and POSTs to `/scores`. The `face-detect.js` seam + ingestion endpoints are ready.
+2. **Fast keyboard cull UI** (highest-ROI polish): virtualized 5k-grid, arrows + 1–5 + P/X/U + color, compare/loupe, "filter by AI score" (consume `/intelligence`). The data is all there.
+3. **Frontend depth**: album layout editor, style-profile manager, video culling/story timeline UI, portfolio auto-publish, print-recs surfaced in the gallery.
+4. **Stripe go-live**: set `STRIPE_SECRET_KEY` (+ `STRIPE_WEBHOOK_SECRET`); harden the webhook to verify the signature over the raw body.
+5. **RAW pipeline** (libraw/dcraw) + **worker observability/scale/cost-governor** (Part A of the architecture audit).
+6. **AI cost governor + opt-in cloud tier** for any future server-side cloud vision.
+
+See `ECOSYSTEM.md` for the full feature/architecture reference of the shipped product.
