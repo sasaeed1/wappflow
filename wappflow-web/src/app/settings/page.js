@@ -2271,6 +2271,10 @@ export default function SettingsPage() {
     if (params.get('tab')) setActiveTab(params.get('tab'));
   }, []);
 
+  // Reset scroll to the top whenever the tab changes — otherwise switching from a
+  // long tab to a short one (e.g. Data & Privacy) lands you in dead space.
+  useEffect(() => { if (typeof window !== 'undefined') window.scrollTo({ top: 0 }); }, [activeTab]);
+
   const fetchCompany = async () => {
     try {
       const res = await settingsAPI.getCompany();
