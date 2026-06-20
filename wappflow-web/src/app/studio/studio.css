@@ -179,6 +179,16 @@ html[data-ms-theme="editorial"] .ms-shell-content { padding-top: 64px; }
 .ms-wordmark b { font-family: var(--ms-font-display); font-size: 15.5px; font-weight: var(--ms-display-weight); letter-spacing: var(--ms-display-track); color: var(--ms-ink); }
 html[data-ms-theme="editorial"] .ms-wordmark b { font-size: 21px; }
 .ms-shell-nav { display: flex; align-items: center; gap: 2px; }
+/* Phones — the packed Studio top bar would overflow ~375px. Hide the secondary
+   theme toggle (also in Studio settings) and tighten paddings/gaps so logo +
+   app-switcher + nav + settings + avatar all fit. !important beats later base rules. */
+@media (max-width: 640px) {
+  .ms-shell { padding: 0 10px !important; gap: 4px !important; }
+  .ms-themeswitch { display: none !important; }
+  .ms-shell-link { padding: 6px 8px !important; font-size: 12.5px !important; }
+  .ms-wordmark b { display: none !important; } /* keep the camera-icon home button, drop the text */
+  .ms-shell-nav { margin-left: 2px !important; }
+}
 .ms-shell-link { padding: 7px 13px; border-radius: var(--ms-radius-btn); border: none; background: transparent; color: var(--ms-ink-3);
   font-family: var(--ms-font-label); font-size: 12px; font-weight: 500; letter-spacing: calc(var(--ms-label-track) * 0.6); text-transform: var(--ms-btn-case, none); cursor: pointer; transition: all var(--ms-speed) var(--ms-ease); }
 html[data-ms-theme="cinema"] .ms-shell-link { text-transform: uppercase; font-size: 11px; }
