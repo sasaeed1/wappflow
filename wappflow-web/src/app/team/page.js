@@ -589,7 +589,7 @@ export default function TeamPage() {
 
       {/* Sub-header */}
       <div style={{ background:'var(--surface)', borderBottom:'1px solid var(--border)', position:'sticky', top:60, zIndex:40 }}>
-        <div className="r-wrap" style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px', display:'flex', alignItems:'center', height:52, gap:16 }}>
+        <div className="r-toolbar" style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px', display:'flex', alignItems:'center', height:52, gap:16 }}>
           <div style={{ flex:1, display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,#6366f1,#8b5cf6)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Users size={14} color="white" />
@@ -623,7 +623,7 @@ export default function TeamPage() {
             );
           })()}
         </div>
-        <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px', display:'flex', gap:4 }}>
+        <div className="r-scroll-x" style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px', display:'flex', gap:4 }}>
           {[{ id:'members', label:'Team Members' }, { id:'permissions', label:'Roles & Permissions' }, { id:'logs', label:'Activity Logs' }].map(t => (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:'8px 18px', border:'none', background:'none', cursor:'pointer', fontWeight:tab===t.id?700:600, fontSize:13, color:tab===t.id?'#6366f1':'#6b7280', borderBottom:`3px solid ${tab===t.id?'#6366f1':'transparent'}` }}>{t.label}</button>
           ))}

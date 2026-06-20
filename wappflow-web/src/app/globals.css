@@ -300,6 +300,18 @@ select option {
   .r-panel        { left: 12px !important; right: 12px !important; width: auto !important; max-width: none !important; }
   /* chat app shell: channel list becomes a capped, scrollable strip above the conversation */
   .r-chat-side    { width: 100% !important; height: auto !important; max-height: 40vh !important; }
+  /* app-switcher dropdown: the inline [align]:0 anchor pushed the 248px panel off
+     a screen edge on phones (the trigger sits ~169px in, so neither left nor right
+     anchoring fits). Pin it to the viewport with 12px gutters so it always fits. */
+  .as-panel       { position: fixed !important; top: 60px !important; left: 12px !important; right: 12px !important; width: auto !important; min-width: 0 !important; max-width: none !important; }
+  /* floating action buttons (AI command / chat / studio copilot): shrink + tuck into
+     the corner so they cover less, and .wf-page pads page content so the last row
+     clears both stacked FABs instead of hiding permanently behind them. */
+  .wf-fab         { transform: scale(0.85); transform-origin: bottom right; }
+  .wf-fab-chat    { bottom: 16px !important; right: 14px !important; }
+  .wf-fab-ai      { bottom: 74px !important; right: 14px !important; }
+  .wf-fab-studio  { bottom: 14px !important; right: 14px !important; }
+  .wf-page        { padding-bottom: 132px !important; }
 }
 /* Tablet step for very wide multi-col grids */
 @media (max-width: 900px) {

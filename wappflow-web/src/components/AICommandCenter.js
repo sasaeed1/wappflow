@@ -92,7 +92,7 @@ export default function AICommandCenter({ enabled = true }) {
   return (
     <>
       {/* Floating Button */}
-      <div style={{ position: 'fixed', bottom: 90, right: 24, zIndex: 998 }}>
+      <div className="wf-fab wf-fab-ai" style={{ position: 'fixed', bottom: 90, right: 24, zIndex: 998 }}>
         <button
           onClick={() => setOpen(v => !v)}
           title="AI Command Center (Ctrl+K)"

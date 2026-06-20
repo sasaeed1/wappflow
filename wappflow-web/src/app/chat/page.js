@@ -573,8 +573,8 @@ export default function ChatPage() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
           {/* Channel header */}
-          <div style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+          <div className="r-wrap" style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="r-full" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
               <Hash size={18} color="#6366f1" />
               <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{activeChannel.name}</span>
               {activeChannel.is_private && <Lock size={13} color="#9ca3af" />}

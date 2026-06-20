@@ -73,7 +73,7 @@ export default function StudioCopilot() {
 
   return (
     <>
-      <button onClick={() => setOpen(v => !v)} aria-label="Studio Copilot" title="Studio Copilot"
+      <button onClick={() => setOpen(v => !v)} aria-label="Studio Copilot" title="Studio Copilot" className="wf-fab wf-fab-studio"
         style={{ position: 'fixed', bottom: 22, right: 22, zIndex: 380, width: 52, height: 52, borderRadius: 999, border: 'none', cursor: 'pointer',
           background: 'var(--ms-accent)', color: 'var(--ms-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 12px 36px -10px rgba(0,0,0,0.5)', transition: 'transform .2s ease' }}

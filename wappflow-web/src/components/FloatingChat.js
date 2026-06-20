@@ -141,7 +141,7 @@ export default function FloatingChat() {
   // ─── Minimized bubble ────────────────────────────────────────────────────
   if (!open) {
     return (
-      <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9000 }}>
+      <div className="wf-fab wf-fab-chat" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9000 }}>
         <button
           onClick={handleOpenSearch}
           title="Open floating chat"

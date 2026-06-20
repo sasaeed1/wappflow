@@ -392,7 +392,7 @@ export default function KnowledgePage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {documents.map(doc => (
                         <div key={doc.id} style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid #e5e7eb', overflow: 'hidden' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px' }}>
+                          <div className="r-col" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px' }}>
                             <div style={{ width: 44, height: 44, borderRadius: 14, background: doc.file_type === 'website' ? 'rgba(34,197,94,0.10)' : doc.file_type?.includes('pdf') ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               {doc.file_type === 'website'
                                 ? <Globe size={20} color="#22c55e" />
@@ -407,7 +407,7 @@ export default function KnowledgePage() {
                                 {doc.processed === 2 && <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '2px 8px', borderRadius: 6 }}>❌ Processing failed</span>}
                               </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                            <div className="r-w-auto" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                               {doc.processed === 1 && doc.memory_count > 0 && (
                                 <button onClick={() => handleExpandDoc(doc.id)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #c4b5fd', background: 'rgba(139,92,246,0.10)', color: '#7c3aed', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
                                   <Database size={12} /> Memories {expandedDoc === doc.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}

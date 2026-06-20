@@ -708,7 +708,7 @@ export default function NavBar({ children }) {
       )}
 
       {/* Page content — offset below the fixed nav */}
-      <div style={{ paddingTop: 60, minHeight: '100vh', background: 'var(--bg)' }}>
+      <div className="wf-page" style={{ paddingTop: 60, minHeight: '100vh', background: 'var(--bg)' }}>
         {children}
       </div>
 

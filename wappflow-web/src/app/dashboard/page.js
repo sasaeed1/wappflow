@@ -909,7 +909,7 @@ export default function DashboardPage() {
 
       {/* ── DASHBOARD SUB-HEADER (page-specific actions) ── */}
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 60, zIndex: 40 }}>
-        <div style={{ maxWidth: 1600, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 56, gap: 12, flexWrap: 'wrap' }}>
+        <div className="r-toolbar" style={{ maxWidth: 1600, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 56, gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <LayoutGrid size={14} color="white" />
