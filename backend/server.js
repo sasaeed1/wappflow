@@ -2842,6 +2842,12 @@ app.post('/api/workspace/invite', auth, async (req, res) => {
       : null;
     if (existingMember) return res.status(400).json({ error: 'User already in workspace' });
 
+    // Plan limit — hard stop when the team-seat allowance is reached.
+    const seatGate = pricing.canCreate(db, req.workspaceId, 'users');
+    if (!seatGate.allowed) {
+      return res.status(402).json({ error: 'Team seat limit reached. Upgrade your plan to invite more members.', metric: 'users', limit: seatGate.limit, used: seatGate.used, upgrade: true });
+    }
+
     const invite_token = generateId() + generateId(); // long token
     const memberId = generateId();
 
@@ -4377,6 +4383,14 @@ app.post('/api/platform-accounts', auth, (req, res) => {
 
     const existing = db.prepare('SELECT COUNT(*) as cnt FROM platform_accounts WHERE workspace_id = ? AND platform = ?').get(req.workspaceId, platform);
     if (existing.cnt >= 5) return res.status(400).json({ error: 'Maximum 5 accounts per platform' });
+
+    // Plan limit — WhatsApp accounts are metered per plan (Creator 1 · Studio 2 · Studio+ 5).
+    if (platform === 'whatsapp') {
+      const waGate = pricing.canCreate(db, req.workspaceId, 'whatsapp_accounts');
+      if (!waGate.allowed) {
+        return res.status(402).json({ error: 'WhatsApp account limit reached for your plan. Upgrade to connect more numbers.', metric: 'whatsapp_accounts', limit: waGate.limit, used: waGate.used, upgrade: true });
+      }
+    }
 
     const id = generateId();
     const verifyToken = generateId().replace(/-/g, '').slice(0, 24);

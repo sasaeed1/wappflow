@@ -23,11 +23,8 @@ import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/
 // Map of settings tab → required feature flag + required plan name.
 // If the user's plan doesn't have the feature, the tab is shown locked.
 const TAB_GATING = {
-  email:             { feature: 'email_integration', plan: 'Starter', perks: ['Reusable email templates', 'Variable substitution', 'Send templated replies in one click'] },
-  email_sending:     { feature: 'email_integration', plan: 'Starter', perks: ['Send emails from your own domain', 'Use any SMTP provider', 'Reply to leads via email'] },
-  email_receiving:   { feature: 'email_integration', plan: 'Starter', perks: ['IMAP inbound polling', 'Inbound replies threaded to leads', 'Multi-mailbox support'] },
-  autoreply:         { feature: 'automations',       plan: 'Growth',  perks: ['Keyword-triggered auto-responses', 'Multi-step drip sequences', 'Save your team from typing the same reply 100×'] },
-  integrations:      { feature: 'google_calendar',   plan: 'Growth',  perks: ['Google Meet + Calendar scheduling', 'Calendly link sharing', 'One-click meetings from any lead'] },
+  autoreply:         { feature: 'automations',     plan: 'Studio', perks: ['Keyword-triggered auto-responses', 'Multi-step drip sequences', 'Save your team from typing the same reply 100×'] },
+  integrations:      { feature: 'google_calendar', plan: 'Studio', perks: ['Google Meet + Calendar scheduling', 'Calendly link sharing', 'One-click meetings from any lead'] },
 };
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 
@@ -55,6 +52,7 @@ const CURRENCIES = [
 
 const TABS = [
   { id: 'connections', label: 'Connections', icon: Layers, color: '#6366f1' },
+  { id: 'plan', label: 'Plan & Billing', icon: Zap, color: '#8b5cf6' },
   { id: 'appearance', label: 'Appearance', icon: Palette, color: '#6366f1' },
   { id: 'company', label: 'Company Profile', icon: Building2, color: '#6366f1' },
   { id: 'currency', label: 'Currency & Billing', icon: DollarSign, color: '#10b981' },
@@ -1295,6 +1293,110 @@ function DataPrivacyTab({ showToast }) {
   );
 }
 
+// ── Plan & Billing tab — current plan, live usage, and upgrade options ──────
+function PlanBillingTab({ showToast }) {
+  const plan = usePlan();
+  const q = plan.quota || {};
+  const all = plan.allPlans || [];
+  const founding = plan.founding || null;
+  const curKey = plan.plan;
+
+  const pkr = (n) => 'PKR ' + Number(n).toLocaleString('en-US');
+  const fmtReset = (s) => { try { return new Date(String(s).replace(' ', 'T') + 'Z').toLocaleDateString(); } catch { return ''; } };
+  const levelColor = (lvl) => lvl === 'reached' ? '#ef4444' : (lvl === 'critical' || lvl === 'warn') ? '#f59e0b' : '#10b981';
+
+  const METRICS = [
+    { k: 'leads', label: 'New leads', unit: '' },
+    { k: 'users', label: 'Team members', unit: '' },
+    { k: 'whatsapp_accounts', label: 'WhatsApp accounts', unit: '' },
+    { k: 'storage_gb', label: 'Storage', unit: ' GB' },
+    { k: 'contract_sends', label: 'Contract sends', unit: '' },
+  ];
+
+  const pill = (c) => ({ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800, color: c, background: c + '1f', border: `1px solid ${c}55`, borderRadius: 999, padding: '3px 10px', textTransform: 'uppercase', letterSpacing: '0.04em' });
+  const usageCard = { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px' };
+
+  return (
+    <div>
+      <SectionCard icon={Zap} title="Your Plan" subtitle="Your current plan and what's included" color="#8b5cf6">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)' }}>{plan.planName || '—'}</div>
+          {founding && founding.open && <span style={pill('#f59e0b')}>Founding 100 · {founding.remaining} left</span>}
+          {plan.isEnterprise && <span style={pill('#10b981')}>Unlimited</span>}
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '10px 0 0' }}>
+          Limits apply per workspace and reset monthly where noted. Need a change? Contact us to upgrade or for a custom Enterprise plan.
+        </p>
+      </SectionCard>
+
+      <SectionCard icon={RefreshCw} title="Usage" subtitle="Used, remaining, and reset date for this billing period" color="#6366f1">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
+          {METRICS.map(m => {
+            const u = q[m.k] || { used: 0, limit: -1, level: 'unlimited', pct: 0, remaining: -1, reset_date: null, monthly: false };
+            const unlimited = u.limit === -1;
+            return (
+              <div key={m.k} style={usageCard}>
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 700 }}>{m.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
+                  {u.used}{m.unit}{' '}
+                  <span style={{ fontSize: 13, color: 'var(--text-dim)', fontWeight: 600 }}>/ {unlimited ? '∞' : `${u.limit}${m.unit}`}</span>
+                </div>
+                {!unlimited && (
+                  <div style={{ height: 6, borderRadius: 999, background: 'var(--surface)', marginTop: 9, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: Math.min(100, u.pct) + '%', background: levelColor(u.level), transition: 'width .3s' }} />
+                  </div>
+                )}
+                <div style={{ fontSize: 11.5, color: u.level === 'reached' ? '#ef4444' : 'var(--text-dim)', marginTop: 7 }}>
+                  {unlimited ? 'Unlimited' : `${u.remaining}${m.unit} remaining`}
+                  {u.monthly && u.reset_date ? ` · resets ${fmtReset(u.reset_date)}` : ''}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </SectionCard>
+
+      <SectionCard icon={Sparkles} title="Plans" subtitle="Compare and upgrade — Studio is our most popular" color="#10b981">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14 }}>
+          {all.map(p => {
+            const isCur = p.key === curKey;
+            const featured = p.key === 'studio';
+            return (
+              <div key={p.key} style={{
+                position: 'relative', border: `1.5px solid ${isCur ? '#8b5cf6' : featured ? 'rgba(139,92,246,0.45)' : 'var(--border)'}`,
+                borderRadius: 14, padding: '16px 16px', background: featured ? 'rgba(139,92,246,0.06)' : 'var(--surface2)',
+              }}>
+                {featured && <div style={{ ...pill('#8b5cf6'), position: 'absolute', top: -10, left: 14 }}>Most popular</div>}
+                <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text)', marginTop: featured ? 4 : 0 }}>{p.name}</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)', marginTop: 6 }}>
+                  {p.price != null ? pkr(p.price) : 'Custom'}
+                  {p.price != null && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>/mo</span>}
+                </div>
+                {p.founding_price != null && founding?.open && (
+                  <div style={{ fontSize: 12, color: '#d97706', marginTop: 2, fontWeight: 600 }}>Founding 100: {pkr(p.founding_price)}/mo</div>
+                )}
+                {isCur ? (
+                  <div style={{ marginTop: 12, padding: '8px', textAlign: 'center', borderRadius: 9, background: 'var(--surface)', color: 'var(--text-muted)', fontSize: 12.5, fontWeight: 700, border: '1px solid var(--border)' }}>✓ Current plan</div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (p.key === 'enterprise') { window.location.href = 'mailto:sales@wappflow.app'; return; }
+                      showToast?.(`Contact us to switch to ${p.name}. Self-serve checkout is coming soon.`, 'info');
+                    }}
+                    style={{ marginTop: 12, width: '100%', padding: '9px', borderRadius: 9, border: featured ? 'none' : '1.5px solid var(--border)', background: featured ? 'linear-gradient(135deg,#8b5cf6,#6366f1)' : 'var(--surface)', color: featured ? '#fff' : 'var(--text)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    {p.key === 'enterprise' ? 'Talk to sales' : `Upgrade to ${p.name}`}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
 function WorkspaceTab({ showToast, router }) {
   const [workspace, setWorkspace] = useState(null);
   const [members, setMembers] = useState([]);
@@ -2373,6 +2475,7 @@ export default function SettingsPage() {
           ) : (
             <>
               {activeTab === 'connections' && <ConnectionsTab showToast={showToast} />}
+              {activeTab === 'plan' && <PlanBillingTab showToast={showToast} />}
               {activeTab === 'appearance' && <AppearanceTab showToast={showToast} />}
               {activeTab === 'company' && <CompanyTab company={company} setCompany={setCompany} onSave={handleSaveCompany} saving={saving} />}
               {activeTab === 'currency' && <CurrencyTab company={company} setCompany={setCompany} onSave={handleSaveCompany} saving={saving} />}

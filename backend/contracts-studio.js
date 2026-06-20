@@ -12,6 +12,7 @@
 const crypto = require('crypto');
 let ai = null; try { ai = require('./ai-engine'); } catch { /* AI optional */ }
 let cron = null; try { cron = require('node-cron'); } catch { /* scheduler optional */ }
+let pricing = null; try { pricing = require('./pricing'); } catch { /* pricing optional */ }
 
 // Allowed block types the AI may emit when drafting a document.
 const AI_BLOCK_TYPES = ['heading', 'text', 'callout', 'divider', 'pricing_table', 'package', 'addons', 'timeline', 'checklist', 'faq', 'testimonial', 'signature'];
@@ -868,6 +869,13 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
     try {
       const d = getDoc(req.workspaceId, req.params.id);
       if (!d) return res.status(404).json({ error: 'Document not found' });
+      // Plan limit — count only NEW sends (re-sending an already-sent doc doesn't recount).
+      if (!d.sent_at && pricing) {
+        const sendGate = pricing.canCreate(db, req.workspaceId, 'contract_sends');
+        if (!sendGate.allowed) {
+          return res.status(402).json({ error: 'Monthly contract/proposal send limit reached. Upgrade your plan to send more.', metric: 'contract_sends', limit: sendGate.limit, used: sendGate.used, upgrade: true });
+        }
+      }
       const sset = J(d.settings, {});
       if (sset.require_approval) {
         const ap = db.prepare('SELECT status FROM cs_approvals WHERE document_id = ? ORDER BY created_at DESC LIMIT 1').get(d.id);
