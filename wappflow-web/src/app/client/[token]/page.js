@@ -5,6 +5,14 @@ import { useParams } from 'next/navigation';
 import { fetchClientPortal } from '../../../lib/api';
 
 const money = (s, n) => `${s || '$'}${(Number(n) || 0).toLocaleString()}`;
+// Robust to both SQLite naive timestamps ("2026-06-16 19:11:31", treated as UTC)
+// and ISO strings that already carry a timezone — never renders "Invalid Date".
+const fmtDate = (s) => {
+  if (!s) return '';
+  const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : String(s).replace(' ', 'T') + 'Z';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+};
 const DOC_STATUS = {
   draft: ['#64748b', 'Draft'], sent: ['#6366f1', 'Awaiting you'], viewed: ['#0ea5e9', 'Opened'],
   signed: ['#10b981', 'Signed'], completed: ['#10b981', 'Signed'], declined: ['#ef4444', 'Declined'],
@@ -75,12 +83,12 @@ export default function ClientPortalPage() {
         )}
 
         <Section title="Invoices" empty={data.invoices.length ? null : 'No invoices yet.'}>
-          {data.invoices.map((inv, i) => <Row key={i} icon="💳" title={inv.invoice_number} sub={new Date(inv.created_at + 'Z').toLocaleDateString()} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(inv.currency_symbol, inv.total)}</b><Pill map={INV_STATUS} s={inv.status} /></span>} />)}
+          {data.invoices.map((inv, i) => <Row key={i} icon="💳" title={inv.invoice_number} sub={fmtDate(inv.created_at)} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(inv.currency_symbol, inv.total)}</b><Pill map={INV_STATUS} s={inv.status} /></span>} />)}
         </Section>
 
         {(data.orders || []).length > 0 && (
           <Section title="Orders">
-            {data.orders.map((o, i) => <Row key={i} icon="🛍️" title={(o.items || []).map(it => `${it.qty}× ${it.name}`).join(', ') || 'Order'} sub={new Date(o.created_at + 'Z').toLocaleDateString()} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(o.currency_symbol, o.total)}</b><span style={{ fontSize: 12, color: '#8a8a93', textTransform: 'capitalize' }}>{o.status}</span></span>} />)}
+            {data.orders.map((o, i) => <Row key={i} icon="🛍️" title={(o.items || []).map(it => `${it.qty}× ${it.name}`).join(', ') || 'Order'} sub={fmtDate(o.created_at)} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(o.currency_symbol, o.total)}</b><span style={{ fontSize: 12, color: '#8a8a93', textTransform: 'capitalize' }}>{o.status}</span></span>} />)}
           </Section>
         )}
 

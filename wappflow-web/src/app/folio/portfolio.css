@@ -8,7 +8,7 @@
   --pf-bg: #f3efe7; --pf-ink: #1a1714; --pf-ink-2: #6f675d; --pf-line: #e2dbcf;
   --pf-accent: #b07d52; --pf-card: #fff;
   --pf-font-d: 'Fraunces', Georgia, serif; --pf-font-b: 'Inter', system-ui, sans-serif;
-  --pf-hero-h: 100svh; --pf-title-size: clamp(44px, 9vw, 138px); --pf-title-wt: 500; --pf-title-track: -0.02em; --pf-title-case: none;
+  --pf-hero-h: 100svh; --pf-title-size: clamp(32px, 9vw, 138px); --pf-title-wt: 500; --pf-title-track: -0.02em; --pf-title-case: none;
   --pf-radius: 2px; --pf-pad: clamp(20px, 6vw, 110px); --pf-gap: clamp(8px, 1.1vw, 18px); --pf-col: 320px;
   min-height: 100vh; background: var(--pf-bg); color: var(--pf-ink); font-family: var(--pf-font-b);
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden;
@@ -22,10 +22,10 @@
 .pf-hero-fallback { background: radial-gradient(70% 60% at 30% 20%, color-mix(in srgb, var(--pf-accent) 60%, transparent), transparent 60%), radial-gradient(60% 60% at 80% 90%, color-mix(in srgb, var(--pf-ink) 30%, transparent), transparent 60%), var(--pf-bg); animation: none; }
 @keyframes pf-kb { from { transform: scale(1.04); } to { transform: scale(1.16); } }
 .pf-hero-veil { position: absolute; inset: 0; z-index: 1; background: linear-gradient(to bottom, rgba(8,7,6,0.42), rgba(8,7,6,0.18) 40%, rgba(8,7,6,0.55)); }
-.pf-hero-inner { position: relative; z-index: 2; padding: var(--pf-pad); max-width: 1100px; color: #fff; animation: pf-rise 1s cubic-bezier(.2,.7,.2,1) both; }
+.pf-hero-inner { position: relative; z-index: 2; padding: var(--pf-pad); width: 100%; max-width: 1100px; color: #fff; animation: pf-rise 1s cubic-bezier(.2,.7,.2,1) both; }
 .pf-avatar { width: 92px; height: 92px; border-radius: 999px; object-fit: cover; border: 2px solid rgba(255,255,255,0.75); margin: 0 auto 22px; display: block; box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
 .pf-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.34em; text-transform: uppercase; opacity: 0.82; margin: 0 0 18px; }
-.pf-title { font-family: var(--pf-font-d); font-weight: var(--pf-title-wt); font-size: var(--pf-title-size); line-height: 0.98; letter-spacing: var(--pf-title-track); text-transform: var(--pf-title-case); margin: 0; text-shadow: 0 6px 50px rgba(0,0,0,0.45); }
+.pf-title { font-family: var(--pf-font-d); font-weight: var(--pf-title-wt); font-size: var(--pf-title-size); line-height: 0.98; letter-spacing: var(--pf-title-track); text-transform: var(--pf-title-case); margin: 0; text-shadow: 0 6px 50px rgba(0,0,0,0.45); overflow-wrap: break-word; max-width: 100%; }
 .pf-tagline { font-size: clamp(15px, 1.8vw, 21px); font-weight: 400; margin: 20px auto 0; max-width: 40ch; opacity: 0.92; }
 .pf-scrollcue { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); z-index: 2; width: 1px; height: 46px; background: linear-gradient(rgba(255,255,255,0.8), transparent); }
 .pf-scrollcue::after { content: ''; position: absolute; top: 0; left: -2px; width: 5px; height: 5px; border-radius: 999px; background: #fff; animation: pf-drop 1.8s ease-in-out infinite; }
