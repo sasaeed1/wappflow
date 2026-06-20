@@ -13,6 +13,8 @@ const webpush = require('web-push');
 const { OAuth2Client } = require('google-auth-library');
 const nodemailer = require('nodemailer');
 const aiEngine = require('./ai-engine');
+const entitlements = require('./entitlements');   // data-driven plan/feature/limit resolver
+const pricing = require('./pricing');             // usage tracking + soft-limit enforcement
 
 // VAPID keys (generate once, store in env for production)
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BPismtnocRKwNB_MlJqoFdWIG5vKNGhw89sH0nut1Ms7mS2Jlod5htjjgL53Wd_X8emuODWC5a1P1Hy52oUqAv0';
@@ -773,6 +775,12 @@ try {
 
 console.log('✅ Database schema ready');
 
+// Pricing/plan engine: create + seed plan_* tables (Creator/Studio/Studio+/Enterprise
+// + Founding 100), usage/founding tables, and grandfather existing workspaces. Data-
+// driven — Command Center edits the tables afterward with no code changes.
+try { pricing.ensurePricing(db); console.log('✅ Pricing/plan engine ready'); }
+catch (e) { console.error('Pricing engine init error:', e.message); }
+
 // ════════════════════════════════════════════════════════════
 //  SSE — SERVER-SENT EVENTS
 // ════════════════════════════════════════════════════════════
@@ -1511,13 +1519,23 @@ app.post('/api/leads/bulk-upload', auth, (req, res) => {
     if (!Array.isArray(leads) || leads.length === 0)
       return res.status(400).json({ error: 'No leads provided' });
 
-    let created = 0, skipped = 0;
+    // Plan limit — cap the import to the remaining monthly lead allowance.
+    const planLimits = (() => { try { return entitlements.getEntitlements(db, req.workspaceId).limits; } catch { return null; } })();
+    const leadCheck = pricing.checkLimit(db, req.workspaceId, 'leads', planLimits);
+    if (!leadCheck.allowed) {
+      return res.status(402).json({ error: 'Monthly lead allocation reached. Upgrade your plan to add more leads.', metric: 'leads', limit: leadCheck.limit, used: leadCheck.used, upgrade: true });
+    }
+    let allowance = Infinity;
+    if (leadCheck.limit !== -1 && leadCheck.limit != null) allowance = Math.max(0, leadCheck.limit - leadCheck.used);
+
+    let created = 0, skipped = 0, limitSkipped = 0;
     const insertLead = db.transaction((leadsArr) => {
       leadsArr.forEach(l => {
         const phone = (l.customer_phone || l.phone || '').toString().trim();
         if (!phone) { skipped++; return; }
         // Duplicate check — normalise digits so "+92 310 154 7564" == "+923101547564"
         if (findLeadByPhone(req.workspaceId, phone)) { skipped++; return; }
+        if (created >= allowance) { limitSkipped++; return; } // monthly lead limit reached mid-import
         db.prepare(`
           INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, status, email, address, date_of_birth, lead_source, estimated_value)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1537,8 +1555,11 @@ app.post('/api/leads/bulk-upload', auth, (req, res) => {
     });
     insertLead(leads);
 
-    logAudit(req.workspaceId, req.userId, 'bulk_upload_leads', 'lead', null, { created, skipped });
-    res.json({ created, skipped, total: leads.length });
+    logAudit(req.workspaceId, req.userId, 'bulk_upload_leads', 'lead', null, { created, skipped, limitSkipped });
+    res.json({
+      created, skipped, limitSkipped, total: leads.length,
+      ...(limitSkipped > 0 ? { warning: `${limitSkipped} lead(s) skipped — monthly lead limit reached. Upgrade for more capacity.`, metric: 'leads' } : {}),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1789,6 +1810,12 @@ app.post('/api/leads', auth, (req, res) => {
     if (customer_phone) {
       const existing = findLeadByPhone(req.workspaceId, customer_phone);
       if (existing) return res.status(400).json({ error: 'A lead with this phone number already exists', existing_id: existing.id });
+    }
+
+    // Plan limit — hard stop when the monthly NEW-lead allocation is reached.
+    const leadGate = pricing.canCreate(db, req.workspaceId, 'leads');
+    if (!leadGate.allowed) {
+      return res.status(402).json({ error: 'Monthly lead allocation reached. Upgrade your plan to add more leads.', metric: 'leads', limit: leadGate.limit, used: leadGate.used, upgrade: true });
     }
 
     const leadId = generateId();
@@ -4706,7 +4733,7 @@ app.get('/api/workspace/plan', auth, (req, res) => {
   try {
     let plan = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId);
     if (!plan) {
-      db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'starter')`).run(req.workspaceId);
+      db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, ?)`).run(req.workspaceId, entitlements.DEFAULT_PLAN);
       plan = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId);
     }
     res.json({ plan });
@@ -4720,7 +4747,8 @@ app.put('/api/workspace/plan', auth, (req, res) => {
       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(workspace_id) DO UPDATE SET
         plan = excluded.plan, features = excluded.features, limits = excluded.limits, trial_ends_at = excluded.trial_ends_at, updated_at = CURRENT_TIMESTAMP
-    `).run(req.workspaceId, plan || 'starter', features ? JSON.stringify(features) : null, limits ? JSON.stringify(limits) : null, trial_ends_at || null);
+    `).run(req.workspaceId, plan || entitlements.DEFAULT_PLAN, features ? JSON.stringify(features) : null, limits ? JSON.stringify(limits) : null, trial_ends_at || null);
+    try { entitlements.invalidate(req.workspaceId); } catch {}
     res.json({ plan: db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4839,38 +4867,28 @@ const PLAN_DEFINITIONS = {
 function getPlanInfo(workspaceId) {
   let row = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(workspaceId);
   if (!row) {
-    db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'free')`).run(workspaceId);
+    db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, ?)`).run(workspaceId, entitlements.DEFAULT_PLAN);
     row = db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(workspaceId);
   }
-  const tierKey = (row.plan || 'free').toLowerCase();
-  const def = PLAN_DEFINITIONS[tierKey] || PLAN_DEFINITIONS.free;
-  // Allow per-workspace overrides (already supported by the PUT endpoint).
-  let overrides = {};
-  try { overrides = row.features ? JSON.parse(row.features) : {}; } catch {}
-  let limitOverrides = {};
-  try { limitOverrides = row.limits ? JSON.parse(row.limits) : {}; } catch {}
-  const features = { ...def.features, ...overrides };
-  const limits = { ...def.limits, ...limitOverrides };
-
-  // Live usage counters — cheap aggregate queries scoped to the workspace.
-  let usage = {};
-  try {
-    const leadCount = db.prepare('SELECT COUNT(*) as c FROM leads WHERE workspace_id = ?').get(workspaceId)?.c || 0;
-    const userCount = db.prepare('SELECT COUNT(*) as c FROM workspace_members WHERE workspace_id = ?').get(workspaceId)?.c || 0;
-    const waCount = db.prepare('SELECT COUNT(*) as c FROM platform_accounts WHERE workspace_id = ? AND platform = "whatsapp"').get(workspaceId)?.c || 0;
-    usage = { leads: leadCount, users: userCount, whatsapp_accounts: waCount };
-  } catch { /* tables may differ in dev */ }
+  // Resolve features/limits through the data-driven entitlements resolver
+  // (plan_* tables → feature flags → per-workspace overrides). Config-as-data:
+  // Command Center edits flow here with no code changes.
+  const ent = entitlements.getEntitlements(db, workspaceId);
+  // Rich per-metric usage: { metric: { used, limit, remaining, pct, level, reset_date, monthly } }
+  const quota = pricing.buildUsage(db, workspaceId, ent.limits);
+  const usage = {}; for (const k of Object.keys(quota)) usage[k] = quota[k].used; // back-compat raw counts
 
   return {
-    plan: tierKey,
-    name: def.name,
-    features,
-    limits,
-    usage,
+    plan: ent.plan,
+    name: ent.name,
+    features: ent.features,
+    limits: ent.limits,
+    usage,                 // { leads: n, users: n, ... }  (back-compat)
+    quota,                 // rich soft-limit block for usage UI + warnings
     trial_ends_at: row.trial_ends_at || null,
-    all_plans: Object.entries(PLAN_DEFINITIONS).map(([k, v]) => ({
-      key: k, name: v.name, features: v.features, limits: v.limits,
-    })),
+    sources: ent.sources,  // "why" — flag/override provenance
+    all_plans: entitlements.getAllPlans(db),
+    founding: pricing.foundingStatus(db),
   };
 }
 
@@ -4881,6 +4899,18 @@ app.get('/api/workspace/plan-info', auth, (req, res) => {
     console.error('plan-info error:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// Public plan catalog — powers the landing pricing section. Data-driven from the
+// plan_* tables (prices, founding prices, features, limits) + live founding slots.
+app.get('/api/plans', (req, res) => {
+  try {
+    res.json({
+      plans: entitlements.getAllPlans(db),
+      founding: pricing.foundingStatus(db),
+      currency: entitlements.PLAN_CURRENCY,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // GET /api/message-queue — outbound queue status

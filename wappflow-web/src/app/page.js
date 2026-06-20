@@ -78,6 +78,7 @@ export default function Landing() {
         <DashboardShowcase />
         <TeamSection />
         <Testimonials />
+        <Pricing authed={authed} />
         <FAQ />
         <FinalCTA authed={authed} />
       </main>
@@ -111,6 +112,7 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
           <a href="#contracts">Contracts</a>
           <a href="#meetings">Meetings</a>
           <a href="#platforms">Channels</a>
+          <a href="#pricing">Pricing</a>
           <a href="#faq">FAQ</a>
         </nav>
 
@@ -145,6 +147,7 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
           </a>
           <a href="#meetings" onClick={() => setMobileOpen(false)}>Meetings</a>
           <a href="#platforms" onClick={() => setMobileOpen(false)}>Channels</a>
+          <a href="#pricing" onClick={() => setMobileOpen(false)}>Pricing</a>
           <a href="#faq" onClick={() => setMobileOpen(false)}>FAQ</a>
           <div className="lp-mobile-cta">
             {authed ? (
@@ -1780,230 +1783,252 @@ function Testimonials() {
 
 // Plan tier priority — lower number = lower tier. Used to decide whether
 // the CTA on a card should say "Upgrade", "Your plan", or "Downgrade".
-const TIER_RANK = { free: 0, starter: 1, growth: 2, enterprise: 3 };
+// Landing plan catalog (display copy per spec). Prices hydrate from /api/plans
+// when reachable, so Command Center price changes flow through here too.
+const LANDING_PLANS = [
+  {
+    key: 'creator', name: 'Creator', price: 7999, founding: 3999,
+    tagline: 'For solo creators building their business.',
+    limits: ['1 user', '200 new leads / month', '1 WhatsApp account', '50 GB storage', '25 contract / proposal sends'],
+    features: ['CRM', 'Contracts Studio', 'Booking', 'Media Studio', 'Portfolio', 'Client Portal', 'Print Store'],
+  },
+  {
+    key: 'studio', name: 'Studio', price: 14999, founding: 7499, featured: true,
+    tagline: 'For growing studios and creative teams.',
+    limits: ['5 users', '500 new leads / month', '2 WhatsApp accounts', '250 GB storage', '100 contract / proposal sends'],
+    features: [
+      'Everything in Creator', 'Instagram, Facebook & Website lead capture', 'Lead source tracking',
+      'Team permissions', 'Advanced reporting', 'Knowledge base',
+      'AI reply suggestions + lead intelligence', 'Next best actions',
+      'Clause library, version history & redline', 'Approval workflows + bulk send',
+      'Gallery collections, story sections & advanced proofing',
+      'Studio Brain + AI asset scoring, hero-shot & culling', 'AI project intelligence',
+      'Advanced automation', 'Desktop beta access',
+    ],
+  },
+  {
+    key: 'studio_plus', name: 'Studio+', price: 29999, founding: 14999,
+    tagline: 'For established studios operating at scale.',
+    limits: ['15 users', '5,000 new leads / month', '5 WhatsApp accounts', '1 TB storage', '500 contract / proposal sends'],
+    features: [
+      'Everything in Studio', 'White-label experience', 'Priority support',
+      'Future style profiles, story & reel engines', 'Future AI editing workflows',
+      'Desktop included + sync', 'Future local AI processing',
+    ],
+  },
+  {
+    key: 'enterprise', name: 'Enterprise', price: null, founding: null,
+    tagline: 'For organizations requiring custom deployments.',
+    limits: ['Unlimited users', 'Unlimited leads', 'Custom WhatsApp accounts (5+)', 'Custom storage', 'Unlimited contract sends'],
+    features: [
+      'Everything in Studio+', 'Custom integrations', 'Dedicated support',
+      'Custom branding', 'Custom limits & SLAs', 'Custom deployment rules',
+    ],
+  },
+];
 
-function planCta(tierKey, tierLabel, currentPlan, authed) {
-  if (!authed) {
-    // Marketing copy when nobody's signed in.
-    if (tierKey === 'free') return { text: 'Start free', tone: 'glass' };
-    if (tierKey === 'enterprise') return { text: 'Talk to sales', tone: 'glass' };
-    return { text: `Upgrade to ${tierLabel}`, tone: tierKey === 'growth' ? 'primary' : 'glass' };
-  }
-  // Authed: compare against the user's tier.
-  const cur = (currentPlan || 'free').toLowerCase();
-  const curRank = TIER_RANK[cur] ?? 0;
-  const tierRank = TIER_RANK[tierKey] ?? 0;
+const pkr = (n) => 'PKR ' + Number(n).toLocaleString('en-US');
 
-  if (curRank === tierRank) {
-    return { text: '✓ Your current plan', tone: 'current' };
-  }
-  if (tierRank > curRank) {
-    if (tierKey === 'enterprise') return { text: 'Talk to sales', tone: 'glass' };
-    return {
-      text: `Upgrade to ${tierLabel}`,
-      tone: tierKey === 'growth' ? 'primary' : 'glass',
-    };
-  }
-  // Lower than current.
-  return { text: `Switch to ${tierLabel}`, tone: 'glass-quiet' };
-}
+function Pricing({ authed }) {
+  const [remote, setRemote] = useState(null);
+  const [founding, setFounding] = useState({ open: true, remaining: 100, slots: 100 });
 
-function Pricing({ authed, currentPlan }) {
-  const cur = (currentPlan || '').toLowerCase();
+  useEffect(() => {
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+    let on = true;
+    fetch(`${API}/plans`).then(r => (r.ok ? r.json() : null)).then(d => {
+      if (!on || !d) return;
+      const m = {}; (d.plans || []).forEach(p => { m[p.key] = p; });
+      setRemote(m);
+      if (d.founding) setFounding(d.founding);
+    }).catch(() => {});
+    return () => { on = false; };
+  }, []);
 
-  const tiers = [
-    {
-      key: 'free',
-      label: 'Free',
-      price: '$0',
-      cadence: '/mo',
-      tagline: 'Solo users testing WappFlow',
-      items: [
-        { text: '1 WhatsApp account' },
-        { text: '1 user only' },
-        { text: '50 leads max' },
-        { text: 'Basic inbox & CRM' },
-        { text: 'Limited AI replies' },
-        { text: 'Instagram inbox', locked: true, requiredPlan: 'Growth' },
-        { text: 'Facebook inbox', locked: true, requiredPlan: 'Growth' },
-        { text: 'Email integration', locked: true, requiredPlan: 'Starter' },
-        { text: 'Automations', locked: true, requiredPlan: 'Growth' },
-        { text: 'Google Calendar + Meet', locked: true, requiredPlan: 'Growth' },
-        { text: 'Calendly', locked: true, requiredPlan: 'Growth' },
-        { text: 'Team collaboration', locked: true, requiredPlan: 'Growth' },
-        { text: 'Flux — AI Instagram content', locked: true, requiredPlan: 'Growth' },
-      ],
-      href: '/signup',
-    },
-    {
-      key: 'starter',
-      label: 'Starter',
-      price: '$19',
-      cadence: '/mo',
-      tagline: 'Small businesses getting started',
-      items: [
-        { text: '1 WhatsApp account' },
-        { text: 'Email integration' },
-        { text: 'Up to 2 users' },
-        { text: '300 leads max' },
-        { text: 'AI assistant' },
-        { text: 'Shared inbox + internal notes' },
-        { text: 'Voice notes & media' },
-        { text: 'Basic analytics' },
-        { text: 'Priority email support' },
-        { text: 'Instagram / Facebook inbox', locked: true, requiredPlan: 'Growth' },
-        { text: 'Workflow automations', locked: true, requiredPlan: 'Growth' },
-        { text: 'Google Calendar / Calendly', locked: true, requiredPlan: 'Growth' },
-        { text: 'Flux — AI Instagram content', locked: true, requiredPlan: 'Growth' },
-      ],
-      href: authed ? '/settings?tab=billing' : '/signup',
-    },
-    {
-      key: 'growth',
-      label: 'Growth',
-      price: '$49',
-      cadence: '/mo',
-      tagline: 'Growing teams at scale',
-      featured: true,
-      items: [
-        { text: 'Flux — AI Instagram content engine', highlight: true },
-        { text: 'Unified inbox: WhatsApp + IG + FB' },
-        { text: 'Website-to-CRM capture' },
-        { text: 'Email integration' },
-        { text: 'Up to 5 team members' },
-        { text: 'Unlimited leads' },
-        { text: 'AI assistant + smart summaries' },
-        { text: 'Team collaboration' },
-        { text: 'Google Calendar + Meet' },
-        { text: 'Calendly integration' },
-        { text: 'Workflow automations' },
-        { text: 'Reports & analytics' },
-        { text: 'Multi-pipeline support' },
-        { text: 'Priority support' },
-      ],
-      href: authed ? '/settings?tab=billing' : '/signup',
-    },
-    {
-      key: 'enterprise',
-      label: 'Enterprise',
-      price: 'Custom',
-      cadence: '',
-      tagline: 'Agencies & high-volume teams',
-      items: [
-        { text: 'Flux unlimited — multi-brand content', highlight: true },
-        { text: 'Unlimited channels' },
-        { text: 'Unlimited team members' },
-        { text: 'White-label support' },
-        { text: 'Dedicated infrastructure' },
-        { text: 'Advanced AI workflows' },
-        { text: 'Custom integrations' },
-        { text: 'API access' },
-        { text: 'SLA onboarding & support' },
-        { text: 'Role-based permissions' },
-        { text: 'Bring your own AI keys' },
-        { text: 'Dedicated account manager' },
-      ],
-      href: 'mailto:sales@wappflow.app',
-      external: true,
-    },
-  ];
-
-  const currentTierLabel = cur ? cur.charAt(0).toUpperCase() + cur.slice(1) : null;
+  const priceOf = (p) => (remote && remote[p.key] && remote[p.key].price != null) ? remote[p.key].price : p.price;
+  const foundOf = (p) => (remote && remote[p.key] && remote[p.key].founding_price != null) ? remote[p.key].founding_price : p.founding;
 
   return (
     <section id="pricing" className="lp-section lp-pricing">
       <div className="lp-container">
-        <Reveal>
-          <div className="lp-section-eyebrow">Pricing</div>
-        </Reveal>
+        <Reveal><div className="lp-section-eyebrow">Pricing</div></Reveal>
         <Reveal delay={80}>
-          <h2 className="lp-section-title">
-            Plans that scale with <span className="lp-gradient">your team</span>.
-          </h2>
+          <h2 className="lp-section-title">Plans that scale with <span className="lp-gradient">your studio</span>.</h2>
         </Reveal>
         <Reveal delay={140}>
           <p className="lp-section-sub">
-            Start free. Upgrade when you outgrow it. No per-seat gotchas, no AI add-ons, no surprise bills.
+            Built for photographers, videographers, studios &amp; agencies. The first 100 studios lock in <strong>50% off — permanently</strong> with Founding&nbsp;100.
           </p>
         </Reveal>
 
-        {/* Authed user's plan banner — gives them an immediate "you are here" anchor */}
-        {authed && currentTierLabel && (
-          <Reveal delay={180}>
-            <div className="lp-current-plan-banner">
-              <Crown size={14} />
+        {founding.open && (
+          <Reveal delay={170}>
+            <div style={PS.foundingBanner}>
+              <Crown size={15} />
               <span>
-                You&apos;re on the <strong>{currentTierLabel}</strong> plan
+                <strong>Founding&nbsp;100</strong> — first 100 studios keep 50% off forever.
+                {typeof founding.remaining === 'number' ? ` ${founding.remaining} of ${founding.slots || 100} spots left.` : ''}
               </span>
-              <Link href="/settings?tab=billing" className="lp-current-plan-link">
-                Manage billing <ArrowRight size={12} />
-              </Link>
             </div>
           </Reveal>
         )}
 
-        <div className="lp-pricing-grid lp-pricing-4col">
-          {tiers.map((t, idx) => {
-            const isCurrent = authed && cur === t.key;
-            const cta = planCta(t.key, t.label, cur, authed);
-            const cardClass = [
-              'lp-price-card',
-              t.featured && 'lp-price-featured',
-              isCurrent && 'lp-price-current',
-            ].filter(Boolean).join(' ');
-            const btnClass = [
-              'lp-btn',
-              'lp-btn-block',
-              cta.tone === 'primary' && 'lp-btn-primary',
-              cta.tone === 'glass' && 'lp-btn-glass',
-              cta.tone === 'glass-quiet' && 'lp-btn-glass-quiet',
-              cta.tone === 'current' && 'lp-btn-current',
-            ].filter(Boolean).join(' ');
-
+        <div style={PS.grid}>
+          {LANDING_PLANS.map((p, i) => {
+            const price = priceOf(p), found = foundOf(p);
             return (
-              <Reveal key={t.key} delay={80 + idx * 60}>
-                <div className={cardClass}>
-                  {t.featured && <div className="lp-price-ribbon">Most popular</div>}
-                  {isCurrent && (
-                    <div className="lp-price-current-badge">
-                      <Crown size={11} /> Your plan
-                    </div>
-                  )}
-                  <div className="lp-price-tier">{t.label}</div>
-                  <div className="lp-price-amount">
-                    {t.price}
-                    {t.cadence && <span>{t.cadence}</span>}
+              <Reveal key={p.key} delay={80 + i * 60}>
+                <div style={PS.card(p.featured)}>
+                  {p.featured && <div style={PS.ribbonPopular}>★ Most popular</div>}
+                  <div style={PS.tier}>{p.name}</div>
+                  <div style={PS.tagline}>{p.tagline}</div>
+                  <div style={PS.amountWrap}>
+                    {price != null
+                      ? <><span style={PS.amount}>{pkr(price)}</span><span style={PS.cadence}>/month</span></>
+                      : <span style={PS.amount}>Custom</span>}
                   </div>
-                  <div className="lp-price-period">{t.tagline}</div>
-                  <PriceList items={t.items} />
-                  {cta.tone === 'current' ? (
-                    <div className={btnClass}>{cta.text}</div>
-                  ) : t.external ? (
-                    <a href={t.href} className={btnClass}>
-                      {cta.text}
-                      {cta.tone === 'primary' && <ArrowRight size={16} />}
-                    </a>
-                  ) : (
-                    <Link href={t.href} className={btnClass}>
-                      {cta.text}
-                      {cta.tone === 'primary' && <ArrowRight size={16} />}
-                    </Link>
-                  )}
+                  {found != null && founding.open
+                    ? <div style={PS.founding}><Crown size={12} /> Founding&nbsp;100: <strong>&nbsp;{pkr(found)}/mo</strong></div>
+                    : <div style={PS.foundingMuted}>{price != null ? 'Standard pricing' : 'Tailored to your organization'}</div>}
+                  <a href={p.key === 'enterprise' ? 'mailto:sales@wappflow.app' : '/signup'} style={PS.cta(p.featured)}>
+                    {p.key === 'enterprise' ? 'Talk to sales' : 'Get started'} <ArrowRight size={15} />
+                  </a>
+                  <div style={PS.limitsBox}>
+                    {p.limits.map((l, j) => (
+                      <div key={j} style={PS.limitRow}><Check size={13} style={{ color: '#10b981', flexShrink: 0 }} /> <span>{l}</span></div>
+                    ))}
+                  </div>
+                  <ul style={PS.featList}>
+                    {p.features.map((f, j) => (
+                      <li key={j} style={PS.featRow}>
+                        <Check size={13} style={{ color: p.featured ? '#8b5cf6' : '#6366f1', flexShrink: 0, marginTop: 3 }} />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </Reveal>
             );
           })}
         </div>
 
-        <Reveal delay={360}>
+        <ComparisonTable />
+
+        <Reveal delay={200}>
+          <div style={PS.entCta}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>Need a custom deployment?</div>
+              <div style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
+                Multi-location studios, franchises &amp; enterprise — unlimited everything, custom SLAs, dedicated support.
+              </div>
+            </div>
+            <a href="mailto:sales@wappflow.app" style={{ ...PS.cta(true), width: 'auto', whiteSpace: 'nowrap' }}>Talk to sales <ArrowRight size={15} /></a>
+          </div>
+        </Reveal>
+
+        <Reveal delay={300}>
           <div className="lp-price-foot">
-            All paid plans include WhatsApp, AI replies, audit logs, and self-hosted data ownership. Upgrade or downgrade anytime.
+            All plans include WhatsApp, the AI engine, audit logs &amp; data ownership. Founding&nbsp;100 pricing is locked permanently. Upgrade anytime.
           </div>
         </Reveal>
       </div>
     </section>
   );
 }
+
+// ── Feature comparison table (spec #7) ──────────────────────────────────────
+const CMP_ROWS = [
+  { group: 'Limits' },
+  { label: 'New leads / month', vals: ['200', '500', '5,000', 'Unlimited'] },
+  { label: 'Team members', vals: ['1', '5', '15', 'Unlimited'] },
+  { label: 'WhatsApp accounts', vals: ['1', '2', '5', '5+ custom'] },
+  { label: 'Storage', vals: ['50 GB', '250 GB', '1 TB', 'Custom'] },
+  { label: 'Contract / proposal sends / mo', vals: ['25', '100', '500', 'Unlimited'] },
+  { group: 'Core modules' },
+  { label: 'CRM, Contracts, Booking, Media Studio', vals: [true, true, true, true] },
+  { label: 'Portfolio, Client Portal, Print Store', vals: [true, true, true, true] },
+  { group: 'Growth & AI' },
+  { label: 'Instagram / Facebook / Website capture', vals: [false, true, true, true] },
+  { label: 'Lead source tracking', vals: [false, true, true, true] },
+  { label: 'Team permissions', vals: [false, true, true, true] },
+  { label: 'Advanced reporting + Knowledge base', vals: [false, true, true, true] },
+  { label: 'AI replies, lead intelligence, next best actions', vals: [false, true, true, true] },
+  { label: 'Studio Brain, AI scoring, hero-shot, culling', vals: [false, true, true, true] },
+  { group: 'Contracts & studio depth' },
+  { label: 'Clause library, version history, redline, approvals', vals: [false, true, true, true] },
+  { label: 'Bulk send', vals: [false, true, true, true] },
+  { label: 'Gallery collections, story sections, proofing', vals: [false, true, true, true] },
+  { label: 'Advanced automation', vals: [false, true, true, true] },
+  { group: 'Scale & platform' },
+  { label: 'White-label experience', vals: [false, false, true, true] },
+  { label: 'Priority support', vals: [false, false, true, true] },
+  { label: 'Desktop access', vals: [false, 'Beta', true, true] },
+  { label: 'Future engines (style, story, reel, AI editing)', vals: [false, false, true, true] },
+  { label: 'Custom integrations, SLAs, dedicated support', vals: [false, false, false, true] },
+];
+
+function ComparisonTable() {
+  const cell = (v) => {
+    if (v === true) return <Check size={15} style={{ color: '#10b981' }} />;
+    if (v === false) return <span style={{ color: 'var(--text-dim)', opacity: 0.5 }}>—</span>;
+    return <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{v}</span>;
+  };
+  return (
+    <Reveal delay={120}>
+      <div style={PS.cmpWrap}>
+        <table style={PS.cmpTable}>
+          <thead>
+            <tr>
+              <th style={{ ...PS.cmpTh, textAlign: 'left' }}>Compare plans</th>
+              <th style={PS.cmpTh}>Creator</th>
+              <th style={{ ...PS.cmpTh, color: '#8b5cf6' }}>Studio</th>
+              <th style={PS.cmpTh}>Studio+</th>
+              <th style={PS.cmpTh}>Enterprise</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CMP_ROWS.map((r, i) => r.group ? (
+              <tr key={i}><td colSpan={5} style={PS.cmpGroup}>{r.group}</td></tr>
+            ) : (
+              <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={PS.cmpLabel}>{r.label}</td>
+                {r.vals.map((v, j) => <td key={j} style={{ ...PS.cmpCell, ...(j === 1 ? { background: 'rgba(139,92,246,0.05)' } : {}) }}>{cell(v)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Reveal>
+  );
+}
+
+// Inline styles for the pricing section (kept local so it never depends on
+// undefined lp-* classes).
+const PS = {
+  foundingBanner: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, margin: '0 auto 28px', maxWidth: 620, padding: '10px 18px', borderRadius: 999, background: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(139,92,246,0.12))', border: '1px solid rgba(245,158,11,0.35)', color: '#fbbf24', fontSize: 13.5, fontWeight: 600, textAlign: 'center' },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 18, alignItems: 'start' },
+  card: (f) => ({ position: 'relative', display: 'flex', flexDirection: 'column', padding: f ? '28px 22px' : '24px 22px', borderRadius: 18, background: f ? 'linear-gradient(180deg, rgba(139,92,246,0.10), rgba(99,102,241,0.04))' : 'var(--surface)', border: f ? '2px solid rgba(139,92,246,0.55)' : '1px solid var(--border)', boxShadow: f ? '0 24px 60px -24px rgba(139,92,246,0.5)' : '0 2px 10px rgba(0,0,0,0.04)' }),
+  ribbonPopular: { position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', padding: '4px 14px', borderRadius: 999, background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', color: '#fff', fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', whiteSpace: 'nowrap', boxShadow: '0 6px 16px -4px rgba(139,92,246,0.6)' },
+  tier: { fontSize: 19, fontWeight: 800, color: 'var(--text)', marginTop: 4 },
+  tagline: { fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4, minHeight: 34, lineHeight: 1.35 },
+  amountWrap: { display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 12, flexWrap: 'wrap' },
+  amount: { fontSize: 26, fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.02em' },
+  cadence: { fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 },
+  founding: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 12.5, color: '#d97706', fontWeight: 600 },
+  foundingMuted: { marginTop: 6, fontSize: 12.5, color: 'var(--text-dim)' },
+  cta: (f) => ({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 16, padding: '11px 16px', borderRadius: 11, textDecoration: 'none', fontWeight: 700, fontSize: 14, cursor: 'pointer', border: f ? 'none' : '1.5px solid var(--border)', background: f ? 'linear-gradient(135deg,#8b5cf6,#6366f1)' : 'var(--surface2)', color: f ? '#fff' : 'var(--text)', boxShadow: f ? '0 10px 26px -8px rgba(139,92,246,0.55)' : 'none' }),
+  limitsBox: { marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 },
+  limitRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text)' },
+  featList: { listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 },
+  featRow: { display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.4 },
+  entCta: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', marginTop: 28, padding: '22px 24px', borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--border)' },
+  cmpWrap: { marginTop: 40, overflowX: 'auto', borderRadius: 16, border: '1px solid var(--border)' },
+  cmpTable: { width: '100%', minWidth: 720, borderCollapse: 'collapse', background: 'var(--surface)' },
+  cmpTh: { padding: '14px 14px', fontSize: 13, fontWeight: 800, color: 'var(--text)', textAlign: 'center', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' },
+  cmpGroup: { padding: '12px 14px', fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', background: 'var(--surface2)' },
+  cmpLabel: { padding: '11px 14px', fontSize: 13, color: 'var(--text)' },
+  cmpCell: { padding: '11px 14px', textAlign: 'center', verticalAlign: 'middle' },
+};
 
 function PriceList({ items }) {
   return (
@@ -2076,6 +2101,30 @@ function FAQ() {
     {
       q: 'Are team huddles really included?',
       a: 'Yes, no upcharge. Huddles run on Jitsi Meet — free, open-source, end-to-end encrypted. Voice and video supported. No accounts, no installs, no API keys needed.',
+    },
+    {
+      q: 'What counts as a lead?',
+      a: 'Your monthly lead allowance counts each NEW lead created in a calendar month — whether added manually, imported, or auto-created from a new WhatsApp, Instagram, Facebook, or website conversation. Messages, notes, edits, contracts, and bookings on existing leads do NOT count. Inbound customer messages are never dropped, even at the limit.',
+    },
+    {
+      q: 'What counts as storage?',
+      a: 'Storage is the actual file storage your workspace consumes — primarily Media Studio assets (photos/videos) and exports. It is measured in GB against your plan\'s allowance (50 GB on Creator, 250 GB on Studio, 1 TB on Studio+).',
+    },
+    {
+      q: 'What counts as a contract / proposal send?',
+      a: 'Each contract, proposal, or quote you send to a client counts once toward your monthly send allowance. Drafts, edits, and re-opens don\'t count — only sends.',
+    },
+    {
+      q: 'How do limits reset?',
+      a: 'Monthly limits (new leads and contract sends) reset on the 1st of each calendar month. Capacity limits (users, WhatsApp accounts, storage) reflect what you\'re currently using and free up as you remove items or upgrade.',
+    },
+    {
+      q: 'What happens when I reach a limit?',
+      a: 'You\'ll see a soft warning at 80% and an upgrade prompt at 90%. At 100% you can\'t add more of that item until the next reset or an upgrade — but nothing you\'ve already created is touched, and incoming customer messages are never blocked.',
+    },
+    {
+      q: 'How does Founding 100 work?',
+      a: 'The first 100 paying studios lock in 50% off — Creator PKR 3,999, Studio PKR 7,499, Studio+ PKR 14,999 — permanently, for as long as you stay subscribed. Founding members also get founder access, the roadmap, beta features, early desktop access, and a priority feedback channel.',
     },
   ];
 
@@ -2176,6 +2225,7 @@ function Footer() {
             <a href="#features">Features</a>
             <a href="#ai">AI Engine</a>
             <a href="#platforms">Platforms</a>
+            <a href="#pricing">Pricing</a>
           </div>
           <div>
             <div className="lp-footer-col-head">Company</div>

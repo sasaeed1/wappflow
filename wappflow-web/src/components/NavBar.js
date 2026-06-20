@@ -172,25 +172,25 @@ const NAV_ITEMS = [
   { label: 'Invoices',  icon: FileText,        path: '/invoices' },
   { label: 'Bookings',  icon: Calendar,        path: '/bookings' },
   { label: 'Analytics', icon: BarChart2,       path: '/reports',
-    lockFeature: 'analytics', requiredPlan: 'Growth' },
+    lockFeature: 'analytics', requiredPlan: 'Studio' },
 ];
 
 // Secondary items — now live in the top-right account menu (no more "More"
 // dropdown, and Flux lives in the app-switcher).
 const MORE_ITEMS = [
   { label: 'Team',      icon: UserCheck,       path: '/team',
-    lockFeature: 'team_collaboration', requiredPlan: 'Growth' },
+    lockFeature: 'team_collaboration', requiredPlan: 'Studio' },
   { label: 'Knowledge', icon: Brain,           path: '/knowledge',
-    lockFeature: 'team_collaboration', requiredPlan: 'Growth' },
+    lockFeature: 'team_collaboration', requiredPlan: 'Studio' },
   { label: 'Help',      icon: HelpCircle,      path: '/help' },
 ];
 
 // Per-platform gates for the Platform dropdown. WhatsApp is always allowed.
 const PLATFORM_GATES = {
   whatsapp:  { feature: null,              requiredPlan: null },
-  instagram: { feature: 'instagram',       requiredPlan: 'Growth' },
-  facebook:  { feature: 'facebook',        requiredPlan: 'Growth' },
-  website:   { feature: 'website_capture', requiredPlan: 'Growth' },
+  instagram: { feature: 'instagram',       requiredPlan: 'Studio' },
+  facebook:  { feature: 'facebook',        requiredPlan: 'Studio' },
+  website:   { feature: 'website_capture', requiredPlan: 'Studio' },
 };
 
 // Shared row style for the account dropdown.
@@ -342,7 +342,7 @@ export default function NavBar({ children }) {
     const handleClick = (e) => {
       if (locked) {
         e.preventDefault();
-        setNavUpgrade({ label, requiredPlan: requiredPlan || 'Growth', feature: lockFeature });
+        router.push('/settings?tab=plan');   // in-app plan & billing
         setMobileOpen(false);
         return;
       }
@@ -368,7 +368,7 @@ export default function NavBar({ children }) {
         onMouseLeave={e => {
           if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }
         }}
-        title={locked ? `${label} — Upgrade to ${requiredPlan || 'Growth'} to unlock` : label}
+        title={locked ? `${label} — Upgrade to ${requiredPlan || 'Studio'} to unlock` : label}
       >
         <Icon size={15} />
         {label}
@@ -380,7 +380,7 @@ export default function NavBar({ children }) {
             border: '1px solid rgba(239,68,68,0.40)',
             color: '#fca5a5', fontSize: 9, fontWeight: 900, letterSpacing: '0.04em',
           }}>
-            <Lock size={9} />{requiredPlan || 'Growth'}
+            <Lock size={9} />{requiredPlan || 'Studio'}
           </span>
         )}
       </button>
@@ -566,7 +566,7 @@ export default function NavBar({ children }) {
                   return (
                     <button key={item.path}
                       onClick={() => {
-                        if (itemLocked) { setNavUpgrade({ label: item.label, requiredPlan: item.requiredPlan || 'Growth', feature: item.lockFeature }); setShowUserMenu(false); return; }
+                        if (itemLocked) { router.push('/settings?tab=plan'); setShowUserMenu(false); return; }
                         router.push(item.path); setShowUserMenu(false);
                       }}
                       style={menuItem}

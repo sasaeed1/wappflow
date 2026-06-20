@@ -13,73 +13,115 @@
 //  separate step — do it behind a flag and verify parity first (see spec §6).
 // ════════════════════════════════════════════════════════════════════════════
 
-// EXACT copy of server.js PLAN_DEFINITIONS — used both to seed the plan_* tables
-// and as the safety fallback if those tables are empty. Keep in sync with server.js
-// until `/api/workspace/plan-info` is migrated to read from the tables.
+// ════════════════════════════════════════════════════════════════════════════
+//  PLAN CATALOG — spec 2026-06-21 (PKR). Creator → Studio → Studio+ → Enterprise.
+//  This is the seed + fallback for the data-driven plan_* tables. Feature sets use
+//  inheritance (each tier spreads the one below + its additions) so the catalog
+//  stays maintainable; everything still resolves through the plan_* tables at
+//  runtime, so Command Center can edit any of it without code changes.
+//  Limit convention: -1 = unlimited. leads = NEW leads per calendar month;
+//  contract_sends = contracts/proposals/quotes sent per month; storage_gb = GB.
+// ════════════════════════════════════════════════════════════════════════════
+
+// CREATOR — solo creators/freelancers. Core modules on; growth/AI/team/contract
+// depth off. (Modules: CRM, Contracts Studio, Booking, Media Studio, Portfolio,
+// Client Portal, Print Store.)
+const CREATOR_FEATURES = {
+  // Core modules (included)
+  crm: true, contracts_studio: true, booking: true, media_studio: true,
+  portfolio: true, client_portal: true, print_store: true,
+  // CRM essentials
+  whatsapp: true, basic_inbox: true, basic_crm: true, shared_inbox: true, voice_notes: true,
+  email: true, email_integration: true, email_templates: true, email_sending: true, email_receiving: true,
+  basic_ai: true,
+  // Extra lead-capture channels — EXCLUDED on Creator
+  instagram: false, facebook: false, website_capture: false, lead_source_tracking: false,
+  // Team / reporting / knowledge — EXCLUDED
+  team_collaboration: false, team_permissions: false,
+  analytics: false, reports: false, advanced_reporting: false, multi_pipeline: false,
+  knowledge_base: false,
+  // AI depth — EXCLUDED
+  ai_reply_suggestions: false, ai_lead_intelligence: false, next_best_actions: false,
+  studio_brain: false, ai_asset_scoring: false, ai_hero_shot: false, ai_culling: false, ai_project_intelligence: false,
+  // Contracts depth — EXCLUDED
+  clause_library: false, version_history: false, redline_comparison: false, approval_workflows: false, bulk_send: false,
+  // Gallery / studio depth — EXCLUDED
+  gallery_collections: false, story_sections: false, advanced_proofing: false, portfolio_management: false,
+  // Automation / integrations — EXCLUDED
+  auto_reply: false, automations: false, workflows: false, advanced_automation: false,
+  google_calendar: false, calendly: false,
+  // Premium / platform — EXCLUDED
+  white_label: false, priority_support: false,
+  desktop_access: false, desktop_sync: false, local_ai: false,
+  style_profiles: false, story_engine: false, reel_engine: false, ai_editing: false,
+  // Enterprise — EXCLUDED
+  api_access: false, byok: false, sso: false, audit_logs: false, dedicated_support: false,
+  custom_integrations: false, custom_branding: false,
+  flux: false,
+};
+
+// STUDIO — growing studios/teams. Everything in Creator + growth/AI/team/contract/
+// gallery depth + advanced automation + Desktop Beta.
+const STUDIO_ADD = {
+  instagram: true, facebook: true, website_capture: true, lead_source_tracking: true,
+  team_collaboration: true, team_permissions: true,
+  analytics: true, reports: true, advanced_reporting: true, multi_pipeline: true,
+  knowledge_base: true,
+  ai_reply_suggestions: true, ai_lead_intelligence: true, next_best_actions: true,
+  studio_brain: true, ai_asset_scoring: true, ai_hero_shot: true, ai_culling: true, ai_project_intelligence: true,
+  clause_library: true, version_history: true, redline_comparison: true, approval_workflows: true, bulk_send: true,
+  gallery_collections: true, story_sections: true, advanced_proofing: true, portfolio_management: true,
+  auto_reply: true, automations: true, workflows: true, advanced_automation: true,
+  google_calendar: true, calendly: true,
+  desktop_access: true, // Desktop Beta
+};
+
+// STUDIO+ — established studios at scale. Everything in Studio + white-label,
+// priority support, desktop (incl. sync) + future creative engines.
+const STUDIO_PLUS_ADD = {
+  white_label: true, priority_support: true,
+  desktop_sync: true, local_ai: true,
+  style_profiles: true, story_engine: true, reel_engine: true, ai_editing: true,
+  flux: true,
+};
+
+// ENTERPRISE — custom. Everything + integrations/SLAs/branding/support.
+const ENTERPRISE_ADD = {
+  api_access: true, byok: true, sso: true, audit_logs: true, dedicated_support: true,
+  custom_integrations: true, custom_branding: true,
+};
+
 const PLAN_DEFINITIONS = {
-  free: {
-    name: 'Free',
-    features: {
-      whatsapp: true, basic_inbox: true, basic_crm: true, basic_ai: 'limited',
-      email_integration: false, email_templates: false, email_sending: false, email_receiving: false,
-      instagram: false, facebook: false, website_capture: false,
-      auto_reply: false, automations: false, workflows: false,
-      google_calendar: false, calendly: false,
-      team_collaboration: false, shared_inbox: false,
-      analytics: false, reports: false, multi_pipeline: false,
-      flux: false, api_access: false, byok: false, white_label: false,
-    },
-    limits: { whatsapp_accounts: 1, users: 1, leads: 50, brand_profiles: 0, ig_accounts: 0, carousels_monthly: 0 },
+  creator: {
+    name: 'Creator',
+    features: { ...CREATOR_FEATURES },
+    limits: { users: 1, leads: 200, whatsapp_accounts: 1, storage_gb: 50, contract_sends: 25, ig_accounts: 0, facebook_accounts: 0 },
   },
-  starter: {
-    name: 'Starter',
-    features: {
-      whatsapp: true, basic_inbox: true, basic_crm: true, basic_ai: true,
-      email_integration: true, email_templates: true, email_sending: true, email_receiving: true,
-      shared_inbox: true, voice_notes: true, analytics: 'basic', priority_support: 'email',
-      instagram: false, facebook: false, website_capture: false,
-      auto_reply: false, automations: false, workflows: false,
-      google_calendar: false, calendly: false,
-      team_collaboration: false, multi_pipeline: false,
-      flux: false, api_access: false, byok: false, white_label: false,
-    },
-    limits: { whatsapp_accounts: 1, users: 2, leads: 300, brand_profiles: 0, ig_accounts: 0, carousels_monthly: 0 },
+  studio: {
+    name: 'Studio',
+    features: { ...CREATOR_FEATURES, ...STUDIO_ADD },
+    limits: { users: 5, leads: 500, whatsapp_accounts: 2, storage_gb: 250, contract_sends: 100, ig_accounts: -1, facebook_accounts: -1 },
   },
-  growth: {
-    name: 'Growth',
-    features: {
-      whatsapp: true, basic_inbox: true, basic_crm: true, basic_ai: true,
-      email_integration: true, email_templates: true, email_sending: true, email_receiving: true,
-      shared_inbox: true, voice_notes: true,
-      instagram: true, facebook: true, website_capture: true,
-      auto_reply: true, automations: true, workflows: true,
-      google_calendar: true, calendly: true,
-      team_collaboration: true, analytics: true, reports: true, multi_pipeline: true,
-      flux: true, priority_support: true,
-      api_access: false, byok: false, white_label: false,
-    },
-    limits: { whatsapp_accounts: 3, users: 5, leads: -1, brand_profiles: 5, ig_accounts: 5, carousels_monthly: 250 },
+  studio_plus: {
+    name: 'Studio+',
+    features: { ...CREATOR_FEATURES, ...STUDIO_ADD, ...STUDIO_PLUS_ADD },
+    limits: { users: 15, leads: 5000, whatsapp_accounts: 5, storage_gb: 1024, contract_sends: 500, ig_accounts: -1, facebook_accounts: -1 },
   },
   enterprise: {
     name: 'Enterprise',
-    features: {
-      whatsapp: true, basic_inbox: true, basic_crm: true, basic_ai: true,
-      email_integration: true, email_templates: true, email_sending: true, email_receiving: true,
-      shared_inbox: true, voice_notes: true,
-      instagram: true, facebook: true, website_capture: true,
-      auto_reply: true, automations: true, workflows: true,
-      google_calendar: true, calendly: true,
-      team_collaboration: true, analytics: true, reports: true, multi_pipeline: true,
-      flux: true, priority_support: true,
-      api_access: true, byok: true, white_label: true, sso: true, audit_logs: true, dedicated_support: true,
-    },
+    features: { ...CREATOR_FEATURES, ...STUDIO_ADD, ...STUDIO_PLUS_ADD, ...ENTERPRISE_ADD },
     // -1 means unlimited (matches usePlan's interpretation)
-    limits: { whatsapp_accounts: -1, users: -1, leads: -1, brand_profiles: -1, ig_accounts: -1, carousels_monthly: -1 },
+    limits: { users: -1, leads: -1, whatsapp_accounts: -1, storage_gb: -1, contract_sends: -1, ig_accounts: -1, facebook_accounts: -1 },
   },
 };
 
-// Monthly list prices from the landing pricing table (USD). enterprise = custom (null).
-const PLAN_MONTHLY_PRICE = { free: 0, starter: 19, growth: 49, enterprise: null };
+// Standard monthly list price (PKR). enterprise = custom (null).
+const PLAN_MONTHLY_PRICE = { creator: 7999, studio: 14999, studio_plus: 29999, enterprise: null };
+// Founding 100 price (PKR) — 50% off, locked permanently for the first 100 paying
+// customers. Stored as is_founding rows in plan_prices.
+const PLAN_FOUNDING_PRICE = { creator: 3999, studio: 7499, studio_plus: 14999, enterprise: null };
+const PLAN_CURRENCY = 'PKR';
+const DEFAULT_PLAN = 'creator'; // entry plan for new workspaces / unknown tiers
 
 const CACHE_TTL_MS = 30 * 1000;
 const _cache = new Map(); // workspaceId -> { data, exp }
@@ -141,22 +183,34 @@ function ensureSchema(db) {
   seed(db);
 }
 
-// Idempotent seed of the plan catalog to exact parity with PLAN_DEFINITIONS.
+// Seed the plan catalog into the plan_* tables. Re-seeds (retiring any prior
+// catalog, e.g. legacy free/starter/growth) when the current plans aren't present,
+// so a change to PLAN_DEFINITIONS here flows into the tables on next boot. Per-
+// workspace overrides/flags/usage are never touched. Command Center edits the
+// tables afterward (config-as-data).
 function seed(db) {
-  const count = db.prepare('SELECT COUNT(*) AS c FROM plans').get().c;
-  if (count > 0) return;
+  const has = db.prepare('SELECT 1 AS x FROM plans WHERE key = ?').get(DEFAULT_PLAN);
+  if (has) return; // current catalog already seeded
   const rid = () => 'pl-' + Math.random().toString(36).slice(2, 10);
-  const insPlan = db.prepare('INSERT INTO plans (id, key, name, status, visibility, sort_order, is_default) VALUES (?,?,?,?,?,?,?)');
+  try {
+    db.prepare('DELETE FROM plans').run();
+    db.prepare('DELETE FROM plan_limits').run();
+    db.prepare('DELETE FROM plan_features').run();
+    db.prepare('DELETE FROM plan_prices').run();
+  } catch {}
+  const insPlan = db.prepare('INSERT OR REPLACE INTO plans (id, key, name, status, visibility, sort_order, is_default) VALUES (?,?,?,?,?,?,?)');
   const insLimit = db.prepare('INSERT OR REPLACE INTO plan_limits (plan_key, key, value) VALUES (?,?,?)');
   const insFeat = db.prepare('INSERT OR REPLACE INTO plan_features (plan_key, feature_key, enabled) VALUES (?,?,?)');
-  const insPrice = db.prepare('INSERT INTO plan_prices (id, plan_key, interval, currency, amount) VALUES (?,?,?,?,?)');
+  const insPrice = db.prepare('INSERT INTO plan_prices (id, plan_key, interval, region, currency, amount, is_founding) VALUES (?,?,?,?,?,?,?)');
   let order = 0;
   for (const [key, def] of Object.entries(PLAN_DEFINITIONS)) {
-    insPlan.run(rid(), key, def.name, 'active', 'public', order++, key === 'free' ? 1 : 0);
+    insPlan.run(rid(), key, def.name, 'active', 'public', order++, key === DEFAULT_PLAN ? 1 : 0);
     for (const [k, v] of Object.entries(def.limits)) insLimit.run(key, k, v);
     for (const [k, v] of Object.entries(def.features)) insFeat.run(key, k, JSON.stringify(v));
     const price = PLAN_MONTHLY_PRICE[key];
-    if (price !== null && price !== undefined) insPrice.run(rid(), key, 'month', 'USD', price);
+    if (price !== null && price !== undefined) insPrice.run(rid(), key, 'month', 'default', PLAN_CURRENCY, price, 0);
+    const founding = PLAN_FOUNDING_PRICE[key];
+    if (founding !== null && founding !== undefined) insPrice.run(rid(), key, 'month', 'default', PLAN_CURRENCY, founding, 1);
   }
 }
 
@@ -212,7 +266,7 @@ function getEntitlements(db, workspaceId, { fresh = false } = {}) {
   }
 
   const wp = db.prepare('SELECT * FROM workspace_plan WHERE workspace_id = ?').get(workspaceId);
-  const planKey = (wp?.plan || 'free').toLowerCase();
+  const planKey = (wp?.plan || DEFAULT_PLAN).toLowerCase();
 
   // Base from the plan_* tables; fall back to the embedded definitions if unseeded
   // or if the tables don't exist (resolver stays usable without Command Center mounted).
@@ -224,7 +278,7 @@ function getEntitlements(db, workspaceId, { fresh = false } = {}) {
     lRows.forEach(r => { limits[r.key] = r.value; });
   } catch {}
   if (!Object.keys(features).length && !Object.keys(limits).length) {
-    const def = PLAN_DEFINITIONS[planKey] || PLAN_DEFINITIONS.free;
+    const def = PLAN_DEFINITIONS[planKey] || PLAN_DEFINITIONS[DEFAULT_PLAN];
     features = { ...def.features };
     limits = { ...def.limits };
   }
@@ -237,21 +291,10 @@ function getEntitlements(db, workspaceId, { fresh = false } = {}) {
   try { applyFlags(db, workspaceId, features, sources); } catch {}
   try { applyOverrides(db, workspaceId, features, limits, sources); } catch {}
 
-  // ── ACCESS FULLY OPEN (pricing/plans retired 2026-06-21) ──────────────────
-  // Every workspace gets every feature unlocked and all limits unlimited. We
-  // override here — the single resolver every gate flows through — so all plan
-  // enforcement (module gates, requireFeature-style checks, usePlan) reports
-  // unlocked without touching each call site. Proxies make even un-seeded keys
-  // read as unlocked, so a never-defined feature/limit can never block a user.
-  for (const k of Object.keys(features)) features[k] = true;
-  for (const k of Object.keys(limits)) limits[k] = -1;
-  const featuresOpen = new Proxy(features, { get: (t, p) => (p in t ? t[p] : true) });
-  const limitsOpen = new Proxy(limits, { get: (t, p) => (p in t ? t[p] : -1) });
-
   const data = {
     plan: planKey,
     name: (PLAN_DEFINITIONS[planKey] || {}).name || planKey,
-    features: featuresOpen, limits: limitsOpen, sources,
+    features, limits, sources,
   };
   _cache.set(workspaceId, { data, exp: Date.now() + CACHE_TTL_MS });
   return data;
@@ -267,21 +310,29 @@ function invalidate(workspaceId) {
 // (config-as-data) so a future Plans editor reflects automatically; falls back to the
 // embedded definitions if unseeded.
 function getAllPlans(db) {
+  const priceFor = (key) => {
+    try {
+      const std = db.prepare("SELECT amount, currency FROM plan_prices WHERE plan_key = ? AND COALESCE(is_founding,0)=0 AND COALESCE(active,1)=1 ORDER BY amount LIMIT 1").get(key);
+      const fnd = db.prepare("SELECT amount FROM plan_prices WHERE plan_key = ? AND is_founding=1 AND COALESCE(active,1)=1 ORDER BY amount LIMIT 1").get(key);
+      return { price: std ? std.amount : (PLAN_MONTHLY_PRICE[key] ?? null), founding_price: fnd ? fnd.amount : (PLAN_FOUNDING_PRICE[key] ?? null), currency: (std && std.currency) || PLAN_CURRENCY };
+    } catch { return { price: PLAN_MONTHLY_PRICE[key] ?? null, founding_price: PLAN_FOUNDING_PRICE[key] ?? null, currency: PLAN_CURRENCY }; }
+  };
   try {
     const plans = db.prepare("SELECT key, name FROM plans WHERE status = 'active' ORDER BY sort_order").all();
     if (plans.length) {
       return plans.map(p => ({
         key: p.key,
         name: p.name,
+        ...priceFor(p.key),
         features: Object.fromEntries(db.prepare('SELECT feature_key, enabled FROM plan_features WHERE plan_key = ?').all(p.key).map(r => [r.feature_key, safeJson(r.enabled, r.enabled)])),
         limits: Object.fromEntries(db.prepare('SELECT key, value FROM plan_limits WHERE plan_key = ?').all(p.key).map(r => [r.key, r.value])),
       }));
     }
   } catch {}
-  return Object.entries(PLAN_DEFINITIONS).map(([k, v]) => ({ key: k, name: v.name, features: v.features, limits: v.limits }));
+  return Object.entries(PLAN_DEFINITIONS).map(([k, v]) => ({ key: k, name: v.name, price: PLAN_MONTHLY_PRICE[k] ?? null, founding_price: PLAN_FOUNDING_PRICE[k] ?? null, currency: PLAN_CURRENCY, features: v.features, limits: v.limits }));
 }
 
 module.exports = {
   ensureSchema, getEntitlements, invalidate, getAllPlans,
-  PLAN_DEFINITIONS, PLAN_MONTHLY_PRICE,
+  PLAN_DEFINITIONS, PLAN_MONTHLY_PRICE, PLAN_FOUNDING_PRICE, PLAN_CURRENCY, DEFAULT_PLAN,
 };

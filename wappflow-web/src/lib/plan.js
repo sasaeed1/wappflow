@@ -4,23 +4,22 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import api from './api';
 
 /**
- * Plan context — single source of truth for which features are unlocked.
+ * Plan context — single source of truth for what's unlocked + current usage.
  *
- * Use anywhere:
- *   const { plan, features, limits, usage, hasFeature, hasLimit } = usePlan();
+ *   const { plan, planName, features, limits, usage, quota, founding,
+ *           hasFeature, hasLimit, usageLevel, quotaFor, atLimit } = usePlan();
  *
- *   if (!hasFeature('google_calendar')) return <LockedCard featureName="Google Calendar" />;
- *   if (!hasLimit('leads')) return <LeadLimitReached />;
+ *   if (!hasFeature('google_calendar')) return <LockedCard .../>;
+ *   if (atLimit('leads')) disable the "New Lead" button;
+ *   quotaFor('leads') -> { used, limit, remaining, pct, level, reset_date }
+ *
+ * Soft-limit levels (from the backend): unlimited | ok | warn (>=80%) |
+ * critical (>=90%) | reached (100%).
  */
 
 const PlanContext = createContext(null);
 
-export const PLAN_PRIORITY = { free: 0, starter: 1, growth: 2, enterprise: 3 };
-
-// Pricing/plans retired — every feature is on and every limit is unlimited.
-// Proxies so ANY key (even un-seeded ones) reads unlocked.
-const ALL_OPEN_FEATURES = new Proxy({}, { get: () => true, has: () => true });
-const ALL_OPEN_LIMITS = new Proxy({}, { get: () => -1, has: () => true });
+export const PLAN_PRIORITY = { creator: 0, studio: 1, studio_plus: 2, enterprise: 3 };
 
 export function PlanProvider({ children }) {
   const [planInfo, setPlanInfo] = useState(null);
@@ -29,14 +28,11 @@ export function PlanProvider({ children }) {
   const fetchPlan = useCallback(async () => {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      if (!token) {
-        setLoading(false);
-        return;
-      }
+      if (!token) { setLoading(false); return; }
       const res = await api.get('/workspace/plan-info');
       setPlanInfo(res.data);
     } catch (e) {
-      // 401 means unauthed — leave plan null. Don't bomb out.
+      // 401 unauthed / network — leave plan null (treated optimistically until known)
     } finally {
       setLoading(false);
     }
@@ -44,39 +40,60 @@ export function PlanProvider({ children }) {
 
   useEffect(() => {
     fetchPlan();
-    // Refresh plan every 5 min (in case it's upgraded out of band)
-    const iv = setInterval(fetchPlan, 5 * 60 * 1000);
+    const iv = setInterval(fetchPlan, 5 * 60 * 1000); // refresh in case plan/usage changes out of band
     return () => clearInterval(iv);
   }, [fetchPlan]);
 
-  // Pricing/plans retired 2026-06-21 — every feature is open to every user and
-  // there are no limits. These always-true gates dissolve all in-app locks.
-  const hasFeature = () => true;
-  const hasLimit = () => true;
+  // Feature gate. Optimistic-unlocked until the plan loads, so gated pages don't
+  // flash a lock on first paint; resolves to the real value once loaded.
+  const hasFeature = (key) => {
+    if (!planInfo) return true;
+    const v = planInfo.features?.[key];
+    return v === true || v === 'limited' || v === 'basic';
+  };
 
-  // Pricing/plans retired 2026-06-21 — report a fully-unlocked, unlimited
-  // workspace. features[...] reads true for any key, limits[...] reads -1
-  // (unlimited) for any key, so even the call sites that read limits/usage
-  // DIRECTLY (lead cap, platform-account caps, usage chips) see "open" too.
+  // Numeric limit gate (true = still under the limit / unlimited).
+  const hasLimit = (key) => {
+    if (!planInfo) return true;
+    const q = planInfo.quota?.[key];
+    if (q) return q.level !== 'reached' && q.limit !== 0;
+    const limit = planInfo.limits?.[key];
+    if (limit === -1 || limit == null) return true;
+    const used = planInfo.usage?.[key] || 0;
+    return used < limit;
+  };
+
+  // Soft-limit helpers driven by the backend `quota` block.
+  const quotaFor = (metric) => planInfo?.quota?.[metric] || null;
+  const usageLevel = (metric) => planInfo?.quota?.[metric]?.level || (planInfo ? 'ok' : 'unlimited');
+  const atLimit = (metric) => usageLevel(metric) === 'reached';
+
+  const plan = planInfo?.plan || null;
   const value = {
-    // Report the top tier so any residual `plan.plan !== 'enterprise'` tier
-    // comparison treats the user as fully unlocked (no upgrade CTA can fire).
-    // No plan name is shown anywhere in the UI anymore.
-    plan: 'enterprise',
-    planName: 'Enterprise',
+    plan,
+    planName: planInfo?.name || null,
     loading,
-    features: ALL_OPEN_FEATURES,
-    limits: ALL_OPEN_LIMITS,
-    usage: {},
+    features: planInfo?.features || {},
+    limits: planInfo?.limits || {},
+    usage: planInfo?.usage || {},
+    quota: planInfo?.quota || {},
     allPlans: planInfo?.all_plans || [],
+    founding: planInfo?.founding || null,
     hasFeature,
     hasLimit,
+    quotaFor,
+    usageLevel,
+    atLimit,
     refresh: fetchPlan,
+    isCreator: plan === 'creator',
+    isStudio: plan === 'studio',
+    isStudioPlus: plan === 'studio_plus',
+    isEnterprise: plan === 'enterprise',
+    isPaid: !!plan,
+    // Back-compat with older checks (no Free/Starter tiers anymore):
     isFree: false,
     isStarter: false,
-    isGrowth: false,
-    isEnterprise: true,
-    isPaid: true,
+    isGrowth: plan === 'studio',
   };
 
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;
@@ -85,13 +102,15 @@ export function PlanProvider({ children }) {
 export function usePlan() {
   const ctx = useContext(PlanContext);
   if (!ctx) {
-    // Fallback for components rendered outside provider (e.g. landing page)
+    // Fallback for components rendered outside the provider (e.g. landing page).
     return {
       plan: null, planName: null, loading: false,
-      features: {}, limits: {}, usage: {}, allPlans: [],
+      features: {}, limits: {}, usage: {}, quota: {}, allPlans: [], founding: null,
       hasFeature: () => true, hasLimit: () => true,
+      quotaFor: () => null, usageLevel: () => 'unlimited', atLimit: () => false,
       refresh: () => {},
-      isFree: false, isStarter: false, isGrowth: false, isEnterprise: false, isPaid: false,
+      isCreator: false, isStudio: false, isStudioPlus: false, isEnterprise: false, isPaid: false,
+      isFree: false, isStarter: false, isGrowth: false,
     };
   }
   return ctx;
