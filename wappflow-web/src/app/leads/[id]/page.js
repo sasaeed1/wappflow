@@ -1285,7 +1285,7 @@ useEffect(() => {
 
       {/* Nav */}
       <nav style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: 'var(--shadow)', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div style={{ maxWidth: 1500, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 62 }}>
+        <div className="lead-subnav" style={{ maxWidth: 1500, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 62 }}>
           <button onClick={() => router.push('/dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 14, padding: '6px 12px', borderRadius: 10 }}
             onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
             <ArrowLeft size={16} /> Dashboard

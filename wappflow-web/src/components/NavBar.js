@@ -519,7 +519,7 @@ export default function NavBar({ children }) {
               }}>
                 {(user?.full_name || user?.email || 'U')[0]?.toUpperCase()}
               </div>
-              <div style={{ textAlign: 'left' }}>
+              <div className="nav-userinfo" style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {workspace?.name || user?.business_name || 'Workspace'}
                 </div>
@@ -527,7 +527,7 @@ export default function NavBar({ children }) {
                   {user?.full_name || user?.email || ''}
                 </div>
               </div>
-              <ChevronDown size={12} color="var(--text-muted)" />
+              <ChevronDown className="nav-userinfo" size={12} color="var(--text-muted)" />
             </button>
 
             {showUserMenu && (
@@ -941,6 +941,9 @@ export default function NavBar({ children }) {
         @media (max-width: 768px) {
           .nav-links     { display: none !important; }
           .mobile-hamburger { display: flex !important; }
+          /* Collapse the profile button to just the avatar circle — the
+             workspace/user name block is what overflowed narrow phones. */
+          .nav-userinfo  { display: none !important; }
         }
       `}</style>
     </>

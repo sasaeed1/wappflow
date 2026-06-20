@@ -230,11 +230,21 @@ select option {
 @media (max-width: 900px) {
   /* Tablet/mobile — everything stacks */
   .lead-grid { grid-template-columns: 1fr; padding: 14px; gap: 14px; }
+  /* Grid items default to min-width:auto and refuse to shrink below their
+     content's intrinsic width (the platform-tab row, long message bubbles),
+     blowing the 1fr track past the viewport. min-width:0 lets them cap at the
+     column width; inner scroll/wrap containers then handle their own overflow. */
+  .lead-grid > * { min-width: 0; }
+  .lead-center { min-width: 0; }
   .lead-grid .messages-area { height: 55vh !important; min-height: 320px !important; }
 }
 
-/* Nav action buttons — wrap on narrow screens instead of overflowing */
+/* Lead profile sub-nav (back · name · actions) — its three space-between
+   sections won't fit one phone row, so let the whole bar wrap and the action
+   cluster wrap within it, instead of forcing the page ~50px wider. */
 @media (max-width: 760px) {
+  .lead-subnav { flex-wrap: wrap; height: auto !important; padding: 8px 12px !important; gap: 8px; row-gap: 8px; justify-content: flex-start !important; }
+  .lead-subnav > * { min-width: 0; }
   .lead-nav-actions { flex-wrap: wrap; justify-content: flex-end; }
 }
 
