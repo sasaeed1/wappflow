@@ -678,7 +678,7 @@ export default function CullPage() {
             )}
 
             {/* decision dock */}
-            <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 104, display: 'flex', gap: 8, zIndex: 2 }}>
+            <div className="ms-dock" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 104, display: 'flex', gap: 8, zIndex: 2 }}>
               <DockBtn onClick={() => decide('reject')} active={current.cull_decision === 'reject'} color="#d4564a" Icon={X} label="Reject" hint="X" />
               <DockBtn onClick={() => decide('maybe')} active={current.cull_decision === 'maybe'} color="#d39a3e" Icon={HelpCircle} label="Maybe" hint="M" />
               <DockBtn onClick={() => decide('keep')} active={current.cull_decision === 'keep'} color="#2f9e6e" Icon={Check} label="Keep" hint="P" />
@@ -831,7 +831,7 @@ function DockBtn({ onClick, active, color, Icon, label, hint }) {
       fontFamily: 'var(--ms-font-ui)', fontWeight: 600, fontSize: 13, transition: 'all 0.15s ease',
     }}>
       <Icon size={15} color={active ? '#fff' : color} /> {label}
-      <span style={{ fontSize: 9.5, opacity: 0.5, border: '1px solid rgba(255,255,255,0.3)', borderRadius: 4, padding: '1px 5px' }}>{hint}</span>
+      <span className="ms-dock-hint" style={{ fontSize: 9.5, opacity: 0.5, border: '1px solid rgba(255,255,255,0.3)', borderRadius: 4, padding: '1px 5px' }}>{hint}</span>
     </button>
   );
 }

@@ -188,6 +188,11 @@ html[data-ms-theme="editorial"] .ms-wordmark b { font-size: 21px; }
   .ms-shell-link { padding: 6px 8px !important; font-size: 12.5px !important; }
   .ms-wordmark b { display: none !important; } /* keep the camera-icon home button, drop the text */
   .ms-shell-nav { margin-left: 2px !important; }
+  /* Cull decision dock (Reject/Maybe/Keep) — the keyboard-shortcut chips are
+     useless on touch and made the centered bar wider than the phone, clipping
+     the edge buttons. Drop the chips + tighten padding so it fits. */
+  .ms-dock-hint { display: none !important; }
+  .ms-dock button { padding: 11px 16px !important; }
 }
 .ms-shell-link { padding: 7px 13px; border-radius: var(--ms-radius-btn); border: none; background: transparent; color: var(--ms-ink-3);
   font-family: var(--ms-font-label); font-size: 12px; font-weight: 500; letter-spacing: calc(var(--ms-label-track) * 0.6); text-transform: var(--ms-btn-case, none); cursor: pointer; transition: all var(--ms-speed) var(--ms-ease); }
