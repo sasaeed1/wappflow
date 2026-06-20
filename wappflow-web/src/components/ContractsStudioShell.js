@@ -35,18 +35,18 @@ export default function ContractsStudioShell({ children }) {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <header style={{ position: 'sticky', top: 0, zIndex: 100, height: 58, display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
+      <header className="cs-header" style={{ position: 'sticky', top: 0, zIndex: 100, height: 58, display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
         <AppSwitcher align="left" />
         <div onClick={() => router.push('/contracts')} style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', marginRight: 6 }}>
-          <span style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileSignature size={15} color="#fff" /></span>
-          <b style={{ fontSize: 15.5, color: 'var(--text)', letterSpacing: '-0.3px' }}>Contracts Studio</b>
+          <span style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><FileSignature size={15} color="#fff" /></span>
+          <b className="cs-wordmark" style={{ fontSize: 15.5, color: 'var(--text)', letterSpacing: '-0.3px' }}>Contracts Studio</b>
         </div>
-        <nav style={{ display: 'flex', gap: 2, marginLeft: 6 }}>
+        <nav className="cs-nav" style={{ display: 'flex', gap: 2, marginLeft: 6 }}>
           <NavLink href="/contracts" label="Overview" />
           <NavLink href="/contracts/vault" label="Client Vault" />
           <NavLink href="/contracts/analytics" label="Analytics" />
         </nav>
-        <div style={{ flex: 1 }} />
+        <div className="cs-spacer" style={{ flex: 1 }} />
         <div ref={ref} style={{ position: 'relative' }}>
           <button onClick={() => setMenu(v => !v)} style={{ width: 34, height: 34, borderRadius: 999, border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {(user?.full_name || user?.email || 'U')[0]?.toUpperCase()}

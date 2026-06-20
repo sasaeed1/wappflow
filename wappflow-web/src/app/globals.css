@@ -268,8 +268,11 @@ select option {
    Add `r-*` classes to grids/rows/tables that don't otherwise reflow.
    ───────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .r-stack        { grid-template-columns: 1fr !important; }          /* any multi-col grid → 1 col */
-  .r-stack-2      { grid-template-columns: repeat(2, 1fr) !important; } /* → 2 cols */
+  /* minmax(0,…) (not plain 1fr) so a long/nowrap child can't force the track
+     past the viewport — an fr track's implicit minimum is min-content. */
+  .r-stack        { grid-template-columns: minmax(0, 1fr) !important; }          /* any multi-col grid → 1 col */
+  .r-stack-2      { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } /* → 2 cols */
+  .r-stack > *, .r-stack-2 > * { min-width: 0; }
   .r-col          { flex-direction: column !important; align-items: stretch !important; }
   .r-wrap         { flex-wrap: wrap !important; }
   .r-full         { width: 100% !important; flex: 1 1 100% !important; box-sizing: border-box; }
@@ -300,6 +303,17 @@ select option {
 }
 /* Tablet step for very wide multi-col grids */
 @media (max-width: 900px) {
-  .r-stack-tablet { grid-template-columns: 1fr !important; }
-  .r-stack-tablet-2 { grid-template-columns: repeat(2, 1fr) !important; }
+  .r-stack-tablet { grid-template-columns: minmax(0, 1fr) !important; }
+  .r-stack-tablet-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .r-stack-tablet > *, .r-stack-tablet-2 > * { min-width: 0; }
+}
+
+/* Contracts Studio shell header — wordmark + nav + avatar won't fit a phone.
+   Drop the wordmark text (keep the gradient icon) and spacer, let the nav take
+   the freed space and scroll-x if still tight. */
+@media (max-width: 640px) {
+  .cs-header   { padding: 0 10px !important; gap: 5px !important; }
+  .cs-wordmark { display: none !important; }
+  .cs-spacer   { display: none !important; }
+  .cs-nav      { flex: 1 1 0 !important; min-width: 0 !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
 }
