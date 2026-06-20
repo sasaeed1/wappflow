@@ -207,7 +207,7 @@ export default function StudioHelpPage() {
           </div>
         </div>
 
-        <div className="ms-helpgrid">
+        <div className="ms-helpgrid r-stack">
           {/* sidebar TOC */}
           <aside>
             <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

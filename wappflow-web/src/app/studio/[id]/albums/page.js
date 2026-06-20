@@ -24,7 +24,7 @@ function NewAlbumModal({ projectId, onClose, onCreated }) {
   };
   return (
     <div onClick={onClose} style={overlay}>
-      <div onClick={e => e.stopPropagation()} style={modalBox}>
+      <div onClick={e => e.stopPropagation()} className="r-modal" style={modalBox}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>New album</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>

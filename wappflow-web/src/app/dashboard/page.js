@@ -177,7 +177,7 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
   if (!isOpen) return null;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 32, width: '100%', maxWidth: 520, boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, padding: 32, width: '100%', maxWidth: 520, boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Bulk Upload Leads</h2>
@@ -441,8 +441,9 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew, sym = '$'
 
 // ── Kanban Column ─────────────────────────────────────────────────────────────
 function KanbanColumn({ column, leads, onLeadClick, allTags, onTagToggle, newLeadIds, sym = '$' }) {
+  // (root gets r-kanban-col so columns stay a usable width and the board scrolls sideways on phones)
   return (
-    <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+    <div className="r-kanban-col" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'sticky', top: 117, zIndex: 30, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '6px 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: column.color, boxShadow: `0 0 6px ${column.color}66` }} />
@@ -950,7 +951,7 @@ export default function DashboardPage() {
       <main style={{ maxWidth: 1600, margin: '0 auto', padding: '20px' }}>
 
         {/* ── STAT CARDS ── */}
-        <div className="dash-stats-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
+        <div className="dash-stats-3 r-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
           {[
             { label: 'Total Leads',  value: analytics?.total_leads || 0,                              icon: Users,        color: '#6366f1', bg: 'rgba(99,102,241,0.12)', trend: '+' + (analytics?.leads_today || 0) + ' today' },
             { label: 'Conversion',   value: `${analytics?.conversion_rate || 0}%`,                    icon: Target,       color: '#10b981', bg: 'rgba(16,185,129,0.10)', trend: 'Won / Total' },
@@ -1020,7 +1021,7 @@ export default function DashboardPage() {
               </div>
 
               {/* 3 metric cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+              <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
                 {[
                   { label: 'Won Revenue', value: wonRevenue, sub: `${allLeads.filter(l => l.status === 'Closed - Won').length} deals closed`, color: '#10b981', bg: 'rgba(16,185,129,0.1)', icon: Trophy },
                   { label: 'Projected Revenue', value: projectedRevenue, sub: `${allLeads.filter(l => !['Closed - Won', 'Closed - Lost'].includes(l.status)).length} open leads`, color: '#6366f1', bg: 'rgba(99,102,241,0.1)', icon: TrendingUp },
@@ -1080,7 +1081,7 @@ export default function DashboardPage() {
         })()}
 
         {/* ── ANALYTICS ROW ── */}
-        <div className="dash-main" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 280px', gap: 14, marginBottom: 20 }}>
+        <div className="dash-main r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 280px', gap: 14, marginBottom: 20 }}>
 
           {/* Bar chart — leads per stage */}
           <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
@@ -1201,7 +1202,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ── PIPELINE / LIST HEADER ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Pipeline Board</h2>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', padding: '2px 10px', borderRadius: 20 }}>{leads.length} leads</span>
@@ -1246,7 +1247,7 @@ export default function DashboardPage() {
         {/* ── KANBAN ── */}
         {viewMode === 'kanban' && (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div style={{ display: 'flex', gap: 12, paddingBottom: 20, alignItems: 'stretch' }}>
+            <div className="r-kanban" style={{ display: 'flex', gap: 12, paddingBottom: 20, alignItems: 'stretch' }}>
               {COLUMNS.map(col => (
                 <KanbanColumn key={col.id} column={col} leads={getLeadsByStatus(col.id)} onLeadClick={id => router.push(`/leads/${id}`)} allTags={allTags} onTagToggle={handleTagToggle} newLeadIds={newLeadIds} sym={sym} />
               ))}

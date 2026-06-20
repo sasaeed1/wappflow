@@ -167,7 +167,7 @@ export default function AlbumEditor() {
           </div>
 
           {/* photo picker */}
-          <aside style={{ width: 300, flexShrink: 0, position: 'sticky', top: 76, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 14, maxHeight: '78vh', overflowY: 'auto' }}>
+          <aside className="r-full" style={{ width: 300, flexShrink: 0, position: 'sticky', top: 76, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 14, maxHeight: '78vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <h3 style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Photos</h3>
               {active && <button onClick={clearActive} style={{ ...ghostBtn, fontSize: 11, padding: '4px 9px', display: 'flex', alignItems: 'center', gap: 4 }}><X size={11} /> Clear slot</button>}

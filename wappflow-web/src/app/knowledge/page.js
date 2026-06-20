@@ -266,10 +266,10 @@ export default function KnowledgePage() {
 
         {toast && <Toast message={toast.msg} type={toast.type} />}
 
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
+        <div className="r-pad" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
 
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+          <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 52, height: 52, borderRadius: 16, background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Brain size={26} color="white" />
@@ -303,7 +303,7 @@ export default function KnowledgePage() {
           </div>
 
           {/* Stats row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
+          <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
             {[
               { label: 'Documents', value: documents.length, icon: FileText, color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
               { label: 'Memories', value: memories.length, icon: Database, color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
@@ -478,7 +478,7 @@ export default function KnowledgePage() {
                         <p style={{ fontSize: 15, fontWeight: 800, color: '#7c3aed', margin: 0 }}>{editingMemory ? 'Edit Memory' : 'Add Memory'}</p>
                         <button onClick={() => { setShowMemoryForm(false); setEditingMemory(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={16} /></button>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                      <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                         <div>
                           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Type</label>
                           <select value={memoryForm.memory_type} onChange={e => setMemoryForm(p => ({ ...p, memory_type: e.target.value }))}

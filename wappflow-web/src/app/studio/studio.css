@@ -578,6 +578,14 @@ html[data-ms-theme="editorial"] .ms-ve { top: 64px; }
 @media (max-width: 880px) {
   .ms-ve-rail { width: 150px; } .ms-ve-insp { width: 200px; }
 }
+/* Phones — the 3-pane timeline editor stacks vertically instead of overflowing.
+   (A timeline editor is desktop-first; this keeps it usable + scroll-free horizontally.) */
+@media (max-width: 640px) {
+  .ms-ve-body { flex-direction: column; min-height: 0; }
+  .ms-ve-rail, .ms-ve-insp { width: 100%; flex-shrink: 0; max-height: 34vh; border-right: none; border-left: none; border-bottom: 1px solid var(--ms-line); }
+  .ms-ve-rail-grid { grid-template-columns: repeat(3, 1fr); }
+  .ms-ve-timeline { height: 200px; }
+}
 
 /* ═══ IMMERSIVE HOME — full-bleed cinematic stage → edge-to-edge wall ═══════ */
 /* You don't land on a dashboard. You land INSIDE the latest shoot: it fills the

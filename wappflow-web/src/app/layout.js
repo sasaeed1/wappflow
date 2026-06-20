@@ -22,7 +22,14 @@ export const metadata = {
     title: 'WappFlow — AI-powered customer operations',
     description: 'The AI-native WhatsApp CRM. One inbox for every channel.',
   },
+}
+
+// Next 16: themeColor + viewport live in their own `viewport` export (not metadata).
+// Pinning width=device-width guarantees correct mobile scaling.
+export const viewport = {
   themeColor: '#6366f1',
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }) {

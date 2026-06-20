@@ -129,7 +129,7 @@ export default function AICommandCenter({ enabled = true }) {
 
       {/* Command Panel */}
       {open && (
-        <div style={{
+        <div className="r-panel" style={{
           position: 'fixed', bottom: 155, right: 24, zIndex: 999,
           width: 420, maxHeight: '70vh',
           background: 'var(--glass)', backdropFilter: 'blur(20px)',

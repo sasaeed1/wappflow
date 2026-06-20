@@ -106,7 +106,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, maxWidth: 420, width: '100%', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, maxWidth: 420, width: '100%', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <UserCheck size={20} color="white" />
@@ -243,7 +243,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
 function BulkTrashModal({ count, loading, onCancel, onConfirm }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.4)', maxWidth: 440, width: '100%', padding: 28, border: '1.5px solid var(--border)' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.4)', maxWidth: 440, width: '100%', padding: 28, border: '1.5px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
           <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <AlertTriangle size={22} color="#ef4444" />
@@ -350,7 +350,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
   // Step 3 = success screen with invite link / skipped summary
   const Backdrop = ({ children }) => (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.4)', maxWidth: 540, width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1.5px solid var(--border)' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.4)', maxWidth: 540, width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1.5px solid var(--border)' }}>
         {children}
       </div>
     </div>
@@ -623,7 +623,7 @@ function MergeDuplicatesModal({ onClose, onDone }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }} onClick={() => onClose(doneCount)}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, maxWidth: 640, width: '100%', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
+      <div onClick={e => e.stopPropagation()} className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, maxWidth: 640, width: '100%', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#f59e0b,#ef4444)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <UsersRound size={20} color="white" />
@@ -868,7 +868,7 @@ export default function LeadsListPage() {
       })()}
 
       {/* Page header */}
-      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="r-wrap" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Users style={{ width: 14, height: 14, color: 'white' }} />
@@ -1114,10 +1114,10 @@ export default function LeadsListPage() {
         </div>
 
         {/* Table */}
-        <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+        <div className="r-scroll-x" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
 
           {/* Table header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
+          <div className="r-tw" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
             <div onClick={toggleAll} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {selected.size === leads.length && leads.length > 0
                 ? <CheckSquare size={16} color="#6366f1" />
@@ -1144,7 +1144,7 @@ export default function LeadsListPage() {
             const assignedMember = lead.assigned_to ? memberById(lead.assigned_to) : null;
             const assignedName = assignedMember ? (assignedMember.full_name || assignedMember.invite_email || 'Member') : null;
             return (
-              <div key={lead.id} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--surface)', transition: 'background 0.1s', cursor: 'pointer' }}
+              <div key={lead.id} className="r-tw" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--surface)', transition: 'background 0.1s', cursor: 'pointer' }}
                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background='var(--surface2)'; }}
                 onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background='var(--surface)'; }}
                 onClick={() => router.push(`/leads/${lead.id}`)}

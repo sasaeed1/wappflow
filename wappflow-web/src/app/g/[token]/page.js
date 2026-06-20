@@ -310,7 +310,7 @@ function CommentModal({ onClose, onSend }) {
   const [body, setBody] = useState('');
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#15151b', border: '1px solid #2a2a33', borderRadius: 16, padding: 22, maxWidth: 380, width: '100%' }}>
+      <div onClick={e => e.stopPropagation()} className="r-modal" style={{ background: '#15151b', border: '1px solid #2a2a33', borderRadius: 16, padding: 22, maxWidth: 380, width: '100%' }}>
         <h3 style={{ fontSize: 16, fontWeight: 800, color: '#fff', margin: '0 0 12px' }}>Leave a note</h3>
         <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Tell your photographer what you think…" rows={3}
           style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid #2a2a33', background: '#0b0b0f', color: '#fff', fontSize: 13.5, outline: 'none', resize: 'vertical', boxSizing: 'border-box', marginBottom: 14 }} autoFocus />

@@ -105,7 +105,7 @@ function InviteModal({ onSave, onClose }) {
 
   if (result) return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
-      <div style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:460, width:'100%', padding:32 }}>
+      <div className="r-modal" style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:460, width:'100%', padding:32 }}>
         <div style={{ textAlign:'center', marginBottom:24 }}>
           <div style={{ width:60, height:60, borderRadius:20, background:'rgba(16,185,129,0.15)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
             <CheckCircle size={28} color="#10b981" />
@@ -144,7 +144,7 @@ function InviteModal({ onSave, onClose }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
-      <div style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:480, width:'100%', padding:32 }}>
+      <div className="r-modal" style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:480, width:'100%', padding:32 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
           <div>
             <h2 style={{ fontSize:20, fontWeight:800, color:'var(--text)', margin:0 }}>Invite Team Member</h2>
@@ -208,7 +208,7 @@ function RoleModal({ member, onSave, onClose }) {
   };
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
-      <div style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:420, width:'100%', padding:32 }}>
+      <div className="r-modal" style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:420, width:'100%', padding:32 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
           <div>
             <h2 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:0 }}>Change Role</h2>
@@ -274,7 +274,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300, padding:16 }}>
-      <div style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:520, width:'100%', padding:32, maxHeight:'90vh', overflowY:'auto' }}>
+      <div className="r-modal" style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:520, width:'100%', padding:32, maxHeight:'90vh', overflowY:'auto' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
           <div>
             <h2 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:0 }}>Custom Permissions</h2>
@@ -589,7 +589,7 @@ export default function TeamPage() {
 
       {/* Sub-header */}
       <div style={{ background:'var(--surface)', borderBottom:'1px solid var(--border)', position:'sticky', top:60, zIndex:40 }}>
-        <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px', display:'flex', alignItems:'center', height:52, gap:16 }}>
+        <div className="r-wrap" style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px', display:'flex', alignItems:'center', height:52, gap:16 }}>
           <div style={{ flex:1, display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,#6366f1,#8b5cf6)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Users size={14} color="white" />
@@ -642,7 +642,7 @@ export default function TeamPage() {
             {tab === 'members' && (
               <div>
                 {/* Stats */}
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
+                <div className="r-stack-2" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
                   {[
                     { label:'Total', value:members.length, color:'#6366f1', icon:Users },
                     { label:'Admins', value:members.filter(m=>['super_admin','admin'].includes(m.role)).length, color:'#f59e0b', icon:Shield },
@@ -708,7 +708,7 @@ export default function TeamPage() {
                             </p>
                           </div>
                           {canManage && !isSelf && member.role !== 'super_admin' && (
-                            <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                            <div className="r-actions" style={{ display:'flex', gap:6, flexShrink:0 }}>
                               <button onClick={()=>setRoleModal(member)} style={{ padding:'7px 12px', borderRadius:10, border:'1.5px solid var(--border)', background:'var(--surface)', color:'var(--text-muted)', cursor:'pointer', fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
                                 <Edit2 size={12}/> Role
                               </button>

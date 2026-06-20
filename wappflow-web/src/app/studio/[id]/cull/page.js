@@ -732,7 +732,7 @@ export default function CullPage() {
             {dupMembers && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginRight: 14 }}>Pick the best — “Keep this” rejects the others</span>}
             <button onClick={() => setCompare(false)} style={{ ...navArrow('right', false), position: 'static', transform: 'none', width: 38, height: 38 }}><X size={18} /></button>
           </div>
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${Math.min(compareSet.length, 4)}, 1fr)`, gap: 12, minHeight: 0 }}>
+          <div className="r-stack-2" style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${Math.min(compareSet.length, 4)}, 1fr)`, gap: 12, minHeight: 0 }}>
             {compareSet.map(a => {
               const aSharp = a.sharpness != null ? a.sharpness >= 120 : null;
               const dec = a.cull_decision;

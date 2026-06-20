@@ -186,7 +186,7 @@ function ImageMessage({ src, onOpen }) {
 function Modal({ children, maxWidth = 440 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 24, boxShadow: '0 32px 80px rgba(0,0,0,0.2)', maxWidth, width: '100%', padding: 30 }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 24, boxShadow: '0 32px 80px rgba(0,0,0,0.2)', maxWidth, width: '100%', padding: 30 }}>
         {children}
       </div>
     </div>
@@ -348,7 +348,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 24, boxShadow: '0 32px 80px rgba(0,0,0,0.2)', maxWidth: 680, width: '100%', padding: 32, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 24, boxShadow: '0 32px 80px rgba(0,0,0,0.2)', maxWidth: 680, width: '100%', padding: 32, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(245,158,11,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -366,6 +366,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
 
         {/* Line items */}
         <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Line Items</p>
+        <div className="r-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
           <thead>
             <tr style={{ background: 'var(--surface2)' }}>
@@ -404,6 +405,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
             ))}
           </tbody>
         </table>
+        </div>
 
         <button onClick={() => setItems([...items, { description: '', qty: 1, rate: 0 }])} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', border: '1.5px dashed #d1d5db', borderRadius: 8, background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, fontWeight: 600, marginBottom: 20 }}>
           <Plus size={14} /> Add Line Item
@@ -431,7 +433,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+        <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Due Date</label>
             <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
@@ -2469,7 +2471,7 @@ useEffect(() => {
                   )}
 
                   {/* 3 Action Cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
+                  <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
                     {[
                       { label: 'Summarize Chat', icon: '🧠', desc: 'Get a quick summary', key: 'summary', action: handleAISummary, color: '#8b5cf6' },
                       { label: 'Reply Suggestions', icon: '✨', desc: '3 ready-to-send replies', key: 'suggestions', action: handleAISuggestions, color: '#06b6d4' },
@@ -2532,7 +2534,7 @@ useEffect(() => {
                         <button onClick={() => setAiAnalysis(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+                      <div className="r-stack-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
                         {/* Lead Score */}
                         <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 10px', border: '1.5px solid #fde68a', textAlign: 'center' }}>
                           <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 4px' }}>Score</p>
@@ -2837,7 +2839,7 @@ function EmailComposeModal({ lead, onClose, onSent }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, maxWidth: 620, width: '100%', boxShadow: '0 32px 80px rgba(0,0,0,0.25)', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, maxWidth: 620, width: '100%', boxShadow: '0 32px 80px rgba(0,0,0,0.25)', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #10b981, #059669)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Mail size={20} color="white" />

@@ -263,7 +263,7 @@ export default function ReportsPage() {
 
       {/* Page sub-header */}
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 60, zIndex: 40 }}>
-        <div style={{ maxWidth: 1300, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', height: 52, gap: 16 }}>
+        <div className="r-toolbar" style={{ maxWidth: 1300, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', height: 52, gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <BarChart2 size={14} color="white" />
@@ -349,7 +349,7 @@ export default function ReportsPage() {
             {tab === 'overview' && (
               <div>
                 {/* KPI Cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                <div className="r-stack-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
                   <StatCard icon={Users} label="Total Leads" value={analytics?.total_leads || 0} color="#6366f1"
                     trend={analytics?.this_month_leads > analytics?.last_month_leads ? 'up' : analytics?.this_month_leads < analytics?.last_month_leads ? 'down' : 'neutral'}
                     trendVal={`${analytics?.this_month_leads || 0} this month`} />
@@ -362,7 +362,7 @@ export default function ReportsPage() {
                 </div>
 
                 {/* Charts row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, marginBottom: 24 }}>
+                <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, marginBottom: 24 }}>
                   {/* Leads over time */}
                   <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                     <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 20 }}>Leads Over Time</p>
@@ -460,7 +460,7 @@ export default function ReportsPage() {
                 {data?.lostReasons?.length > 0 && (
                   <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                     <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 20 }}>Lost Deal Reasons</p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                    <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                       {data.lostReasons.map((r, i) => (
                         <div key={i} style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(239,68,68,0.12)', border: '1.5px solid #fecaca' }}>
                           <p style={{ fontSize: 20, fontWeight: 800, color: '#ef4444', marginBottom: 4 }}>{r.count}</p>
@@ -538,7 +538,7 @@ export default function ReportsPage() {
                   </ResponsiveContainer>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                   <StatCard icon={DollarSign} label="Total Revenue" value={`${sym}${(analytics?.total_sales || 0).toLocaleString()}`} color="#10b981" />
                   <StatCard icon={Award} label="Avg Deal Size" value={`${sym}${(analytics?.avg_deal_size || 0).toLocaleString()}`} color="#6366f1" />
                   <StatCard icon={Target} label="Deals Won" value={analytics?.closed_won || 0} color="#f59e0b" sub={`${analytics?.conversion_rate || 0}% conversion`} />
@@ -589,7 +589,7 @@ export default function ReportsPage() {
                 {/* Response time */}
                 <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 28, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                   <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 16 }}>SLA & Response Time</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                  <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                     <div style={{ padding: '20px 24px', borderRadius: 14, background: 'rgba(16,185,129,0.10)', border: '1.5px solid #bbf7d0' }}>
                       <p style={{ fontSize: 30, fontWeight: 900, color: '#10b981', marginBottom: 4 }}>{avgResponseDisplay || '—'}</p>
                       <p style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>Avg First Response</p>

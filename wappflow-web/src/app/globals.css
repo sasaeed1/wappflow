@@ -251,3 +251,45 @@ select option {
 @media (max-width: 760px) {
   .page-pad { padding: 12px !important; }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Mobile responsive utilities (apply as classNames to inline-styled
+   containers; these override inline styles via !important at <=640px).
+   Add `r-*` classes to grids/rows/tables that don't otherwise reflow.
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .r-stack        { grid-template-columns: 1fr !important; }          /* any multi-col grid → 1 col */
+  .r-stack-2      { grid-template-columns: repeat(2, 1fr) !important; } /* → 2 cols */
+  .r-col          { flex-direction: column !important; align-items: stretch !important; }
+  .r-wrap         { flex-wrap: wrap !important; }
+  .r-full         { width: 100% !important; flex: 1 1 100% !important; box-sizing: border-box; }
+  .r-pad          { padding: 14px !important; }
+  .r-pad-sm       { padding: 10px !important; }
+  .r-gap-sm       { gap: 10px !important; }
+  .r-scroll-x     { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  .r-hide         { display: none !important; }
+  .r-hpad-0       { padding-left: 12px !important; padding-right: 12px !important; }
+  .r-h-auto       { height: auto !important; min-height: 0 !important; }
+  .r-text-sm      { font-size: 13px !important; }
+  .r-w-auto       { width: auto !important; min-width: 0 !important; }
+  /* a flex row of action buttons that should wrap & justify left on phones */
+  .r-actions      { flex-wrap: wrap !important; justify-content: flex-start !important; gap: 8px !important; }
+  /* modal sizing on phones */
+  .r-modal        { width: 100% !important; max-width: 100% !important; max-height: 92vh !important; border-radius: 16px !important; }
+  /* wide data tables: force the inner grids wide so the r-scroll-x wrapper scrolls horizontally */
+  .r-tw           { min-width: 760px !important; }
+  /* kanban board: swipe sideways through columns instead of squeezing them to nothing */
+  .r-kanban       { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  .r-kanban-col   { min-width: 250px !important; flex: 0 0 250px !important; }
+  /* sticky toolbars with a fixed height: let them grow + wrap */
+  .r-toolbar      { height: auto !important; flex-wrap: wrap !important; gap: 10px !important; }
+  /* a right-anchored fixed panel (e.g. AI command center) → inset both sides */
+  .r-panel        { left: 12px !important; right: 12px !important; width: auto !important; max-width: none !important; }
+  /* chat app shell: channel list becomes a capped, scrollable strip above the conversation */
+  .r-chat-side    { width: 100% !important; height: auto !important; max-height: 40vh !important; }
+}
+/* Tablet step for very wide multi-col grids */
+@media (max-width: 900px) {
+  .r-stack-tablet { grid-template-columns: 1fr !important; }
+  .r-stack-tablet-2 { grid-template-columns: repeat(2, 1fr) !important; }
+}

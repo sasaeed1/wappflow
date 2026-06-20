@@ -134,7 +134,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 24, boxShadow: '0 40px 100px rgba(0,0,0,0.4)', maxWidth: 720, width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border)' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 24, boxShadow: '0 40px 100px rgba(0,0,0,0.4)', maxWidth: 720, width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border)' }}>
 
         <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -155,7 +155,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
         </div>
 
         <div style={{ padding: '28px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 28 }}>
+          <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 28 }}>
             <div>
               <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>From</p>
               {company?.company_logo && (
@@ -283,7 +283,7 @@ function SendInvoiceModal({ invoice, company, onClose, onSent }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 22, boxShadow: '0 40px 100px rgba(0,0,0,0.4)', maxWidth: 520, width: '100%', border: '1px solid var(--border)' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 22, boxShadow: '0 40px 100px rgba(0,0,0,0.4)', maxWidth: 520, width: '100%', border: '1px solid var(--border)' }}>
         <div style={{ padding: '22px 26px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 13 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Mail size={20} color="#6366f1" />
@@ -472,7 +472,7 @@ export default function InvoicesPage() {
           </div>
         </div>
 
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden' }}>
+        <div className="r-scroll-x" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '50px 1fr 130px 120px 110px 200px', padding: '12px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
             {['#', 'Customer', 'Invoice No.', 'Date', 'Amount', 'Status'].map(h => (
               <span key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</span>

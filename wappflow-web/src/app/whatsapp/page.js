@@ -77,7 +77,7 @@ export default function WhatsAppPage() {
 
   return (
     <NavBar>
-      <div style={{ maxWidth: 760, margin: '0 auto', padding: '32px 24px' }}>
+      <div className="r-pad" style={{ maxWidth: 760, margin: '0 auto', padding: '32px 24px' }}>
 
         {/* Header */}
         <div style={{ marginBottom: 28 }}>

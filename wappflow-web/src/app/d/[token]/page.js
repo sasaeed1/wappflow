@@ -207,7 +207,7 @@ function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, se
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: '20px 20px 0 0', padding: 24, boxShadow: '0 -20px 60px rgba(0,0,0,0.3)', animation: 'csUp .25s ease' }}>
+      <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: '20px 20px 0 0', padding: 24, boxShadow: '0 -20px 60px rgba(0,0,0,0.3)', animation: 'csUp .25s ease' }}>
         <div style={{ width: 40, height: 4, borderRadius: 999, background: '#e2e2e8', margin: '0 auto 16px' }} />
         <h2 style={{ fontSize: 20, fontWeight: 800, color: '#16161a', margin: '0 0 4px' }}>Sign “{title}”</h2>
         <p style={{ fontSize: 13, color: '#70707a', margin: '0 0 16px' }}>Your electronic signature is legally binding.</p>

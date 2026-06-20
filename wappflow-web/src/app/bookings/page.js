@@ -46,7 +46,7 @@ export default function BookingsPage() {
         <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 22px' }}>Let clients self-book — each booking drops straight into your pipeline as a lead + reminder.</p>
 
         {url && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', marginBottom: 18 }}>
+          <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', marginBottom: 18 }}>
             <span style={{ fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Your booking link</span>
             <input readOnly value={url} style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: 'var(--text)', outline: 'none' }} />
             <button onClick={copy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: copied ? '#10b981' : 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 12.5 }}>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? 'Copied' : 'Copy'}</button>
@@ -58,7 +58,7 @@ export default function BookingsPage() {
           <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 14px' }}>Services</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(settings.services || []).map((s, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div key={i} className="r-wrap" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input value={s.name} onChange={e => setSvc(i, { name: e.target.value })} placeholder="Service name" style={{ flex: 1, ...fld }} />
                 <input type="number" value={s.duration} onChange={e => setSvc(i, { duration: Number(e.target.value) })} style={{ width: 76, ...fld }} title="Minutes" />
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>min</span>
@@ -105,7 +105,7 @@ export default function BookingsPage() {
           <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 14px' }}>Intake questions</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(settings.intake || []).map((q, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div key={i} className="r-wrap" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input value={q.label} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} placeholder="e.g. What's the occasion?" style={{ flex: 1, ...fld }} />
                 <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><input type="checkbox" checked={!!q.required} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, required: e.target.checked } : x) }))} /> required</label>
                 <button onClick={() => setSettings(s => ({ ...s, intake: s.intake.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={15} /></button>

@@ -178,7 +178,7 @@ function CompanyTab({ company, setCompany, onSave, saving }) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
+        <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
           <Input label="Company Name" value={company.company_name} onChange={e => setCompany(p => ({ ...p, company_name: e.target.value }))} placeholder="Acme Corporation" />
           <Input label="Business Email" value={company.company_email} onChange={e => setCompany(p => ({ ...p, company_email: e.target.value }))} placeholder="hello@company.com" type="email" />
           <Input label="Phone Number" value={company.company_phone} onChange={e => setCompany(p => ({ ...p, company_phone: e.target.value }))} placeholder="+1 234 567 8900" />
@@ -226,7 +226,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
   return (
     <div>
       <SectionCard icon={DollarSign} title="Currency & Billing Settings" subtitle="Configure your default currency and invoice numbering" color="#10b981">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
+        <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
           <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Currency</label>
             <select
@@ -272,7 +272,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
 
         <div style={{ height: 1, background: 'var(--surface2)', margin: '8px 0 20px' }} />
         <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 16 }}>Invoice Settings</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
+        <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
           <Input label="Invoice Prefix" value={company.invoice_prefix} onChange={e => setCompany(p => ({ ...p, invoice_prefix: e.target.value }))} placeholder="INV" hint="e.g. INV-0001" />
           <Input label="Tax Name" value={company.tax_name} onChange={e => setCompany(p => ({ ...p, tax_name: e.target.value }))} placeholder="GST / VAT / Tax" />
           <div style={{ marginBottom: 18 }}>
@@ -530,11 +530,11 @@ function EmailTemplatesTab({ showToast }) {
 
       {showForm && (
         <div style={{ background: 'var(--warning-bg)', border: '2px solid var(--warning-border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+          <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
             <Input label="Template Name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Follow-up Day 1" />
             <Input label="Email Subject" value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} placeholder="Following up on your inquiry" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px', marginBottom: 14 }}>
+          <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px', marginBottom: 14 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Trigger Event</label>
               <select value={form.trigger_event} onChange={e => setForm(p => ({ ...p, trigger_event: e.target.value }))}
@@ -2307,10 +2307,10 @@ export default function SettingsPage() {
 
 
 
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px', display: 'flex', gap: 24 }}>
+      <div className="r-col" style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px', display: 'flex', gap: 24 }}>
 
         {/* Sidebar */}
-        <div style={{ width: 220, flexShrink: 0 }}>
+        <div className="r-full" style={{ width: 220, flexShrink: 0 }}>
           <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 10, boxShadow: 'var(--shadow)', position: 'sticky', top: 24 }}>
             {TABS.map(tab => {
               const active = activeTab === tab.id;
@@ -2490,7 +2490,7 @@ function EmailSendingTab({ showToast }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+      <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
         <div style={{ paddingRight: 16 }}>
           <SettingsField label="SMTP Host" hint="e.g. smtp.gmail.com">
             <input value={form.smtp_host} onChange={e => setForm(f => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.gmail.com"
@@ -2702,7 +2702,7 @@ function EmailReceivingTab({ showToast }) {
       </div>
 
       {/* Fields */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
+      <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
         <div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>IMAP Host</label>
@@ -2973,7 +2973,7 @@ function AICommandTab({ showToast }) {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Tone</label>
               <select

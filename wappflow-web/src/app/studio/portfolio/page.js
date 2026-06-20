@@ -135,7 +135,7 @@ export default function PortfolioEditorPage() {
           {pf.is_public && <a href={pf.share_url} target="_blank" rel="noreferrer" className="ms-btn-text" style={{ marginLeft: 'auto', textDecoration: 'none' }}><ExternalLink size={13} /> Open</a>}
         </div>
 
-        <div className="ms-workgrid" style={{ gridTemplateColumns: 'minmax(0,1fr) 380px' }}>
+        <div className="ms-workgrid r-stack" style={{ gridTemplateColumns: 'minmax(0,1fr) 380px' }}>
           {/* MAIN — the work */}
           <div className="ms-workmain">
             <div className="ms-section-head">
@@ -272,7 +272,7 @@ function CandidatesPicker({ onClose, onAdded }) {
   const available = (cands || []).filter(c => !c.in_portfolio);
   return (
     <div onClick={onClose} className="ms-modal-overlay">
-      <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 820, width: '100%' }}>
+      <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 820, width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Add from published work</h2>
           <button onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
@@ -317,7 +317,7 @@ function ShareModal({ pf, onClose, onCopy, say, onPublic }) {
   };
   return (
     <div onClick={onClose} className="ms-modal-overlay">
-      <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 460 }}>
+      <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Share portfolio</h2>
           <button onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>

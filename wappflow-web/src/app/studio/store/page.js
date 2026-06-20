@@ -45,7 +45,7 @@ export default function StudioStorePage() {
           {products.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>No products yet — add your first.</p>}
           {products.map((p, i) => (
             <div key={p.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <div className="r-wrap" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 <input value={p.name} onChange={e => patch(i, { name: e.target.value })} placeholder="Product name" style={{ flex: 1, ...fld }} />
                 <select value={p.kind} onChange={e => patch(i, { kind: e.target.value })} style={{ ...fld, textTransform: 'capitalize' }}>{KINDS.map(k => <option key={k} value={k}>{k}</option>)}</select>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text-muted)' }}><input type="checkbox" checked={!!p.active} onChange={e => patch(i, { active: e.target.checked })} /> Active</label>
@@ -75,7 +75,7 @@ export default function StudioStorePage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {orders.map(o => (
               <div key={o.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{o.customer_name} · <span style={{ color: 'var(--accent)' }}>{o.currency_symbol}{Number(o.total).toLocaleString()}</span></div>
                     <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{(o.items || []).map(it => `${it.qty}× ${it.name}${it.option ? ` (${it.option})` : ''}`).join(', ')}</div>

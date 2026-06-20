@@ -228,11 +228,11 @@ export default function HelpPage() {
           </div>
         </div>
 
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px', display: 'flex', gap: 28, alignItems: 'flex-start' }}>
+        <div className="r-col" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px', display: 'flex', gap: 28, alignItems: 'flex-start' }}>
 
           {/* Sidebar nav */}
           {!search && (
-            <div style={{ width: 220, flexShrink: 0, position: 'sticky', top: 24 }}>
+            <div className="r-full" style={{ width: 220, flexShrink: 0, position: 'sticky', top: 24 }}>
               <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 10, boxShadow: 'var(--shadow)' }}>
                 {SECTIONS.map(sec => {
                   const active = activeSection === sec.id;

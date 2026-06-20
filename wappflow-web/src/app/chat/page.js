@@ -135,7 +135,7 @@ function ChannelModal({ onSave, onClose }) {
   const [isPrivate, setIsPrivate] = useState(false);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 18, padding: 28, width: 440, boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 18, padding: 28, width: 440, boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Create Channel</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={18} /></button>
@@ -492,10 +492,10 @@ export default function ChatPage() {
 
   return (
     <NavBar>
-    <div style={{ height: 'calc(100vh - 60px)', background: 'var(--surface2)', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div className="r-col" style={{ height: 'calc(100vh - 60px)', background: 'var(--surface2)', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* ── SIDEBAR ── */}
-      <div style={{ width: 260, background: '#1e1e2e', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div className="r-chat-side" style={{ width: 260, background: '#1e1e2e', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
 
         {/* Workspace header */}
         <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>

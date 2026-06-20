@@ -12,6 +12,8 @@ import {
   Clock, ExternalLink, MapPin, Headphones, Palette, Hash, Images, Crown,
 } from 'lucide-react';
 
+import { FLUX_PARKED } from '@/lib/flux';
+
 // Flux — sibling AI Instagram content engine. Lives at its own URL.
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 
@@ -104,7 +106,7 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
           <a href="#features">Features</a>
           <a href="#ai">AI</a>
           <a href="#flux" className="lp-nav-flux">
-            Flux <span className="lp-nav-flux-pill">NEW</span>
+            Flux <span className="lp-nav-flux-pill">{FLUX_PARKED ? 'SOON' : 'NEW'}</span>
           </a>
           <a href="#studio">Studio</a>
           <a href="#contracts">Contracts</a>
@@ -141,7 +143,7 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
           <a href="#studio" onClick={() => setMobileOpen(false)}>Studio</a>
           <a href="#contracts" onClick={() => setMobileOpen(false)}>Contracts</a>
           <a href="#flux" onClick={() => setMobileOpen(false)} className="lp-nav-flux">
-            Flux <span className="lp-nav-flux-pill">NEW</span>
+            Flux <span className="lp-nav-flux-pill">{FLUX_PARKED ? 'SOON' : 'NEW'}</span>
           </a>
           <a href="#meetings" onClick={() => setMobileOpen(false)}>Meetings</a>
           <a href="#platforms" onClick={() => setMobileOpen(false)}>Channels</a>
@@ -735,14 +737,29 @@ function FluxSection() {
 
           <Reveal delay={360}>
             <div className="lp-flux-cta-row">
-              <a
-                href={FLUX_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="lp-flux-btn lp-flux-btn-primary"
-              >
-                Launch Flux <ExternalLink size={15} />
-              </a>
+              {FLUX_PARKED ? (
+                <span
+                  className="lp-flux-btn lp-flux-btn-primary"
+                  style={{ opacity: 0.55, cursor: 'not-allowed', filter: 'grayscale(0.4)' }}
+                  aria-disabled="true"
+                >
+                  Launch Flux
+                  <span style={{
+                    marginLeft: 8, fontSize: 10, fontWeight: 800, letterSpacing: '0.06em',
+                    textTransform: 'uppercase', padding: '3px 8px', borderRadius: 999,
+                    background: 'rgba(0,0,0,0.28)', color: '#fff',
+                  }}>Coming soon</span>
+                </span>
+              ) : (
+                <a
+                  href={FLUX_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="lp-flux-btn lp-flux-btn-primary"
+                >
+                  Launch Flux <ExternalLink size={15} />
+                </a>
+              )}
               <a href="#flux" className="lp-flux-btn lp-flux-btn-ghost">
                 <Play size={14} /> See how it works
               </a>
@@ -1056,7 +1073,7 @@ function ContractsStudioSection() {
 
             <div style={{ padding: 14 }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: 8 }}>Choose your collection</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7 }}>
+              <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7 }}>
                 {PKGS.map((p, i) => {
                   const on = pkg === i;
                   return (
