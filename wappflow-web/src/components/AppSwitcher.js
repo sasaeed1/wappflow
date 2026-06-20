@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { LayoutGrid, Users, Camera, Zap, ArrowUpRight, FileSignature } from 'lucide-react';
+import { FLUX_PARKED } from '@/lib/flux';
 
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 
@@ -21,18 +22,23 @@ export default function AppSwitcher({ align = 'right' }) {
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const item = (Icon, bg, label, props, current) => (
-    <a {...props} onClick={() => setOpen(false)} style={{
+  const item = (Icon, bg, label, props, current, disabled = false) => {
+    const Tag = disabled ? 'div' : 'a';
+    return (
+    <Tag {...(disabled ? {} : props)} onClick={disabled ? undefined : () => setOpen(false)} style={{
       display: 'flex', alignItems: 'center', gap: 11, padding: '10px 11px', borderRadius: 9,
-      textDecoration: 'none', cursor: 'pointer', background: current ? 'var(--surface2)' : 'transparent',
-      color: 'var(--text)', fontSize: 13.5,
-    }} onMouseEnter={e => { if (!current) e.currentTarget.style.background = 'var(--surface2)'; }}
-       onMouseLeave={e => { if (!current) e.currentTarget.style.background = 'transparent'; }}>
+      textDecoration: 'none', cursor: disabled ? 'default' : 'pointer', background: current ? 'var(--surface2)' : 'transparent',
+      color: 'var(--text)', fontSize: 13.5, opacity: disabled ? 0.55 : 1,
+    }} onMouseEnter={e => { if (!current && !disabled) e.currentTarget.style.background = 'var(--surface2)'; }}
+       onMouseLeave={e => { if (!current && !disabled) e.currentTarget.style.background = 'transparent'; }}>
       <span style={{ width: 30, height: 30, borderRadius: 8, background: bg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={15} /></span>
       <span style={{ flex: 1, fontWeight: current ? 700 : 500 }}>{label}</span>
-      {!current && <ArrowUpRight size={14} style={{ opacity: 0.4 }} />}
-    </a>
-  );
+      {disabled
+        ? <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 999, padding: '2px 7px' }}>Coming soon</span>
+        : (!current && <ArrowUpRight size={14} style={{ opacity: 0.4 }} />)}
+    </Tag>
+    );
+  };
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -50,7 +56,7 @@ export default function AppSwitcher({ align = 'right' }) {
           {item(Users, 'linear-gradient(135deg,#6366f1,#4f46e5)', 'WappFlow CRM', inCRM ? {} : { href: '/dashboard' }, inCRM)}
           {item(Camera, 'linear-gradient(135deg,#0e0e11,#3a3a44)', 'Media Studio', inStudio ? {} : { href: '/studio', target: '_blank' }, inStudio)}
           {item(FileSignature, 'linear-gradient(135deg,#0ea5e9,#6366f1)', 'Contracts Studio', inContracts ? {} : { href: '/contracts', target: '_blank' }, inContracts)}
-          {item(Zap, 'linear-gradient(135deg,#A78BFA,#22D3EE,#EC4899)', 'Flux', { href: FLUX_URL, target: '_blank', rel: 'noreferrer' }, false)}
+          {item(Zap, 'linear-gradient(135deg,#A78BFA,#22D3EE,#EC4899)', 'Flux', FLUX_PARKED ? {} : { href: FLUX_URL, target: '_blank', rel: 'noreferrer' }, false, FLUX_PARKED)}
         </div>
       )}
     </div>
