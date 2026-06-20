@@ -78,7 +78,6 @@ export default function Landing() {
         <DashboardShowcase />
         <TeamSection />
         <Testimonials />
-        <Pricing authed={authed} currentPlan={currentPlan} />
         <FAQ />
         <FinalCTA authed={authed} />
       </main>
@@ -112,7 +111,6 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
           <a href="#contracts">Contracts</a>
           <a href="#meetings">Meetings</a>
           <a href="#platforms">Channels</a>
-          <a href="#pricing">Pricing</a>
           <a href="#faq">FAQ</a>
         </nav>
 
@@ -147,7 +145,6 @@ function Nav({ scrolled, mobileOpen, setMobileOpen, authed }) {
           </a>
           <a href="#meetings" onClick={() => setMobileOpen(false)}>Meetings</a>
           <a href="#platforms" onClick={() => setMobileOpen(false)}>Channels</a>
-          <a href="#pricing" onClick={() => setMobileOpen(false)}>Pricing</a>
           <a href="#faq" onClick={() => setMobileOpen(false)}>FAQ</a>
           <div className="lp-mobile-cta">
             {authed ? (
@@ -2179,7 +2176,6 @@ function Footer() {
             <a href="#features">Features</a>
             <a href="#ai">AI Engine</a>
             <a href="#platforms">Platforms</a>
-            <a href="#pricing">Pricing</a>
           </div>
           <div>
             <div className="lp-footer-col-head">Company</div>

@@ -434,9 +434,6 @@ export default function NavBar({ children }) {
           {/* App switcher — Studio opens in its own tab/module */}
           <AppSwitcher />
 
-          {/* Lead usage chip — only when limit is finite (Free/Starter). Red at ≥80%. */}
-          <LeadUsageChip planInfo={planInfo} router={router} />
-
           {/* Notifications */}
           <div ref={notifRef} style={{ position: 'relative' }}>
             <button
@@ -714,102 +711,6 @@ export default function NavBar({ children }) {
 
       <AICommandCenter enabled={true} />
       <FloatingChat />
-
-      {/* Generic upgrade modal — for any locked nav item (Analytics / Team / IG / etc.) */}
-      {navUpgrade && (
-        <div
-          onClick={() => setNavUpgrade(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 20, animation: 'navFadeIn 0.18s ease',
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 460, width: '100%',
-              background: 'linear-gradient(180deg, rgba(20,22,33,0.98) 0%, rgba(12,14,22,0.98) 100%)',
-              border: '1px solid rgba(167,139,250,0.25)',
-              borderRadius: 18, padding: 28,
-              boxShadow: '0 30px 80px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
-              position: 'relative', overflow: 'hidden',
-            }}
-          >
-            <div aria-hidden style={{
-              position: 'absolute', inset: 0,
-              background: 'radial-gradient(circle at 20% 0%, rgba(167,139,250,0.18), transparent 50%), radial-gradient(circle at 80% 100%, rgba(34,211,238,0.14), transparent 55%)',
-              pointerEvents: 'none',
-            }} />
-
-            <div style={{ position: 'relative' }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: 14,
-                background: 'linear-gradient(135deg, #ef4444 0%, #f59e0b 100%)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 8px 24px -4px rgba(239,68,68,0.45)',
-              }}>
-                <Lock size={20} color="white" />
-              </div>
-
-              <h2 style={{
-                margin: '20px 0 6px', fontSize: 22, fontWeight: 800, color: 'var(--text)',
-                letterSpacing: '-0.02em', lineHeight: 1.2,
-              }}>
-                {navUpgrade.label} is on the {navUpgrade.requiredPlan} plan.
-              </h2>
-              <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55 }}>
-                You&apos;re on <strong style={{ color: 'var(--text)' }}>{(planInfo.plan || 'free').toString().toUpperCase()}</strong>.
-                Upgrade to <strong style={{
-                  background: 'linear-gradient(135deg, #A78BFA, #22D3EE, #EC4899)',
-                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                  fontWeight: 800,
-                }}>{navUpgrade.requiredPlan}</strong> to unlock {navUpgrade.label.toLowerCase()} and the rest of the team-grade toolkit.
-              </p>
-
-              <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
-                <button
-                  onClick={() => { router.push('/settings?tab=billing'); setNavUpgrade(null); }}
-                  style={{
-                    flex: 1, padding: '12px 16px', borderRadius: 11, border: 'none',
-                    background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',
-                    color: '#0a0a13', fontWeight: 800, fontSize: 14, cursor: 'pointer',
-                    boxShadow: '0 10px 28px -8px rgba(34,211,238,0.5)',
-                  }}
-                >
-                  Upgrade to {navUpgrade.requiredPlan}
-                </button>
-                <button
-                  onClick={() => { router.push('/#pricing'); setNavUpgrade(null); }}
-                  style={{
-                    padding: '12px 16px', borderRadius: 11,
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer',
-                  }}
-                >
-                  Compare plans
-                </button>
-              </div>
-
-              <button
-                onClick={() => setNavUpgrade(null)}
-                aria-label="Close"
-                style={{
-                  position: 'absolute', top: -10, right: -10,
-                  width: 28, height: 28, borderRadius: 8,
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-                  color: 'var(--text-muted)', fontSize: 14, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Flux upgrade modal — shown when the user's plan tier doesn't include Flux. */}
       {fluxUpgrade && (

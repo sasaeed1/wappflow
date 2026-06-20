@@ -17,6 +17,11 @@ const PlanContext = createContext(null);
 
 export const PLAN_PRIORITY = { free: 0, starter: 1, growth: 2, enterprise: 3 };
 
+// Pricing/plans retired — every feature is on and every limit is unlimited.
+// Proxies so ANY key (even un-seeded ones) reads unlocked.
+const ALL_OPEN_FEATURES = new Proxy({}, { get: () => true, has: () => true });
+const ALL_OPEN_LIMITS = new Proxy({}, { get: () => -1, has: () => true });
+
 export function PlanProvider({ children }) {
   const [planInfo, setPlanInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,36 +49,34 @@ export function PlanProvider({ children }) {
     return () => clearInterval(iv);
   }, [fetchPlan]);
 
-  const hasFeature = (key) => {
-    if (!planInfo) return false;
-    const v = planInfo.features?.[key];
-    return v === true || v === 'limited' || v === 'basic';
-  };
+  // Pricing/plans retired 2026-06-21 — every feature is open to every user and
+  // there are no limits. These always-true gates dissolve all in-app locks.
+  const hasFeature = () => true;
+  const hasLimit = () => true;
 
-  const hasLimit = (key) => {
-    if (!planInfo) return true; // optimistic — don't block before plan loads
-    const limit = planInfo.limits?.[key];
-    if (limit === -1 || limit == null) return true;
-    const usage = planInfo.usage?.[key] || 0;
-    return usage < limit;
-  };
-
+  // Pricing/plans retired 2026-06-21 — report a fully-unlocked, unlimited
+  // workspace. features[...] reads true for any key, limits[...] reads -1
+  // (unlimited) for any key, so even the call sites that read limits/usage
+  // DIRECTLY (lead cap, platform-account caps, usage chips) see "open" too.
   const value = {
-    plan: planInfo?.plan || null,
-    planName: planInfo?.name || null,
+    // Report the top tier so any residual `plan.plan !== 'enterprise'` tier
+    // comparison treats the user as fully unlocked (no upgrade CTA can fire).
+    // No plan name is shown anywhere in the UI anymore.
+    plan: 'enterprise',
+    planName: 'Enterprise',
     loading,
-    features: planInfo?.features || {},
-    limits: planInfo?.limits || {},
-    usage: planInfo?.usage || {},
+    features: ALL_OPEN_FEATURES,
+    limits: ALL_OPEN_LIMITS,
+    usage: {},
     allPlans: planInfo?.all_plans || [],
     hasFeature,
     hasLimit,
     refresh: fetchPlan,
-    isFree: planInfo?.plan === 'free',
-    isStarter: planInfo?.plan === 'starter',
-    isGrowth: planInfo?.plan === 'growth',
-    isEnterprise: planInfo?.plan === 'enterprise',
-    isPaid: planInfo?.plan && planInfo.plan !== 'free',
+    isFree: false,
+    isStarter: false,
+    isGrowth: false,
+    isEnterprise: true,
+    isPaid: true,
   };
 
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;
