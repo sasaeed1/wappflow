@@ -356,7 +356,8 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | **P7** | Desktop Management **backend** — `cc-desktop.js`: `/api/desktop/report` + `/api/desktop/update-policy` (force-update via min_version, block versions) + `/api/cc/desktop/fleet` + `/api/cc/desktop/policy` | 🌐 | ✅ | verified `test-cc-desktop.js` |
 | P7 | Desktop **client** reporting — call `report` on launch/sync + obey `update-policy` (force/block) | 🖥️ | ⏸ | small main.js addition (device id + version + last-sync) |
 | P7 | CC **UI depth** — Desktop fleet page; plans editor, flags rollout UI, user mgmt + MFA, billing/Stripe, impersonation UI, SQL console frontend, system health | 🌐 web | ⏸ | control/* pages exist from P1; need depth + the new desktop page |
-| **P8** | Video AI (ffmpeg+ONNX: clip/scene/shot/action/speech) + Reel Engine + Story Engine | 🖥️ | ⬜ | re-enable `reel_engine`/`story_engine` entitlements when real |
+| **P8** | Reel/Story **planning engine** — `POST /api/media/projects/:id/reel-plan` (story-arc shot list hook→build→climax→outro from Track-0 scores) | 🌐 | ✅ | verified `test-reel-engine.js` |
+| P8 | Video **frame analysis** (desktop ffmpeg → per-frame vision → clip_quality/scene) + shot/action/speech models + **reel rendering** (plan → video-engine export) | 🖥️ | ⏸ | desktop video analyzer still a stub; un-gate `reel_engine`/`story_engine` entitlements when render is user-ready |
 | **P9** | Brains & Style (Studio Brain consumption, Creator Brain, Style Engine) | 🔁 | ⬜ | re-enable `style_profiles` when real |
 | **P10** | Media Studio desktop-first + **R2 object storage migration** | 🖥️/🌐 | ⬜ | R2 before delivery go-to-market (rule #7); re-enable `ai_editing` |
 | **Appendix A** | Module depth: CRM (saved-views persist, merge UI), Contracts (sequential signing, payments), Booking (GCal, reschedule notifs), Portal (first-class desktop) | 🌐/🖥️ | ⬜ | fold into relevant phases |

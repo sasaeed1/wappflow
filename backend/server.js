@@ -5571,6 +5571,9 @@ commsApi = require('./comms')(app, db, {
 // ── Workspace Sync (Phase 6 — offline-first delta endpoint) ──
 require('./sync')(app, db, { auth });
 
+// ── Reel/Story planning engine (Phase 8 — plans from Track-0 scores) ──
+require('./reel-engine')(app, db, { auth });
+
 // ════════════════════════════════════════════════════════════
 //  COMMAND CENTER  (platform control plane — additive, cross-tenant, own identity)
 //  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.
