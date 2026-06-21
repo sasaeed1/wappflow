@@ -5576,7 +5576,7 @@ require('./sync')(app, db, { auth });
 //  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.
 // ════════════════════════════════════════════════════════════
 require('./command-center')(app, db, {
-  generateId, broadcastToUser, broadcastToWorkspace, logAudit, JWT_SECRET,
+  auth, generateId, broadcastToUser, broadcastToWorkspace, logAudit, JWT_SECRET,
   // Reuse the workspace-owner SMTP seam so scheduled reports can be emailed.
   sendEmail: async ({ workspaceOwnerId, to, subject, html, text }) => {
     const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(workspaceOwnerId);

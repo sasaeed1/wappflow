@@ -353,7 +353,9 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | P5 | Project Rooms **frontend** — room panel (discussion + call) on each entity detail page | 🌐 web | ⏸ | wire `/api/comms/rooms/*` + reuse HuddleModal; timeline mirror for project/gallery/contract/booking |
 | **P6** | Sync **delta endpoint** `GET /api/workspace/sync?since=` (leads/projects/assets/cull/albums/galleries/contracts/bookings/plan/brain + `now` cursor) | 🌐 | ✅ | verified `test-sync.js` |
 | P6 | Offline **client**: desktop local store (SQLite) + work queue + replay-on-reconnect + conflict merge; web service-worker | 🖥️/🌐 | ⏸ | read side done; write-back replays existing routes; needs tombstones (deletes) + cursor paging for >2000 rows |
-| **P7** | Command Center depth + Desktop Management (version/machine/last-sync/force-update/beta) | 🌐→🖥️ | ⬜ | CC mounted (✅); add desktop reporting endpoint + UIs (plans/flags/users/MFA/billing/impersonation/SQL console/health) |
+| **P7** | Desktop Management **backend** — `cc-desktop.js`: `/api/desktop/report` + `/api/desktop/update-policy` (force-update via min_version, block versions) + `/api/cc/desktop/fleet` + `/api/cc/desktop/policy` | 🌐 | ✅ | verified `test-cc-desktop.js` |
+| P7 | Desktop **client** reporting — call `report` on launch/sync + obey `update-policy` (force/block) | 🖥️ | ⏸ | small main.js addition (device id + version + last-sync) |
+| P7 | CC **UI depth** — Desktop fleet page; plans editor, flags rollout UI, user mgmt + MFA, billing/Stripe, impersonation UI, SQL console frontend, system health | 🌐 web | ⏸ | control/* pages exist from P1; need depth + the new desktop page |
 | **P8** | Video AI (ffmpeg+ONNX: clip/scene/shot/action/speech) + Reel Engine + Story Engine | 🖥️ | ⬜ | re-enable `reel_engine`/`story_engine` entitlements when real |
 | **P9** | Brains & Style (Studio Brain consumption, Creator Brain, Style Engine) | 🔁 | ⬜ | re-enable `style_profiles` when real |
 | **P10** | Media Studio desktop-first + **R2 object storage migration** | 🖥️/🌐 | ⬜ | R2 before delivery go-to-market (rule #7); re-enable `ai_editing` |
