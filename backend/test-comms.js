@@ -15,7 +15,10 @@ db.exec(`
   CREATE TABLE chat_channels (id TEXT PRIMARY KEY, workspace_id TEXT, name TEXT, description TEXT, is_private INTEGER DEFAULT 0, created_by TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE chat_messages (id TEXT PRIMARY KEY, channel_id TEXT, user_id TEXT, sender_name TEXT, body TEXT, media_url TEXT, media_type TEXT, reply_to TEXT, is_edited INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE workspace_members (workspace_id TEXT, user_id TEXT, role TEXT);
+  CREATE TABLE leads (id TEXT PRIMARY KEY, workspace_id TEXT, customer_name TEXT);
+  CREATE TABLE activity_timeline (id TEXT PRIMARY KEY, lead_id TEXT, workspace_id TEXT, user_id TEXT, actor_name TEXT, activity_type TEXT, title TEXT, body TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
 `);
+db.prepare("INSERT INTO leads (id, workspace_id, customer_name) VALUES ('lead1','ws1','Acme')").run();
 db.prepare("INSERT INTO workspace_members VALUES ('ws1','u1','admin')").run();
 db.prepare("INSERT INTO workspace_members VALUES ('ws1','u2','user')").run();
 // a public channel + a message from u1
@@ -107,6 +110,22 @@ const ok = (c, m) => { if (!c) { fails++; console.error('  ✗', m); } else cons
   const pres = await call('GET', '/api/comms/presence');
   ok(Array.isArray(pres.json.online) && pres.json.online.includes('u1'), 'presence lists online u1');
 
-  console.log(`\n${fails === 0 ? '✅ ALL COMMS 2.0 CHECKS PASSED' : '❌ ' + fails + ' FAILED'}\n`);
+  console.log('\n[10] Project Rooms (Phase 5)');
+  const badRoom = await call('POST', '/api/comms/rooms/lead/nope');
+  ok(badRoom.status === 404, 'room for non-existent entity → 404');
+  const room = await call('POST', '/api/comms/rooms/lead/lead1');
+  ok(room.status === 200 && room.json.channel_id === 'room_lead_lead1', 'lead room find-or-create');
+  ok(room.json.livekit_room === 'room_lead_lead1', 'room exposes a LiveKit room id');
+  const room2 = await call('POST', '/api/comms/rooms/lead/lead1');
+  ok(room2.json.channel_id === 'room_lead_lead1', 'idempotent (same room on re-create)');
+  ok(db.prepare("SELECT COUNT(*) c FROM project_rooms WHERE entity_type='lead' AND entity_id='lead1'").get().c === 1, 'single project_rooms row');
+  // a message in the room mirrors to the lead timeline via afterMessage
+  db.prepare("INSERT INTO chat_messages (id,channel_id,user_id,sender_name,body) VALUES ('rm1','room_lead_lead1','u1','Alice','kickoff call notes')").run();
+  api.afterMessage(db.prepare("SELECT * FROM chat_messages WHERE id='rm1'").get(), []);
+  ok(db.prepare("SELECT COUNT(*) c FROM activity_timeline WHERE lead_id='lead1' AND activity_type='room_message'").get().c === 1, 'room message mirrors to lead timeline');
+  const getRoom = await call('GET', '/api/comms/rooms/lead/lead1');
+  ok(getRoom.json.exists === true && getRoom.json.messages.length >= 1, 'GET room returns messages');
+
+  console.log(`\n${fails === 0 ? '✅ ALL COMMS 2.0 + ROOMS CHECKS PASSED' : '❌ ' + fails + ' FAILED'}\n`);
   srv.close(() => { try { db.close(); } catch {} process.exit(fails ? 1 : 0); });
 })();

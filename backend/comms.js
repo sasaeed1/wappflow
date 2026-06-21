@@ -64,9 +64,15 @@ module.exports = function mountComms(app, db, deps = {}) {
       user_id TEXT NOT NULL, author_id TEXT, read_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS project_rooms (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL, channel_id TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (workspace_id, entity_type, entity_id)
+    );
     CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id);
     CREATE INDEX IF NOT EXISTS idx_chat_mentions_user ON chat_mentions(user_id, read_at);
     CREATE INDEX IF NOT EXISTS idx_chat_pins_channel ON chat_pins(channel_id);
+    CREATE INDEX IF NOT EXISTS idx_project_rooms_entity ON project_rooms(entity_type, entity_id);
   `);
 
   const wsOf = (channelId) => { const c = db.prepare('SELECT workspace_id FROM chat_channels WHERE id = ?').get(channelId); return c && c.workspace_id; };
@@ -87,6 +93,14 @@ module.exports = function mountComms(app, db, deps = {}) {
     if (!workspaceId) return;
     // Real-time fan-out (replaces the 3s poll on the client).
     broadcastToWorkspace(workspaceId, 'chat_message', { channel_id: message.channel_id, message });
+    // Project room → mirror onto the entity timeline (leads today; other entities tracked).
+    if (message.channel_id.startsWith('room_lead_')) {
+      const leadId = message.channel_id.slice('room_lead_'.length);
+      try {
+        db.prepare(`INSERT INTO activity_timeline (id, lead_id, workspace_id, user_id, actor_name, activity_type, title, body)
+          VALUES (?,?,?,?,?,?,?,?)`).run(generateId(), leadId, workspaceId, message.user_id, message.sender_name, 'room_message', 'Room message', (message.body || '').slice(0, 200));
+      } catch { /* timeline mirror is best-effort */ }
+    }
     // @mentions: persist + notify each mentioned user (deduped, never self).
     const ids = Array.isArray(mentions) ? [...new Set(mentions.filter(u => u && u !== message.user_id))] : [];
     for (const uid of ids) {
@@ -290,6 +304,55 @@ module.exports = function mountComms(app, db, deps = {}) {
   // Lightweight capability probe for the client (show/hide call buttons).
   app.get('/api/comms/livekit/config', auth, (req, res) => {
     res.json({ configured: !!(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET), url: LIVEKIT_URL || null });
+  });
+
+  // ── Project Rooms (Phase 5) — contextual collaboration on a business entity ──
+  // A room = a private channel bound to a Lead/Project/Gallery/Contract/Booking +
+  // a LiveKit room (room = the channel id). Discussion reuses the chat message
+  // routes; voice/video reuses /api/comms/livekit/token. Lead-room messages mirror
+  // to the lead timeline (see afterMessage).
+  const ROOM_ENTITIES = {
+    lead:     { table: 'leads' },
+    project:  { table: 'ms_projects' },
+    gallery:  { table: 'ms_galleries' },
+    contract: { table: 'cs_documents' },
+    booking:  { table: 'bookings' },
+  };
+  function entityValid(type, id, workspaceId) {
+    const e = ROOM_ENTITIES[type]; if (!e) return false;
+    try { return !!db.prepare(`SELECT 1 FROM ${e.table} WHERE id = ? AND workspace_id = ?`).get(id, workspaceId); }
+    catch { return false; }
+  }
+  const roomChannelId = (type, id) => `room_${type}_${id}`;
+
+  // Find-or-create the room for an entity → returns its channel + LiveKit room.
+  app.post('/api/comms/rooms/:type/:id', auth, (req, res) => {
+    try {
+      const { type, id } = req.params;
+      if (!ROOM_ENTITIES[type]) return res.status(400).json({ error: 'unknown entity type' });
+      if (!entityValid(type, id, req.workspaceId)) return res.status(404).json({ error: 'entity not found' });
+      const cid = roomChannelId(type, id);
+      if (!db.prepare('SELECT 1 FROM chat_channels WHERE id = ?').get(cid)) {
+        db.prepare('INSERT INTO chat_channels (id, workspace_id, name, description, is_private, created_by) VALUES (?,?,?,?,1,?)')
+          .run(cid, req.workspaceId, `${type} room`, 'room', req.userId);
+        db.prepare('INSERT OR IGNORE INTO project_rooms (id, workspace_id, entity_type, entity_id, channel_id) VALUES (?,?,?,?,?)')
+          .run(generateId(), req.workspaceId, type, id, cid);
+      }
+      db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id) VALUES (?,?)').run(cid, req.userId);
+      res.json({ channel_id: cid, type, entity_id: id, livekit_room: cid });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Get a room (channel meta + recent messages) without creating it.
+  app.get('/api/comms/rooms/:type/:id', auth, (req, res) => {
+    try {
+      const { type, id } = req.params;
+      if (!ROOM_ENTITIES[type]) return res.status(400).json({ error: 'unknown entity type' });
+      const cid = roomChannelId(type, id);
+      const channel = db.prepare('SELECT * FROM chat_channels WHERE id = ? AND workspace_id = ?').get(cid, req.workspaceId) || null;
+      const messages = channel ? db.prepare('SELECT * FROM chat_messages WHERE channel_id = ? ORDER BY created_at DESC LIMIT 50').all(cid).reverse() : [];
+      res.json({ exists: !!channel, channel_id: cid, channel, messages, livekit_room: cid });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   console.log('💬 Communications 2.0 mounted at /api/comms/* (LiveKit ' + (LIVEKIT_URL ? 'configured' : 'NOT configured') + ')');
