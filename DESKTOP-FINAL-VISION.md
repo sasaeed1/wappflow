@@ -360,7 +360,9 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | P8 | Video **frame analysis** (desktop ffmpeg → per-frame vision → clip_quality/scene) + shot/action/speech models + **reel rendering** (plan → video-engine export) | 🖥️ | ⏸ | desktop video analyzer still a stub; un-gate `reel_engine`/`story_engine` entitlements when render is user-ready |
 | **P9** | Brains & Style **backend** — `brains.js`: Creator Brain (per-user keep-rate/decisiveness/rating), Style Engine (house exposure/contrast/colour/composition from KEPT work, workspace+creator scope), `/api/media/recommendations` | 🌐 | ✅ | verified `test-brains.js` |
 | P9 | Brains & Style **frontend + auto-apply** — surface recommendations in cull/edit; auto-apply style; desktop feedback capture | 🔁 | ⏸ | then un-gate `style_profiles` entitlement |
-| **P10** | Media Studio desktop-first + **R2 object storage migration** | 🖥️/🌐 | ⬜ | R2 before delivery go-to-market (rule #7); re-enable `ai_editing` |
+| **P10** | **R2 storage adapter** — `storage.js` (S3-compatible, optional SDK, env-gated, graceful local fallback; put/get/presign/remove/url) | 🌐 | ✅ | verified `test-storage.js` |
+| P10 | R2 **migration** — wire `storage.js` into the media-studio STORAGE SEAM (uploads/variants/ZIPs/PDFs) + provision R2 + `npm i @aws-sdk/client-s3` + set `R2_*` | 🌐 | ⏸ | adapter ready; don't rewire live media seam without R2 to verify |
+| P10 | Media Studio **desktop-first** — native crop/tone/rotate + album editor offline | 🖥️ | ⏸ | re-enable `ai_editing` when shipped |
 | **Appendix A** | Module depth: CRM (saved-views persist, merge UI), Contracts (sequential signing, payments), Booking (GCal, reschedule notifs), Portal (first-class desktop) | 🌐/🖥️ | ⬜ | fold into relevant phases |
 | **Entitlements** | Re-enable each gated feature as its phase ships: `desktop_sync`(P6) · `reel_engine`+`story_engine`(P8) · `style_profiles`(P9) · `ai_editing`(P10) | 🌐 | ⬜ | remove from `UNBUILT_FEATURES` in `entitlements.js` |
 
