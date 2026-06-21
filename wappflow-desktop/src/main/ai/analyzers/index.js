@@ -121,8 +121,12 @@ async function onnxVision(img) {
   if (faces === null) return []; // no face-detect model installed
   const out = [{ score_type: 'face_count', value: faces.length, reasons: { detector: 'ultraface-rfb-320' } }];
   if (faces.length) {
-    const smile = await scoreSmile(img, faces);
-    if (smile != null) out.push({ score_type: 'smile', value: +smile.toFixed(3), reasons: { faces: faces.length, model: 'ferplus' } });
+    const expr = await scoreExpression(img, faces);
+    if (expr && expr.smile != null) {
+      // `smile` stays the headline score; the full FER+ emotion distribution +
+      // dominant emotion ride in reasons (explainability; no registry change).
+      out.push({ score_type: 'smile', value: +expr.smile.toFixed(3), reasons: { faces: faces.length, model: 'ferplus', dominant: expr.dominant, emotions: expr.emotions } });
+    }
   }
   return out;
 }
@@ -151,21 +155,32 @@ async function detectFaces(img) {
   return pre.nms(dets, 0.4);
 }
 
-// → max happiness probability across faces (0..1), or null if no expression model.
-async function scoreSmile(img, faces) {
+// FER+ across all faces → { smile, dominant, emotions }, or null if no model.
+//   smile    = max happiness probability across faces (0..1)
+//   emotions = mean distribution across faces over the 8 FER+ classes
+//   dominant = highest-mean emotion label
+async function scoreExpression(img, faces) {
   const spec = models.FACE_EXPRESSION;
   if (!onnx.hasModel(spec.file)) return null;
   const ort = onnx.ort;
   const s = await onnx.session(spec.file);
-  let best = 0;
+  const labels = spec.emotions || [];
+  const agg = new Array(labels.length).fill(0);
+  let best = 0, count = 0;
   for (const f of faces) {
     const t = pre.cropGray(img, f, spec.input.size);
     const res = await s.run({ [s.inputNames[0]]: new ort.Tensor('float32', t.data, t.dims) });
-    const logits = Array.from(res[s.outputNames[0]].data);
-    const probs = pre.softmax(logits);
+    const probs = pre.softmax(Array.from(res[s.outputNames[0]].data));
+    for (let i = 0; i < probs.length && i < agg.length; i++) agg[i] += probs[i];
     best = Math.max(best, probs[spec.happyIndex] || 0);
+    count++;
   }
-  return best;
+  if (!count) return null;
+  const emotions = {};
+  for (let i = 0; i < labels.length; i++) emotions[labels[i]] = +(agg[i] / count).toFixed(3);
+  let dominant = labels[0] || null, domV = -1;
+  for (const k of Object.keys(emotions)) if (emotions[k] > domV) { domV = emotions[k]; dominant = k; }
+  return { smile: best, dominant, emotions };
 }
 
 // ── VIDEO analyzer (client tier) — ONNX/ffmpeg required; stub until wired ─────

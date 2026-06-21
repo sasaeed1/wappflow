@@ -13,8 +13,13 @@ try { _app = require('electron').app; } catch { /* not running under Electron */
 const DEV = process.env.WAPPFLOW_ENV === 'development';
 
 // Defaults point at the deployed product; override via env or the in-app server picker.
-const DEFAULT_WEB_URL = process.env.WAPPFLOW_WEB_URL || (DEV ? 'http://localhost:3000' : 'https://app.wappflow.app');
-const DEFAULT_API_URL = process.env.WAPPFLOW_API_URL || (DEV ? 'http://localhost:3001/api' : 'https://api.wappflow.app/api');
+const DEFAULT_WEB_URL = process.env.WAPPFLOW_WEB_URL || (DEV ? 'http://localhost:3000' : 'https://wappflow.remoteops.co');
+const DEFAULT_API_URL = process.env.WAPPFLOW_API_URL || (DEV ? 'http://localhost:3001/api' : 'https://wappflow.remoteops.co/api');
+
+// Command Center is platform-admin-only. The desktop reveals its nav entry only to
+// the founder (matched by login email); Command Center still enforces its own
+// cc_admins login + IP allowlist server-side. Unset = hidden (safe for customer builds).
+const FOUNDER_EMAIL = (process.env.WAPPFLOW_FOUNDER_EMAIL || '').toLowerCase();
 
 function userDataPath(...p) {
   // _app may be null when required outside the Electron runtime — guard it.
@@ -25,6 +30,7 @@ module.exports = {
   DEV,
   DEFAULT_WEB_URL,
   DEFAULT_API_URL,
+  FOUNDER_EMAIL,
   // where the local AI engine caches downloaded assets + the analyze-once ledger mirror
   cacheDir: () => userDataPath('ai-cache'),
   modelsDir: () => path.join(__dirname, 'ai', 'models'),

@@ -125,6 +125,7 @@ function registerIpc() {
     api: auth.getServer().api,
     env: config.DEV ? 'development' : 'production',
     platform: process.platform,
+    founderEmail: config.FOUNDER_EMAIL, // gates the Command Center nav entry (renderer-side)
   }));
   ipcMain.handle('app:setServer', (_e, servers) => auth.setServer(servers));
 

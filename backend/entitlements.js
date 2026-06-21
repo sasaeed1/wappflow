@@ -123,6 +123,16 @@ const PLAN_FOUNDING_PRICE = { creator: 3999, studio: 7499, studio_plus: 14999, e
 const PLAN_CURRENCY = 'PKR';
 const DEFAULT_PLAN = 'creator'; // entry plan for new workspaces / unknown tiers
 
+// ── Sold-but-unbuilt guard ───────────────────────────────────────────────────
+// These features are advertised on higher tiers but have NO working implementation
+// yet (Final Vision phases). We force them OFF at the resolver and hide them from the
+// advertised catalog so no workspace can reach an empty/broken feature. Delete a key
+// here the moment its phase ships:
+//   reel_engine, story_engine  → P8 (Video AI)
+//   style_profiles, ai_editing → P9 / P10 (Style Engine / Future Editing)
+//   desktop_sync               → P6 (Offline-first + Sync)
+const UNBUILT_FEATURES = new Set(['style_profiles', 'story_engine', 'reel_engine', 'ai_editing', 'desktop_sync']);
+
 const CACHE_TTL_MS = 30 * 1000;
 const _cache = new Map(); // workspaceId -> { data, exp }
 
@@ -291,6 +301,9 @@ function getEntitlements(db, workspaceId, { fresh = false } = {}) {
   try { applyFlags(db, workspaceId, features, sources); } catch {}
   try { applyOverrides(db, workspaceId, features, limits, sources); } catch {}
 
+  // Sold-but-unbuilt guard: force off regardless of plan/flag/override (see UNBUILT_FEATURES).
+  for (const k of UNBUILT_FEATURES) { if (features[k]) { features[k] = false; sources[k] = 'unbuilt'; } }
+
   const data = {
     plan: planKey,
     name: (PLAN_DEFINITIONS[planKey] || {}).name || planKey,
@@ -324,12 +337,12 @@ function getAllPlans(db) {
         key: p.key,
         name: p.name,
         ...priceFor(p.key),
-        features: Object.fromEntries(db.prepare('SELECT feature_key, enabled FROM plan_features WHERE plan_key = ?').all(p.key).map(r => [r.feature_key, safeJson(r.enabled, r.enabled)])),
+        features: Object.fromEntries(db.prepare('SELECT feature_key, enabled FROM plan_features WHERE plan_key = ?').all(p.key).filter(r => !UNBUILT_FEATURES.has(r.feature_key)).map(r => [r.feature_key, safeJson(r.enabled, r.enabled)])),
         limits: Object.fromEntries(db.prepare('SELECT key, value FROM plan_limits WHERE plan_key = ?').all(p.key).map(r => [r.key, r.value])),
       }));
     }
   } catch {}
-  return Object.entries(PLAN_DEFINITIONS).map(([k, v]) => ({ key: k, name: v.name, price: PLAN_MONTHLY_PRICE[k] ?? null, founding_price: PLAN_FOUNDING_PRICE[k] ?? null, currency: PLAN_CURRENCY, features: v.features, limits: v.limits }));
+  return Object.entries(PLAN_DEFINITIONS).map(([k, v]) => ({ key: k, name: v.name, price: PLAN_MONTHLY_PRICE[k] ?? null, founding_price: PLAN_FOUNDING_PRICE[k] ?? null, currency: PLAN_CURRENCY, features: Object.fromEntries(Object.entries(v.features).filter(([fk]) => !UNBUILT_FEATURES.has(fk))), limits: v.limits }));
 }
 
 module.exports = {

@@ -29,6 +29,20 @@ const PROVIDER_CHAIN = (process.env.AI_PROVIDERS || `${DEFAULT_PROVIDER},cerebra
 const COOLDOWN_MS = 60000;
 const _cooldownUntil = {}; // provider -> epoch ms until which it is skipped
 
+// Normalize provider usage shapes (OpenAI-style prompt/completion vs Anthropic input/output).
+function _norm(u = {}) {
+  return {
+    prompt_tokens: (u && (u.prompt_tokens ?? u.input_tokens)) || 0,
+    completion_tokens: (u && (u.completion_tokens ?? u.output_tokens)) || 0,
+  };
+}
+
+// ── Usage metering hook (Command Center §1.5 / §18) ──────────────────────────
+// server.js wires setMeter(recordAiUsage) at boot so every callLLM records
+// provider/model/tokens/latency to the ai_usage ledger. No-op until wired.
+let _meter = null;
+function setMeter(fn) { _meter = typeof fn === 'function' ? fn : null; }
+
 function _hasKey(p) {
   return (p === 'cerebras'   && !!CEREBRAS_KEY)
       || (p === 'groq'       && !!GROQ_KEY)
@@ -55,7 +69,8 @@ function _isRateLimit(e) {
 
 // ── Low-level LLM call — provider abstraction with automatic failover ──
 async function callLLM(prompt, opts = {}) {
-  const { maxTokens = 2048, temperature = 0.3, system = null, provider } = opts;
+  const { maxTokens = 2048, temperature = 0.3, system = null, provider, ctx = {} } = opts;
+  const tStart = Date.now();
 
   // Hard prompt-size cap — keeps every request inside the smallest free-tier
   // window (Groq ~6K tokens/min). Oversized prompts get their middle trimmed so
@@ -81,10 +96,12 @@ async function callLLM(prompt, opts = {}) {
   // Pass 1 — try each provider that is not currently cooling down.
   for (const p of candidates) {
     if (_cooldownUntil[p] && Date.now() < _cooldownUntil[p]) continue;
+    const aT0 = Date.now();
     try {
       const out = await _callProvider(p, prompt, system, maxTokens, temperature);
       _cooldownUntil[p] = 0;
-      return out;
+      if (_meter) { try { _meter({ ...ctx, provider: p, model: out.model, prompt_tokens: out.usage.prompt_tokens, completion_tokens: out.usage.completion_tokens, latency_ms: Date.now() - aT0, success: 1 }); } catch {} }
+      return out.content;
     } catch (e) {
       lastErr = e;
       if (_isRateLimit(e)) {
@@ -102,10 +119,12 @@ async function callLLM(prompt, opts = {}) {
     console.log(`⏳ all AI providers busy — waiting ${wait}ms then retrying the chain`);
     await _sleep(wait);
     for (const p of candidates) {
+      const aT0 = Date.now();
       try {
         const out = await _callProvider(p, prompt, system, maxTokens, temperature);
         _cooldownUntil[p] = 0;
-        return out;
+        if (_meter) { try { _meter({ ...ctx, provider: p, model: out.model, prompt_tokens: out.usage.prompt_tokens, completion_tokens: out.usage.completion_tokens, latency_ms: Date.now() - aT0, success: 1 }); } catch {} }
+        return out.content;
       } catch (e) {
         lastErr = e;
         if (_isRateLimit(e)) _cooldownUntil[p] = Date.now() + COOLDOWN_MS;
@@ -113,6 +132,9 @@ async function callLLM(prompt, opts = {}) {
     }
   }
 
+  // Every provider failed — record a single failure row so the AI Control Center
+  // reflects the error rate (one row per logical call, not per failover attempt).
+  if (_meter) { try { _meter({ ...ctx, provider: candidates[candidates.length - 1] || 'unknown', model: null, latency_ms: Date.now() - tStart, success: 0 }); } catch {} }
   throw lastErr || new Error('All AI providers failed');
 }
 
@@ -138,7 +160,7 @@ async function _callOpenRouter(prompt, system, maxTokens, temperature) {
     throw new Error(`OpenRouter ${res.status}: ${detail}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: OPENROUTER_MODEL };
 }
 
 // Cerebras — OpenAI-compatible chat completions API.
@@ -155,7 +177,7 @@ async function _callCerebras(prompt, system, maxTokens, temperature) {
     throw new Error(err.error?.message || err.message || `Cerebras error ${res.status}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: CEREBRAS_MODEL };
 }
 
 async function _callGroq(prompt, system, maxTokens, temperature) {
@@ -171,7 +193,7 @@ async function _callGroq(prompt, system, maxTokens, temperature) {
     throw new Error(err.error?.message || `Groq error ${res.status}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: GROQ_MODEL };
 }
 
 async function _callOpenAI(prompt, system, maxTokens, temperature) {
@@ -187,7 +209,7 @@ async function _callOpenAI(prompt, system, maxTokens, temperature) {
     throw new Error(err.error?.message || `OpenAI error ${res.status}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: OPENAI_MODEL };
 }
 
 async function _callAnthropic(prompt, system, maxTokens, temperature) {
@@ -211,7 +233,7 @@ async function _callAnthropic(prompt, system, maxTokens, temperature) {
     throw new Error(err.error?.message || `Anthropic error ${res.status}`);
   }
   const data = await res.json();
-  return data.content?.[0]?.text || '';
+  return { content: data.content?.[0]?.text || '', usage: _norm(data.usage), model: ANTHROPIC_MODEL };
 }
 
 // ── JSON extraction from messy LLM output ──
@@ -386,6 +408,7 @@ function formatProfileContext(profile) {
 
 module.exports = {
   callLLM,
+  setMeter,
   extractJSON,
   buildConversationContext,
   formatMemoryContext,

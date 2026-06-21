@@ -10,6 +10,9 @@ const MODULES = [
   { id: 'dashboard', label: 'Dashboard', icon: '▦', route: '/dashboard', cloud: true },
   { id: 'leads', label: 'Leads & Inbox', icon: '☷', route: '/leads-list', cloud: true },
   { id: 'clients', label: 'Clients', icon: '❏', route: '/clients', cloud: true },
+  { sec: 'Communicate' },
+  { id: 'chat', label: 'Team Chat', icon: '✉', route: '/chat', cloud: true },
+  { id: 'whatsapp', label: 'WhatsApp', icon: '✆', route: '/whatsapp', cloud: true },
   { sec: 'Studio' },
   { id: 'studio', label: 'Media Studio', icon: '◆', route: '/studio', cloud: true },
   { id: 'localai', label: 'Local AI', icon: '✦', cloud: false, badge: 'NEW' },
@@ -17,17 +20,23 @@ const MODULES = [
   { id: 'contracts', label: 'Contracts', icon: '✎', route: '/contracts', cloud: true },
   { id: 'booking', label: 'Booking', icon: '▤', route: '/bookings', cloud: true },
   { id: 'reports', label: 'Analytics', icon: '◷', route: '/reports', cloud: true },
+  // Platform control plane — founder-only. Uses Command Center's own login
+  // (cc_admins) + IP allowlist; the nav entry is shown only to the founder.
+  { sec: 'Platform', founderOnly: true },
+  { id: 'command', label: 'Command Center', icon: '⌘', route: '/control', cloud: true, founderOnly: true },
 ];
 
 let session = null;
 let active = null;
 let authInjected = false;
+let appInfo = null;
 
 const $ = (id) => document.getElementById(id);
 const show = (id, on) => $(id).classList.toggle('active', on);
 
 async function boot() {
   const info = await W.app.info();
+  appInfo = info;
   $('l-api').value = info.api || '';
   session = await W.auth.status();
   if (session && session.user) { renderApp(); } else { show('login', true); }
@@ -59,8 +68,14 @@ function renderApp() {
   $('ws-name').textContent = (session.workspace && session.workspace.name) || (session.user && session.user.email) || 'Workspace';
   $('logout').onclick = async () => { await W.auth.logout(); session = null; authInjected = false; location.reload(); };
 
+  // Founder check gates the Command Center entry — visible only when the desktop is
+  // configured with a founder email (WAPPFLOW_FOUNDER_EMAIL) that matches this login.
+  const userEmail = ((session.user && session.user.email) || '').toLowerCase();
+  const isFounder = !!(appInfo && appInfo.founderEmail && userEmail === appInfo.founderEmail);
+
   const nav = $('nav'); nav.innerHTML = '';
   for (const m of MODULES) {
+    if (m.founderOnly && !isFounder) continue;
     if (m.sec) { const h = document.createElement('div'); h.className = 'sb-sec'; h.textContent = m.sec; nav.appendChild(h); continue; }
     const b = document.createElement('button');
     b.className = 'nav-item'; b.dataset.id = m.id;

@@ -143,9 +143,11 @@ module.exports = function createMediaWorker(db, deps = {}) {
     const focusScore = Math.min(1, variance / 220);
     const tonalScore = 1 - Math.min(1, Math.abs(exposure - 0.5) * 2);
     const quality = Math.max(0, Math.min(1, focusScore * 0.55 + tonalScore * 0.30 + (1 - Math.min(1, clipping * 6)) * 0.15));
+    const blur = Math.max(0, Math.min(1, 1 - focusScore));     // 0 = sharp, 1 = blurry (registry 'blur' score)
     return {
       phash,
       sharpness: Math.round(variance * 100) / 100,           // raw Laplacian variance (higher = sharper)
+      blur: Math.round(blur * 1000) / 1000,                  // normalized blur confidence (inverse focus)
       exposure: Math.round(exposure * 1000) / 1000,          // 0..1 mean luminance
       shadow_clip: Math.round(shadow * 1000) / 1000,         // fraction crushed (underexposed)
       high_clip: Math.round(high * 1000) / 1000,             // fraction blown (overexposed)
@@ -225,13 +227,18 @@ module.exports = function createMediaWorker(db, deps = {}) {
     `).run(width, height, exif.capture_time || null,
            JSON.stringify(exif.camera_meta || {}), cv.phash, JSON.stringify(variants), asset.id);
 
-    // advisory scores — idempotent (clear previous AI scores for this asset first)
+    // advisory scores — idempotent (clear previous AI scores for this asset first).
+    // Stamp the registry's technical model_version (not an orphan 'cv-v0') so the
+    // scores' provenance matches the "analyze once" ledger written below — same
+    // version the analyzer registry advertises, so needsAnalysis() never drifts.
+    // (Constant from the registry — safe to inline; not user input.)
     db.prepare("DELETE FROM ms_asset_scores WHERE asset_id = ? AND source = 'ai'").run(asset.id);
     const addScore = db.prepare(`
       INSERT INTO ms_asset_scores (id, workspace_id, asset_id, score_type, value, group_key, model_version, source)
-      VALUES (?, ?, ?, ?, ?, ?, 'cv-v0', 'ai')
+      VALUES (?, ?, ?, ?, ?, ?, '${intel.ANALYZERS.technical.modelVersion}', 'ai')
     `);
     addScore.run(generateId(), asset.workspace_id, asset.id, 'sharpness', cv.sharpness, null);
+    addScore.run(generateId(), asset.workspace_id, asset.id, 'blur', cv.blur, null);
     addScore.run(generateId(), asset.workspace_id, asset.id, 'exposure', cv.exposure, null);
     addScore.run(generateId(), asset.workspace_id, asset.id, 'clipping', cv.clipping, null);
     addScore.run(generateId(), asset.workspace_id, asset.id, 'quality', cv.quality, null);

@@ -35,9 +35,12 @@
       const ortOk = rt.onnx && rt.onnx.available;
       const face = rt.models && rt.models.face_detect;
       const expr = rt.models && rt.models.face_expression;
+      // Active execution provider, e.g. "dml/cpu" → "DML" (GPU) or "CPU".
+      const prov = (rt.onnx && rt.onnx.provider) || '';
+      const accel = prov ? ` · ${prov.split('/')[0].toUpperCase()}` : '';
       const pill = $('ai-runtime');
       pill.textContent = !cpu ? 'image analysis unavailable'
-        : face ? (expr ? 'Face AI ready · detect + smile' : 'Face detection ready')
+        : face ? (expr ? `Face AI ready · detect + emotion${accel}` : `Face detection ready${accel}`)
         : ortOk ? 'CPU ready · run "npm run fetch-models" for Face AI'
         : 'CPU ready';
       pill.className = 'pill ' + (cpu ? 'ok' : 'warn');

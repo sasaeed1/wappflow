@@ -41,6 +41,13 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
+# Next.js build output
+.next/
+**/.next/
+
+# local audit/scratch helpers (not part of the app)
+backend/_audit_setup.js
+
 # fastlane
 #
 # It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the

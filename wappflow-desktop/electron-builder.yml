@@ -11,11 +11,13 @@ files:
   - "package.json"
   - "!src/main/ai/models/**"        # ONNX models are fetched/bundled per-channel, not from source
 
-# Auto-update feed — Command Center governs version/force-update/rollouts; wire the
-# provider (generic server / S3 / GitHub) when release infra is chosen.
+# Auto-update feed — Command Center governs version/force-update/rollouts (Phase 7).
+# Points at the deployment domain; host latest.yml + installers under /desktop to
+# activate updates (or switch provider to S3 / GitHub releases). Until then the
+# client's checkForUpdates() fails silently (see main.js initAutoUpdate).
 publish:
   - provider: generic
-    url: https://updates.wappflow.app/desktop
+    url: https://wappflow.remoteops.co/desktop
 
 win:
   target: [nsis]

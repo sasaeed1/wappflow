@@ -158,6 +158,11 @@ const auth = (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId;
 
+    // Command Center impersonation: a platform admin acting as this user. The token
+    // carries an `imp` claim so we can flag the session and tag every action as
+    // impersonated (audit). Read-only enforcement happens below (default mode = read).
+    if (decoded.imp) { req.impersonatedBy = decoded.imp.admin_id; req.impersonation = decoded.imp; }
+
     // Workspace context
     const user = db.prepare('SELECT workspace_id, business_name, full_name FROM users WHERE id = ?').get(decoded.userId);
     const workspaceId = user?.workspace_id || decoded.userId;
@@ -172,6 +177,23 @@ const auth = (req, res, next) => {
     // Workspace owner's user_id (super_admin) — used for shared data (tags, presets, settings)
     const ownerRow = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(workspaceId);
     req.workspaceOwnerId = ownerRow?.user_id || decoded.userId;
+
+    // Command Center enforcement ───────────────────────────────────────────────
+    // (1) Read-only impersonation: a platform admin acting as this user in read mode
+    //     may browse but not mutate. Write methods are blocked.
+    if (req.impersonation && req.impersonation.mode === 'read' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      return res.status(403).json({ error: 'Read-only impersonation — writes are blocked. Re-open in write mode to make changes.', impersonation_readonly: true });
+    }
+    // (2) Suspended workspaces are locked out of all API access. A platform admin who
+    //     is impersonating bypasses this so support can still investigate the account.
+    if (!req.impersonation) {
+      try {
+        const ws = db.prepare('SELECT status FROM workspaces WHERE id = ?').get(workspaceId);
+        if (ws && ws.status === 'suspended') {
+          return res.status(403).json({ error: 'This workspace is suspended. Please contact support.', suspended: true });
+        }
+      } catch {}
+    }
 
     next();
   } catch {
@@ -2328,15 +2350,21 @@ app.get('/api/reports/overview', auth, (req, res) => {
     const wid = req.workspaceId;
     const { period = '30', start_date, end_date } = req.query;
 
-    // Build date filter — custom range takes priority over period
-    let leadsTimeFilter, revenueTimeFilter;
+    // Build date filter — custom range takes priority over period.
+    // Use bound parameters (?) — never interpolate req.query into SQL.
+    let leadsTimeFilter, revenueTimeFilter, leadsTimeParams, revenueTimeParams;
     if (start_date && end_date) {
-      leadsTimeFilter = `DATE(created_at) BETWEEN DATE('${start_date}') AND DATE('${end_date}')`;
-      revenueTimeFilter = `DATE(closed_at) BETWEEN DATE('${start_date}') AND DATE('${end_date}')`;
+      leadsTimeFilter = `DATE(created_at) BETWEEN DATE(?) AND DATE(?)`;
+      revenueTimeFilter = `DATE(closed_at) BETWEEN DATE(?) AND DATE(?)`;
+      leadsTimeParams = [start_date, end_date];
+      revenueTimeParams = [start_date, end_date];
     } else {
-      const days = parseInt(period);
-      leadsTimeFilter = `DATE(created_at) >= DATE('now', '-${days} days')`;
-      revenueTimeFilter = `DATE(closed_at) >= DATE('now', '-${days} days')`;
+      const days = parseInt(period, 10);
+      const modifier = `-${Number.isInteger(days) ? days : 30} days`;
+      leadsTimeFilter = `DATE(created_at) >= DATE('now', ?)`;
+      revenueTimeFilter = `DATE(closed_at) >= DATE('now', ?)`;
+      leadsTimeParams = [modifier];
+      revenueTimeParams = [modifier];
     }
 
     // Leads over time
@@ -2344,14 +2372,14 @@ app.get('/api/reports/overview', auth, (req, res) => {
       SELECT DATE(created_at) as date, COUNT(*) as count
       FROM leads WHERE workspace_id=? AND ${leadsTimeFilter} AND (is_deleted=0 OR is_deleted IS NULL)
       GROUP BY DATE(created_at) ORDER BY date ASC
-    `).all(wid);
+    `).all(wid, ...leadsTimeParams);
 
     // Revenue over time
     const revenueOverTime = db.prepare(`
       SELECT DATE(closed_at) as date, SUM(actual_sale) as revenue
       FROM leads WHERE workspace_id=? AND status='Closed - Won' AND closed_at IS NOT NULL AND ${revenueTimeFilter}
       GROUP BY DATE(closed_at) ORDER BY date ASC
-    `).all(wid);
+    `).all(wid, ...revenueTimeParams);
 
     // Pipeline funnel
     const pipeline = db.prepare(`
@@ -3356,26 +3384,58 @@ console.log('✅ Cron jobs started');
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-async function callGemini(prompt, maxTokens = 2048) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-      max_tokens: maxTokens
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Groq API error ${res.status}`);
+// ── AI metering (Command Center §1.5 / §18) ──────────────────────────────────
+// Rough cost rates in USD per 1M tokens. Unknown models fall back to a flat rate.
+const AI_RATES = {
+  'llama-3.1-8b-instant': { in: 0.05, out: 0.08 },
+  'llama3.1-8b':          { in: 0.05, out: 0.08 },   // cerebras
+  'gpt-4o-mini':          { in: 0.15, out: 0.60 },
+  'claude-haiku-4-5-20251001': { in: 1.00, out: 5.00 },
+  'meta-llama/llama-3.3-70b-instruct:free': { in: 0, out: 0 },
+};
+function recordAiUsage({ workspace_id = null, user_id = null, feature = null, provider, model, prompt_tokens = 0, completion_tokens = 0, latency_ms = 0, success = 1 }) {
+  try {
+    const rate = AI_RATES[model] || { in: 0.1, out: 0.1 };
+    const est = (prompt_tokens / 1e6) * rate.in + (completion_tokens / 1e6) * rate.out;
+    db.prepare(`INSERT INTO ai_usage (id, workspace_id, user_id, feature, provider, model, prompt_tokens, completion_tokens, latency_ms, est_cost, success)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(generateId(), workspace_id, user_id, feature, provider, model, prompt_tokens, completion_tokens, latency_ms, est, success ? 1 : 0);
+  } catch { /* ai_usage table is created by Command Center on boot; never break AI on metering failure */ }
+}
+// Route the centralized AI engine's metering through the same ledger (covers the
+// callLLM provider-failover path; the inline callGemini below is metered directly).
+try { aiEngine.setMeter(recordAiUsage); } catch {}
+
+// callGemini(prompt, maxTokens, ctx?) — ctx {workspace_id, user_id, feature} is optional
+// so existing call sites need no changes; metering still records provider/model/tokens/latency.
+async function callGemini(prompt, maxTokens = 2048, ctx = {}) {
+  const model = 'llama-3.1-8b-instant';
+  const t0 = Date.now();
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: maxTokens
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Groq API error ${res.status}`);
+    }
+    const data = await res.json();
+    const u = data.usage || {};
+    recordAiUsage({ ...ctx, provider: 'groq', model, prompt_tokens: u.prompt_tokens || 0, completion_tokens: u.completion_tokens || 0, latency_ms: Date.now() - t0, success: 1 });
+    return data.choices?.[0]?.message?.content || '';
+  } catch (e) {
+    recordAiUsage({ ...ctx, provider: 'groq', model, latency_ms: Date.now() - t0, success: 0 });
+    throw e;
   }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
 }
 
 // Strip markdown code fences and extract a JSON array or object from raw AI output
@@ -5348,6 +5408,44 @@ app.get('/api/leads/:leadId/meetings', auth, (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════
+//  MODULE GATE — per-workspace module enable/disable enforcement (Command Center §6).
+//  Default-ON: a module is only blocked when the resolver returns its key === false
+//  (set via a plan or a Command Center override), so there is no change in behaviour
+//  unless an admin explicitly disables a module. Public/tokenized routes are exempt
+//  (clients viewing a delivered gallery/contract are never blocked). Registered BEFORE
+//  the module mounts so it sits ahead of their routes in the middleware stack.
+// ════════════════════════════════════════════════════════════
+const MODULE_GATES = [
+  { prefix: '/api/media/',     key: 'media_studio',     label: 'Media Studio',     publicRe: /^\/api\/media\/(portal|public|gallery)\b/ },
+  { prefix: '/api/studio-ai/', key: 'media_studio',     label: 'Media Studio' },
+  { prefix: '/api/video-ai/',  key: 'media_studio',     label: 'Media Studio' },
+  { prefix: '/api/cs/',        key: 'contracts_studio', label: 'Contracts Studio', publicRe: /^\/api\/cs\/public\b/ },
+  { prefix: '/api/booking/',   key: 'booking',          label: 'Booking',          publicRe: /^\/api\/booking\/(public|manage)\b/ },
+  { prefix: '/api/store/',     key: 'print_store',      label: 'Print Store',      publicRe: /^\/api\/store\/public\b/ },
+  { prefix: '/api/payments/',  key: 'payments',         label: 'Payments',         publicRe: /^\/api\/payments\/(public|webhook)\b/ },
+];
+app.use((req, res, next) => {
+  try {
+    const gate = MODULE_GATES.find(g => req.path.startsWith(g.prefix));
+    if (!gate) return next();
+    if (gate.publicRe && gate.publicRe.test(req.path)) return next(); // tokenized client routes: never gate
+    const token = req.header('Authorization')?.replace('Bearer ', '') || req.query.token;
+    if (!token) return next(); // let the route's own auth return 401
+    let wsId;
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const u = db.prepare('SELECT workspace_id FROM users WHERE id = ?').get(decoded.userId);
+      wsId = u?.workspace_id || decoded.userId;
+    } catch { return next(); }
+    const ent = entitlements.getEntitlements(db, wsId);
+    if (ent.features[gate.key] === false) {
+      return res.status(403).json({ error: `${gate.label} is disabled for this workspace.`, module: gate.key, disabled: true });
+    }
+    return next();
+  } catch { return next(); }
+});
+
+// ════════════════════════════════════════════════════════════
 //  MEDIA STUDIO  (additive module — owns the ms_* namespace, touches no core table)
 // ════════════════════════════════════════════════════════════
 require('./media-studio')(app, db, {
@@ -5441,6 +5539,22 @@ require('./contracts-studio')(app, db, {
     try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text); } catch {}
     return { sent: true };
   },
+  sendEmail: async ({ workspaceOwnerId, to, subject, html, text }) => {
+    const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(workspaceOwnerId);
+    if (!smtpRow || !smtpRow.smtp_host) return { skipped: true };
+    const transporter = nodemailer.createTransport({ host: smtpRow.smtp_host, port: smtpRow.smtp_port, secure: !!smtpRow.smtp_secure, auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass } });
+    await transporter.sendMail({ from: `"${smtpRow.from_name || 'WappFlow'}" <${smtpRow.from_email || smtpRow.smtp_user}>`, to, subject, html, text });
+    return { sent: true };
+  },
+});
+
+// ════════════════════════════════════════════════════════════
+//  COMMAND CENTER  (platform control plane — additive, cross-tenant, own identity)
+//  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.
+// ════════════════════════════════════════════════════════════
+require('./command-center')(app, db, {
+  generateId, broadcastToUser, broadcastToWorkspace, logAudit, JWT_SECRET,
+  // Reuse the workspace-owner SMTP seam so scheduled reports can be emailed.
   sendEmail: async ({ workspaceOwnerId, to, subject, html, text }) => {
     const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(workspaceOwnerId);
     if (!smtpRow || !smtpRow.smtp_host) return { skipped: true };
