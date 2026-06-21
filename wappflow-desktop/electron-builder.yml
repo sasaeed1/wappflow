@@ -1,0 +1,33 @@
+appId: app.wappflow.desktop
+productName: WappFlow
+copyright: Copyright © WappFlow
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - "src/**/*"
+  - "package.json"
+  - "!src/main/ai/models/**"        # ONNX models are fetched/bundled per-channel, not from source
+
+# Auto-update feed — Command Center governs version/force-update/rollouts; wire the
+# provider (generic server / S3 / GitHub) when release infra is chosen.
+publish:
+  - provider: generic
+    url: https://updates.wappflow.app/desktop
+
+win:
+  target: [nsis]
+  artifactName: "WappFlow-Setup-${version}.${ext}"
+mac:
+  target: [dmg]
+  category: public.app-category.business
+linux:
+  target: [AppImage]
+  category: Office
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

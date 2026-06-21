@@ -1,0 +1,36 @@
+{
+  "name": "wappflow-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WappFlow Desktop — the native operating system for running a creative business (CRM · Studio · Contracts · Booking · Client Delivery · local AI).",
+  "main": "src/main/main.js",
+  "author": "WappFlow",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "cross-env WAPPFLOW_ENV=development electron .",
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "lint:syntax": "node -e \"const fs=require('fs'),p=require('path');function w(d){for(const f of fs.readdirSync(d)){const fp=p.join(d,f);if(fs.statSync(fp).isDirectory())w(fp);else if(f.endsWith('.js'))require('child_process').execSync('node -c '+JSON.stringify(fp))}}w('src');console.log('syntax ok')\""
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "electron-updater": "^6.3.9"
+  },
+  "optionalDependencies": {
+    "jimp": "^0.22.12",
+    "onnxruntime-node": "^1.20.1"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "//notes": [
+    "sharp + onnxruntime-node are optionalDependencies: the Local AI Engine lazy-requires them and degrades gracefully if a platform can't fetch a prebuilt binary, so `npm install` never hard-fails in a sandbox.",
+    "ONNX model files are NOT committed — drop them in src/main/ai/models/ and register them in the analyzer registry.",
+    "Requires a real GUI build machine (Win/macOS/Linux) to run + package — cannot launch/sign Electron in a headless CI sandbox."
+  ]
+}
