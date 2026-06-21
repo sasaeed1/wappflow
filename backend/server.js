@@ -5568,6 +5568,9 @@ commsApi = require('./comms')(app, db, {
   auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser,
 });
 
+// ── Workspace Sync (Phase 6 — offline-first delta endpoint) ──
+require('./sync')(app, db, { auth });
+
 // ════════════════════════════════════════════════════════════
 //  COMMAND CENTER  (platform control plane — additive, cross-tenant, own identity)
 //  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.

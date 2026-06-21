@@ -351,7 +351,8 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | P4 | Render polish: DM panel · presence dots · edit button · server-search panel · pins/thread panels · @-autocomplete | 🌐 web | ⏸ | endpoints + data already built; UI surfacing only |
 | **P5** | Project Rooms **backend** — `/api/comms/rooms/:type/:id` (lead/project/gallery/contract/booking), reuses channels + LiveKit; lead-room msgs mirror to timeline | 🌐 | ✅ | verified `test-comms.js` |
 | P5 | Project Rooms **frontend** — room panel (discussion + call) on each entity detail page | 🌐 web | ⏸ | wire `/api/comms/rooms/*` + reuse HuddleModal; timeline mirror for project/gallery/contract/booking |
-| **P6** | Offline-first + sync (delta endpoint → local store → work queue → conflict merge) + web SW | 🖥️/🌐 | ⬜ | server sync endpoint first; entitlement cache needs CC (✅) |
+| **P6** | Sync **delta endpoint** `GET /api/workspace/sync?since=` (leads/projects/assets/cull/albums/galleries/contracts/bookings/plan/brain + `now` cursor) | 🌐 | ✅ | verified `test-sync.js` |
+| P6 | Offline **client**: desktop local store (SQLite) + work queue + replay-on-reconnect + conflict merge; web service-worker | 🖥️/🌐 | ⏸ | read side done; write-back replays existing routes; needs tombstones (deletes) + cursor paging for >2000 rows |
 | **P7** | Command Center depth + Desktop Management (version/machine/last-sync/force-update/beta) | 🌐→🖥️ | ⬜ | CC mounted (✅); add desktop reporting endpoint + UIs (plans/flags/users/MFA/billing/impersonation/SQL console/health) |
 | **P8** | Video AI (ffmpeg+ONNX: clip/scene/shot/action/speech) + Reel Engine + Story Engine | 🖥️ | ⬜ | re-enable `reel_engine`/`story_engine` entitlements when real |
 | **P9** | Brains & Style (Studio Brain consumption, Creator Brain, Style Engine) | 🔁 | ⬜ | re-enable `style_profiles` when real |
