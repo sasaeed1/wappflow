@@ -46,7 +46,7 @@ const SCORE_TYPES = {
 const ANALYZERS = {
   technical: { id: 'technical', where: 'server', modelVersion: 'tech-v1', scoreTypes: ['sharpness', 'blur', 'exposure', 'contrast', 'noise'] },
   dedup:     { id: 'dedup',     where: 'server', modelVersion: 'phash-v1', scoreTypes: ['dup_cluster', 'similar_cluster'] },
-  vision:    { id: 'vision',    where: 'client', modelVersion: 'vision-v0', scoreTypes: ['composition', 'aesthetic', 'face_count', 'eyes_open', 'smile', 'subject', 'scene_class'] },
+  vision:    { id: 'vision',    where: 'client', modelVersion: 'vision-v1', scoreTypes: ['composition', 'aesthetic', 'face_count', 'eyes_open', 'smile', 'subject', 'scene_class'] },
   video:     { id: 'video',     where: 'client', modelVersion: 'video-v0', scoreTypes: ['shake', 'motion', 'quality', 'speech', 'emotion', 'scene_cut', 'action'] },
   composite: { id: 'composite', where: 'server', modelVersion: 'comp-v1', scoreTypes: ['hero', 'portfolio', 'album', 'storytelling', 'hook', 'story', 'social'] },
 };

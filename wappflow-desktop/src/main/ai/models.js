@@ -38,8 +38,9 @@ const FACE_EXPRESSION = {
 };
 
 // Bump VISION_MODEL_VERSION when the produced score set changes so re-analysis is
-// intentional. Kept at the server registry value by default (additive scoring);
-// the desktop offers a force re-analyze to backfill faces onto old assets.
-const VISION_MODEL_VERSION = 'vision-v0';
+// intentional. MUST equal the server registry's vision modelVersion (analyze-once).
+// v1 adds eyes_open + scene_class to composition/aesthetic/face_count/smile; the
+// desktop's force re-analyze backfills the new scores onto already-analyzed assets.
+const VISION_MODEL_VERSION = 'vision-v1';
 
 module.exports = { FACE_DETECT, FACE_EXPRESSION, VISION_MODEL_VERSION, ALL: [FACE_DETECT, FACE_EXPRESSION] };

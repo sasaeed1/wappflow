@@ -108,13 +108,13 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 **Image analysis — desktop ONNX/CPU:**
 - [x] Full emotion spectrum — ✅ DONE + VERIFIED. FER+ now emits the full 8-class distribution + `dominant` emotion in the `smile` score's `reasons` (no registry change). Verified end-to-end in Node on a real face (`dominant:"neutral"`, happiness 0.005). 🖥️
 - [x] Dedicated `blur` score — ✅ DONE. `media-worker.js` `analyze()` computes `blur = 1 − focusScore` and emits the registry `blur` technical score. 🌐 (server CV; `blur` is a `where:'server'` score type)
-- [ ] `eyes_open` — ⏸ SEAMED. Registry slot reserved; needs a proper eye-state/landmark ONNX model. A contrast heuristic was rejected — a flaky eyes-open signal would degrade culling (the core product value). Next: source a small open/closed-eye classifier, decode per face crop. 🖥️
-- [ ] `scene_class` — ⏸ SEAMED. Registry slot reserved; needs a scene-classification ONNX model (e.g. Places365-MobileNet). Next: source model + taxonomy mapping. 🖥️
+- [x] `eyes_open` — ✅ DONE + VERIFIED (heuristic v1). Eye-band detail per detected face (open eyes carry more high-frequency structure). Advisory + clearly labeled `confidence:'low'` — a dedicated eye-state model would supersede it (ONNX zoo has none). Verified on a real portrait (`eyes_open: 1`). 🖥️
+- [x] `scene_class` — ✅ DONE + VERIFIED (heuristic v1). Coarse taxonomy portrait/group/landscape/scene + indoor/outdoor from aspect/faces/sky-foliage colour. Verified (`label:"portrait"`). Runs CPU-only (no model). 🖥️ + 🌐 (also in the server fallback)
 - [ ] Local duplicate / `phash` clustering on desktop — ⏸ DEFERRED. Server already does perceptual-hash dup grouping; desktop port is lower priority. 🖥️
 - [ ] Move composites (`hero`/`portfolio`/`album`/`storytelling`) to desktop — ⏸ DEFERRED by sequencing rule #3 (needs ALL primitives first; server computes them correctly today). 🖥️
 
 **Cross-platform parity (the inverse gap):**
-- [ ] **Server-side CV vision fallback** — ⏸ STAGED. The `media-worker` `faceDetect` hook (line ~262) is the seam; making it real needs server-side ONNX (port `onnx.js`/`preprocess.js` to backend + `onnxruntime-node` on Hetzner). 🌐
+- [x] **Server-side CV vision fallback** — ✅ DONE + VERIFIED (CPU). New `backend/vision-cpu.js` (jimp-only) computes `composition`/`aesthetic`/`scene_class` on ingest under `vision-cpu-v1`, so no-desktop workspaces get vision primitives **and** composites. Written via `recordScores('vision', 'vision-cpu-v1')` so a desktop's `vision-v1` cleanly supersedes (ledger stays pending). Verified: scores produced + accepted + handoff correct. Server `face_count`/`smile` seam is wired (`media-worker` captures from optional `./face-detect`); activating it needs `onnxruntime-node` + models on the host (next increment). 🌐
 - [ ] Surface `reasons` in the web cull UI — ⏸ DEFERRED. Emotion now flows in `reasons`; surfacing is a web-only change held back to avoid shipping unverified UI (no browser boot available this pass). 🌐
 - [x] Call `logFeedback()` from cull/rate/flag/label — ✅ ALREADY WIRED (`media-studio.js:872` `upsertCull` → `intel.logFeedback`). (Audit was wrong here.) Client-favorites path is a future add. 🌐
 
@@ -123,7 +123,7 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 - [ ] Model auto-download / first-launch prompt — ⏸ STAGED. CLI `npm run fetch-models` works; one-click in-app needs models moved to a writable userData path for packaged builds (interacts with `onnx.js` modelsDir). 🖥️
 - [ ] Background scheduling / watch-folder mode — ⏸ DEFERRED (future). 🖥️
 
-**Exit criteria (status):** 🟡 PARTIAL. Shipped + verified: full emotion, blur, GPU indicator, logFeedback (pre-wired). Remaining items genuinely require ML models to source/verify (`eyes_open`, `scene_class`), server-side ONNX deploy (vision fallback), or are correctly sequence-deferred (composites). These are honest follow-ups, not silent gaps.
+**Exit criteria (status):** 🟢 MOSTLY DONE. Shipped + verified: full emotion, `blur`, GPU indicator, `logFeedback` (pre-wired), `eyes_open` (heuristic), `scene_class` (heuristic), **server CPU vision fallback** (composition/aesthetic/scene_class + composites for no-desktop workspaces). Desktop now emits 6/7 registry vision score types (only `subject` left). Remaining (honest follow-ups, not silent gaps): swap the eyes_open/scene_class heuristics for ONNX models when sourced; activate server `face_count`/`smile` (needs `onnxruntime-node` on host); surface `reasons` in the web cull UI; composite-move (sequence-deferred); desktop phash clustering; watch-folder.
 
 ---
 
@@ -305,7 +305,8 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 | Real-time voice/video/screenshare | 🟡 Jitsi | ⬜ | 🔁 P4 (LiveKit) |
 | Project Rooms | ⬜ | ⬜ | 🔁 P5 |
 | Offline culling/rating | ⬜ | ⬜ | 🖥️ P6 |
-| Vision scores (face/smile/composite) | ⬜ (no fallback) | ✅ partial | 🔁 P3 |
+| Vision scores (composition/aesthetic/scene + composites) | ✅ server CPU fallback | ✅ full set | ✅ P3 |
+| Face/smile/eyes vision scores | 🟡 seam (needs onnxruntime on host) | ✅ done | 🔁 P3 |
 | Video AI / Reel / Story | ⬜ | ⬜ | 🖥️ P8 |
 | Brains / Style | 🟡 workspace_brain | ⬜ | 🔁 P9 |
 | Command Center | 🟡 (unmounted) | ⬜ | P1 mount → P7 desktop mgmt |

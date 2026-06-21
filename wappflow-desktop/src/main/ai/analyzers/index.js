@@ -106,9 +106,18 @@ const VISION = {
         contrast: +contrastN.toFixed(3), colourfulness: +colourN.toFixed(3), engine: 'cpu-vision',
       } },
     ];
-    // ONNX vision (face_count + smile) — only when models are present.
-    try { const extra = await onnxVision(img); if (extra && extra.length) scores.push(...extra); }
-    catch { /* model absent / load failed → CPU primitives only */ }
+    // ONNX vision (face_count + smile + eyes_open) — only when models are present.
+    let faceCount = 0;
+    try {
+      const extra = await onnxVision(img);
+      if (extra && extra.length) {
+        scores.push(...extra);
+        const fc = extra.find(s => s.score_type === 'face_count');
+        if (fc) faceCount = fc.value;
+      }
+    } catch { /* model absent / load failed → CPU primitives only */ }
+    // scene_class (CPU heuristic; always emitted, no model required).
+    scores.push(sceneClass(img, m, faceCount));
     return scores;
   },
 };
@@ -127,8 +136,68 @@ async function onnxVision(img) {
       // dominant emotion ride in reasons (explainability; no registry change).
       out.push({ score_type: 'smile', value: +expr.smile.toFixed(3), reasons: { faces: faces.length, model: 'ferplus', dominant: expr.dominant, emotions: expr.emotions } });
     }
+    const eo = eyeOpenness(img, faces);
+    if (eo != null) out.push({ score_type: 'eyes_open', value: +eo.toFixed(3), reasons: { faces: faces.length, method: 'eyeband-detail', confidence: 'low' } });
   }
   return out;
+}
+
+// Heuristic eye-openness from each detected face's eye band. Open eyes carry more
+// high-frequency structure (iris/sclera/lash edges) than closed lids. Advisory +
+// low-confidence — it correlates with eye-region detail, so a dedicated eye-state
+// model would supersede it. Returns mean openness 0..1 across faces, or null.
+function eyeOpenness(img, faces) {
+  let sum = 0, count = 0;
+  for (const f of faces) {
+    const fw = f.x2 - f.x1, fh = f.y2 - f.y1;
+    if (fw < 12 || fh < 12) continue;
+    const ex = Math.max(0, Math.round(f.x1 + 0.12 * fw));
+    const ey = Math.max(0, Math.round(f.y1 + 0.22 * fh));
+    const ew = Math.min(img.bitmap.width - ex, Math.round(0.76 * fw));
+    const eh = Math.min(img.bitmap.height - ey, Math.round(0.26 * fh));
+    if (ew < 6 || eh < 4) continue;
+    const band = img.clone().crop(ex, ey, ew, eh).greyscale();
+    const { data, width: W, height: H } = band.bitmap;
+    let s = 0, s2 = 0, n = 0;
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = (y * W + x) * 4;
+      const lap = 4 * data[i] - data[i - 4] - data[i + 4] - data[((y - 1) * W + x) * 4] - data[((y + 1) * W + x) * 4];
+      s += lap; s2 += lap * lap; n++;
+    }
+    const varL = n ? (s2 / n - (s / n) ** 2) : 0;
+    sum += clamp01(varL / 180);
+    count++;
+  }
+  return count ? sum / count : null;
+}
+
+// Coarse CPU scene taxonomy (no model): portrait / group / landscape / scene,
+// plus an indoor/outdoor signal from sky/foliage colour. Advisory + organizational
+// (low risk); value is heuristic confidence, the label rides in reasons.
+function sceneClass(img, m, faceCount) {
+  const J = jimp();
+  const W = img.bitmap.width, H = img.bitmap.height;
+  const aspect = W / Math.max(1, H);
+  const t = img.clone().resize(32, J.AUTO);
+  const d = t.bitmap.data, N = t.bitmap.width * t.bitmap.height;
+  let blueish = 0, greenish = 0;
+  for (let p = 0; p < d.length; p += 4) {
+    const r = d[p], g = d[p + 1], b = d[p + 2];
+    if (b > r + 18 && b > 90) blueish++;       // sky-ish
+    if (g > r + 12 && g > b + 4) greenish++;    // foliage-ish
+  }
+  const outdoorSignal = N ? (blueish + greenish) / N : 0;
+  const indoorOutdoor = outdoorSignal > 0.18 ? 'outdoor' : 'indoor';
+  let label;
+  if (faceCount >= 3) label = 'group';
+  else if (faceCount >= 1) label = 'portrait';
+  else if (aspect >= 1.4) label = 'landscape';
+  else label = 'scene';
+  const confidence = faceCount >= 1 ? 0.7 : (outdoorSignal > 0.18 || aspect >= 1.4 ? 0.6 : 0.5);
+  return { score_type: 'scene_class', value: +confidence.toFixed(3), reasons: {
+    label, indoor_outdoor: indoorOutdoor, aspect: +aspect.toFixed(2), faces: faceCount,
+    outdoor_signal: +outdoorSignal.toFixed(3), method: 'cpu-heuristic',
+  } };
 }
 
 // → array of {x1,y1,x2,y2,score} in pixel coords, or null if the model is absent.

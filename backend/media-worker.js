@@ -29,6 +29,7 @@ try { PDFDocument = require('pdfkit'); } catch { /* optional — album pdf degra
 const { spawn } = require('child_process');
 const videoEngine = require('./video-engine');
 const videoLuts = require('./video-luts');
+const visionCpu = require('./vision-cpu'); // server CPU vision fallback (jimp-only)
 // Optional face/smile detector. Drop in a ./face-detect.js exporting
 // async detect(jimpImage) → { faces:number, smile:0..1 } to enable people-aware
 // AI reel drafts. Absent by default → no face scores, ranking unaffected.
@@ -265,18 +266,33 @@ module.exports = function createMediaWorker(db, deps = {}) {
     }
     if (groupKey) addScore.run(generateId(), asset.workspace_id, asset.id, 'duplicate_group', 1, groupKey);
 
-    // optional face/smile signal (advisory; powers people-aware AI drafts when a detector is installed)
+    // optional server face/smile signal (advisory) — captured here, then written
+    // through the vision recordScores below so it lives under the vision analyzer
+    // consistently (face_count/smile are vision-owned types).
+    let srvFaces = null, srvSmile = null;
     if (faceDetect && typeof faceDetect.detect === 'function') {
       try {
         const fd = await faceDetect.detect(image);
-        if (fd && fd.faces) addScore.run(generateId(), asset.workspace_id, asset.id, 'faces', fd.faces, null);
-        if (fd && fd.smile != null) addScore.run(generateId(), asset.workspace_id, asset.id, 'smile', fd.smile, null);
+        if (fd && typeof fd.faces === 'number') srvFaces = fd.faces;
+        if (fd && fd.smile != null) srvSmile = fd.smile;
       } catch { /* detector failure must never break ingest */ }
     }
 
     // Record the ledger for the server analyzers (so "analyze once" holds) and
     // derive composite scores (hero/portfolio/album/storytelling) from primitives.
     try {
+      // Server CPU vision fallback: composition/aesthetic/scene_class (+ face_count/
+      // smile when a server detector is installed) so workspaces with NO desktop still
+      // get vision primitives + composites. Distinct model_version ('vision-cpu-v1')
+      // so a desktop's full 'vision-v1' pass supersedes it (analyze-once stays pending).
+      try {
+        if (image && visionCpu.available()) {
+          const vs = visionCpu.computeVisionCpu(image, { faceCount: srvFaces || 0 });
+          if (srvFaces != null) vs.push({ score_type: 'face_count', value: srvFaces, reasons: { engine: 'server' } });
+          if (srvSmile != null) vs.push({ score_type: 'smile', value: srvSmile, reasons: { engine: 'server' } });
+          if (vs.length) intel.recordScores(asset.workspace_id, asset.id, 'vision', visionCpu.MODEL_VERSION, vs, 'server');
+        }
+      } catch { /* vision fallback is advisory — never break ingest */ }
       intel.markAnalyzed(asset.id, 'technical', intel.ANALYZERS.technical.modelVersion, 'server');
       intel.markAnalyzed(asset.id, 'dedup', intel.ANALYZERS.dedup.modelVersion, 'server');
       intel.computeComposites(asset.workspace_id, asset.id);
