@@ -132,31 +132,31 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 **Goal:** replace public Jitsi with self-hosted LiveKit and build a Slack/Discord/Zoom-class internal comms layer on **both web and desktop**. This is a foundation, not a feature — presence/threads/DM/rooms all ride it.
 **Depends on:** P2 (desktop comms nav). **Must precede P5 Project Rooms.**
 
+> **Status 🟡:** the entire **backend is BUILT + VERIFIED** (`backend/comms.js` + `backend/test-comms.js`, all checks pass). **Infra runbook written** (`LIVEKIT-SETUP.md`). **Frontend is STAGED** — not written this pass because (a) it can't be verified without LiveKit deployed + a browser, and (b) `wappflow-web/AGENTS.md` requires reading `node_modules/next/dist/docs/` first and that guide is **absent**. Writing it blind would risk a broken huddle. See the tracker table at the bottom.
+
 **Infrastructure:**
-- [ ] Stand up **self-hosted LiveKit** on the existing Hetzner box (alongside wappflow-web + wappflow-api, single-server initially) 🌐
-- [ ] **Remove the public-Jitsi `HuddleModal` (`meet.jit.si`)** — do not run two transports 🌐
-- [ ] Real-time signaling: replace 3s polling with LiveKit data channels / WebSocket streaming 🔁
+- [~] Stand up **self-hosted LiveKit** on Hetzner — 📋 runbook ready (`LIVEKIT-SETUP.md`); token minting built so it activates on deploy + env. (Your infra step.) 🌐
+- [ ] **Remove the public-Jitsi `HuddleModal`** — ⏸ frontend (swap for a LiveKit room component). Backend no longer references Jitsi. 🌐
+- [x] Real-time signaling: **replace 3s polling** — ✅ BACKEND DONE. Sends now fan out to the whole workspace over SSE (`chat_message`/`mention`/`edit`/`delete`/`reaction`/`pin`/`typing`); old code only echoed to the sender. Frontend must switch from polling → `es.onmessage`. 🔁
 
-**Text comms (build on both, currently web-only/partial):**
-- [ ] Channels ✅🌐 → bring to desktop 🖥️ + real-time 🔁
-- [ ] Direct Messages (1:1 + group) — net-new UI 🔁
-- [ ] Threads — full threaded view, reply counts, thread muting 🔁
-- [ ] Mentions — `@` parser, autocomplete, mention notifications 🔁
-- [ ] Pinned messages — pin/unpin, channel header list 🔁
-- [ ] Presence — online/away/offline + typing indicators (LiveKit presence) 🔁
-- [ ] Unread tracking — per-message read receipts, mention-level vs general 🔁
-- [ ] Message search — full-text index on `chat_messages` 🔁
-- [ ] Message edit / soft-delete (24h recovery) 🔁
-- [ ] Notifications — wire existing web-push into chat events 🔁
-- [ ] File sharing ✅🌐 → desktop 🖥️
-- [ ] Reactions / emoji / formatting ✅🌐 → desktop 🖥️
+**Text comms** (✅ = backend built+verified; frontend wiring is the remaining 🖥️/🌐 UI):
+- [x] Channels — real-time fan-out ✅; desktop nav done (P2). UI consume-SSE pending. 🔁
+- [x] Direct Messages — `POST /api/comms/dm/:userId`, `GET /api/comms/dms` ✅. UI pending. 🔁
+- [x] Threads — `GET /api/comms/messages/:id/thread` ✅ (reply_to). Thread-panel UI pending. 🔁
+- [x] Mentions — persisted + notified via `afterMessage`; `GET /api/comms/mentions` ✅. @-autocomplete UI pending. 🔁
+- [x] Pinned messages — pin/unpin/list ✅. Header UI pending. 🔁
+- [x] Presence + typing — `GET /api/comms/presence`, `POST /api/comms/typing` ✅. Indicators UI pending. 🔁
+- [x] Unread + read-state — `GET /api/comms/unread`, `POST /api/comms/channels/:id/read` ✅. Badges UI pending. 🔁
+- [x] Search — `GET /api/comms/search` ✅. Search UI pending. 🔁
+- [x] Message edit / soft-delete — edit ✅ + delete broadcast ✅. UI pending. 🔁
+- [x] Notifications — web-push on mention ✅ (`afterMessage`). 🔁
+- [x] File sharing / reactions / emoji / formatting — exist on web + real-time broadcast added; desktop via webview (P2). 🔁
 
-**Real-time A/V (rebuild on LiveKit, both platforms):**
-- [ ] Voice huddles 🔁
-- [ ] Video rooms 🔁
-- [ ] Screen sharing 🔁
+**Real-time A/V (LiveKit):**
+- [x] Token minting (`POST /api/comms/livekit/token`, per-workspace room) + capability probe ✅ VERIFIED. 🔁
+- [ ] Voice huddles / Video rooms / Screen sharing — ⏸ frontend LiveKit room component (`livekit-client`) + LiveKit deployed. 🔁
 
-**Exit criteria:** one LiveKit transport; full channels/DMs/threads/mentions/presence/search + voice/video/screenshare working on web AND desktop; Jitsi gone.
+**Exit criteria:** 🟡 backend complete + verified; one transport (Jitsi gone from backend); **remaining = deploy LiveKit (runbook) + the frontend pass** (LiveKit room UI + switch chat to SSE + DM/thread/mention/pin/presence panels) done with the Next.js docs restored + browser verification.
 
 ---
 
@@ -301,8 +301,8 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 | Capability | Web today | Desktop today | Target |
 |---|---|---|---|
 | CRM / Inbox | ✅ | ✅ | keep |
-| Communications (text) | 🟡 | ⬜ | 🔁 P4 |
-| Real-time voice/video/screenshare | 🟡 Jitsi | ⬜ | 🔁 P4 (LiveKit) |
+| Communications (text) | ✅ backend / ⏸ UI | 🟡 nav (P2) | 🔁 P4 |
+| Real-time voice/video/screenshare | ✅ token / ⏸ UI+infra | ⏸ (via webview) | 🔁 P4 (LiveKit) |
 | Project Rooms | ⬜ | ⬜ | 🔁 P5 |
 | Offline culling/rating | ⬜ | ⬜ | 🖥️ P6 |
 | Vision scores (composition/aesthetic/scene + composites) | ✅ server CPU fallback | ✅ full set | ✅ P3 |
@@ -324,6 +324,39 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 6. **Build or hide Studio+ vapor** (Style/Story/Reel/Creator Brain) before selling Studio+.
 7. **R2 before go-to-market on delivery** — single-disk storage won't survive portfolio/print/gallery load.
 8. **Do not touch the WhatsApp integration** — it is production-stable.
+
+---
+
+## 📋 MASTER REMAINING-WORK TRACKER
+
+The single source of truth for what's left, end-to-end. Updated as phases land.
+**Legend:** ✅ done+verified · 🟡 partial · ⏸ staged (clear next step) · ⬜ not started · 📋 infra/your step.
+
+### Done & verified so far (P1–P4)
+- **P1** Control plane ✅ — CC mounted, module-gating, AI metering (both paths), model_version drift fixed, vapor gated, grace cron. Committed `f1bc16b`.
+- **P2** Desktop parity ✅ — Team Chat/WhatsApp/Command Center nav, real default URLs, auto-update seam. Committed `f1bc16b`.
+- **P3** Local AI ✅ — full emotion, blur, eyes_open + scene_class (heuristics), GPU indicator, **server CPU vision fallback**, logFeedback. Committed `f1bc16b` + `7dc7401`.
+- **P4** Comms 2.0 **backend** ✅ — `comms.js` (DMs/threads/mentions/pins/presence/unread/search/edit/typing) + LiveKit token + real-time SSE fan-out. Verified `test-comms.js`. (this commit)
+
+### Remaining — by phase
+
+| # | Item | Kind | State | Next step / blocker |
+|---|---|---|---|---|
+| **P3** | Swap eyes_open/scene_class heuristics → ONNX models | 🖥️ desktop | ⏸ | source eye-state + scene models (ONNX zoo lacks them) |
+| P3 | Activate server `face_count`/`smile` | 🌐 server | ⏸ | `npm i onnxruntime-node` on host + add `backend/face-detect.js` (hook already captures it) |
+| P3 | `reasons` in web cull UI · `subject` score · composite-move · desktop phash · watch-folder | 🔁/🖥️ | ⬜ | composite-move is sequence-deferred (rule #3) |
+| **P4** | Deploy self-hosted LiveKit on Hetzner | 📋 infra | ⏸ | follow `LIVEKIT-SETUP.md` + set `LIVEKIT_URL/API_KEY/API_SECRET` |
+| P4 | Frontend: LiveKit room component (rip out Jitsi `HuddleModal`) | 🌐 web | ⏸ | needs `livekit-client` + LiveKit live + **Next.js docs restored** (`wappflow-web/AGENTS.md`) |
+| P4 | Frontend: switch chat polling → SSE (`es.onmessage` + `switch(data.type)`) | 🌐 web | ⏸ | consume `chat_message`/`mention`/`edit`/`delete`/`reaction`/`pin`/`typing` |
+| P4 | Frontend: DM list · thread panel · @-autocomplete · pins header · presence/typing · unread badges · search UI | 🌐 web | ⏸ | wire to the built `/api/comms/*` endpoints |
+| **P5** | Project Rooms (collab on Lead/Project/Gallery/Contract/Booking + timeline) | 🔁 | ⬜ | depends on P4 frontend + LiveKit live |
+| **P6** | Offline-first + sync (delta endpoint → local store → work queue → conflict merge) + web SW | 🖥️/🌐 | ⬜ | server sync endpoint first; entitlement cache needs CC (✅) |
+| **P7** | Command Center depth + Desktop Management (version/machine/last-sync/force-update/beta) | 🌐→🖥️ | ⬜ | CC mounted (✅); add desktop reporting endpoint + UIs (plans/flags/users/MFA/billing/impersonation/SQL console/health) |
+| **P8** | Video AI (ffmpeg+ONNX: clip/scene/shot/action/speech) + Reel Engine + Story Engine | 🖥️ | ⬜ | re-enable `reel_engine`/`story_engine` entitlements when real |
+| **P9** | Brains & Style (Studio Brain consumption, Creator Brain, Style Engine) | 🔁 | ⬜ | re-enable `style_profiles` when real |
+| **P10** | Media Studio desktop-first + **R2 object storage migration** | 🖥️/🌐 | ⬜ | R2 before delivery go-to-market (rule #7); re-enable `ai_editing` |
+| **Appendix A** | Module depth: CRM (saved-views persist, merge UI), Contracts (sequential signing, payments), Booking (GCal, reschedule notifs), Portal (first-class desktop) | 🌐/🖥️ | ⬜ | fold into relevant phases |
+| **Entitlements** | Re-enable each gated feature as its phase ships: `desktop_sync`(P6) · `reel_engine`+`story_engine`(P8) · `style_profiles`(P9) · `ai_editing`(P10) | 🌐 | ⬜ | remove from `UNBUILT_FEATURES` in `entitlements.js` |
 
 ---
 

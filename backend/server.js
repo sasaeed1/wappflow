@@ -848,6 +848,10 @@ function broadcastToWorkspace(workspaceId, type, data) {
   members.forEach(m => broadcastToUser(m.user_id, type, data));
 }
 
+// Presence source for Communications 2.0 — user ids with a live SSE connection.
+function onlineUsers() { return Array.from(sseClients.keys()); }
+let commsApi = null; // assigned when ./comms mounts; used by the chat send routes below.
+
 // Send Web Push notification to all subscriptions for a user
 async function sendPushToUser(userId, title, body, data = {}) {
   try {
@@ -2773,8 +2777,10 @@ app.post('/api/chat/channels/:channelId/messages', auth, (req, res) => {
       .run(id, req.params.channelId, req.userId, senderName, body.trim(), reply_to || null);
     const message = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);
     message.reactions = [];
-    // Broadcast via SSE
-    broadcastToUser(req.userId, 'chat_message', { channel_id: req.params.channelId, message });
+    // Comms 2.0: real-time fan-out to the whole workspace + @mention handling.
+    // (Old behaviour only echoed to the sender; everyone else relied on polling.)
+    if (commsApi) commsApi.afterMessage(message, req.body.mentions);
+    else broadcastToUser(req.userId, 'chat_message', { channel_id: req.params.channelId, message });
     res.json({ message });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2792,6 +2798,7 @@ app.post('/api/chat/channels/:channelId/messages/media', auth, upload.single('fi
       .run(id, req.params.channelId, req.userId, senderName, req.file.originalname, mediaUrl, mediaType);
     const message = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);
     message.reactions = [];
+    if (commsApi) commsApi.afterMessage(message); // real-time fan-out
     res.json({ message });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2799,7 +2806,10 @@ app.post('/api/chat/channels/:channelId/messages/media', auth, upload.single('fi
 // DELETE /api/chat/messages/:id
 app.delete('/api/chat/messages/:id', auth, (req, res) => {
   try {
+    const m = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
     db.prepare('DELETE FROM chat_messages WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
+    try { db.prepare('DELETE FROM chat_pins WHERE message_id = ?').run(req.params.id); } catch {}
+    if (m) broadcastToWorkspace(req.workspaceId, 'chat_delete', { channel_id: m.channel_id, message_id: req.params.id });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2818,6 +2828,8 @@ app.post('/api/chat/messages/:id/react', auth, (req, res) => {
       db.prepare('INSERT INTO chat_reactions (id, message_id, user_id, emoji) VALUES (?, ?, ?, ?)').run(id, req.params.id, req.userId, emoji);
     }
     const reactions = db.prepare('SELECT emoji, user_id FROM chat_reactions WHERE message_id = ?').all(req.params.id);
+    const mc = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ?').get(req.params.id);
+    if (mc) broadcastToWorkspace(req.workspaceId, 'chat_reaction', { channel_id: mc.channel_id, message_id: req.params.id, reactions });
     res.json({ reactions });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -5546,6 +5558,14 @@ require('./contracts-studio')(app, db, {
     await transporter.sendMail({ from: `"${smtpRow.from_name || 'WappFlow'}" <${smtpRow.from_email || smtpRow.smtp_user}>`, to, subject, html, text });
     return { sent: true };
   },
+});
+
+// ════════════════════════════════════════════════════════════
+//  COMMUNICATIONS 2.0  (additive — DMs/threads/mentions/pins/presence/search,
+//  real-time over SSE, + LiveKit voice/video/screenshare token minting)
+// ════════════════════════════════════════════════════════════
+commsApi = require('./comms')(app, db, {
+  auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser,
 });
 
 // ════════════════════════════════════════════════════════════
