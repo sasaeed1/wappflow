@@ -10,7 +10,7 @@ import {
   Volume2, VolumeX, Bell, BellOff, Video, Phone,
   List, ListOrdered, Quote, Strikethrough, Underline as UnderlineIcon
 } from 'lucide-react';
-import { chatAPI, BASE_URL } from '../../lib/api';
+import { chatAPI, commsAPI, workspaceAPI, BASE_URL } from '../../lib/api';
 import { formatTime, formatDate } from '../../lib/datetime';
 import NavBar from '../../components/NavBar';
 import HuddleModal from '@/components/HuddleModal';
@@ -314,6 +314,15 @@ export default function ChatPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [muted, setMuted] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState({});
+  // Comms 2.0 state
+  const [members, setMembers] = useState([]);        // workspace members (mentions + DM picker + presence)
+  const [online, setOnline] = useState([]);          // online user ids
+  const [typingUser, setTypingUser] = useState(null);
+  const [dms, setDms] = useState([]);                 // my direct-message channels
+  const [editing, setEditing] = useState(null);       // { id, body } when editing a message
+  const activeChannelRef = useRef(null);
+  const typingTimerRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -328,13 +337,73 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Poll for new messages every 3s when channel is active
+  // Keep a ref to the active channel so the persistent SSE handler isn't stale,
+  // and mark the channel read whenever it becomes active.
   useEffect(() => {
-    if (!activeChannel) return;
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => loadMessages(activeChannel.id, true), 3000);
-    return () => clearInterval(pollRef.current);
+    activeChannelRef.current = activeChannel;
+    if (activeChannel) {
+      commsAPI.markRead(activeChannel.id).catch(() => {});
+      setUnreadCounts(prev => ({ ...prev, [activeChannel.id]: 0 }));
+    }
   }, [activeChannel]);
+
+  // Real-time via SSE — replaces the old 3s poll. Consumes the unnamed frames the
+  // backend emits (es.onmessage + switch on data.type).
+  useEffect(() => {
+    if (!user) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const es = new EventSource(`${BASE_URL}/api/events?token=${token}`);
+    es.onmessage = (e) => {
+      let data; try { data = JSON.parse(e.data); } catch { return; }
+      const ac = activeChannelRef.current;
+      const inActive = ac && data.channel_id === ac.id;
+      switch (data.type) {
+        case 'chat_message': {
+          const m = data.message; if (!m) break;
+          if (inActive) {
+            setMessages(prev => prev.some(x => x.id === m.id) ? prev : [...prev, { ...m, reactions: m.reactions || [] }]);
+            commsAPI.markRead(ac.id).catch(() => {});
+          } else if (m.user_id !== user.id) {
+            setUnreadCounts(prev => ({ ...prev, [data.channel_id]: (prev[data.channel_id] || 0) + 1 }));
+            if (!muted) { try { playSound('team'); } catch {} }
+          }
+          break;
+        }
+        case 'chat_edit':
+          if (inActive && data.message) setMessages(prev => prev.map(x => x.id === data.message.id ? { ...x, ...data.message } : x));
+          break;
+        case 'chat_delete':
+          if (inActive) setMessages(prev => prev.filter(x => x.id !== data.message_id));
+          break;
+        case 'chat_reaction':
+          if (inActive) setMessages(prev => prev.map(x => x.id === data.message_id ? { ...x, reactions: data.reactions } : x));
+          break;
+        case 'chat_typing':
+          if (inActive && data.user_id !== user.id) {
+            setTypingUser(data.name || 'Someone');
+            clearTimeout(typingTimerRef.current);
+            typingTimerRef.current = setTimeout(() => setTypingUser(null), 3500);
+          }
+          break;
+        default: break;
+      }
+    };
+    return () => es.close();
+  }, [user, muted, playSound]);
+
+  // Members + presence + unread + DMs (once authed); presence refreshes periodically.
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try { const r = await workspaceAPI.get(); setMembers((r.data.members || []).filter(m => m.user_id)); } catch {}
+      try { const r = await commsAPI.presence(); setOnline(r.data.online || []); } catch {}
+      try { const r = await commsAPI.unread(); setUnreadCounts(prev => ({ ...prev, ...(r.data.unread || {}) })); } catch {}
+      try { const r = await commsAPI.dms(); setDms(r.data.dms || []); } catch {}
+    })();
+    const t = setInterval(() => { commsAPI.presence().then(r => setOnline(r.data.online || [])).catch(() => {}); }, 30000);
+    return () => clearInterval(t);
+  }, [user]);
 
   const loadChannels = async () => {
     try {
@@ -388,10 +457,15 @@ export default function ChatPage() {
     if (!plain) return;
 
     const cleaned = sanitizeHtml(html);
+    // Resolve @mentions by matching member names in the plain text → user ids.
+    const mentions = members.filter(m => {
+      const nm = (m.full_name || m.business_name || m.email || '').trim();
+      return nm && new RegExp('@' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(plain);
+    }).map(m => m.user_id);
     setSending(true);
     try {
-      const res = await chatAPI.sendMessage(activeChannel.id, { body: cleaned, reply_to: replyTo?.id });
-      setMessages(prev => [...prev, res.data.message]);
+      const res = await chatAPI.sendMessage(activeChannel.id, { body: cleaned, reply_to: replyTo?.id, mentions });
+      setMessages(prev => prev.some(x => x.id === res.data.message.id) ? prev : [...prev, res.data.message]);
       el.innerHTML = '';
       setHasContent(false);
       setReplyTo(null);
@@ -399,6 +473,9 @@ export default function ChatPage() {
   };
 
   const handleKeyDown = (e) => {
+    // Throttled typing indicator (max once / 2s) over the comms channel.
+    const now = Date.now();
+    if (activeChannel && now - lastTypingSentRef.current > 2000) { lastTypingSentRef.current = now; commsAPI.typing(activeChannel.id).catch(() => {}); }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -583,14 +660,14 @@ export default function ChatPage() {
               )}
             </div>
             <button
-              onClick={() => setHuddle({ roomName: `wappflow-${activeChannel.id || activeChannel.name}-${Date.now().toString(36)}`, video: false })}
+              onClick={() => setHuddle({ roomName: `huddle_${activeChannel.id || activeChannel.name}`, video: false })}
               title="Start voice huddle"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(34,197,94,0.10)', color: '#22c55e', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
             >
               <Phone size={13} /> Huddle
             </button>
             <button
-              onClick={() => setHuddle({ roomName: `wappflow-${activeChannel.id || activeChannel.name}-${Date.now().toString(36)}`, video: true })}
+              onClick={() => setHuddle({ roomName: `huddle_${activeChannel.id || activeChannel.name}`, video: true })}
               title="Start video huddle"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.12)', color: '#818cf8', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
             >
@@ -640,6 +717,13 @@ export default function ChatPage() {
 
           {/* Input area */}
           <div style={{ background: 'var(--surface)', borderTop: '1px solid #e5e7eb', padding: '12px 20px' }}>
+
+            {/* Typing indicator (real-time) */}
+            {typingUser && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '0 0 6px 2px', fontStyle: 'italic' }}>
+                {typingUser} is typing…
+              </div>
+            )}
 
             {/* Reply indicator */}
             {replyTo && (

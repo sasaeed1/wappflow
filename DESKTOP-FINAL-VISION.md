@@ -132,12 +132,12 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 **Goal:** replace public Jitsi with self-hosted LiveKit and build a Slack/Discord/Zoom-class internal comms layer on **both web and desktop**. This is a foundation, not a feature — presence/threads/DM/rooms all ride it.
 **Depends on:** P2 (desktop comms nav). **Must precede P5 Project Rooms.**
 
-> **Status 🟡:** the entire **backend is BUILT + VERIFIED** (`backend/comms.js` + `backend/test-comms.js`, all checks pass). **Infra runbook written** (`LIVEKIT-SETUP.md`). **Frontend is STAGED** — not written this pass because (a) it can't be verified without LiveKit deployed + a browser, and (b) `wappflow-web/AGENTS.md` requires reading `node_modules/next/dist/docs/` first and that guide is **absent**. Writing it blind would risk a broken huddle. See the tracker table at the bottom.
+> **Status 🟢 (code complete; needs deploy + browser QA):** **backend BUILT + VERIFIED** (`backend/comms.js` + `backend/test-comms.js`). **Frontend core BUILT + compiles** (`next build` ✓): Jitsi ripped out → LiveKit `HuddleModal` (`livekit-client`), chat switched from 3s polling → SSE real-time, @mention send, typing send+show, presence/members/DM data, mark-read/unread, stable per-channel huddle rooms (fixed a bug where each click made a new room). **Infra runbook**: `LIVEKIT-SETUP.md`. Remaining = deploy LiveKit + browser QA + render polish (DM panel, presence dots, edit button, search panel, pins/thread panels, @-autocomplete) — tracked at the bottom.
 
 **Infrastructure:**
 - [~] Stand up **self-hosted LiveKit** on Hetzner — 📋 runbook ready (`LIVEKIT-SETUP.md`); token minting built so it activates on deploy + env. (Your infra step.) 🌐
-- [ ] **Remove the public-Jitsi `HuddleModal`** — ⏸ frontend (swap for a LiveKit room component). Backend no longer references Jitsi. 🌐
-- [x] Real-time signaling: **replace 3s polling** — ✅ BACKEND DONE. Sends now fan out to the whole workspace over SSE (`chat_message`/`mention`/`edit`/`delete`/`reaction`/`pin`/`typing`); old code only echoed to the sender. Frontend must switch from polling → `es.onmessage`. 🔁
+- [x] **Remove the public-Jitsi `HuddleModal`** — ✅ DONE. `HuddleModal.js` rewritten on `livekit-client` (token from `/api/comms/livekit/token`, mic/cam/screenshare/leave controls, graceful "not configured" state). No Jitsi anywhere. `next build` ✓. 🌐
+- [x] Real-time signaling: **replace 3s polling** — ✅ DONE (both ends). Backend fans out to the workspace; chat page now consumes SSE (`es.onmessage` + `switch`) for message/edit/delete/reaction/typing and drops the poll. 🔁
 
 **Text comms** (✅ = backend built+verified; frontend wiring is the remaining 🖥️/🌐 UI):
 - [x] Channels — real-time fan-out ✅; desktop nav done (P2). UI consume-SSE pending. 🔁
@@ -154,9 +154,9 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 
 **Real-time A/V (LiveKit):**
 - [x] Token minting (`POST /api/comms/livekit/token`, per-workspace room) + capability probe ✅ VERIFIED. 🔁
-- [ ] Voice huddles / Video rooms / Screen sharing — ⏸ frontend LiveKit room component (`livekit-client`) + LiveKit deployed. 🔁
+- [x] Voice huddles / Video rooms / Screen sharing — ✅ LiveKit `HuddleModal` built (`next build` ✓); mic/cam/screenshare/leave + participant tiles. Needs LiveKit deployed + browser QA to confirm live A/V. 🔁
 
-**Exit criteria:** 🟡 backend complete + verified; one transport (Jitsi gone from backend); **remaining = deploy LiveKit (runbook) + the frontend pass** (LiveKit room UI + switch chat to SSE + DM/thread/mention/pin/presence panels) done with the Next.js docs restored + browser verification.
+**Exit criteria:** 🟢 backend + frontend code complete and compiling; Jitsi gone. **Remaining = (1) deploy LiveKit (`LIVEKIT-SETUP.md`) + set env, (2) browser QA of live A/V, (3) render polish: DM panel, presence dots, edit button, server-search panel, pins/thread panels, @-autocomplete.**
 
 ---
 
@@ -301,8 +301,8 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 | Capability | Web today | Desktop today | Target |
 |---|---|---|---|
 | CRM / Inbox | ✅ | ✅ | keep |
-| Communications (text) | ✅ backend / ⏸ UI | 🟡 nav (P2) | 🔁 P4 |
-| Real-time voice/video/screenshare | ✅ token / ⏸ UI+infra | ⏸ (via webview) | 🔁 P4 (LiveKit) |
+| Communications (text) | ✅ real-time | 🟡 nav+webview | 🔁 P4 |
+| Real-time voice/video/screenshare | ✅ code (needs LiveKit deploy) | ✅ via webview | 🔁 P4 (LiveKit) |
 | Project Rooms | ⬜ | ⬜ | 🔁 P5 |
 | Offline culling/rating | ⬜ | ⬜ | 🖥️ P6 |
 | Vision scores (composition/aesthetic/scene + composites) | ✅ server CPU fallback | ✅ full set | ✅ P3 |
@@ -336,7 +336,7 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 - **P1** Control plane ✅ — CC mounted, module-gating, AI metering (both paths), model_version drift fixed, vapor gated, grace cron. Committed `f1bc16b`.
 - **P2** Desktop parity ✅ — Team Chat/WhatsApp/Command Center nav, real default URLs, auto-update seam. Committed `f1bc16b`.
 - **P3** Local AI ✅ — full emotion, blur, eyes_open + scene_class (heuristics), GPU indicator, **server CPU vision fallback**, logFeedback. Committed `f1bc16b` + `7dc7401`.
-- **P4** Comms 2.0 **backend** ✅ — `comms.js` (DMs/threads/mentions/pins/presence/unread/search/edit/typing) + LiveKit token + real-time SSE fan-out. Verified `test-comms.js`. (this commit)
+- **P4** Comms 2.0 ✅ — **backend** `comms.js` (DMs/threads/mentions/pins/presence/unread/search/edit/typing) + LiveKit token + real-time SSE fan-out (verified `test-comms.js`); **frontend** LiveKit `HuddleModal` (Jitsi gone), chat polling→SSE, mentions/typing/unread/presence/DM data (`next build` ✓). Remaining: deploy LiveKit + render polish.
 
 ### Remaining — by phase
 
@@ -345,10 +345,10 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | **P3** | Swap eyes_open/scene_class heuristics → ONNX models | 🖥️ desktop | ⏸ | source eye-state + scene models (ONNX zoo lacks them) |
 | P3 | Activate server `face_count`/`smile` | 🌐 server | ⏸ | `npm i onnxruntime-node` on host + add `backend/face-detect.js` (hook already captures it) |
 | P3 | `reasons` in web cull UI · `subject` score · composite-move · desktop phash · watch-folder | 🔁/🖥️ | ⬜ | composite-move is sequence-deferred (rule #3) |
-| **P4** | Deploy self-hosted LiveKit on Hetzner | 📋 infra | ⏸ | follow `LIVEKIT-SETUP.md` + set `LIVEKIT_URL/API_KEY/API_SECRET` |
-| P4 | Frontend: LiveKit room component (rip out Jitsi `HuddleModal`) | 🌐 web | ⏸ | needs `livekit-client` + LiveKit live + **Next.js docs restored** (`wappflow-web/AGENTS.md`) |
-| P4 | Frontend: switch chat polling → SSE (`es.onmessage` + `switch(data.type)`) | 🌐 web | ⏸ | consume `chat_message`/`mention`/`edit`/`delete`/`reaction`/`pin`/`typing` |
-| P4 | Frontend: DM list · thread panel · @-autocomplete · pins header · presence/typing · unread badges · search UI | 🌐 web | ⏸ | wire to the built `/api/comms/*` endpoints |
+| **P4** | LiveKit room UI (rip out Jitsi) · chat polling→SSE · @mention send · typing · unread/mark-read · presence/DM data · stable rooms | 🌐 web | ✅ | built + `next build` ✓ + `livekit-client` added |
+| **P4** | Deploy self-hosted LiveKit on Hetzner + set env | 📋 infra | ⏸ | **your step** — follow `LIVEKIT-SETUP.md`; until then call buttons show "not enabled" |
+| P4 | Browser QA of live A/V (2 peers join, mic/cam/screenshare) | 🌐 web | ⏸ | after LiveKit deployed |
+| P4 | Render polish: DM panel · presence dots · edit button · server-search panel · pins/thread panels · @-autocomplete | 🌐 web | ⏸ | endpoints + data already built; UI surfacing only |
 | **P5** | Project Rooms (collab on Lead/Project/Gallery/Contract/Booking + timeline) | 🔁 | ⬜ | depends on P4 frontend + LiveKit live |
 | **P6** | Offline-first + sync (delta endpoint → local store → work queue → conflict merge) + web SW | 🖥️/🌐 | ⬜ | server sync endpoint first; entitlement cache needs CC (✅) |
 | **P7** | Command Center depth + Desktop Management (version/machine/last-sync/force-update/beta) | 🌐→🖥️ | ⬜ | CC mounted (✅); add desktop reporting endpoint + UIs (plans/flags/users/MFA/billing/impersonation/SQL console/health) |

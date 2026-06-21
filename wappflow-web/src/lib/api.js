@@ -273,6 +273,26 @@ export const chatAPI = {
   react: (messageId, emoji) => api.post(`/chat/messages/${messageId}/react`, { emoji }),
 };
 
+// Communications 2.0 — DMs, threads, mentions, pins, presence, unread, search,
+// edit, typing + LiveKit voice/video/screenshare tokens. See backend/comms.js.
+export const commsAPI = {
+  dms:           ()                 => api.get('/comms/dms'),
+  dmOpen:        (userId)           => api.post(`/comms/dm/${userId}`),
+  markRead:      (channelId)        => api.post(`/comms/channels/${channelId}/read`),
+  unread:        ()                 => api.get('/comms/unread'),
+  mentions:      ()                 => api.get('/comms/mentions'),
+  pin:           (messageId)        => api.post(`/comms/messages/${messageId}/pin`),
+  unpin:         (messageId)        => api.delete(`/comms/messages/${messageId}/pin`),
+  pins:          (channelId)        => api.get(`/comms/channels/${channelId}/pins`),
+  thread:        (messageId)        => api.get(`/comms/messages/${messageId}/thread`),
+  edit:          (messageId, body)  => api.put(`/comms/messages/${messageId}`, { body }),
+  search:        (q)                => api.get('/comms/search', { params: { q } }),
+  presence:      ()                 => api.get('/comms/presence'),
+  typing:        (channelId)        => api.post('/comms/typing', { channel_id: channelId }),
+  livekitToken:  (room)            => api.post('/comms/livekit/token', { room }),
+  livekitConfig: ()                 => api.get('/comms/livekit/config'),
+};
+
 export const integrationsAPI = {
   status:                () => api.get('/integrations/status'),
   saveCalendly:          (url) => api.put('/integrations/calendly', { url }),
