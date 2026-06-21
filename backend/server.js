@@ -5574,6 +5574,9 @@ require('./sync')(app, db, { auth });
 // ── Reel/Story planning engine (Phase 8 — plans from Track-0 scores) ──
 require('./reel-engine')(app, db, { auth });
 
+// ── Brains & Style (Phase 9 — Creator Brain + Style Engine + recommendations) ──
+require('./brains')(app, db, { auth, generateId });
+
 // ════════════════════════════════════════════════════════════
 //  COMMAND CENTER  (platform control plane — additive, cross-tenant, own identity)
 //  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.
