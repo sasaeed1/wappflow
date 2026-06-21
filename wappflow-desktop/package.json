@@ -13,6 +13,8 @@
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
+    "fetch-models": "node scripts/fetch-models.js",
+    "test:vision": "node scripts/test-vision.js",
     "lint:syntax": "node -e \"const fs=require('fs'),p=require('path');function w(d){for(const f of fs.readdirSync(d)){const fp=p.join(d,f);if(fs.statSync(fp).isDirectory())w(fp);else if(f.endsWith('.js'))require('child_process').execSync('node -c '+JSON.stringify(fp))}}w('src');console.log('syntax ok')\""
   },
   "dependencies": {

@@ -14,6 +14,8 @@
 // the analyze-once ledger clears `pending`.
 
 const onnx = require('../onnx');
+const pre = require('../preprocess');
+const models = require('../models');
 
 let Jimp = null, jimpTried = false;
 function jimp() {
@@ -25,14 +27,14 @@ function jimp() {
 
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
 
-// Decode + compute CPU image metrics on a downscaled greyscale/RGB pass.
-async function cpuMetrics(buffer) {
+// Compute CPU image metrics on a downscaled greyscale/RGB pass. Takes an already-
+// decoded jimp image and clones before resizing (never mutates the caller's image).
+function cpuMetrics(img) {
   const J = jimp();
-  if (!J) throw new Error('jimp not available (CPU image analysis disabled)');
-  const img = await J.read(buffer);
-  const longEdge = Math.max(img.bitmap.width, img.bitmap.height);
-  if (longEdge > 1024) img.resize(...(img.bitmap.width >= img.bitmap.height ? [1024, J.AUTO] : [J.AUTO, 1024]));
-  const { data, width: W, height: H } = img.bitmap; // RGBA
+  const work = img.clone();
+  const longEdge = Math.max(work.bitmap.width, work.bitmap.height);
+  if (longEdge > 1024) work.resize(...(work.bitmap.width >= work.bitmap.height ? [1024, J.AUTO] : [J.AUTO, 1024]));
+  const { data, width: W, height: H } = work.bitmap; // RGBA
   const N = W * H;
 
   // luminance + colour accumulators
@@ -85,41 +87,85 @@ async function cpuMetrics(buffer) {
 // ── VISION analyzer (client tier) ───────────────────────────────────────────
 const VISION = {
   id: 'vision',
-  model_version: 'vision-v0', // MUST match the server registry so analyze-once clears `pending`
+  model_version: models.VISION_MODEL_VERSION, // matches the server registry so analyze-once clears `pending`
   async run(buffer /*, meta */) {
-    const m = await cpuMetrics(buffer);
+    const J = jimp();
+    if (!J) throw new Error('jimp not available (CPU image analysis disabled)');
+    const img = await J.read(buffer); // decode once, share with CPU + ONNX passes
+    const m = cpuMetrics(img);
     const sharpN = clamp01(m.sharpness / 240);
     const expoQ = clamp01(1 - Math.abs(m.meanL / 255 - 0.5) * 2);
     const contrastN = clamp01(m.stdL / 64);
     const colourN = clamp01(m.colourfulness / 110);
     const aesthetic = clamp01(0.40 * sharpN + 0.25 * expoQ + 0.20 * contrastN + 0.15 * colourN);
     const composition = clamp01(m.thirds);
-    const reasons = {
-      sharpness: Math.round(m.sharpness), exposure: +(m.meanL / 255).toFixed(3),
-      contrast: +contrastN.toFixed(3), colourfulness: +colourN.toFixed(3),
-      engine: 'cpu-vision-v0',
-    };
     const scores = [
       { score_type: 'composition', value: +composition.toFixed(3), reasons: { thirds: +m.thirds.toFixed(3) } },
-      { score_type: 'aesthetic', value: +aesthetic.toFixed(3), reasons },
+      { score_type: 'aesthetic', value: +aesthetic.toFixed(3), reasons: {
+        sharpness: Math.round(m.sharpness), exposure: +(m.meanL / 255).toFixed(3),
+        contrast: +contrastN.toFixed(3), colourfulness: +colourN.toFixed(3), engine: 'cpu-vision',
+      } },
     ];
-    // ONNX vision (face/eye/smile/scene/subject) — only when a model is present.
-    try {
-      const extra = await onnxVision(buffer);
-      if (extra && extra.length) scores.push(...extra);
-    } catch { /* model absent / load failed → CPU primitives only */ }
+    // ONNX vision (face_count + smile) — only when models are present.
+    try { const extra = await onnxVision(img); if (extra && extra.length) scores.push(...extra); }
+    catch { /* model absent / load failed → CPU primitives only */ }
     return scores;
   },
 };
 
-// Seam: when an ONNX face/scene model is dropped into ai/models/ and registered,
-// produce face_count/eyes_open/smile/scene_class/subject here. Returns [] today.
-async function onnxVision(/* buffer */) {
-  if (!onnx.available() || !onnx.hasModel('vision.onnx')) return [];
-  // TODO: preprocess (resize/normalize via jimp) → InferenceSession.run → map
-  // outputs to { score_type, value } using exactly the vision score_types:
-  // face_count, eyes_open, smile, subject, scene_class.
-  return [];
+// ONNX face pipeline: UltraFace (face_count) → FER+ on each face crop (smile).
+// Returns [] when ORT/models are unavailable (CPU primitives stand alone).
+async function onnxVision(img) {
+  if (!onnx.available()) return [];
+  const faces = await detectFaces(img);
+  if (faces === null) return []; // no face-detect model installed
+  const out = [{ score_type: 'face_count', value: faces.length, reasons: { detector: 'ultraface-rfb-320' } }];
+  if (faces.length) {
+    const smile = await scoreSmile(img, faces);
+    if (smile != null) out.push({ score_type: 'smile', value: +smile.toFixed(3), reasons: { faces: faces.length, model: 'ferplus' } });
+  }
+  return out;
+}
+
+// → array of {x1,y1,x2,y2,score} in pixel coords, or null if the model is absent.
+async function detectFaces(img) {
+  const spec = models.FACE_DETECT;
+  if (!onnx.hasModel(spec.file)) return null;
+  const ort = onnx.ort;
+  const s = await onnx.session(spec.file);
+  const t = pre.toCHW(img, spec.input.w, spec.input.h, spec.input);
+  const res = await s.run({ [s.inputNames[0]]: new ort.Tensor('float32', t.data, t.dims) });
+  // Identify outputs by trailing dim: 2 → scores [1,N,2], 4 → boxes [1,N,4].
+  let scores = null, boxes = null;
+  for (const name of s.outputNames) { const o = res[name]; const last = o.dims[o.dims.length - 1]; if (last === 2) scores = o; else if (last === 4) boxes = o; }
+  if (!scores || !boxes) return [];
+  const W = img.bitmap.width, H = img.bitmap.height;
+  const n = scores.dims[1];
+  const dets = [];
+  for (let i = 0; i < n; i++) {
+    const p = scores.data[i * 2 + 1]; // face probability
+    if (p < spec.scoreThresh) continue;
+    const b = i * 4;
+    dets.push({ x1: boxes.data[b] * W, y1: boxes.data[b + 1] * H, x2: boxes.data[b + 2] * W, y2: boxes.data[b + 3] * H, score: p });
+  }
+  return pre.nms(dets, 0.4);
+}
+
+// → max happiness probability across faces (0..1), or null if no expression model.
+async function scoreSmile(img, faces) {
+  const spec = models.FACE_EXPRESSION;
+  if (!onnx.hasModel(spec.file)) return null;
+  const ort = onnx.ort;
+  const s = await onnx.session(spec.file);
+  let best = 0;
+  for (const f of faces) {
+    const t = pre.cropGray(img, f, spec.input.size);
+    const res = await s.run({ [s.inputNames[0]]: new ort.Tensor('float32', t.data, t.dims) });
+    const logits = Array.from(res[s.outputNames[0]].data);
+    const probs = pre.softmax(logits);
+    best = Math.max(best, probs[spec.happyIndex] || 0);
+  }
+  return best;
 }
 
 // ── VIDEO analyzer (client tier) — ONNX/ffmpeg required; stub until wired ─────
@@ -136,7 +182,14 @@ const VIDEO = {
 const ANALYZERS = { vision: VISION, video: VIDEO };
 
 function runtimeStatus() {
-  return { cpu: !!jimp(), onnx: onnx.status() };
+  return {
+    cpu: !!jimp(),
+    onnx: onnx.status(),
+    models: {
+      face_detect: onnx.hasModel(models.FACE_DETECT.file),
+      face_expression: onnx.hasModel(models.FACE_EXPRESSION.file),
+    },
+  };
 }
 
 // Run a single analyzer over an asset buffer → score objects (or [] on failure).

@@ -4,3 +4,7 @@ src/main/ai/models/*
 !src/main/ai/models/.gitkeep
 .env
 *.log
+# local test artifacts (npm run test:vision output / scratch images)
+/synthetic.jpg
+/face-test.jpg
+/*.test.jpg

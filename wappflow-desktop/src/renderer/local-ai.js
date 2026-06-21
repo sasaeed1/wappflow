@@ -30,10 +30,16 @@
   async function refreshRuntime() {
     try {
       const s = await W.ai.status();
-      const cpu = s.runtime && s.runtime.cpu;
-      const onnx = s.runtime && s.runtime.onnx && s.runtime.onnx.available;
+      const rt = s.runtime || {};
+      const cpu = rt.cpu;
+      const ortOk = rt.onnx && rt.onnx.available;
+      const face = rt.models && rt.models.face_detect;
+      const expr = rt.models && rt.models.face_expression;
       const pill = $('ai-runtime');
-      pill.textContent = cpu ? (onnx ? 'CPU + ONNX ready' : 'CPU ready · ONNX models not installed') : 'image analysis unavailable';
+      pill.textContent = !cpu ? 'image analysis unavailable'
+        : face ? (expr ? 'Face AI ready · detect + smile' : 'Face detection ready')
+        : ortOk ? 'CPU ready · run "npm run fetch-models" for Face AI'
+        : 'CPU ready';
       pill.className = 'pill ' + (cpu ? 'ok' : 'warn');
     } catch {}
   }
@@ -60,7 +66,7 @@
       $('analyze').disabled = true; $('cancel').style.display = '';
       $('log').textContent = ''; setProgress({ done: 0, total: 0, uploaded: 0, skipped: 0 });
       try {
-        const res = await W.ai.analyze({ projectId });
+        const res = await W.ai.analyze({ projectId, force: $('force') && $('force').checked });
         if (res && res.ok) log(`Finished: ${res.analyzed} analyzed · ${res.uploaded} uploaded · ${res.skipped} skipped${res.errors ? ` · ${res.errors} errors` : ''}${res.cancelled ? ' (cancelled)' : ''}.`);
         else log('Error: ' + ((res && res.error) || 'unknown'));
       } catch (e) { log('Error: ' + (e.message || e)); }

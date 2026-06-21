@@ -99,6 +99,9 @@
               <select id="project"><option>Loading projects…</option></select>
               <button class="act" id="analyze" disabled>Analyze locally</button>
               <button class="act" id="cancel" style="background:var(--surface2);color:var(--muted);display:none">Cancel</button>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer" title="Re-score every asset, even ones already analyzed (use after installing new models)">
+                <input type="checkbox" id="force" /> Re-analyze all
+              </label>
               <span id="phase" style="font-size:13px;color:var(--muted)"></span>
             </div>
             <div class="bar"><i id="bar"></i></div>
