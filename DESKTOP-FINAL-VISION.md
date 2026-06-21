@@ -336,7 +336,15 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 - **P1** Control plane ✅ — CC mounted, module-gating, AI metering (both paths), model_version drift fixed, vapor gated, grace cron. Committed `f1bc16b`.
 - **P2** Desktop parity ✅ — Team Chat/WhatsApp/Command Center nav, real default URLs, auto-update seam. Committed `f1bc16b`.
 - **P3** Local AI ✅ — full emotion, blur, eyes_open + scene_class (heuristics), GPU indicator, **server CPU vision fallback**, logFeedback. Committed `f1bc16b` + `7dc7401`.
-- **P4** Comms 2.0 ✅ — **backend** `comms.js` (DMs/threads/mentions/pins/presence/unread/search/edit/typing) + LiveKit token + real-time SSE fan-out (verified `test-comms.js`); **frontend** LiveKit `HuddleModal` (Jitsi gone), chat polling→SSE, mentions/typing/unread/presence/DM data (`next build` ✓). Remaining: deploy LiveKit + render polish.
+- **P4** Comms 2.0 ✅ — **backend** `comms.js` (DMs/threads/mentions/pins/presence/unread/search/edit/typing) + LiveKit token + real-time SSE fan-out (verified `test-comms.js`); **frontend** LiveKit `HuddleModal` (Jitsi gone), chat polling→SSE, mentions/typing/unread/presence/DM data (`next build` ✓). **DEPLOYED to prod** (LiveKit live on Hetzner). Remaining: render polish.
+- **P5** Project Rooms ✅ backend — `b546db9` (verified `test-comms.js`).
+- **P6** Offline sync delta endpoint ✅ — `2fbdaaa` (verified `test-sync.js`).
+- **P7** Desktop Management ✅ backend — `552cbb5` (verified `test-cc-desktop.js`).
+- **P8** Reel/Story planning engine ✅ — `66a4c7b` (verified `test-reel-engine.js`).
+- **P9** Brains & Style ✅ backend — `404ca5d` (verified `test-brains.js`).
+- **P10** R2 storage adapter ✅ — `c20df1b` (verified `test-storage.js`).
+
+> **Autonomous session note (2026-06-22):** P5–P10 **backends** built + node-test-verified + committed + pushed. Each phase's **frontend / desktop / ML-model / infra** remainder is tracked below — not built blind because it can't be verified headless (no browser for the non-standard Next.js, no Electron, no ML models, no R2/LiveKit infra beyond what's deployed). Appendix A module-depth + entitlement un-gates also tracked.
 
 ### Remaining — by phase
 
