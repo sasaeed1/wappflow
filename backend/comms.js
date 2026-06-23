@@ -44,6 +44,7 @@ module.exports = function mountComms(app, db, deps = {}) {
     broadcastToUser = () => {},
     onlineUsers = () => [],
     sendPushToUser = async () => {},
+    notify = () => {},
   } = deps;
 
   // ── Schema (additive; the chat_* base tables are owned by server.js) ─────────
@@ -69,13 +70,53 @@ module.exports = function mountComms(app, db, deps = {}) {
       entity_id TEXT NOT NULL, channel_id TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (workspace_id, entity_type, entity_id)
     );
+    CREATE TABLE IF NOT EXISTS user_presence (
+      workspace_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      state TEXT DEFAULT 'online',           -- online | away | dnd
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (workspace_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS call_sessions (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, channel_id TEXT NOT NULL,
+      room TEXT, started_by TEXT, started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      ended_at TIMESTAMP, duration_s INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS call_events (
+      id TEXT PRIMARY KEY, call_id TEXT NOT NULL, user_id TEXT, name TEXT,
+      type TEXT NOT NULL,                    -- started | joined | left | screenshare | raise_hand | lower_hand | ended
+      at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id);
     CREATE INDEX IF NOT EXISTS idx_chat_mentions_user ON chat_mentions(user_id, read_at);
     CREATE INDEX IF NOT EXISTS idx_chat_pins_channel ON chat_pins(channel_id);
     CREATE INDEX IF NOT EXISTS idx_project_rooms_entity ON project_rooms(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_call_events_call ON call_events(call_id);
   `);
 
   const wsOf = (channelId) => { const c = db.prepare('SELECT workspace_id FROM chat_channels WHERE id = ?').get(channelId); return c && c.workspace_id; };
+  // DND suppresses push + the unified feed (the in-app mention/record is still written).
+  const presenceState = (workspaceId, userId) => { try { const r = db.prepare('SELECT state FROM user_presence WHERE workspace_id=? AND user_id=?').get(workspaceId, userId); return (r && r.state) || 'online'; } catch { return 'online'; } };
+  const isDnd = (workspaceId, userId) => presenceState(workspaceId, userId) === 'dnd';
+  // Members of a channel (explicit members for private/DM/room; all workspace members for public).
+  function channelMemberIds(channelId, workspaceId) {
+    const c = db.prepare('SELECT is_private FROM chat_channels WHERE id = ?').get(channelId);
+    if (c && !c.is_private) return db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL').all(workspaceId).map(r => r.user_id);
+    return db.prepare('SELECT user_id FROM chat_members WHERE channel_id = ?').all(channelId).map(r => r.user_id);
+  }
+  // Resolve a project-room channel id to the lead it belongs to (for timeline mirroring).
+  function resolveRoomLead(channelId) {
+    const rm = String(channelId || '').match(/^room_([a-z]+)_(.+)$/);
+    if (!rm) return null;
+    const type = rm[1], eid = rm[2];
+    try {
+      if (type === 'lead') return eid;
+      if (type === 'project') return (db.prepare('SELECT lead_id FROM ms_projects WHERE id = ?').get(eid) || {}).lead_id || null;
+      if (type === 'contract') return (db.prepare('SELECT lead_id FROM cs_documents WHERE id = ?').get(eid) || {}).lead_id || null;
+      if (type === 'booking') return (db.prepare('SELECT lead_id FROM bookings WHERE id = ?').get(eid) || {}).lead_id || null;
+      if (type === 'gallery') { const g = db.prepare('SELECT project_id FROM ms_galleries WHERE id = ?').get(eid); if (g) return (db.prepare('SELECT lead_id FROM ms_projects WHERE id = ?').get(g.project_id) || {}).lead_id || null; }
+    } catch {}
+    return null;
+  }
   const isDM = (id) => typeof id === 'string' && id.startsWith('dm_');
   // A user can see a channel if it's a public workspace channel OR they're a member.
   function canSee(channelId, userId, workspaceId) {
@@ -114,15 +155,30 @@ module.exports = function mountComms(app, db, deps = {}) {
       }
     }
     // @mentions: persist + notify each mentioned user (deduped, never self).
-    const ids = Array.isArray(mentions) ? [...new Set(mentions.filter(u => u && u !== message.user_id))] : [];
+    // @channel / @everyone / @here expand to the whole channel membership.
+    let ids = Array.isArray(mentions) ? mentions.filter(Boolean) : [];
+    if (/@(channel|everyone|here)\b/i.test(message.body || '')) {
+      try { ids = ids.concat(channelMemberIds(message.channel_id, workspaceId)); } catch {}
+    }
+    ids = [...new Set(ids.filter(u => u && u !== message.user_id))];
     for (const uid of ids) {
       try {
         db.prepare('INSERT INTO chat_mentions (id, message_id, channel_id, user_id, author_id) VALUES (?,?,?,?,?)')
           .run(generateId(), message.id, message.channel_id, uid, message.user_id);
         broadcastToUser(uid, 'chat_mention', { channel_id: message.channel_id, message });
-        const ch = db.prepare('SELECT name FROM chat_channels WHERE id = ?').get(message.channel_id);
-        sendPushToUser(uid, `${message.sender_name} mentioned you`, (message.body || '').slice(0, 140), { channel_id: message.channel_id, kind: 'mention' }).catch(() => {});
+        if (!isDnd(workspaceId, uid)) sendPushToUser(uid, `${message.sender_name} mentioned you`, (message.body || '').slice(0, 140), { channel_id: message.channel_id, kind: 'mention' }).catch(() => {});
       } catch { /* mention is best-effort */ }
+    }
+    // Thread reply → notify the root author (if not self and not already mentioned).
+    if (message.reply_to) {
+      try {
+        const root = db.prepare('SELECT user_id FROM chat_messages WHERE id = ?').get(message.reply_to);
+        const rootAuthor = root && root.user_id;
+        if (rootAuthor && rootAuthor !== message.user_id && !ids.includes(rootAuthor)) {
+          broadcastToUser(rootAuthor, 'chat_thread_reply', { channel_id: message.channel_id, message, root_id: message.reply_to });
+          if (!isDnd(workspaceId, rootAuthor)) sendPushToUser(rootAuthor, `${message.sender_name} replied in a thread`, (message.body || '').slice(0, 140), { channel_id: message.channel_id, kind: 'thread' }).catch(() => {});
+        }
+      } catch { /* best-effort */ }
     }
   }
 
@@ -280,11 +336,38 @@ module.exports = function mountComms(app, db, deps = {}) {
   });
 
   // ── Presence + typing ───────────────────────────────────────────────────────
+  // online = has a live SSE connection AND hasn't set away/dnd; states carries the
+  // self-set away/dnd overlay so the UI can show the right dot per member.
   app.get('/api/comms/presence', auth, (req, res) => {
     try {
       const online = new Set(onlineUsers());
-      const members = db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL').all(req.workspaceId);
-      res.json({ online: members.map(m => m.user_id).filter(id => online.has(id)) });
+      const members = db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL').all(req.workspaceId).map(m => m.user_id);
+      const states = {};
+      for (const r of db.prepare('SELECT user_id, state FROM user_presence WHERE workspace_id = ?').all(req.workspaceId)) states[r.user_id] = r.state;
+      const onlineIds = members.filter(id => online.has(id) && states[id] !== 'away' && states[id] !== 'dnd');
+      res.json({ online: onlineIds, states, connected: members.filter(id => online.has(id)) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Set my presence state (online | away | dnd). Broadcast so rosters update live.
+  app.post('/api/comms/presence/state', auth, (req, res) => {
+    try {
+      const state = ['online', 'away', 'dnd'].includes((req.body.state || '').toLowerCase()) ? req.body.state.toLowerCase() : 'online';
+      db.prepare(`INSERT INTO user_presence (workspace_id, user_id, state, updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(workspace_id, user_id) DO UPDATE SET state = excluded.state, updated_at = CURRENT_TIMESTAMP`).run(req.workspaceId, req.userId, state);
+      broadcastToWorkspace(req.workspaceId, 'chat_presence', { user_id: req.userId, state });
+      res.json({ ok: true, state });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Per-message read receipts (derived from members' last_read_at — no extra writes) ──
+  app.get('/api/comms/messages/:id/receipts', auth, (req, res) => {
+    try {
+      const m = db.prepare('SELECT id, channel_id, created_at, user_id FROM chat_messages WHERE id = ?').get(req.params.id);
+      if (!m || !canSee(m.channel_id, req.userId, req.workspaceId)) return res.status(404).json({ error: 'message not found' });
+      const seen = db.prepare(`SELECT user_id, last_read_at FROM chat_members
+        WHERE channel_id = ? AND user_id != ? AND last_read_at IS NOT NULL AND last_read_at >= ?`).all(m.channel_id, m.user_id, m.created_at);
+      res.json({ message_id: m.id, seen_by: seen.map(s => s.user_id), receipts: seen });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.post('/api/comms/typing', auth, (req, res) => {
@@ -316,6 +399,124 @@ module.exports = function mountComms(app, db, deps = {}) {
   // Lightweight capability probe for the client (show/hide call buttons).
   app.get('/api/comms/livekit/config', auth, (req, res) => {
     res.json({ configured: !!(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET), url: LIVEKIT_URL || null });
+  });
+
+  // ── Calls: lifecycle + event log (Started / Joined / Left / Screenshare /
+  //    Raise-hand / Ended) → real-time roster, call notifications, timeline. ───────
+  function logCallTimeline(session, title, body) {
+    const leadId = resolveRoomLead(session.channel_id);
+    if (!leadId) return;
+    try {
+      db.prepare(`INSERT INTO activity_timeline (id, lead_id, workspace_id, user_id, actor_name, activity_type, title, body)
+        VALUES (?,?,?,?,?,?,?,?)`).run(generateId(), leadId, session.workspace_id, session.started_by, null, 'call', title, body || '');
+    } catch { /* best-effort */ }
+  }
+  const recordCallEvent = (callId, userId, name, type) => {
+    try { db.prepare('INSERT INTO call_events (id, call_id, user_id, name, type) VALUES (?,?,?,?,?)').run(generateId(), callId, userId || null, name || null, type); } catch {}
+  };
+
+  // Start (or rejoin) a call on a channel. First start rings the other members.
+  app.post('/api/comms/calls/start', auth, (req, res) => {
+    try {
+      const channelId = (req.body.channel_id || '').toString();
+      if (!canSee(channelId, req.userId, req.workspaceId)) return res.status(404).json({ error: 'channel not found' });
+      // Reuse a live (not-ended) call on this channel if one exists.
+      let session = db.prepare('SELECT * FROM call_sessions WHERE channel_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1').get(channelId);
+      let fresh = false;
+      if (!session) {
+        const id = generateId();
+        const room = channelId; // LiveKit room == channel id (per /livekit/token namespacing)
+        db.prepare('INSERT INTO call_sessions (id, workspace_id, channel_id, room, started_by) VALUES (?,?,?,?,?)').run(id, req.workspaceId, channelId, room, req.userId);
+        session = db.prepare('SELECT * FROM call_sessions WHERE id = ?').get(id);
+        fresh = true;
+        recordCallEvent(id, req.userId, req.senderName, 'started');
+      }
+      // The starter is the first participant.
+      recordCallEvent(session.id, req.userId, req.senderName, 'joined');
+      broadcastToWorkspace(req.workspaceId, 'call_event', { call_id: session.id, channel_id: channelId, type: fresh ? 'started' : 'joined', user_id: req.userId, name: req.senderName });
+      if (fresh) {
+        const ch = db.prepare('SELECT name FROM chat_channels WHERE id = ?').get(channelId) || {};
+        const chName = ch.name || 'a channel';
+        // Ring every other member: in-app feed (unless DND) + push + a targeted SSE invite.
+        for (const uid of channelMemberIds(channelId, req.workspaceId)) {
+          if (uid === req.userId) continue;
+          broadcastToUser(uid, 'call_invite', { call_id: session.id, channel_id: channelId, room: session.room, from: req.senderName });
+          if (!isDnd(req.workspaceId, uid)) {
+            try { notify(req.workspaceId, { type: 'call', title: 'Incoming call', body: `${req.senderName} started a call in ${chName}`, url: `/chat?channel=${channelId}`, icon: '📞', userId: uid }); } catch {}
+            sendPushToUser(uid, `${req.senderName} is calling`, `Call in ${chName}`, { channel_id: channelId, kind: 'call', call_id: session.id }).catch(() => {});
+          }
+        }
+        logCallTimeline(session, 'Call started', `${req.senderName} started a call`);
+      }
+      res.json({ call_id: session.id, channel_id: channelId, room: session.room, fresh });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Record an in-call event (joined/left/screenshare/raise_hand/lower_hand) → live roster.
+  app.post('/api/comms/calls/:id/event', auth, (req, res) => {
+    try {
+      const session = db.prepare('SELECT * FROM call_sessions WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!session) return res.status(404).json({ error: 'call not found' });
+      const type = (req.body.type || '').toString();
+      const ALLOWED = ['joined', 'left', 'screenshare', 'screenshare_stop', 'raise_hand', 'lower_hand'];
+      if (!ALLOWED.includes(type)) return res.status(400).json({ error: 'bad event type' });
+      recordCallEvent(session.id, req.userId, req.senderName, type);
+      broadcastToWorkspace(req.workspaceId, 'call_event', { call_id: session.id, channel_id: session.channel_id, type, user_id: req.userId, name: req.senderName });
+      if (type === 'screenshare') logCallTimeline(session, 'Screen shared', `${req.senderName} shared their screen`);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // End the call → duration, timeline, and a missed-call ping to anyone who never joined.
+  app.post('/api/comms/calls/:id/end', auth, (req, res) => {
+    try {
+      const session = db.prepare('SELECT * FROM call_sessions WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!session) return res.status(404).json({ error: 'call not found' });
+      if (session.ended_at) return res.json({ ok: true, already: true });
+      const started = new Date((session.started_at || '').replace(' ', 'T') + 'Z').getTime();
+      const dur = started ? Math.max(0, Math.round((Date.now() - started) / 1000)) : null;
+      db.prepare('UPDATE call_sessions SET ended_at = CURRENT_TIMESTAMP, duration_s = ? WHERE id = ?').run(dur, session.id);
+      recordCallEvent(session.id, req.userId, req.senderName, 'ended');
+      broadcastToWorkspace(req.workspaceId, 'call_event', { call_id: session.id, channel_id: session.channel_id, type: 'ended', user_id: req.userId, duration_s: dur });
+      const mins = dur != null ? `${Math.floor(dur / 60)}m ${dur % 60}s` : '';
+      logCallTimeline(session, 'Call ended', `Duration ${mins}`);
+      // Missed call: members who were invited but produced no 'joined' event.
+      try {
+        const joined = new Set(db.prepare("SELECT DISTINCT user_id FROM call_events WHERE call_id = ? AND type = 'joined'").all(session.id).map(r => r.user_id));
+        for (const uid of channelMemberIds(session.channel_id, req.workspaceId)) {
+          if (uid === session.started_by || joined.has(uid)) continue;
+          broadcastToUser(uid, 'call_missed', { call_id: session.id, channel_id: session.channel_id });
+          if (!isDnd(req.workspaceId, uid)) notify(req.workspaceId, { type: 'call', title: 'Missed call', body: `You missed a call`, url: `/chat?channel=${session.channel_id}`, icon: '📵', userId: uid });
+        }
+      } catch {}
+      res.json({ ok: true, duration_s: dur });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Call detail + live roster (joined − left) + raised hands.
+  app.get('/api/comms/calls/:id', auth, (req, res) => {
+    try {
+      const session = db.prepare('SELECT * FROM call_sessions WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!session) return res.status(404).json({ error: 'call not found' });
+      const events = db.prepare('SELECT user_id, name, type, at FROM call_events WHERE call_id = ? ORDER BY at ASC').all(session.id);
+      const inRoom = new Map(); const hands = new Set();
+      for (const e of events) {
+        if (e.type === 'joined') inRoom.set(e.user_id, e.name);
+        else if (e.type === 'left' || e.type === 'ended') inRoom.delete(e.user_id);
+        else if (e.type === 'raise_hand') hands.add(e.user_id);
+        else if (e.type === 'lower_hand') hands.delete(e.user_id);
+      }
+      res.json({ call: session, events, participants: [...inRoom.entries()].map(([user_id, name]) => ({ user_id, name })), raised_hands: [...hands] });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Live (not-ended) call on a channel, if any — so the UI can show a "join" affordance.
+  app.get('/api/comms/channels/:id/active-call', auth, (req, res) => {
+    try {
+      if (!canSee(req.params.id, req.userId, req.workspaceId)) return res.status(404).json({ error: 'channel not found' });
+      const session = db.prepare('SELECT * FROM call_sessions WHERE channel_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1').get(req.params.id) || null;
+      res.json({ active: !!session, call: session });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   // ── Project Rooms (Phase 5) — contextual collaboration on a business entity ──

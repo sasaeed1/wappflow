@@ -5569,7 +5569,7 @@ require('./contracts-studio')(app, db, {
 //  real-time over SSE, + LiveKit voice/video/screenshare token minting)
 // ════════════════════════════════════════════════════════════
 commsApi = require('./comms')(app, db, {
-  auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser,
+  auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser, notify,
 });
 
 // ── Workspace Sync (Phase 6 — offline-first delta endpoint) ──
