@@ -86,3 +86,51 @@ here (`raise_hand`/`lower_hand` events); the in-call hand UI is frontend.
 
 **Left for the frontend wave:** call roster + raise-hand + ringing UI, presence
 state picker, receipts ticks, voice-note recorder, @-autocomplete incl. @channel.
+
+---
+
+## ✅ Wave 3 — Desktop native shell + offline-first (Phases 2/6/7/10)  · committed
+
+**Goal:** close the single biggest gap — the desktop was webview-only with ~0% of the
+offline-first value prop. Built the whole native layer, dependency-free (no native DB to
+rebuild), with the load-bearing logic genuinely unit-tested headlessly.
+
+**Pure, unit-tested core (`test-native.js`, 23 checks):**
+- **`offline/store.js`** — JSON-backed, atomic-write local store: server-replica cache,
+  local **work queue**, sync **cursor**, cached **entitlements**. Documented conflict
+  policy — **LWW scalars + append-merged lists** — plus queue **reconcile** (drops a
+  local write once the server record is newer than the mutation). `can()` for offline
+  feature gating.
+- **`offline/sync.js`** — pulls the `/workspace/sync` delta into the store and **flushes
+  queued mutations** on reconnect (4xx → drop, 5xx/network → retry later); network-state
+  aware with state-change emitter.
+- **`reporter.js`** — fleet self-registration (`POST /api/desktop/report`) + version
+  policy (`force`/`block`) matching the server contract; pure `interpretPolicy`/`cmpVer`.
+- **`device.js`** — stable per-install device id + non-identifying machine facts.
+- **`uploader.js`** — **direct-to-R2** via presigned PUT (server never proxies bytes) +
+  a **dependency-free multipart** fallback for local-storage workspaces.
+- **`watcher.js`** — debounced **watch-folder** ingestion (camera-card / Lightroom export
+  → auto-upload to a project).
+
+**Electron glue (syntax-checked; needs a GUI machine to run):**
+- **`notifications.js`** (native OS toasts) · **`tray.js`** (background presence + live
+  Online/Offline + queued-count + Open/Sync/Quit).
+- **`main.js`** — `initServices()`: tray, report-on-launch + 30-min re-report + policy,
+  sync-on-launch + 2-min sync, close-to-tray (keeps background sync alive), and IPC for
+  fleet/sync/notify/watch/upload/folder-picker. `before-quit` tears down cleanly.
+- **`preload.js`** — exposes `fleet` / `sync` / `notifications` / `watch` / `upload`.
+- **`renderer/native.js` + `index.html`** — offline **banner**, **drag-drop** ingest
+  overlay (Electron file `.path` → direct upload), upload/sync/watch **toasts**, and a
+  **forced-update / blocked-version** modal.
+
+This turns the desktop from a webview wrapper into a real native shell: works offline,
+queues + syncs, reports to the fleet, ingests by watch-folder + drag-drop, uploads
+straight to R2, and shows native notifications.
+
+**Verified:** `test-native.js` (23 checks) + `npm run lint:syntax` (whole `src` tree) +
+`node --check` on every new/changed file. **Cannot** boot Electron here (no GUI) — the
+glue is structurally verified only; first launch on a GUI machine is the live check.
+
+**Left:** desktop video ffmpeg analysis (Wave 5) + a tray.png asset (falls back to an
+empty image today). Offline-gating of specific cloud-module routes is seamed (`can()`)
+but the webview modules don't consult it yet — a follow-up.
