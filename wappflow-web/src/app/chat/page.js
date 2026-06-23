@@ -317,6 +317,7 @@ export default function ChatPage() {
   // Comms 2.0 state
   const [members, setMembers] = useState([]);        // workspace members (mentions + DM picker + presence)
   const [online, setOnline] = useState([]);          // online user ids
+  const [myPresence, setMyPresence] = useState('online'); // online | away | dnd
   const [typingUser, setTypingUser] = useState(null);
   const [dms, setDms] = useState([]);                 // my direct-message channels
   const [editing, setEditing] = useState(null);       // { id, body } when editing a message
@@ -388,6 +389,10 @@ export default function ChatPage() {
             clearTimeout(typingTimerRef.current);
             typingTimerRef.current = setTimeout(() => setTypingUser(null), 3500);
           }
+          break;
+        case 'chat_presence':
+          // someone changed away/dnd → refresh the online roster
+          commsAPI.presence().then(r => setOnline(r.data.online || [])).catch(() => {});
           break;
         default: break;
       }
@@ -600,6 +605,16 @@ export default function ChatPage() {
             <button onClick={() => setMuted(!muted)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted ? '#6b7280' : '#9ca3af', padding: 4 }}>
               {muted ? <BellOff size={14} /> : <Bell size={14} />}
             </button>
+          </div>
+          {/* My presence state (online / away / do-not-disturb) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 999, flexShrink: 0, background: myPresence === 'dnd' ? '#f87171' : myPresence === 'away' ? '#fbbf24' : '#34d399' }} />
+            <select value={myPresence} onChange={e => { const s = e.target.value; setMyPresence(s); commsAPI.setPresence(s).catch(() => {}); }}
+              style={{ flex: 1, padding: '5px 8px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, color: 'white', fontSize: 12, outline: 'none', cursor: 'pointer' }}>
+              <option value="online">🟢 Active</option>
+              <option value="away">🟡 Away</option>
+              <option value="dnd">🔴 Do not disturb</option>
+            </select>
           </div>
           {/* Search */}
           <div style={{ position: 'relative', marginTop: 10 }}>

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Eye, X, Check, Cloud, Send, Copy, MessageCircle, Mail, Settings, Zap, CreditCard, ShieldCheck, FolderPlus, Sparkles, Wand2, AlertTriangle, FileText, Clock, Users, UserPlus, Bell, Paperclip, Image as ImageIcon, BookMarked, History, RotateCcw } from 'lucide-react';
 import { csAPI, mediaUrl } from '../../../lib/api';
+import RoomPanel from '@/components/RoomPanel';
 import ContractsStudioShell from '../../../components/ContractsStudioShell';
 import { BLOCK_TYPES, defaultData, BlockView, DocFrame, computeTotals } from '../blocks';
 import '../contracts.css';
@@ -30,6 +31,7 @@ export default function BuilderPage() {
   const [showPeople, setShowPeople] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [showClauses, setShowClauses] = useState(false);
+  const [showRoom, setShowRoom] = useState(false);
   const [tplSaved, setTplSaved] = useState(false);
   const [wsLetterhead, setWsLetterhead] = useState(null);
   const [wsDefaults, setWsDefaults] = useState({});
@@ -82,6 +84,7 @@ export default function BuilderPage() {
         </span>
         <button onClick={() => setShowAI(true)} title="AI assistant" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 9, border: '1px solid transparent', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}><Sparkles size={14} /> AI</button>
         <button onClick={() => setShowPeople(true)} title="Signers & activity" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><Users size={14} /></button>
+        <button onClick={() => setShowRoom(true)} title="Team room — discuss & call" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><MessageCircle size={14} /></button>
         <button onClick={() => setShowVersions(true)} title="Version history" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}><History size={14} /></button>
         <button onClick={() => setShowClauses(true)} title="Insert a saved clause" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>¶</button>
         <button onClick={saveAsTemplate} title="Save as template" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: tplSaved ? '#10b981' : 'transparent', color: tplSaved ? '#fff' : 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{tplSaved ? <><Check size={14} /> Saved</> : <BookMarked size={14} />}</button>
@@ -162,6 +165,13 @@ export default function BuilderPage() {
       {showSettings && <SettingsModal id={id} settings={settings} setSettings={setSettings} hasLead={!!doc.lead_id} wsLetterhead={wsLetterhead} onClose={() => setShowSettings(false)} />}
       {showAI && <AIModal id={id} type={doc.type} blocks={blocks} setBlocks={setBlocks} selectedBlock={blocks.find(b => b.id === selected)} updateBlock={updateBlock} onClose={() => setShowAI(false)} />}
       {showPeople && <PeopleModal id={id} onClose={() => setShowPeople(false)} />}
+      {showRoom && (
+        <div onClick={() => setShowRoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, marginTop: 64 }}>
+            <RoomPanel type="contract" id={id} title={title} />
+          </div>
+        </div>
+      )}
       {showVersions && <VersionsModal id={id} onClose={() => setShowVersions(false)} />}
       {showClauses && <ClausePickerModal onClose={() => setShowClauses(false)} onInsert={(c) => { setBlocks(bs => [...bs, { id: uid(), type: 'heading', data: { text: c.title, level: 2 } }, { id: uid(), type: 'text', data: { text: c.body } }]); setShowClauses(false); }} />}
     </ContractsStudioShell>

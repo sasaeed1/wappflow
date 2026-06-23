@@ -187,3 +187,23 @@ hard-cuts→high motion/scene_cut, registry-valid types) + `npm run lint:syntax`
 regression still passes. **Cannot** verify the ffmpeg extraction headlessly (no ffmpeg
 + no sample video here) — the pure aggregation is fully tested; live extraction is the
 on-hardware check. `speech`/`emotion`/`action` (need audio + ML) remain for a later pass.
+
+---
+
+## ✅ Wave 6 — Rooms in more entities + presence picker (next build ✓)  · committed
+
+- **Contract Team Room** — added a toolbar **room button** + side-drawer modal rendering
+  `RoomPanel type="contract"` on the contract builder (idiomatic with its existing
+  People/Versions modals). Contract-room messages mirror to the lead timeline server-side.
+- **Chat presence picker** — a 🟢 Active / 🟡 Away / 🔴 Do-not-disturb selector in the
+  Team Chat sidebar header → `commsAPI.setPresence`. Added a `chat_presence` SSE case so
+  the online roster updates live when teammates change state. This activates the Wave-2
+  DND backend (DND already suppresses mention/thread/call pings).
+
+**Verified:** `next build` → "✓ Compiled successfully" (`/contracts/[id]` + `/chat`).
+
+**Still tracked (polish bucket):** RoomPanel on project/gallery detail pages (non-tab
+layouts); chat edit-button / search / pins / thread panels / @-autocomplete / call
+roster + raise-hand UI / receipts ticks / voice-note recorder; reel **render** (video
+engine); P9 auto-apply style; entitlement un-gates (desktop_sync now shippable once the
+desktop is verified on a GUI machine); video speech/emotion/action sub-scores.
