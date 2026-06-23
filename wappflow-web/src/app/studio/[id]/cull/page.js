@@ -643,8 +643,25 @@ export default function CullPage() {
                         {scores[current.id] && (scores[current.id].hero || scores[current.id].portfolio) && (
                           <div style={{ marginTop: 4 }}>
                             {['hero', 'portfolio', 'album'].map(k => scores[current.id][k] ? <HudRow key={k} label={k[0].toUpperCase() + k.slice(1)} value={Math.round(scores[current.id][k].value * 100)} color="#bcd4ff" /> : null)}
-                            {scores[current.id].hero && scores[current.id].hero.reasons && scores[current.id].hero.reasons.length > 0 && (
+                            {scores[current.id].hero && scores[current.id].hero.reasons && scores[current.id].hero.reasons.length > 0 && Array.isArray(scores[current.id].hero.reasons) && (
                               <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0', lineHeight: 1.5 }}>Why: {scores[current.id].hero.reasons.join(' · ')}</p>
+                            )}
+                          </div>
+                        )}
+                        {/* Primitive AI-vision signals (P3): people / smile+emotion / eyes / scene — advisory */}
+                        {scores[current.id] && (scores[current.id].face_count || scores[current.id].scene_class) && (
+                          <div style={{ marginTop: 4 }}>
+                            {scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
+                              <HudRow label="People" value={Number(scores[current.id].face_count.value)} color="rgba(255,255,255,0.7)" />
+                            )}
+                            {scores[current.id].smile && scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
+                              <HudRow label="Smile" value={`${Math.round(scores[current.id].smile.value * 100)}%${scores[current.id].smile.reasons && scores[current.id].smile.reasons.dominant ? ' · ' + scores[current.id].smile.reasons.dominant : ''}`} color="rgba(255,255,255,0.7)" />
+                            )}
+                            {scores[current.id].eyes_open && scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
+                              <HudRow label="Eyes" value={Number(scores[current.id].eyes_open.value) >= 0.5 ? 'open' : 'check'} color="rgba(255,255,255,0.7)" />
+                            )}
+                            {scores[current.id].scene_class && scores[current.id].scene_class.reasons && scores[current.id].scene_class.reasons.label && (
+                              <HudRow label="Scene" value={scores[current.id].scene_class.reasons.label} color="rgba(255,255,255,0.7)" />
                             )}
                           </div>
                         )}

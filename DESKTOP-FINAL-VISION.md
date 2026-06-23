@@ -351,8 +351,9 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | # | Item | Kind | State | Next step / blocker |
 |---|---|---|---|---|
 | **P3** | Swap eyes_open/scene_class heuristics → ONNX models | 🖥️ desktop | ⏸ | source eye-state + scene models (ONNX zoo lacks them) |
-| P3 | Activate server `face_count`/`smile` | 🌐 server | ⏸ | `npm i onnxruntime-node` on host + add `backend/face-detect.js` (hook already captures it) |
-| P3 | `reasons` in web cull UI · `subject` score · composite-move · desktop phash · watch-folder | 🔁/🖥️ | ⬜ | composite-move is sequence-deferred (rule #3) |
+| P3 | Activate server `face_count`/`smile` | 📋 infra | ⏸ | `backend/face-detect.js` **already coded** (`@vladmandic/face-api`, bundled weights) — just `cd backend && npm i @vladmandic/face-api @tensorflow/tfjs-node && pm2 restart wappflow-api` |
+| P3 | `reasons` in web cull UI | 🌐 | ✅ | people/smile+emotion/eyes/scene now in the cull HUD (`next build` ✓) |
+| P3 | `subject` score · composite-move · desktop phash · watch-folder | 🖥️ | ⏸ | composite-move is sequence-deferred (rule #3) |
 | **P4** | LiveKit room UI (rip out Jitsi) · chat polling→SSE · @mention send · typing · unread/mark-read · presence/DM data · stable rooms | 🌐 web | ✅ | built + `next build` ✓ + `livekit-client` added |
 | **P4** | Deploy self-hosted LiveKit on Hetzner + set env | 📋 infra | ⏸ | **your step** — follow `LIVEKIT-SETUP.md`; until then call buttons show "not enabled" |
 | P4 | Browser QA of live A/V (2 peers join, mic/cam/screenshare) | 🌐 web | ⏸ | after LiveKit deployed |
