@@ -30,6 +30,10 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
+// Behind nginx (which sets X-Forwarded-For): trust the first proxy hop so
+// express-rate-limit + req.ip identify the real client, not the proxy. Configurable
+// via TRUST_PROXY (default 1 = one proxy in front).
+app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
 const DATA_DIR = process.env.NODE_ENV === 'production' ? '/data' : require('path').join(__dirname);
 const db = new Database(require('path').join(DATA_DIR, 'wappflow.db'));
 
