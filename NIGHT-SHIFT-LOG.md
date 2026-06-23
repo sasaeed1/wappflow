@@ -201,6 +201,8 @@ on-hardware check. `speech`/`emotion`/`action` (need audio + ML) remain for a la
   DND backend (DND already suppresses mention/thread/call pings).
 
 **Verified:** `next build` → "✓ Compiled successfully" (`/contracts/[id]` + `/chat`).
+Also added the **project** Team Room (studio detail hero button + drawer, `type="project"`)
+— `next build` ✓. RoomPanel now lives on **lead + contract + project** entities.
 
 **Still tracked (polish bucket):** RoomPanel on project/gallery detail pages (non-tab
 layouts); chat edit-button / search / pins / thread panels / @-autocomplete / call

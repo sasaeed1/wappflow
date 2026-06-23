@@ -14,6 +14,7 @@ const kindOf = (a) => (a?.type === 'video' ? 'video' : 'photo');
 const fmtDur = (ms) => { if (!ms) return null; const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 import { mediaAPI, mediaUrl, studioAiAPI, videoAiAPI } from '../../../lib/api';
 import NavBar from '../../../components/StudioShell';
+import RoomPanel from '@/components/RoomPanel';
 
 function FocusChip({ sharpness }) {
   if (sharpness == null) return null;
@@ -162,6 +163,7 @@ export default function ProjectPage() {
   const [lightbox, setLightbox] = useState(null); // index into the SHOWN list
   const [wmModal, setWmModal] = useState(false);
   const [aiPanel, setAiPanel] = useState(false);
+  const [showRoom, setShowRoom] = useState(false);
 
   // apply per-device studio preferences (set in Studio → Settings)
   useEffect(() => {
@@ -348,6 +350,7 @@ export default function ProjectPage() {
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/cull`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><ListChecks size={15} /> Cull</button>}
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><BookOpen size={15} /> Albums</button>}
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><Film size={15} /> Reels</button>}
+              <button onClick={() => setShowRoom(true)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><MessageSquare size={15} /> Team Room</button>
               <button onClick={() => fileRef.current?.click()} disabled={uploading} className="ms-btn-ink" style={{ background: '#fff', color: '#0c0c10' }}>
                 {uploading ? <Loader size={16} className="ms-spin" /> : <Upload size={16} />} {uploading ? 'Uploading…' : 'Upload media'}
               </button>
@@ -537,6 +540,13 @@ export default function ProjectPage() {
       {showNewGallery && <CreateGalleryModal onClose={() => setShowNewGallery(false)} onCreate={createGallery} />}
       {proofingFor && <ProofingRequestModal gallery={proofingFor} onClose={() => setProofingFor(null)} onCreate={createProof} />}
       {wmModal && <WatermarkModal projectId={id} count={selected.size} initial={project?.settings?.watermark} sampleUrl={(() => { const a = assets.find(x => selected.has(x.id) && kindOf(x) === 'photo'); return a ? mediaUrl(a.thumb_url || a.url) : null; })()} onClose={() => setWmModal(false)} onApply={applyWatermark} onRemove={removeWatermark} />}
+      {showRoom && (
+        <div onClick={() => setShowRoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, marginTop: 64 }}>
+            <RoomPanel type="project" id={id} title={project?.title} />
+          </div>
+        </div>
+      )}
       {aiPanel && <StudioAIModal projectId={id} onClose={() => setAiPanel(false)} onGallery={refreshGalleries} setBanner={setBanner} />}
     </NavBar>
   );
