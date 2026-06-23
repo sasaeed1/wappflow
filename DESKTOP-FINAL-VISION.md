@@ -373,7 +373,9 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | P9 | Recommendations surfaced — **Studio Brain tip** in the cull page (`next build` ✓) | 🌐 | ✅ | dismissible keep-rate/style hint |
 | P9 | Auto-apply style · desktop feedback capture · surface in edit too | 🔁 | ⏸ | then un-gate `style_profiles` entitlement |
 | **P10** | **R2 storage adapter** — `storage.js` (S3-compatible, optional SDK, env-gated, graceful local fallback; put/get/presign/remove/url) | 🌐 | ✅ | verified `test-storage.js` |
-| P10 | R2 **migration** — wire `storage.js` into the media-studio STORAGE SEAM (uploads/variants/ZIPs/PDFs) + provision R2 + `npm i @aws-sdk/client-s3` + set `R2_*` | 🌐 | ⏸ | adapter ready; don't rewire live media seam without R2 to verify |
+| P10 | **R2 provisioned + verified** (bucket `wappflow-production`, SDK installed, env set, roundtrip ✅) | 📋 | ✅ | done on prod |
+| P10 | R2 migration — **export ZIPs → R2** (dual-read download route: local file → serve, else presigned R2 redirect; old + new exports both work) | 🌐 | ✅ | syntax ✓; verify by running a gallery export |
+| P10 | R2 migration remainder — **uploads + variants + album PDFs** → R2 (needs serving model: public bucket or presign-redirect, + a one-time migrate-existing-files script) | 🌐 | ⏸ | bigger stage; existing photos on disk stay served locally meanwhile |
 | P10 | Media Studio **desktop-first** — native crop/tone/rotate + album editor offline | 🖥️ | ⏸ | re-enable `ai_editing` when shipped |
 | **Appendix A** | Module depth: CRM (saved-views persist, merge UI), Contracts (sequential signing, payments), Booking (GCal · ~~reschedule notifs~~ ✅ done), Portal (first-class desktop) | 🌐/🖥️ | 🟡 | reschedule/cancel client notifications ✅ shipped; rest fold into phases |
 | **Entitlements** | Re-enable each gated feature as its phase ships: `desktop_sync`(P6) · `reel_engine`+`story_engine`(P8) · `style_profiles`(P9) · `ai_editing`(P10) | 🌐 | ⬜ | remove from `UNBUILT_FEATURES` in `entitlements.js` |

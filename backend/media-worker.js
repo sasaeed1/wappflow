@@ -54,6 +54,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
   // one execution tier (server CPU); the ledger + composites flow through here too.
   const intel = require('./analyzers')(db, { generateId });
   try { intel.ensureSchema(); } catch { /* media-studio mount already ensured it */ }
+  const storage = require('./storage')({ uploadsDir, path, fs }); // R2 (when configured) for export ZIPs
 
   const MAX_RETRIES = 3;
   const PHASH_DUP_DISTANCE = 6; // ≤6 bits different on a 64-bit aHash ≈ near-duplicate
@@ -474,8 +475,15 @@ module.exports = function createMediaWorker(db, deps = {}) {
       }
 
       const outRel = `media/exports/${exp.id}.zip`;
-      zip.writeZip(path.join(uploadsDir, outRel));
-      const size = fs.statSync(path.join(uploadsDir, outRel)).size;
+      let size;
+      if (storage.isRemote) {
+        const buf = zip.toBuffer();
+        await storage.putBuffer(outRel, buf, 'application/zip'); // → R2, keeps the server disk free
+        size = buf.length;
+      } else {
+        zip.writeZip(path.join(uploadsDir, outRel));
+        size = fs.statSync(path.join(uploadsDir, outRel)).size;
+      }
       db.prepare(`UPDATE ms_exports SET status = 'ready', storage_key = ?, size_bytes = ?, file_count = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
         .run(outRel, size, count, exp.id);
       if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_export_ready', { export_id: exp.id, gallery_id: exp.gallery_id });

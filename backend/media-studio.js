@@ -255,6 +255,9 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     limits: { fileSize: 200 * 1024 * 1024 }, // 200MB local cap; presigned R2 removes this ceiling
   });
   // ─────────────────────────── end STORAGE SEAM ──────────────────────────────
+  // Object-storage adapter (R2 when configured, else local disk). Used for large
+  // delivery artifacts (export ZIPs) first; uploads/variants migrate in a later stage.
+  const storage = require('./storage')({ uploadsDir, path, fs });
 
   // ── Watermark helpers (jimp; non-destructive — writes a separate variant) ────
   const keyToPath = (u) => path.join(uploadsDir, String(u || '').replace(/^https?:\/\/[^/]+/, '').replace(/^\/?uploads\//, ''));
@@ -1532,10 +1535,25 @@ Only suggest actions that make sense for the question. If none make sense, retur
     return {
       id: exp.id, gallery_id: exp.gallery_id, variant: exp.variant, status: exp.status,
       file_count: exp.file_count, size_bytes: exp.size_bytes, watermark: !!exp.watermark,
-      download_url: (exp.status === 'ready' && exp.storage_key) ? publicUrl(exp.storage_key) : null,
+      download_url: (exp.status === 'ready' && exp.storage_key) ? `/api/media/exports/${exp.id}/file` : null,
       error: exp.error_message || undefined,
     };
   }
+
+  // Download an export by its unguessable id (same access model as the old static
+  // /uploads path — the id is the capability). Dual-read: serves the local file if
+  // present, else 302-redirects to a short-lived presigned R2 URL. So old exports
+  // (on disk) and new ones (in R2) both download transparently.
+  app.get('/api/media/exports/:id/file', async (req, res) => {
+    try {
+      const exp = db.prepare("SELECT * FROM ms_exports WHERE id = ? AND status = 'ready'").get(req.params.id);
+      if (!exp || !exp.storage_key) return res.status(404).json({ error: 'Export not found' });
+      const local = path.join(uploadsDir, exp.storage_key);
+      if (fs.existsSync(local)) return res.download(local, `${exp.id}.zip`);
+      if (storage.isRemote) { const url = await storage.presignGet(exp.storage_key); if (url) return res.redirect(302, url); }
+      return res.status(404).json({ error: 'Export file not available' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
 
   app.post('/api/media/galleries/:id/export', auth, (req, res) => {
     try {
