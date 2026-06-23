@@ -395,6 +395,16 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 
 Source: the "WappFlow Infrastructure + Desktop + Communications Roadmap" (Phases 1–5), cross-checked against current code by a 5-agent gap analysis (dimensions: storage-media, cc-storage, comms, desktop-shell, local-AI/Track-0). **Headline:** R2 storage + Track-0 ingestion are essentially complete; the real remaining surface is **storage enforcement, Command Center storage analytics, communications depth, and the desktop native shell (offline-first).** Nothing below is a regression — these are net-new scope items the roadmap asks for that current code doesn't yet cover. Hard constraints carried forward: **no WhatsApp-flow changes · additive only · no auto-migration of existing uploads · native comms (no Slack) · no new infra (LiveKit on existing Hetzner)**.
 
+> ### 🌙 NIGHT-SHIFT BUILD 2026-06-24 — most of R1–R5 now SHIPPED (see `NIGHT-SHIFT-LOG.md`)
+> Six waves, each built→tested→committed. Verification: backend via node test harnesses (can't boot — WhatsApp), frontend via `next build`, desktop via `node --check`/`lint:syntax` (can't boot — no GUI).
+> - **R1 Storage** ✅ — watermark + video poster/proxy writes now R2-aware (`0577fd5`).
+> - **R2 CC + enforcement** ✅ — upload quota **gate** + **80/90/100% warnings** wired to `notify()`; CC **growth-rate / projection / by-plan / fastest-growing**; **workspace-facing** storage page `/settings/storage` (`0577fd5`, `51f837e`).
+> - **R3 Comms** ✅ backend — @channel/@everyone, thread-reply notify, **AWAY/DND**, per-message receipts, full **call lifecycle** (start/ring/join/screenshare/raise-hand/end/missed) + timeline logging (`564bfb3`); FE: presence picker + contract/lead **room panels** (`51f837e`, `37c2c08`). *Voice-note recorder + call-roster UI = polish bucket.*
+> - **R4 Desktop native shell** ✅ built — offline store + work queue + LWW/append conflict merge + sync-on-reconnect + offline banner, fleet **/report** client, native **notifications** + **tray** + **folder-watch** + **drag-drop** + **direct-to-R2 upload** (`0736b91`). *Needs a GUI machine for the live boot check.*
+> - **R5 Video/AI** ✅ — desktop **video analyzer** real (ffmpeg frames → quality/motion/scene_cut/shake), version synced `video-v1` (`bfd3142`). *speech/emotion/action + Edit Brain = later.*
+>
+> **Still open after the night shift:** desktop on-GUI boot verification · reel/story **render** · P9 **auto-apply** style · entitlement **un-gates** (desktop_sync shippable once GUI-verified) · chat deep-polish (edit/search/pins/thread panels, @-autocomplete, call-roster, voice notes) · RoomPanel on project/gallery pages · storage **by-region** (single bucket today) · video speech/emotion/action.
+
 ### R1 — Storage (R2) finishing
 | # | Item | Kind | State | Next step / blocker |
 |---|---|---|---|---|
