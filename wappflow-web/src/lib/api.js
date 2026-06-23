@@ -291,6 +291,18 @@ export const commsAPI = {
   typing:        (channelId)        => api.post('/comms/typing', { channel_id: channelId }),
   livekitToken:  (room)            => api.post('/comms/livekit/token', { room }),
   livekitConfig: ()                 => api.get('/comms/livekit/config'),
+  // Project Rooms (Phase 5)
+  room:          (type, id)         => api.post(`/comms/rooms/${type}/${id}`),
+  getRoom:       (type, id)         => api.get(`/comms/rooms/${type}/${id}`),
+};
+
+// Brains & Style (Phase 9) — Creator Brain, Style Engine, recommendations.
+export const brainsAPI = {
+  recommendations:  () => api.get('/media/recommendations'),
+  creatorBrain:     () => api.get('/media/creator-brain'),
+  deriveCreator:    () => api.post('/media/creator-brain/derive'),
+  styleProfile:     (scope = 'workspace') => api.get('/media/style-profile', { params: { scope } }),
+  deriveStyle:      (scope = 'workspace') => api.post('/media/style-profile/derive', { scope }),
 };
 
 export const integrationsAPI = {

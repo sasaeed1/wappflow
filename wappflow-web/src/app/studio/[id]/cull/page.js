@@ -8,7 +8,7 @@ import {
   Columns2, SlidersHorizontal, RotateCcw, RotateCw, Crop, Loader, Undo2, Wand2, Info,
   ClipboardCopy, ClipboardPaste, Users,
 } from 'lucide-react';
-import { mediaAPI, mediaUrl } from '../../../../lib/api';
+import { mediaAPI, mediaUrl, brainsAPI } from '../../../../lib/api';
 import NavBar from '../../../../components/StudioShell';
 import { PRESETS, previewFilter, previewVignette, suggestEnhance } from '../../presets';
 
@@ -95,6 +95,8 @@ export default function CullPage() {
   const [project, setProject] = useState(null);
   const [assets, setAssets] = useState([]);
   const [scores, setScores] = useState({}); // Track-0 composites per asset
+  const [recTip, setRecTip] = useState(null); // Studio Brain recommendation (P9)
+  useEffect(() => { brainsAPI.recommendations().then(r => { const recs = (r.data && r.data.recommendations) || []; const c = recs.find(x => x.kind === 'cull') || recs[0]; if (c && c.text) setRecTip(c.text); }).catch(() => {}); }, []);
   const [sortMode, setSortMode] = useState('order'); // order | hero | rating
   const [filter, setFilter] = useState('all');
   const [cursor, setCursor] = useState(0);
@@ -433,6 +435,16 @@ export default function CullPage() {
 
   return (
     <NavBar>
+      {recTip && (
+        <div style={{ position: 'fixed', bottom: 18, left: 18, zIndex: 60, maxWidth: 330, background: 'rgba(17,19,29,0.96)', border: '1px solid rgba(99,102,241,0.45)', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 14px 44px rgba(0,0,0,0.5)' }}>
+          <Sparkles size={14} style={{ color: '#a5b4fc', flexShrink: 0, marginTop: 1 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: '#a5b4fc', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 2 }}>Studio Brain</div>
+            <div style={{ fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.5 }}>{recTip}</div>
+          </div>
+          <button onClick={() => setRecTip(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0, lineHeight: 0 }} aria-label="Dismiss"><X size={13} /></button>
+        </div>
+      )}
       <div className="ms-cull-canvas">
         {!current ? (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>
