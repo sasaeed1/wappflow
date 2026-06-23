@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, Flag, Activity, ShieldCheck, Search, LogOut, Sparkles, HeartPulse, TrendingUp, Layers, Inbox,
-  LifeBuoy, Database, History, FileBarChart, MonitorSmartphone,
+  LifeBuoy, Database, History, FileBarChart, MonitorSmartphone, HardDrive,
 } from 'lucide-react';
 import { ccAuth, ccApi } from '@/lib/ccApi';
 
@@ -16,6 +16,7 @@ const NAV = [
   { href: '/control/plans', label: 'Plans', icon: Layers },
   { href: '/control/flags', label: 'Feature Flags', icon: Flag },
   { href: '/control/desktop', label: 'Desktop Fleet', icon: MonitorSmartphone },
+  { href: '/control/storage', label: 'Storage', icon: HardDrive },
   { href: '/control/ai', label: 'AI Center', icon: Sparkles },
   { href: '/control/support', label: 'Support', icon: LifeBuoy },
   { href: '/control/reports', label: 'Reports', icon: FileBarChart },

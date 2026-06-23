@@ -873,6 +873,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   const ccDeps = { db, platformAuth, requirePerm, ccAudit, emit, rid, safeAll, safeCount, broadcastToWorkspace, sendEmail: deps.sendEmail, entitlements };
   try { require('./cc-explorer')(app, ccDeps); } catch (e) { console.error('cc-explorer mount:', e.message); }
   try { require('./cc-desktop')(app, { db, auth: deps.auth, platformAuth, requirePerm, ccAudit, emit }); } catch (e) { console.error('cc-desktop mount:', e.message); }
+  try { require('./cc-storage')(app, ccDeps); } catch (e) { console.error('cc-storage mount:', e.message); }
   try { require('./cc-support')(app, ccDeps); } catch (e) { console.error('cc-support mount:', e.message); }
   try { require('./cc-timemachine')(app, ccDeps); } catch (e) { console.error('cc-timemachine mount:', e.message); }
   try {

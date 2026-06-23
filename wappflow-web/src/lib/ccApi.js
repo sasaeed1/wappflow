@@ -91,6 +91,10 @@ export const ccApi = {
   // Desktop fleet management (Phase 7)
   desktopFleet: () => cc.get('/cc/desktop/fleet'),
   setDesktopPolicy: (d) => cc.post('/cc/desktop/policy', d),
+  // Storage dashboard (Phase 10)
+  storageOverview: () => cc.get('/cc/storage/overview'),
+  storageWorkspaces: () => cc.get('/cc/storage/workspaces'),
+  storageWorkspace: (id) => cc.get(`/cc/storage/workspace/${id}`),
 };
 
 // ── small shared formatters ──

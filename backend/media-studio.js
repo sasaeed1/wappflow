@@ -843,7 +843,13 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     db.prepare('DELETE FROM ms_asset_scores WHERE asset_id = ?').run(a.id);
     db.prepare('DELETE FROM ms_cull_decisions WHERE asset_id = ?').run(a.id);
     db.prepare('DELETE FROM ms_portfolio_items WHERE asset_id = ?').run(a.id);
-    try { fs.unlinkSync(path.join(uploadsDir, a.storage_key)); } catch {}
+    // Delete the original + its variants from wherever they live. Try local (covers
+    // old local assets) AND R2 (covers r2 assets when R2 is the active provider) — one
+    // hits, the other no-ops. Variant keys are deterministic from the asset id.
+    for (const k of [a.storage_key, `media/variants/${a.id}-thumb.jpg`, `media/variants/${a.id}-web.jpg`]) {
+      try { fs.unlinkSync(path.join(uploadsDir, k)); } catch {}
+      if (storage.isRemote) Promise.resolve(storage.deleteFile(k)).catch(() => {});
+    }
   }
   // Drop anything in Trash past the 30-day window. Cheap; safe to call often.
   function purgeExpiredTrash(workspaceId) {
