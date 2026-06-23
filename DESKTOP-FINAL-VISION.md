@@ -357,7 +357,8 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | **P4** | LiveKit room UI (rip out Jitsi) · chat polling→SSE · @mention send · typing · unread/mark-read · presence/DM data · stable rooms | 🌐 web | ✅ | built + `next build` ✓ + `livekit-client` added |
 | **P4** | Deploy self-hosted LiveKit on Hetzner + set env | 📋 infra | ⏸ | **your step** — follow `LIVEKIT-SETUP.md`; until then call buttons show "not enabled" |
 | P4 | Browser QA of live A/V (2 peers join, mic/cam/screenshare) | 🌐 web | ⏸ | after LiveKit deployed |
-| P4 | Render polish: DM panel · presence dots · edit button · server-search panel · pins/thread panels · @-autocomplete | 🌐 web | ⏸ | endpoints + data already built; UI surfacing only |
+| P4 | Render polish: **DM panel + member picker + presence dots** ✅ (`next build` ✓) | 🌐 | ✅ | DMs now usable from the sidebar |
+| P4 | Render polish remainder: edit button · server-search panel · pins panel · thread panel · @-autocomplete | 🌐 | ⏸ | endpoints live; finer UI surfacing |
 | **P5** | Project Rooms **backend** — `/api/comms/rooms/:type/:id` (lead/project/gallery/contract/booking), reuses channels + LiveKit; lead-room msgs mirror to timeline | 🌐 | ✅ | verified `test-comms.js` |
 | P5 | Project Rooms **frontend** — room panel (discussion + call) on each entity detail page | 🌐 web | ⏸ | wire `/api/comms/rooms/*` + reuse HuddleModal; timeline mirror for project/gallery/contract/booking |
 | **P6** | Sync **delta endpoint** `GET /api/workspace/sync?since=` (leads/projects/assets/cull/albums/galleries/contracts/bookings/plan/brain + `now` cursor) | 🌐 | ✅ | verified `test-sync.js` |

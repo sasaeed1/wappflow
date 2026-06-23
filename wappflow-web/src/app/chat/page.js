@@ -320,7 +320,10 @@ export default function ChatPage() {
   const [typingUser, setTypingUser] = useState(null);
   const [dms, setDms] = useState([]);                 // my direct-message channels
   const [editing, setEditing] = useState(null);       // { id, body } when editing a message
+  const [showDmPicker, setShowDmPicker] = useState(false);
   const activeChannelRef = useRef(null);
+
+  const memberName = (uid) => { const m = members.find(x => x.user_id === uid); return m ? (m.full_name || m.business_name || m.email || 'Teammate') : 'Teammate'; };
   const typingTimerRef = useRef(null);
   const lastTypingSentRef = useRef(0);
 
@@ -446,6 +449,17 @@ export default function ChatPage() {
     setMessages([]);
     setReplyTo(null);
     loadMessages(channel.id);
+  };
+
+  // Open (find-or-create) a DM with a teammate, refresh the DM list, and switch to it.
+  const openDm = async (uid) => {
+    try {
+      const r = await commsAPI.dmOpen(uid);
+      const cid = r.data.channel_id;
+      setShowDmPicker(false);
+      try { const d = await commsAPI.dms(); setDms(d.data.dms || []); } catch {}
+      handleChannelSelect({ id: cid, name: memberName(uid), is_private: 1, dm: true });
+    } catch (e) { console.error(e); }
   };
 
   const handleSend = async () => {
@@ -625,6 +639,48 @@ export default function ChatPage() {
                 {unread > 0 && (
                   <span style={{ fontSize: 10, fontWeight: 800, background: '#ef4444', color: 'white', padding: '1px 6px', borderRadius: 10 }}>{unread}</span>
                 )}
+              </button>
+            );
+          })}
+
+          {/* Direct Messages (Comms 2.0) */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', margin: '12px 0 4px' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Direct Messages</span>
+            <button onClick={() => setShowDmPicker(v => !v)} title="New DM" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: 2 }}
+              onMouseEnter={e => e.currentTarget.style.color = 'white'} onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}>
+              <Plus size={14} />
+            </button>
+          </div>
+          {showDmPicker && (
+            <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 6, marginBottom: 6, maxHeight: 200, overflowY: 'auto' }}>
+              {members.filter(m => m.user_id !== user?.id).map(m => (
+                <button key={m.user_id} onClick={() => openDm(m.user_id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', background: 'none', color: '#cbd5e1', textAlign: 'left' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: online.includes(m.user_id) ? '#10b981' : '#6b7280', flexShrink: 0 }} />
+                  <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name || m.business_name || m.email}</span>
+                </button>
+              ))}
+              {members.filter(m => m.user_id !== user?.id).length === 0 && <p style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px', margin: 0 }}>No teammates yet.</p>}
+            </div>
+          )}
+          {dms.map(dm => {
+            const isActive = activeChannel?.id === dm.id;
+            const isOnline = online.includes(dm.other_id);
+            const unread = unreadCounts[dm.id] || 0;
+            const nm = memberName(dm.other_id);
+            return (
+              <button key={dm.id} onClick={() => handleChannelSelect({ id: dm.id, name: nm, is_private: 1, dm: true })} style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', textAlign: 'left',
+                background: isActive ? 'rgba(99,102,241,0.25)' : 'none', color: isActive ? 'white' : '#9ca3af', marginBottom: 2,
+              }}
+                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'white'; } }}
+                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#9ca3af'; } }}>
+                <span style={{ position: 'relative', flexShrink: 0, width: 18, height: 18 }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 6, background: 'linear-gradient(135deg,#6366f1,#06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 900, color: 'white' }}>{(nm[0] || 'T').toUpperCase()}</span>
+                  {isOnline && <span style={{ position: 'absolute', bottom: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: '#10b981', border: '1.5px solid #111827' }} />}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nm}</span>
+                {unread > 0 && <span style={{ fontSize: 10, fontWeight: 800, background: '#ef4444', color: 'white', padding: '1px 6px', borderRadius: 10 }}>{unread}</span>}
               </button>
             );
           })}
