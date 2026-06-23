@@ -26,6 +26,7 @@ import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
 import NavBar from '../../../components/NavBar';
+import RoomPanel from '@/components/RoomPanel';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
 // click the value, it becomes an input/select, saves on blur/Enter, Esc cancels.
@@ -1219,6 +1220,7 @@ useEffect(() => {
   { id: 'emails', label: 'Emails', count: leadEmails.length, color: '#10b981' },
   { id: 'email-flow', label: 'Email Flow', count: emailWorkflows.length, color: '#6366f1' },
   { id: 'related', label: 'Related', count: relatedLeads.linked.length + relatedLeads.suggestions.length, color: '#ec4899' },
+  { id: 'room', label: '💬 Team Room', count: 0, color: '#8b5cf6' },
   { id: 'ai', label: '✨ AI Assistant', count: 0, color: '#8b5cf6' },
   { id: 'vertical', label: '🏭 Industry AI', count: 0, color: '#10b981' },
 ];
@@ -2450,6 +2452,12 @@ useEffect(() => {
                       </button>
                     </div>
                   )}
+                </div>
+              )}
+              {/* TEAM ROOM */}
+              {activeTab === 'room' && (
+                <div style={{ padding: '4px 0' }}>
+                  <RoomPanel type="lead" id={leadId} title={lead?.customer_name} />
                 </div>
               )}
               {/* AI ASSISTANT */}

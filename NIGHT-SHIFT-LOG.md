@@ -134,3 +134,27 @@ glue is structurally verified only; first launch on a GUI machine is the live ch
 **Left:** desktop video ffmpeg analysis (Wave 5) + a tray.png asset (falls back to an
 empty image today). Offline-gating of specific cloud-module routes is seamed (`can()`)
 but the webview modules don't consult it yet — a follow-up.
+
+---
+
+## ✅ Wave 4 — Web frontend (storage UI, CC analytics, P5 rooms)  · committed
+
+**Goal:** surface the new backends in the web app. Verified end-to-end with
+`next build` → **"✓ Compiled successfully"**.
+
+- **API clients** — `commsAPI`: `setPresence` · `receipts` · `callStart/Event/End/call/
+  activeCall`. New **`storageAPI.usage`**. `ccApi`: `storageByPlan` · `storageFastestGrowing`.
+- **Workspace storage page** (`/settings/storage`, new) — plan-limit meter (colour by
+  level), level badge, "uploads blocked" notice at 100%, by-type + largest-projects
+  breakdown. This is where the 80/90/100% notifications now deep-link.
+- **Command Center storage** (`/control/storage`) — added a **projected-invoice** stat
+  (+ GB/day growth rate) and two new cards: **By plan** and **Fastest growing (30d)**.
+- **`RoomPanel` component** (new) — reusable contextual collaboration panel for any
+  entity (find-or-create room → live discussion poll + composer + **Call** button reusing
+  `HuddleModal`). Wired into the **lead detail page** as a "💬 Team Room" tab.
+
+**Left for follow-up (component is reusable, backend supports all types):** wiring
+`RoomPanel` into the project/gallery/contract/booking detail pages (their layouts differ
+from the lead page's tab system — bespoke placement, deferred to avoid blind edits to
+700+-line pages); deep chat-page polish (edit button, search/pins/thread panels,
+@-autocomplete, presence picker, call roster UI) — the "polish later" bucket.

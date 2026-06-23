@@ -288,12 +288,25 @@ export const commsAPI = {
   edit:          (messageId, body)  => api.put(`/comms/messages/${messageId}`, { body }),
   search:        (q)                => api.get('/comms/search', { params: { q } }),
   presence:      ()                 => api.get('/comms/presence'),
+  setPresence:   (state)            => api.post('/comms/presence/state', { state }),
+  receipts:      (messageId)        => api.get(`/comms/messages/${messageId}/receipts`),
   typing:        (channelId)        => api.post('/comms/typing', { channel_id: channelId }),
   livekitToken:  (room)            => api.post('/comms/livekit/token', { room }),
   livekitConfig: ()                 => api.get('/comms/livekit/config'),
+  // Calls (lifecycle + roster) — Comms depth
+  callStart:     (channelId)        => api.post('/comms/calls/start', { channel_id: channelId }),
+  callEvent:     (callId, type)     => api.post(`/comms/calls/${callId}/event`, { type }),
+  callEnd:       (callId)           => api.post(`/comms/calls/${callId}/end`),
+  call:          (callId)           => api.get(`/comms/calls/${callId}`),
+  activeCall:    (channelId)        => api.get(`/comms/channels/${channelId}/active-call`),
   // Project Rooms (Phase 5)
   room:          (type, id)         => api.post(`/comms/rooms/${type}/${id}`),
   getRoom:       (type, id)         => api.get(`/comms/rooms/${type}/${id}`),
+};
+
+// Workspace-facing storage usage (in-app Settings → Storage). Founder/global view lives in ccApi.
+export const storageAPI = {
+  usage: () => api.get('/media/storage'),
 };
 
 // Brains & Style (Phase 9) — Creator Brain, Style Engine, recommendations.

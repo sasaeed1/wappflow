@@ -95,6 +95,8 @@ export const ccApi = {
   storageOverview: () => cc.get('/cc/storage/overview'),
   storageWorkspaces: () => cc.get('/cc/storage/workspaces'),
   storageWorkspace: (id) => cc.get(`/cc/storage/workspace/${id}`),
+  storageByPlan: () => cc.get('/cc/storage/by-plan'),
+  storageFastestGrowing: () => cc.get('/cc/storage/fastest-growing'),
 };
 
 // ── small shared formatters ──

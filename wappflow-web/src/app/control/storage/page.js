@@ -10,11 +10,15 @@ export default function StorageDashboard() {
   const router = useRouter();
   const [ov, setOv] = useState(null);
   const [ws, setWs] = useState([]);
+  const [byPlan, setByPlan] = useState([]);
+  const [fastest, setFastest] = useState([]);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     ccApi.storageOverview().then((r) => setOv(r.data)).catch((e) => setErr(e.response?.data?.error || 'Failed'));
     ccApi.storageWorkspaces().then((r) => setWs(r.data.workspaces || [])).catch(() => {});
+    ccApi.storageByPlan().then((r) => setByPlan(r.data.by_plan || [])).catch(() => {});
+    ccApi.storageFastestGrowing().then((r) => setFastest(r.data.workspaces || [])).catch(() => {});
   }, []);
 
   if (err) return <div style={{ color: '#f87171' }}>{err}</div>;
@@ -30,7 +34,33 @@ export default function StorageDashboard() {
         <Stat label="Total stored" value={fmtBytes(ov.total_bytes)} />
         <Stat label="On Cloudflare R2" value={`${ov.r2_gb} GB`} />
         <Stat label="Est. next invoice" value={`$${ov.est_monthly_cost_usd}`} sub={`first ${ov.free_gb} GB free · $${ov.rate_per_gb_usd}/GB`} />
-        <Stat label="Growth (30d)" value={fmtBytes(ov.growth_30d_bytes)} />
+        <Stat label="Growth (30d)" value={fmtBytes(ov.growth_30d_bytes)} sub={ov.growth_rate_gb_per_day != null ? `${ov.growth_rate_gb_per_day} GB/day` : null} />
+        {ov.projected_monthly_cost_usd != null && (
+          <Stat label="Projected invoice (30d)" value={`$${ov.projected_monthly_cost_usd}`} sub={ov.projected_r2_gb != null ? `→ ${ov.projected_r2_gb} GB on R2` : null} />
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+        <Card>
+          <h3 style={h3}>By plan</h3>
+          {!byPlan.length && <div style={{ fontSize: 13, color: 'var(--text-dim,#666)' }}>No storage tracked yet.</div>}
+          {byPlan.map((p) => (
+            <div key={p.plan} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border,#1e1e26)', fontSize: 13 }}>
+              <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{String(p.plan).replace('_', ' ')}</span>
+              <span style={{ color: 'var(--text-dim,#666)' }}>{fmtBytes(p.bytes)} · {fmtNum(p.workspaces)} ws</span>
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <h3 style={h3}>Fastest growing (30d)</h3>
+          {!fastest.length && <div style={{ fontSize: 13, color: 'var(--text-dim,#666)' }}>No recent uploads.</div>}
+          {fastest.slice(0, 8).map((w) => (
+            <div key={w.workspace_id} onClick={() => router.push(`/control/customers/${w.workspace_id}`)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border,#1e1e26)', fontSize: 13 }}>
+              <span style={{ fontFamily: 'monospace' }}>{String(w.workspace_id).slice(0, 14)}</span>
+              <span style={{ color: '#34d399' }}>+{fmtBytes(w.growth_bytes)}</span>
+            </div>
+          ))}
+        </Card>
       </div>
 
       <Card>
