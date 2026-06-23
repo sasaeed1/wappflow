@@ -71,6 +71,21 @@ const device = require('./src/main/device');
 const info = device.machineInfo();
 assert(info.platform === process.platform && typeof info.cpu_count === 'number', 'machineInfo returns platform + cpu_count');
 
+console.log('\n[7] video frame aggregation (Phase 8)');
+const vf = require('./src/main/ai/video-frames');
+const ts = vf.sampleTimestamps(10000, 5);
+assert(ts.length === 5 && ts[0] >= 500 && ts[4] <= 9500 && ts[0] < ts[4], 'sampleTimestamps spreads N points inside the clip');
+assert(vf.aggregate([]).length === 0, 'no frames → no scores (never blocks)');
+const still = vf.aggregate([{ aesthetic: 0.8, sharpness: 100, meanL: 120 }, { aesthetic: 0.8, sharpness: 100, meanL: 120 }, { aesthetic: 0.8, sharpness: 100, meanL: 120 }]);
+const sv = Object.fromEntries(still.map(s => [s.score_type, s.value]));
+assert(sv.quality === 0.8, 'quality = mean per-frame aesthetic');
+assert(sv.motion === 0 && sv.scene_cut === 0 && sv.shake === 0, 'static footage → zero motion/scene_cut/shake');
+const cuts = vf.aggregate([{ aesthetic: 0.5, sharpness: 50, meanL: 20 }, { aesthetic: 0.5, sharpness: 50, meanL: 230 }, { aesthetic: 0.5, sharpness: 50, meanL: 20 }, { aesthetic: 0.5, sharpness: 50, meanL: 230 }]);
+const cv = Object.fromEntries(cuts.map(s => [s.score_type, s.value]));
+assert(cv.motion > 0.5 && cv.scene_cut > 0, 'hard cuts → high motion + scene_cut density');
+const VALID = new Set(['shake', 'motion', 'quality', 'speech', 'emotion', 'scene_cut', 'action']);
+assert(still.every(s => VALID.has(s.score_type)), 'emits only registry-valid video score_types');
+
 cleanup();
 console.log('\n✅ ALL DESKTOP NATIVE/OFFLINE CHECKS PASSED');
 process.exit(0);

@@ -11,7 +11,7 @@ const auth = require('../auth');
 const client = require('./scores-client');
 const analyzers = require('./analyzers');
 
-const CLIENT_TIER = ['vision']; // 'video' is stubbed (needs ffmpeg+ML) — added when wired
+const CLIENT_TIER = ['vision', 'video']; // client-tier analyzers the desktop fulfils
 const UPLOAD_CHUNK = 50;
 
 class Engine extends EventEmitter {
@@ -79,6 +79,36 @@ class Engine extends EventEmitter {
         if (items.length >= UPLOAD_CHUNK) { summary.uploaded += await this._flush(projectId, items); items = []; this.emit('progress', { phase: 'upload', done: i + 1, total: work.length, uploaded: summary.uploaded }); }
       }
       if (items.length && !this._cancel) { summary.uploaded += await this._flush(projectId, items); }
+
+      // ── Video pass (Phase 8) — local video analysis (ffmpeg frame sampling). Fully
+      //    guarded: the analyzer returns [] without ffmpeg, so this never blocks/errors.
+      if (!this._cancel) {
+        try {
+          const vids = [];
+          let voff = 0;
+          for (;;) {
+            const page = await client.listAssets(projectId, { type: 'video', limit: 200, offset: voff });
+            const batch = page.assets || [];
+            vids.push(...batch); voff += batch.length;
+            if (batch.length === 0 || voff >= (page.total || 0)) break;
+          }
+          const vwork = vids.filter(a => force || (pending[a.id] || []).includes('video'));
+          if (vwork.length) this.emit('log', `${vwork.length} video clip(s) to analyze…`);
+          for (let i = 0; i < vwork.length; i++) {
+            if (this._cancel) break;
+            const a = vwork[i];
+            try {
+              const buf = await client.downloadAsset(a);
+              const res = await analyzers.runAnalyzer('video', buf, a);
+              if (res && res.scores && res.scores.length) {
+                summary.uploaded += await this._flush(projectId, [{ asset_id: a.id, analyzer_id: res.analyzer_id, model_version: res.model_version, scores: res.scores, source: 'desktop' }]);
+              }
+              summary.analyzed++;
+            } catch (e) { summary.errors++; this.emit('log', `! ${a.filename || a.id}: ${e.message}`); }
+            this.emit('progress', { phase: 'analyze', label: 'video', done: i + 1, total: vwork.length, uploaded: summary.uploaded });
+          }
+        } catch (e) { this.emit('log', `video pass skipped: ${e.message}`); }
+      }
 
       this.emit('progress', { phase: 'done', done: summary.analyzed, total: work.length, uploaded: summary.uploaded });
       this.emit('log', `Done — analyzed ${summary.analyzed}, uploaded ${summary.uploaded} score-sets${summary.errors ? `, ${summary.errors} errors` : ''}.`);

@@ -158,3 +158,32 @@ but the webview modules don't consult it yet — a follow-up.
 from the lead page's tab system — bespoke placement, deferred to avoid blind edits to
 700+-line pages); deep chat-page polish (edit button, search/pins/thread panels,
 @-autocomplete, presence picker, call roster UI) — the "polish later" bucket.
+
+---
+
+## ✅ Wave 5 — Desktop video analysis (Phase 8, the last analyzer)  · committed
+
+**Goal:** turn the desktop VIDEO analyzer from a `return []` stub into real local video
+analysis, completing the Track-0 analyzer set.
+
+- **`ai/video-frames.js` (new, pure + unit-tested)** — deterministic aggregation of
+  per-frame metrics → registry-valid video scores: **quality** (mean aesthetic),
+  **motion** (mean inter-frame luma delta), **scene_cut** (density of large transitions
+  + cut count), **shake** (coefficient-of-variation of motion = jitter). Plus
+  `sampleTimestamps`.
+- **`analyzers/index.js`** — `VIDEO.run` is now real: writes the clip to a temp file,
+  extracts frames at 1 fps (capped) with **ffmpeg**, runs the same CPU vision metrics per
+  frame, aggregates. **Returns `[]` without ffmpeg / on any failure — never blocks.**
+  Version bumped `video-v0 → video-v1`.
+- **`backend/analyzers/index.js`** — `ANALYZERS.video.modelVersion` bumped to `video-v1`
+  **in sync** so analyze-once re-runs cleanly (vision path untouched).
+- **`ai/engine.js`** — added `'video'` to `CLIENT_TIER` + a **guarded video pass**: fetch
+  video assets, run the analyzer, upload scores. Per-asset try/catch; a missing ffmpeg
+  just yields no scores. Zero impact on the working photo/vision pass (separate code).
+
+**Verified:** `test-native.js` §7 (6 video checks: sampling, empty-safe, static→zero,
+hard-cuts→high motion/scene_cut, registry-valid types) + `npm run lint:syntax` +
+`node --check` on all touched files + `backend` analyzers/worker compile + reel-engine
+regression still passes. **Cannot** verify the ffmpeg extraction headlessly (no ffmpeg
++ no sample video here) — the pure aggregation is fully tested; live extraction is the
+on-hardware check. `speech`/`emotion`/`action` (need audio + ML) remain for a later pass.

@@ -16,6 +16,13 @@
 const onnx = require('../onnx');
 const pre = require('../preprocess');
 const models = require('../models');
+const videoFrames = require('../video-frames');
+const { spawn } = require('child_process');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+
+const VIDEO_MODEL_VERSION = 'video-v1'; // keep in sync with backend/analyzers ANALYZERS.video.modelVersion
 
 let Jimp = null, jimpTried = false;
 function jimp() {
@@ -252,14 +259,59 @@ async function scoreExpression(img, faces) {
   return { smile: best, dominant, emotions };
 }
 
-// ── VIDEO analyzer (client tier) — ONNX/ffmpeg required; stub until wired ─────
+// ── VIDEO analyzer (client tier) — ffmpeg frame extraction + CPU metrics ──────
+// Writes the clip to a temp file, samples frames at 1fps (capped), runs the same
+// CPU vision metrics per frame, and aggregates to clip-level Track-0 video scores
+// (quality/motion/scene_cut/shake). Returns [] without ffmpeg → never blocks.
+function runFfmpeg(args) {
+  return new Promise((resolve) => {
+    let p;
+    try { p = spawn('ffmpeg', args, { windowsHide: true }); }
+    catch { return resolve(false); }
+    p.on('error', () => resolve(false));
+    p.on('close', (code) => resolve(code === 0));
+  });
+}
+
+// frame metric used by the aggregator: { aesthetic, sharpness, meanL }
+function frameMetric(img) {
+  const m = cpuMetrics(img);
+  const sharpN = clamp01(m.sharpness / 240);
+  const expoQ = clamp01(1 - Math.abs(m.meanL / 255 - 0.5) * 2);
+  const contrastN = clamp01(m.stdL / 64);
+  const colourN = clamp01(m.colourfulness / 110);
+  const aesthetic = clamp01(0.40 * sharpN + 0.25 * expoQ + 0.20 * contrastN + 0.15 * colourN);
+  return { aesthetic, sharpness: m.sharpness, meanL: m.meanL };
+}
+
+async function extractVideoFrameMetrics(buffer, maxFrames = 15) {
+  const J = jimp();
+  if (!J || !buffer || !buffer.length) return [];
+  let dir;
+  try { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-vid-')); } catch { return []; }
+  const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+  try {
+    const inPath = path.join(dir, 'clip');
+    fs.writeFileSync(inPath, buffer);
+    const ok = await runFfmpeg(['-y', '-i', inPath, '-vf', 'fps=1', '-frames:v', String(maxFrames), '-vsync', 'vfr', path.join(dir, 'f_%03d.png')]);
+    if (!ok) { cleanup(); return []; }
+    const files = fs.readdirSync(dir).filter(f => f.startsWith('f_') && f.endsWith('.png')).sort();
+    const out = [];
+    for (const f of files) {
+      try { out.push(frameMetric(await J.read(path.join(dir, f)))); } catch { /* skip bad frame */ }
+    }
+    cleanup();
+    return out;
+  } catch { cleanup(); return []; }
+}
+
 const VIDEO = {
   id: 'video',
-  model_version: 'video-v0',
-  async run(/* buffer, meta */) {
-    // Needs frame extraction (ffmpeg) + ML; produces shake/motion/quality/
-    // speech/emotion/scene_cut/action. Deferred — returns [] so it never blocks.
-    return [];
+  model_version: VIDEO_MODEL_VERSION,
+  async run(buffer /*, meta */) {
+    const frames = await extractVideoFrameMetrics(buffer);
+    if (!frames.length) return []; // no ffmpeg / undecodable → never blocks the run
+    return videoFrames.aggregate(frames);
   },
 };
 
