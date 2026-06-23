@@ -5577,6 +5577,12 @@ require('./reel-engine')(app, db, { auth });
 // ── Brains & Style (Phase 9 — Creator Brain + Style Engine + recommendations) ──
 require('./brains')(app, db, { auth, generateId });
 
+// ── Storage abstraction (Phase 10) — provider-agnostic file route used by
+//    getPublicUrl() for private-R2 objects (presign-redirect) / local files. ──
+const storageRoot = require('./storage')({ uploadsDir, path, fs });
+require('./storage').mountRoutes(app, storageRoot);
+console.log('🗄️  Storage route mounted (/api/storage/file/:key) · provider:', storageRoot.provider);
+
 // ════════════════════════════════════════════════════════════
 //  COMMAND CENTER  (platform control plane — additive, cross-tenant, own identity)
 //  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.

@@ -237,10 +237,22 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     return 'file';
   }
 
-  // Public URL for a stored object. Today: served by the existing /uploads static route.
-  // After R2: return a CDN URL or a short-lived signed URL instead.
-  function publicUrl(storageKey) {
-    return '/' + ['uploads', storageKey].join('/').replace(/\/+/g, '/');
+  // Storage abstraction (local disk or Cloudflare R2 via STORAGE_PROVIDER) — the ONE
+  // place that knows which provider is active. Business logic below only calls
+  // publicUrl() / storage.* and never touches /uploads or a provider directly.
+  const storage = require('./storage')({ uploadsDir, path, fs });
+
+  // THE single public-URL implementation — provider-agnostic (local → /uploads,
+  // R2 → public/CDN base or the /api/storage presign-redirect). Never build a media
+  // URL by hand anywhere else.
+  function publicUrl(storageKey) { return storage.getPublicUrl(storageKey); }
+
+  // Per-asset storage tracking (Phase 10): provider + size + uploaded_at, so future
+  // migrations / backups / desktop-sync / storage analytics are trivial. Guarded
+  // additive ALTERs — existing rows default to 'local', nothing breaks.
+  for (const [col, def] of [['storage_provider', "TEXT DEFAULT 'local'"], ['storage_size', 'INTEGER'], ['uploaded_at', 'TIMESTAMP']]) {
+    try { db.prepare(`SELECT ${col} FROM ms_assets LIMIT 1`).get(); }
+    catch { try { db.exec(`ALTER TABLE ms_assets ADD COLUMN ${col} ${def}`); } catch {} }
   }
 
   const mediaUpload = multer({
@@ -255,9 +267,6 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     limits: { fileSize: 200 * 1024 * 1024 }, // 200MB local cap; presigned R2 removes this ceiling
   });
   // ─────────────────────────── end STORAGE SEAM ──────────────────────────────
-  // Object-storage adapter (R2 when configured, else local disk). Used for large
-  // delivery artifacts (export ZIPs) first; uploads/variants migrate in a later stage.
-  const storage = require('./storage')({ uploadsDir, path, fs });
 
   // ── Watermark helpers (jimp; non-destructive — writes a separate variant) ────
   const keyToPath = (u) => path.join(uploadsDir, String(u || '').replace(/^https?:\/\/[^/]+/, '').replace(/^\/?uploads\//, ''));
