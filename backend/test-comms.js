@@ -19,6 +19,8 @@ db.exec(`
   CREATE TABLE activity_timeline (id TEXT PRIMARY KEY, lead_id TEXT, workspace_id TEXT, user_id TEXT, actor_name TEXT, activity_type TEXT, title TEXT, body TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
 `);
 db.prepare("INSERT INTO leads (id, workspace_id, customer_name) VALUES ('lead1','ws1','Acme')").run();
+db.exec("CREATE TABLE ms_projects (id TEXT PRIMARY KEY, workspace_id TEXT, lead_id TEXT, title TEXT);");
+db.prepare("INSERT INTO ms_projects VALUES ('proj1','ws1','lead1','Wedding')").run();
 db.prepare("INSERT INTO workspace_members VALUES ('ws1','u1','admin')").run();
 db.prepare("INSERT INTO workspace_members VALUES ('ws1','u2','user')").run();
 // a public channel + a message from u1
@@ -125,6 +127,12 @@ const ok = (c, m) => { if (!c) { fails++; console.error('  ✗', m); } else cons
   ok(db.prepare("SELECT COUNT(*) c FROM activity_timeline WHERE lead_id='lead1' AND activity_type='room_message'").get().c === 1, 'room message mirrors to lead timeline');
   const getRoom = await call('GET', '/api/comms/rooms/lead/lead1');
   ok(getRoom.json.exists === true && getRoom.json.messages.length >= 1, 'GET room returns messages');
+  // a PROJECT room mirrors to the project's lead timeline (non-lead entity resolution)
+  const proom = await call('POST', '/api/comms/rooms/project/proj1');
+  ok(proom.json.channel_id === 'room_project_proj1', 'project room find-or-create');
+  db.prepare("INSERT INTO chat_messages (id,channel_id,user_id,sender_name,body) VALUES ('pm1','room_project_proj1','u1','Alice','edit deadline?')").run();
+  api.afterMessage(db.prepare("SELECT * FROM chat_messages WHERE id='pm1'").get(), []);
+  ok(db.prepare("SELECT COUNT(*) c FROM activity_timeline WHERE lead_id='lead1' AND title='project room message'").get().c === 1, 'project-room msg mirrors to the project lead timeline');
 
   console.log(`\n${fails === 0 ? '✅ ALL COMMS 2.0 + ROOMS CHECKS PASSED' : '❌ ' + fails + ' FAILED'}\n`);
   srv.close(() => { try { db.close(); } catch {} process.exit(fails ? 1 : 0); });

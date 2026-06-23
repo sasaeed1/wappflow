@@ -190,16 +190,21 @@ module.exports = function mountBooking(app, db, deps = {}) {
       db.prepare("UPDATE bookings SET start_at = ?, status = 'confirmed' WHERE id = ?").run(start_at, b.id);
       const ownerId = owner(b.workspace_id);
       try { addContactHistory(b.lead_id, ownerId, 'booking', `Rescheduled ${b.service} → ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`); } catch {}
+      // Notify the client of the new time (was previously silent — Appendix A fix).
+      try { const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(b.lead_id); if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `🗓️ Your ${b.service} booking is rescheduled to ${new Date(start_at.replace(' ', 'T')).toLocaleString()}.` }); } catch {}
       broadcastToWorkspace(b.workspace_id, 'booking_created', { id: b.id });
       res.json({ ok: true, start_at });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  app.post('/api/booking/manage/:token/cancel', (req, res) => {
+  app.post('/api/booking/manage/:token/cancel', async (req, res) => {
     try {
       const b = db.prepare('SELECT * FROM bookings WHERE token = ?').get(req.params.token);
       if (!b) return res.status(404).json({ error: 'Not found' });
       db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?").run(b.id);
-      try { addContactHistory(b.lead_id, owner(b.workspace_id), 'booking', `Client cancelled ${b.service}`); } catch {}
+      const ownerId = owner(b.workspace_id);
+      try { addContactHistory(b.lead_id, ownerId, 'booking', `Client cancelled ${b.service}`); } catch {}
+      // Notify the client their cancellation went through (Appendix A fix).
+      try { const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(b.lead_id); if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `Your ${b.service} booking has been cancelled. Reply if you'd like to rebook.` }); } catch {}
       broadcastToWorkspace(b.workspace_id, 'booking_created', { id: b.id });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }

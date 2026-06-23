@@ -93,13 +93,25 @@ module.exports = function mountComms(app, db, deps = {}) {
     if (!workspaceId) return;
     // Real-time fan-out (replaces the 3s poll on the client).
     broadcastToWorkspace(workspaceId, 'chat_message', { channel_id: message.channel_id, message });
-    // Project room → mirror onto the entity timeline (leads today; other entities tracked).
-    if (message.channel_id.startsWith('room_lead_')) {
-      const leadId = message.channel_id.slice('room_lead_'.length);
+    // Project room → mirror onto the linked lead's timeline. Any entity type resolves
+    // to its lead (project/contract/booking carry lead_id; gallery → project → lead).
+    const rm = message.channel_id.match(/^room_([a-z]+)_(.+)$/);
+    if (rm) {
+      const type = rm[1], eid = rm[2];
+      let leadId = null;
       try {
-        db.prepare(`INSERT INTO activity_timeline (id, lead_id, workspace_id, user_id, actor_name, activity_type, title, body)
-          VALUES (?,?,?,?,?,?,?,?)`).run(generateId(), leadId, workspaceId, message.user_id, message.sender_name, 'room_message', 'Room message', (message.body || '').slice(0, 200));
-      } catch { /* timeline mirror is best-effort */ }
+        if (type === 'lead') leadId = eid;
+        else if (type === 'project') leadId = (db.prepare('SELECT lead_id FROM ms_projects WHERE id = ?').get(eid) || {}).lead_id;
+        else if (type === 'contract') leadId = (db.prepare('SELECT lead_id FROM cs_documents WHERE id = ?').get(eid) || {}).lead_id;
+        else if (type === 'booking') leadId = (db.prepare('SELECT lead_id FROM bookings WHERE id = ?').get(eid) || {}).lead_id;
+        else if (type === 'gallery') { const g = db.prepare('SELECT project_id FROM ms_galleries WHERE id = ?').get(eid); if (g) leadId = (db.prepare('SELECT lead_id FROM ms_projects WHERE id = ?').get(g.project_id) || {}).lead_id; }
+      } catch { /* entity/column may not exist — skip mirror */ }
+      if (leadId) {
+        try {
+          db.prepare(`INSERT INTO activity_timeline (id, lead_id, workspace_id, user_id, actor_name, activity_type, title, body)
+            VALUES (?,?,?,?,?,?,?,?)`).run(generateId(), leadId, workspaceId, message.user_id, message.sender_name, 'room_message', `${type} room message`, (message.body || '').slice(0, 200));
+        } catch { /* timeline mirror is best-effort */ }
+      }
     }
     // @mentions: persist + notify each mentioned user (deduped, never self).
     const ids = Array.isArray(mentions) ? [...new Set(mentions.filter(u => u && u !== message.user_id))] : [];

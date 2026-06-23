@@ -360,7 +360,7 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | P4 | Render polish: **DM panel + member picker + presence dots** ✅ (`next build` ✓) | 🌐 | ✅ | DMs now usable from the sidebar |
 | P4 | Render polish remainder: edit button · server-search panel · pins panel · thread panel · @-autocomplete | 🌐 | ⏸ | endpoints live; finer UI surfacing |
 | **P5** | Project Rooms **backend** — `/api/comms/rooms/:type/:id` (lead/project/gallery/contract/booking), reuses channels + LiveKit; lead-room msgs mirror to timeline | 🌐 | ✅ | verified `test-comms.js` |
-| P5 | Project Rooms **frontend** — room panel (discussion + call) on each entity detail page | 🌐 web | ⏸ | wire `/api/comms/rooms/*` + reuse HuddleModal; timeline mirror for project/gallery/contract/booking |
+| P5 | Project Rooms **frontend** — room panel (discussion + call) on each entity detail page | 🌐 web | ⏸ | wire `/api/comms/rooms/*` + reuse HuddleModal (backend timeline mirror for project/gallery/contract/booking ✅ done) |
 | **P6** | Sync **delta endpoint** `GET /api/workspace/sync?since=` (leads/projects/assets/cull/albums/galleries/contracts/bookings/plan/brain + `now` cursor) | 🌐 | ✅ | verified `test-sync.js` |
 | P6 | Offline **client**: desktop local store (SQLite) + work queue + replay-on-reconnect + conflict merge; web service-worker | 🖥️/🌐 | ⏸ | read side done; write-back replays existing routes; needs tombstones (deletes) + cursor paging for >2000 rows |
 | **P7** | Desktop Management **backend** — `cc-desktop.js`: `/api/desktop/report` + `/api/desktop/update-policy` (force-update via min_version, block versions) + `/api/cc/desktop/fleet` + `/api/cc/desktop/policy` | 🌐 | ✅ | verified `test-cc-desktop.js` |
@@ -373,7 +373,7 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 | **P10** | **R2 storage adapter** — `storage.js` (S3-compatible, optional SDK, env-gated, graceful local fallback; put/get/presign/remove/url) | 🌐 | ✅ | verified `test-storage.js` |
 | P10 | R2 **migration** — wire `storage.js` into the media-studio STORAGE SEAM (uploads/variants/ZIPs/PDFs) + provision R2 + `npm i @aws-sdk/client-s3` + set `R2_*` | 🌐 | ⏸ | adapter ready; don't rewire live media seam without R2 to verify |
 | P10 | Media Studio **desktop-first** — native crop/tone/rotate + album editor offline | 🖥️ | ⏸ | re-enable `ai_editing` when shipped |
-| **Appendix A** | Module depth: CRM (saved-views persist, merge UI), Contracts (sequential signing, payments), Booking (GCal, reschedule notifs), Portal (first-class desktop) | 🌐/🖥️ | ⬜ | fold into relevant phases |
+| **Appendix A** | Module depth: CRM (saved-views persist, merge UI), Contracts (sequential signing, payments), Booking (GCal · ~~reschedule notifs~~ ✅ done), Portal (first-class desktop) | 🌐/🖥️ | 🟡 | reschedule/cancel client notifications ✅ shipped; rest fold into phases |
 | **Entitlements** | Re-enable each gated feature as its phase ships: `desktop_sync`(P6) · `reel_engine`+`story_engine`(P8) · `style_profiles`(P9) · `ai_editing`(P10) | 🌐 | ⬜ | remove from `UNBUILT_FEATURES` in `entitlements.js` |
 
 ---
