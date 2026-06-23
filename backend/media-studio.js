@@ -496,8 +496,42 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Direct-to-R2 signed upload (desktop/web upload bytes straight to the bucket,
+  //    never through the API — the server is never the bottleneck). ──────────────
+  //  1) sign → { provider, key, upload_url }; client PUTs the file to upload_url.
+  //     (On local provider, upload_url is null → use the multipart /assets route.)
+  app.post('/api/media/projects/:id/uploads/sign', auth, async (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const fn = String(req.body.filename || 'file').normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100);
+      const key = `media/projects/${project.id}/${Date.now()}-${Math.random().toString(16).slice(2, 8)}-${fn}`;
+      const upload_url = await storage.generateSignedUploadUrl(key, req.body.content_type);
+      res.json({ provider: storage.provider, key, upload_url, expires_in: 900 });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  //  2) complete → after the client PUT lands, register the asset + enqueue ingest.
+  app.post('/api/media/projects/:id/uploads/complete', auth, async (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const { key, filename, content_type, size, folder_id } = req.body || {};
+      if (!key) return res.status(400).json({ error: 'key required' });
+      if (!(await storage.fileExists(key))) return res.status(409).json({ error: 'file not in storage yet — PUT it to the signed URL first' });
+      const assetId = generateId();
+      const variants = JSON.stringify({ original: publicUrl(key) });
+      db.prepare(`INSERT INTO ms_assets (id, workspace_id, project_id, folder_id, type, storage_key, filename, mime, size_bytes, storage_provider, storage_size, uploaded_at, variants, status, uploaded_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,?,'ready',?)`)
+        .run(assetId, req.workspaceId, project.id, folder_id || null, detectType(content_type || '', filename || key), key, filename || key.split('/').pop(), content_type || null, size || null, storage.provider, size || null, variants, req.userId);
+      db.prepare(`INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload) VALUES (?,?,'ingest',?,?,'pending',?)`)
+        .run(generateId(), req.workspaceId, assetId, project.id, JSON.stringify({ make: ['variants', 'exif', 'score'] }));
+      res.json({ asset: shapeAsset(db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(assetId)) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Ingest: upload (local disk today) ──────────────────────────────────────
-  app.post('/api/media/projects/:id/assets', auth, mediaUpload.array('files', 200), (req, res) => {
+  app.post('/api/media/projects/:id/assets', auth, mediaUpload.array('files', 200), async (req, res) => {
     try {
       const project = getProject(req.workspaceId, req.params.id);
       if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -505,9 +539,24 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (files.length === 0) return res.status(400).json({ error: 'No files uploaded (field name: files)' });
 
       const folderId = req.body.folder_id || null;
+
+      // When STORAGE_PROVIDER=r2, push each original to R2 (async — before the sync insert
+      // tx) and free the local temp. An R2 failure falls back to keeping the file local —
+      // so a hiccup never loses an upload. Default (local) provider: nothing changes.
+      const prepared = [];
+      for (const f of files) {
+        const storageKey = `media/${path.basename(f.path)}`; // relative key
+        let provider = 'local';
+        if (storage.isRemote) {
+          try { await storage.uploadFile(storageKey, fs.readFileSync(f.path), f.mimetype); provider = 'r2'; try { fs.unlinkSync(f.path); } catch {} }
+          catch { provider = 'local'; }
+        }
+        prepared.push({ f, storageKey, provider });
+      }
+
       const insertAsset = db.prepare(`
-        INSERT INTO ms_assets (id, workspace_id, project_id, folder_id, type, storage_key, filename, mime, size_bytes, variants, status, uploaded_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?)
+        INSERT INTO ms_assets (id, workspace_id, project_id, folder_id, type, storage_key, filename, mime, size_bytes, storage_provider, storage_size, uploaded_at, variants, status, uploaded_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'ready', ?)
       `);
       const insertJob = db.prepare(`
         INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload)
@@ -516,13 +565,12 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
 
       const created = [];
       const tx = db.transaction(() => {
-        for (const f of files) {
+        for (const { f, storageKey, provider } of prepared) {
           const assetId = generateId();
-          const storageKey = `media/${path.basename(f.path)}`;   // relative to /uploads
           const variants = JSON.stringify({ original: publicUrl(storageKey) });
           insertAsset.run(assetId, req.workspaceId, project.id, folderId,
-            detectType(f.mimetype, f.originalname), storageKey, f.originalname, f.mimetype, f.size, variants, req.userId);
-          // Enqueue downstream work (variants/EXIF/CV scoring). No worker yet → stays 'pending'.
+            detectType(f.mimetype, f.originalname), storageKey, f.originalname, f.mimetype, f.size, provider, f.size, variants, req.userId);
+          // Enqueue downstream work (variants/EXIF/CV scoring) — worker is provider-aware.
           insertJob.run(generateId(), req.workspaceId, assetId, project.id,
             JSON.stringify({ make: ['variants', 'exif', 'score'] }));
           created.push(shapeAsset(db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(assetId)));

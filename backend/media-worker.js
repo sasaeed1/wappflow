@@ -60,9 +60,8 @@ module.exports = function createMediaWorker(db, deps = {}) {
   const PHASH_DUP_DISTANCE = 6; // ≤6 bits different on a 64-bit aHash ≈ near-duplicate
 
   // ── small helpers ──────────────────────────────────────────────────────────
-  function publicUrl(relUnderUploads) {
-    return '/' + ['uploads', relUnderUploads].join('/').replace(/\/+/g, '/');
-  }
+  // Provider-agnostic (local → /uploads, R2 → CDN/presign-redirect). Single URL impl.
+  function publicUrl(relUnderUploads) { return storage.getPublicUrl(relUnderUploads); }
   const RAW_EXTS = ['cr2', 'cr3', 'nef', 'arw', 'raf', 'rw2', 'dng', 'orf', 'srw', 'pef'];
   const isRawFile = (filename = '') => RAW_EXTS.includes((filename.split('.').pop() || '').toLowerCase());
   function isProcessableImage(mime = '', filename = '') {
@@ -179,14 +178,21 @@ module.exports = function createMediaWorker(db, deps = {}) {
   async function processIngest(job) {
     const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
     if (!asset) return { note: 'asset-gone' };
+    const isR2 = asset.storage_provider === 'r2';
     const absPath = path.join(uploadsDir, asset.storage_key);
+
+    // Original bytes: from R2 (direct/desktop uploads) or local disk.
+    let originalBuf = null;
+    if (isR2) { try { originalBuf = await storage.getBuffer(asset.storage_key); } catch { originalBuf = null; } }
+    else if (fs.existsSync(absPath)) { try { originalBuf = fs.readFileSync(absPath); } catch { originalBuf = null; } }
 
     // Acquire a Jimp image: a normal raster directly, or a RAW's embedded preview.
     let image = null, rawDerived = false;
-    if (Jimp && fs.existsSync(absPath)) {
+    if (Jimp && originalBuf) {
       if (isProcessableImage(asset.mime, asset.filename)) {
-        try { image = await Jimp.read(absPath); } catch { image = null; }
-      } else if (isRawFile(asset.filename)) {
+        try { image = await Jimp.read(originalBuf); } catch { image = null; }
+      } else if (isRawFile(asset.filename) && !isR2) {
+        // RAW preview extraction needs a local path (exiftool/dcraw); R2 RAW previews tracked.
         const buf = await extractRawPreview(absPath);
         if (buf) { try { image = await Jimp.read(buf); rawDerived = true; } catch { image = null; } }
       }
@@ -207,8 +213,15 @@ module.exports = function createMediaWorker(db, deps = {}) {
     // variants
     const thumbRel = `media/variants/${asset.id}-thumb.jpg`;
     const webRel = `media/variants/${asset.id}-web.jpg`;
-    await image.clone().resize(400, Jimp.AUTO).quality(72).writeAsync(path.join(uploadsDir, thumbRel));
-    await image.clone().resize(Math.min(2048, width), Jimp.AUTO).quality(82).writeAsync(path.join(uploadsDir, webRel));
+    const thumbBuf = await image.clone().resize(400, Jimp.AUTO).quality(72).getBufferAsync(Jimp.MIME_JPEG);
+    const webBuf = await image.clone().resize(Math.min(2048, width), Jimp.AUTO).quality(82).getBufferAsync(Jimp.MIME_JPEG);
+    if (isR2) {
+      await storage.uploadFile(thumbRel, thumbBuf, 'image/jpeg');
+      await storage.uploadFile(webRel, webBuf, 'image/jpeg');
+    } else {
+      fs.writeFileSync(path.join(uploadsDir, thumbRel), thumbBuf);
+      fs.writeFileSync(path.join(uploadsDir, webRel), webBuf);
+    }
     const variants = {
       original: publicUrl(asset.storage_key),
       web: publicUrl(webRel),
@@ -216,8 +229,8 @@ module.exports = function createMediaWorker(db, deps = {}) {
       ...(rawDerived ? { raw_preview: true } : {}),
     };
 
-    // exif + cv
-    const exif = await readExif(absPath);
+    // exif + cv (exifr.parse accepts a Buffer, so R2 originals work without a local file)
+    const exif = await readExif(isR2 ? originalBuf : absPath);
     const cv = await analyze(image);
 
     // update the asset's OWN technical metadata (never a decision)
