@@ -332,6 +332,13 @@ P1 Control-plane & integrity ─┬─> P2 Desktop parity ──> P3 Local AI co
 The single source of truth for what's left, end-to-end. Updated as phases land.
 **Legend:** ✅ done+verified · 🟡 partial · ⏸ staged (clear next step) · ⬜ not started · 📋 infra/your step.
 
+> **Independent re-audit 2026-06-24** (7-agent verification sweep, every claim checked against real code + node tests — `test-comms`/`test-sync`/`test-reel-engine`/`test-brains`/`test-storage`/`test-cc-storage`/`test-phase1` all print "ALL … PASSED"). Result: **all 10 phase backends confirmed real and tested — no regressions, no vapor.** Verified completeness by layer:
+> - **Backends (P1–P10):** ✅ ~100% — control plane, Track-0/AI, comms, rooms, sync delta, fleet mgmt, reel/story, brains/style, R2 storage all built + test-passing.
+> - **Web frontend:** 🟡 ~75% — chat (SSE+LiveKit), Command Center pages (desktop fleet, storage), cull HUD + Studio-Brain tip all live. Missing: P5 entity room panels, comms render polish (edit/search/pins/thread/@-autocomplete), workspace-facing storage dashboard.
+> - **Desktop native shell:** 🟡 ~40% — foundation solid (one-login, webview inject, deep-link SSO, auto-update, Local-AI). Offline-first ≈ 0% (no local store/queue/sync consumer), no fleet `/report` client, no native notifications/tray/folder-watch/drag-drop/direct-R2-upload.
+> - **Storage governance (roadmap R2):** ⬜ — 80/90/100% warnings computed in `pricing.js` but never `notify()`; no upload-time gate; watermark/video-poster/proxy still write local-only.
+> - **Corrections from audit:** CC backend files are now **committed** (old "untracked/stashed" note resolved); desktop emits **6** distinct vision score types (composition/aesthetic/face_count/smile/eyes_open/scene_class) — `subject` missing, sharpness/exposure are reasons not standalone types.
+
 ### Done & verified so far (P1–P4)
 - **P1** Control plane ✅ — CC mounted, module-gating, AI metering (both paths), model_version drift fixed, vapor gated, grace cron. Committed `f1bc16b`.
 - **P2** Desktop parity ✅ — Team Chat/WhatsApp/Command Center nav, real default URLs, auto-update seam. Committed `f1bc16b`.
@@ -384,4 +391,68 @@ The single source of truth for what's left, end-to-end. Updated as phases land.
 
 ---
 
-*Audit basis: 11-agent parallel codebase audit, 2026-06-22. Status reflects code, not docs or landing copy.*
+## 📋 ROADMAP AUDIT (2026-06-24) — net-new gaps vs the Infra + Desktop + Comms roadmap
+
+Source: the "WappFlow Infrastructure + Desktop + Communications Roadmap" (Phases 1–5), cross-checked against current code by a 5-agent gap analysis (dimensions: storage-media, cc-storage, comms, desktop-shell, local-AI/Track-0). **Headline:** R2 storage + Track-0 ingestion are essentially complete; the real remaining surface is **storage enforcement, Command Center storage analytics, communications depth, and the desktop native shell (offline-first).** Nothing below is a regression — these are net-new scope items the roadmap asks for that current code doesn't yet cover. Hard constraints carried forward: **no WhatsApp-flow changes · additive only · no auto-migration of existing uploads · native comms (no Slack) · no new infra (LiveKit on existing Hetzner)**.
+
+### R1 — Storage (R2) finishing
+| # | Item | Kind | State | Next step / blocker |
+|---|---|---|---|---|
+| R1 | Core R2 path (assets · variants · album-PDF · gallery-ZIP · video · portfolio · watermark URLs · trash) routed through storage abstraction | 🌐 | ✅ | covered — confirmed by audit |
+| R1 | **Watermark file writes** still go to local disk only (URL is abstracted, the write isn't) | 🌐 | ⬜ | route watermark generation output through `storage.uploadFile` when `isRemote` |
+| R1 | **Video poster + proxy** files write local-only | 🌐 | ⬜ | same provider-aware write as media-worker variants |
+
+### R2 — Command Center storage analytics + enforcement
+| # | Item | Kind | State | Next step / blocker |
+|---|---|---|---|---|
+| R2 | Founder overview (total · by-provider · R2-GB · est-cost w/ free-tier · 30d growth) + top-20 largest + per-workspace drilldown | 🌐 | ✅ | `cc-storage.js` + `/control/storage` |
+| R2 | **Plan-quota warnings — 80% / 90% / 100%** computed in `pricing.js levelFor()` but **never call `notify()`** | 🌐 | ⬜ | wire the computed level → notification fan-out (the level math already exists) |
+| R2 | **Upload-time storage enforcement** — no gate blocks/​warns an over-limit workspace at upload | 🌐 | ⬜ | check `pricing.buildUsage` vs plan `storage_gb` in the `/assets` (and sign) path; hard-block only Enterprise-exempt (-1) |
+| R2 | **Monthly growth RATE** + **top-20 fastest-growing** workspaces | 🌐 | ⬜ | add to `cc-storage.js` (we have 30d delta bytes, not a ranked rate) |
+| R2 | **Storage-by-plan** breakdown + **projected/forecast** usage & cost | 🌐 | ⬜ | aggregate `storage_size` grouped by resolved plan; linear-project from 30d slope |
+| R2 | **Storage-by-region** | 🌐 | ⬜ | single-bucket today → defer until multi-region R2; track as forecast-only |
+| R2 | **Workspace-facing storage dashboard** (non-CC; the studio sees its own usage vs plan) | 🌐 | ⬜ | new in-app Settings→Storage panel reading `buildUsage` (founder dash is CC-only today) |
+
+### R3 — Communications depth (native, no Slack)
+| # | Item | Kind | State | Next step / blocker |
+|---|---|---|---|---|
+| R3 | DMs · threads · @mentions+inbox · pins · presence (online) · unread/read · search · edit · reactions · typing · LiveKit huddles | 🌐 | ✅ | `comms.js` + chat page (P4) |
+| R3 | **@channel / @everyone** broadcast mentions | 🌐 | ⬜ | extend mention parse + fan-out to all channel members |
+| R3 | **Voice notes** in chat (record → attach → playback) | 🔁 | ⬜ | MediaRecorder upload → R2 → audio message type |
+| R3 | **AWAY / DND** presence states (only online/offline today) | 🌐 | ⬜ | extend presence enum + idle-timer + manual setter |
+| R3 | **Raise-hand** in huddle | 🌐 | ⬜ | LiveKit data-channel signal + roster badge |
+| R3 | **Call-event timeline logging** (Started / Joined / Ended / Shared-screen) | 🌐 | ⬜ | emit timeline rows on LiveKit room events (mirror the message→timeline pattern) |
+| R3 | **Call notifications** — missed-call · call-started · call-invite | 🔁 | ⬜ | notify() fan-out on huddle start + ring the invitee |
+| R3 | **Group conversations** (multi-party DMs beyond channels) | 🌐 | 🟡 | channels cover team; ad-hoc multi-person DM grouping is partial |
+| R3 | **Per-message read receipts** + **participant/roster list** | 🌐 | 🟡 | have channel-level last-read; need per-message seen + visible roster |
+| R3 | **Project-room discussion panels in entity detail pages** (P5 frontend) | 🌐 | ⬜ | backend `/api/comms/rooms/*` ✅ done; UI panel still unbuilt (same item as P5-frontend) |
+| R3 | **Thread reply notifications** | 🌐 | 🟡 | mentions notify; pure thread-reply (no @) does not |
+| R3 | **Comms as a first-class desktop surface** (native, not webview) | 🖥️ | ⬜ | desktop reaches chat via webview today; roadmap wants native |
+
+### R4 — Desktop native shell (offline-first — the long pole)
+| # | Item | Kind | State | Next step / blocker |
+|---|---|---|---|---|
+| R4 | Shell foundation — one-login bridge · webview JWT inject · deep-link SSO · auto-update seam · Local-AI native view · file-system access | 🖥️ | ✅ | covered |
+| R4 | **Native OS notifications** (Electron `Notification`) | 🖥️ | ⬜ | IPC + main-process Notification; tie to comms/call/sync events |
+| R4 | **System tray / background presence** | 🖥️ | ⬜ | `Tray` + menu; keep-running-on-close |
+| R4 | **Folder watching** (watch-folder ingestion) | 🖥️ | ⬜ | `chokidar`/`fs.watch` → enqueue ingest (P3 watch-folder, same item) |
+| R4 | **Drag-and-drop ingestion** | 🖥️ | ⬜ | renderer drop handler → file-drop IPC → upload |
+| R4 | **Native uploads — direct-to-R2 via signed URLs** | 🖥️ | ⬜ | backend `generateSignedUploadUrl` ✅ exists; desktop never calls it. Add upload IPC |
+| R4 | **Desktop fleet reporting** (device id · version · last-sync → `/api/desktop/report`) | 🖥️ | ⬜ | backend ready; desktop never reports → CC fleet shows 0 machines (same as P7 client item) |
+| R4 | **Offline work queues** (cull · ratings · labels · albums · selections · notes · reviews) | 🖥️ | ⬜ | no local store yet; needs IndexedDB/SQLite + queue CRUD (P6 client) |
+| R4 | **Sync-on-reconnect** + **conflict-resolution policy** (LWW scalars / append lists) | 🖥️ | ⬜ | `navigator.onLine` + flush + validate-against-server; backend delta `sync.js` ✅ exists, no consumer |
+| R4 | **Offline entitlement caching** (plan/flags/brains in encrypted store) | 🖥️ | ⬜ | gate features offline (P6) |
+| R4 | **Offline banner / network-state awareness** (online listener + retry w/ backoff) | 🖥️ | ⬜ | shell-level connection badge over the webview |
+
+### R5 — Local AI / Video (Track-0 already solid)
+| # | Item | Kind | State | Next step / blocker |
+|---|---|---|---|---|
+| R5 | Image vision (6/7 types) · composites · analyze-once ledger · source attribution · advisory-only guarantee · Studio/Creator Brain · Style · Story/Reel planning · ONNX+GPU/CPU · score ingestion endpoints | 🔁 | ✅ | covered end-to-end (audit confirms) |
+| R5 | **Video analysis** — desktop ffmpeg frame-extraction → motion/quality/scene-cut/action/speech (stub returns `[]`, never blocks) | 🖥️ | ⬜ | same as P8 desktop video |
+| R5 | **Model auto-fetcher** (manual fetch documented; no `fetch-models` script verified) | 🖥️ | 🟡 | add/verify download script for offline/packaged builds |
+| R5 | **Feedback consumption / active-learning loop** (`ms_feedback` logged, not consumed) | 🌐 | ⬜ | post-P9 — turn captured feedback into model/brain adjustment |
+| R5 | **Edit Brain** (learn cut/transition/colour/music prefs) | 🔁 | ⬜ | net-new, scheduled after Brains/Style/Video |
+
+---
+
+*Audit basis: 11-agent parallel codebase audit, 2026-06-22; roadmap gap re-audit (5-agent), 2026-06-24. Status reflects code, not docs or landing copy.*

@@ -26,11 +26,21 @@ module.exports = function mountCcStorage(app, deps = {}) {
       const r2GB = r2Bytes / GB;
       const estCost = Math.max(0, r2GB - FREE_GB) * R2_RATE;
       const growth = one("SELECT COALESCE(SUM(storage_size),0) AS bytes FROM ms_assets WHERE uploaded_at >= datetime('now','-30 days')").bytes || 0;
+      // Linear forecast from the trailing-30d rate. New uploads land on the active
+      // provider, so project R2 GB (and therefore cost) forward by the same growth.
+      const growthRateGbPerDay = (growth / GB) / 30;
+      const projected30dBytes = total + growth;
+      const projectedR2Gb = r2GB + (growth / GB);
+      const projectedCost = Math.max(0, projectedR2Gb - FREE_GB) * R2_RATE;
       res.json({
         total_bytes: total, by_provider: byProvider,
         r2_bytes: r2Bytes, r2_gb: +r2GB.toFixed(2),
         est_monthly_cost_usd: +estCost.toFixed(2), free_gb: FREE_GB, rate_per_gb_usd: R2_RATE,
         growth_30d_bytes: growth,
+        growth_rate_gb_per_day: +growthRateGbPerDay.toFixed(3),
+        projected_30d_bytes: projected30dBytes,
+        projected_r2_gb: +projectedR2Gb.toFixed(2),
+        projected_monthly_cost_usd: +projectedCost.toFixed(2),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -39,6 +49,27 @@ module.exports = function mountCcStorage(app, deps = {}) {
   app.get('/api/cc/storage/workspaces', platformAuth, (req, res) => {
     try {
       const rows = safeAll("SELECT workspace_id, COUNT(*) AS files, COALESCE(SUM(storage_size),0) AS bytes FROM ms_assets WHERE deleted_at IS NULL GROUP BY workspace_id ORDER BY bytes DESC LIMIT 20");
+      res.json({ workspaces: rows });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Founder: storage by plan tier (where the bytes — and the bill — concentrate) ──
+  app.get('/api/cc/storage/by-plan', platformAuth, (req, res) => {
+    try {
+      const rows = safeAll(`SELECT COALESCE(wp.plan,'creator') AS plan,
+          COUNT(DISTINCT a.workspace_id) AS workspaces,
+          COUNT(a.id) AS files,
+          COALESCE(SUM(a.storage_size),0) AS bytes
+        FROM ms_assets a LEFT JOIN workspace_plan wp ON wp.workspace_id = a.workspace_id
+        WHERE a.deleted_at IS NULL GROUP BY plan ORDER BY bytes DESC`);
+      res.json({ by_plan: rows });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Founder: fastest-growing workspaces (trailing 30 days) ──────────────────
+  app.get('/api/cc/storage/fastest-growing', platformAuth, (req, res) => {
+    try {
+      const rows = safeAll("SELECT workspace_id, COUNT(*) AS files, COALESCE(SUM(storage_size),0) AS growth_bytes FROM ms_assets WHERE deleted_at IS NULL AND uploaded_at >= datetime('now','-30 days') GROUP BY workspace_id ORDER BY growth_bytes DESC LIMIT 20");
       res.json({ workspaces: rows });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

@@ -242,6 +242,12 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   // publicUrl() / storage.* and never touches /uploads or a provider directly.
   const storage = require('./storage')({ uploadsDir, path, fs });
 
+  // Storage quota enforcement + 80/90/100% threshold warnings (roadmap R2). Fail-open
+  // and gated by the master pricing_config.enforcement switch — never blocks unless a
+  // finite plan limit would actually be exceeded.
+  const storageEnforce = require('./storage-enforce');
+  try { storageEnforce.ensureSchema(db); } catch {}
+
   // THE single public-URL implementation — provider-agnostic (local → /uploads,
   // R2 → public/CDN base or the /api/storage presign-redirect). Never build a media
   // URL by hand anywhere else.
@@ -504,6 +510,10 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     try {
       const project = getProject(req.workspaceId, req.params.id);
       if (!project) return res.status(404).json({ error: 'Project not found' });
+      // Storage quota gate (roadmap R2): reject before issuing a signed URL when this
+      // upload would exceed the plan limit.
+      const gate = storageEnforce.gate(db, req.workspaceId, Number(req.body.size) || 0);
+      if (!gate.allowed) return res.status(413).json({ error: 'Storage limit reached', storage_limit: true, used_gb: gate.used_gb, limit_gb: gate.limit_gb, pct: gate.pct });
       const fn = String(req.body.filename || 'file').normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100);
       const key = `media/projects/${project.id}/${Date.now()}-${Math.random().toString(16).slice(2, 8)}-${fn}`;
       const upload_url = await storage.generateSignedUploadUrl(key, req.body.content_type);
@@ -526,7 +536,20 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
         .run(assetId, req.workspaceId, project.id, folder_id || null, detectType(content_type || '', filename || key), key, filename || key.split('/').pop(), content_type || null, size || null, storage.provider, size || null, variants, req.userId);
       db.prepare(`INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload) VALUES (?,?,'ingest',?,?,'pending',?)`)
         .run(generateId(), req.workspaceId, assetId, project.id, JSON.stringify({ make: ['variants', 'exif', 'score'] }));
+      try { storageEnforce.warn(db, req.workspaceId, notify); } catch {}
       res.json({ asset: shapeAsset(db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(assetId)) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Workspace-facing storage usage (in-app Settings → Storage). Same numbers the
+  //    Command Center founder dashboard sees, scoped to the caller's own workspace. ──
+  app.get('/api/media/storage', auth, (req, res) => {
+    try {
+      const s = storageEnforce.status(db, req.workspaceId);
+      const byType = db.prepare("SELECT COALESCE(type,'other') AS type, COUNT(*) AS files, COALESCE(SUM(COALESCE(storage_size,size_bytes)),0) AS bytes FROM ms_assets WHERE workspace_id=? AND deleted_at IS NULL GROUP BY type ORDER BY bytes DESC").all(req.workspaceId);
+      const largestProjects = db.prepare("SELECT p.id, p.title, COALESCE(SUM(COALESCE(a.storage_size,a.size_bytes)),0) AS bytes, COUNT(a.id) AS files FROM ms_projects p LEFT JOIN ms_assets a ON a.project_id=p.id AND a.deleted_at IS NULL WHERE p.workspace_id=? GROUP BY p.id ORDER BY bytes DESC LIMIT 8").all(req.workspaceId);
+      const exportsBytes = ((db.prepare('SELECT COALESCE(SUM(size_bytes),0) b FROM ms_exports WHERE workspace_id=?').get(req.workspaceId)) || {}).b || 0;
+      res.json({ ...s, by_type: byType, largest_projects: largestProjects, exports_bytes: exportsBytes });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -537,6 +560,15 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (!project) return res.status(404).json({ error: 'Project not found' });
       const files = req.files || [];
       if (files.length === 0) return res.status(400).json({ error: 'No files uploaded (field name: files)' });
+
+      // Storage quota gate (roadmap R2): multer has already written temp files, so on a
+      // block we clean them up before returning. Sum of incoming sizes vs the plan limit.
+      const incomingBytes = files.reduce((s, f) => s + (f.size || 0), 0);
+      const gate = storageEnforce.gate(db, req.workspaceId, incomingBytes);
+      if (!gate.allowed) {
+        for (const f of files) { try { fs.unlinkSync(f.path); } catch {} }
+        return res.status(413).json({ error: 'Storage limit reached', storage_limit: true, used_gb: gate.used_gb, limit_gb: gate.limit_gb, pct: gate.pct });
+      }
 
       const folderId = req.body.folder_id || null;
 
@@ -581,6 +613,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       // New media may improve a reel → flag existing AI drafts as refreshable (never auto-rebuilt).
       try { db.prepare("UPDATE ms_timelines SET ai_stale = 1 WHERE project_id = ? AND source = 'ai_draft'").run(project.id); } catch {}
 
+      try { storageEnforce.warn(db, req.workspaceId, notify); } catch {}
       emitToLead(project, req, 'media_upload', `${created.length} file(s) added to ${project.title}`, null);
       logAudit(req.workspaceId, req.userId, 'upload', 'ms_project', project.id, { count: created.length });
       broadcastToWorkspace(req.workspaceId, 'ms_assets_added', { project_id: project.id, count: created.length });
@@ -621,13 +654,23 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
           try {
             const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND project_id = ? AND workspace_id = ?').get(aid, project.id, req.workspaceId);
             if (!a || a.type !== 'photo') continue;
-            const src = keyToPath(a.storage_key);
-            if (!fs.existsSync(src)) continue;
-            const img = await Jimp.read(src);
+            // Source bytes: from R2 (provider-aware) or local disk.
+            let img;
+            if (a.storage_provider === 'r2') {
+              let buf = null; try { buf = await storage.getBuffer(a.storage_key); } catch {}
+              if (!buf) continue;
+              img = await Jimp.read(buf);
+            } else {
+              const src = keyToPath(a.storage_key);
+              if (!fs.existsSync(src)) continue;
+              img = await Jimp.read(src);
+            }
             if (img.bitmap.width > 2400) img.resize(2400, Jimp.AUTO);
             await applyWatermark(Jimp, img, cfg, logoImg, font);
             const outKey = `media/wm-${a.id}.jpg`;
-            img.quality(82); await img.writeAsync(keyToPath(outKey));
+            img.quality(82);
+            if (a.storage_provider === 'r2') { await storage.uploadFile(outKey, await img.getBufferAsync(Jimp.MIME_JPEG), 'image/jpeg'); }
+            else { await img.writeAsync(keyToPath(outKey)); }
             let v = {}; try { v = JSON.parse(a.variants || '{}'); } catch {}
             v.watermarked = publicUrl(outKey);
             db.prepare('UPDATE ms_assets SET variants = ? WHERE id = ?').run(JSON.stringify(v), a.id);
@@ -639,7 +682,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/media/projects/:id/watermark/remove', auth, (req, res) => {
+  app.post('/api/media/projects/:id/watermark/remove', auth, async (req, res) => {
     try {
       const project = getProject(req.workspaceId, req.params.id);
       if (!project) return res.status(404).json({ error: 'Project not found' });
@@ -649,7 +692,12 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
         const a = db.prepare('SELECT * FROM ms_assets WHERE id = ? AND project_id = ?').get(aid, project.id);
         if (!a) continue;
         let v = {}; try { v = JSON.parse(a.variants || '{}'); } catch {}
-        if (v.watermarked) { try { fs.unlinkSync(keyToPath(v.watermarked)); } catch {} delete v.watermarked; db.prepare('UPDATE ms_assets SET variants = ? WHERE id = ?').run(JSON.stringify(v), a.id); removed++; }
+        if (v.watermarked) {
+          const wmKey = `media/wm-${a.id}.jpg`;
+          if (a.storage_provider === 'r2') { try { await storage.deleteFile(wmKey); } catch {} }
+          else { try { fs.unlinkSync(keyToPath(v.watermarked)); } catch {} }
+          delete v.watermarked; db.prepare('UPDATE ms_assets SET variants = ? WHERE id = ?').run(JSON.stringify(v), a.id); removed++;
+        }
       }
       broadcastToWorkspace(req.workspaceId, 'ms_watermark_done', { project_id: project.id, count: removed });
       res.json({ ok: true, removed });

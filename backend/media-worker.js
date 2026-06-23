@@ -49,6 +49,36 @@ module.exports = function createMediaWorker(db, deps = {}) {
 
   const variantsDir = path.join(uploadsDir, 'media', 'variants');
   try { fs.mkdirSync(variantsDir, { recursive: true }); } catch {}
+  const tmpDir = path.join(uploadsDir, 'media', 'tmp');
+  try { fs.mkdirSync(tmpDir, { recursive: true }); } catch {}
+
+  // ffmpeg/ffprobe need a real local file. For R2-stored originals, materialize a temp
+  // copy so video probe/poster/proxy work the same on either provider (roadmap R2).
+  // Returns { path, cleanup } — path is null if the original can't be obtained.
+  async function localizeOriginal(asset) {
+    const abs = path.join(uploadsDir, asset.storage_key);
+    if (asset.storage_provider === 'r2') {
+      try {
+        const buf = await storage.getBuffer(asset.storage_key);
+        if (!buf) return { path: null, cleanup: () => {} };
+        const tmp = path.join(tmpDir, `${asset.id}-${path.basename(asset.storage_key)}`);
+        fs.writeFileSync(tmp, buf);
+        return { path: tmp, cleanup: () => { try { fs.unlinkSync(tmp); } catch {} } };
+      } catch { return { path: null, cleanup: () => {} }; }
+    }
+    return { path: fs.existsSync(abs) ? abs : null, cleanup: () => {} };
+  }
+
+  // Persist a freshly-written local variant to the asset's provider: upload to R2 +
+  // free the local temp, or keep it local. Always returns the canonical public URL.
+  async function persistVariant(asset, rel, mime) {
+    const localAbs = path.join(uploadsDir, rel);
+    if (asset.storage_provider === 'r2') {
+      try { await storage.uploadFile(rel, fs.readFileSync(localAbs), mime); try { fs.unlinkSync(localAbs); } catch {} }
+      catch { /* leave the local copy as a fallback */ }
+    }
+    return publicUrl(rel);
+  }
 
   // Media Intelligence — same Analyzer abstraction the API uses. The worker is just
   // one execution tier (server CPU); the ledger + composites flow through here too.
@@ -609,49 +639,58 @@ module.exports = function createMediaWorker(db, deps = {}) {
     const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
     if (!asset) return { note: 'asset-gone' };
     if (!videoEngine.detectFfmpeg().ffprobe) return { note: 'no-ffprobe' };
-    const abs = path.join(uploadsDir, asset.storage_key);
-    if (!fs.existsSync(abs)) return { note: 'file-missing' };
-    const out = await new Promise((resolve) => {
-      const p = spawn(FFPROBE, ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', abs], { windowsHide: true });
-      let buf = ''; p.stdout.on('data', d => buf += d.toString());
-      p.on('error', () => resolve('')); p.on('close', () => resolve(buf));
-    });
-    const meta = videoEngine.parseFfprobe(out);
-    db.prepare(`UPDATE ms_assets SET v_duration_ms=?, v_width=?, v_height=?, v_fps=?, v_codec=?, v_has_audio=? WHERE id=?`)
-      .run(meta.v_duration_ms || 0, meta.v_width || 0, meta.v_height || 0, meta.v_fps || 0, meta.v_codec || null, meta.v_has_audio || 0, asset.id);
-    // only video gets a poster + proxy; audio-only stops at the duration probe
-    if ((meta.v_width || 0) > 0) {
-      enqueue('video_poster', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
-      enqueue('video_proxy', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
-    }
-    return { note: 'ok', meta };
+    const local = await localizeOriginal(asset);
+    if (!local.path) return { note: 'file-missing' };
+    const abs = local.path;
+    try {
+      const out = await new Promise((resolve) => {
+        const p = spawn(FFPROBE, ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', abs], { windowsHide: true });
+        let buf = ''; p.stdout.on('data', d => buf += d.toString());
+        p.on('error', () => resolve('')); p.on('close', () => resolve(buf));
+      });
+      const meta = videoEngine.parseFfprobe(out);
+      db.prepare(`UPDATE ms_assets SET v_duration_ms=?, v_width=?, v_height=?, v_fps=?, v_codec=?, v_has_audio=? WHERE id=?`)
+        .run(meta.v_duration_ms || 0, meta.v_width || 0, meta.v_height || 0, meta.v_fps || 0, meta.v_codec || null, meta.v_has_audio || 0, asset.id);
+      // only video gets a poster + proxy; audio-only stops at the duration probe
+      if ((meta.v_width || 0) > 0) {
+        enqueue('video_poster', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
+        enqueue('video_proxy', { asset_id: asset.id, project_id: asset.project_id, workspace_id: asset.workspace_id });
+      }
+      return { note: 'ok', meta };
+    } finally { local.cleanup(); }
   }
 
   async function processVideoPoster(job) {
     const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
     if (!asset || !videoEngine.detectFfmpeg().ffmpeg) return { note: 'skip' };
-    const abs = path.join(uploadsDir, asset.storage_key);
-    if (!fs.existsSync(abs)) return { note: 'file-missing' };
-    const rel = `media/variants/${asset.id}-poster.jpg`;
-    const at = Math.max(0, ((asset.v_duration_ms || 2000) / 1000) * 0.25).toFixed(2);
-    await runFfmpeg(['-y', '-ss', at, '-i', abs, '-frames:v', '1', '-vf', 'scale=640:-2', path.join(uploadsDir, rel)]);
-    db.prepare('UPDATE ms_assets SET poster_url = ? WHERE id = ?').run(publicUrl(rel), asset.id);
-    if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
-    return { note: 'ok' };
+    const local = await localizeOriginal(asset);
+    if (!local.path) return { note: 'file-missing' };
+    try {
+      const rel = `media/variants/${asset.id}-poster.jpg`;
+      const at = Math.max(0, ((asset.v_duration_ms || 2000) / 1000) * 0.25).toFixed(2);
+      await runFfmpeg(['-y', '-ss', at, '-i', local.path, '-frames:v', '1', '-vf', 'scale=640:-2', path.join(uploadsDir, rel)]);
+      const url = await persistVariant(asset, rel, 'image/jpeg');
+      db.prepare('UPDATE ms_assets SET poster_url = ? WHERE id = ?').run(url, asset.id);
+      if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
+      return { note: 'ok' };
+    } finally { local.cleanup(); }
   }
 
   async function processVideoProxy(job) {
     const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
     if (!asset || !videoEngine.detectFfmpeg().ffmpeg) return { note: 'skip' };
-    const abs = path.join(uploadsDir, asset.storage_key);
-    if (!fs.existsSync(abs)) return { note: 'file-missing' };
-    const rel = `media/variants/${asset.id}-proxy.mp4`;
-    // 720p H.264 proxy for smooth browser scrubbing — keep audio for preview
-    await runFfmpeg(['-y', '-i', abs, '-vf', 'scale=-2:720', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
-      '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', path.join(uploadsDir, rel)]);
-    db.prepare('UPDATE ms_assets SET proxy_url = ? WHERE id = ?').run(publicUrl(rel), asset.id);
-    if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
-    return { note: 'ok' };
+    const local = await localizeOriginal(asset);
+    if (!local.path) return { note: 'file-missing' };
+    try {
+      const rel = `media/variants/${asset.id}-proxy.mp4`;
+      // 720p H.264 proxy for smooth browser scrubbing — keep audio for preview
+      await runFfmpeg(['-y', '-i', local.path, '-vf', 'scale=-2:720', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+        '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', path.join(uploadsDir, rel)]);
+      const url = await persistVariant(asset, rel, 'video/mp4');
+      db.prepare('UPDATE ms_assets SET proxy_url = ? WHERE id = ?').run(url, asset.id);
+      if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
+      return { note: 'ok' };
+    } finally { local.cleanup(); }
   }
 
   async function processVideoExport(job) {
