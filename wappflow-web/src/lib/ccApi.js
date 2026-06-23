@@ -88,6 +88,9 @@ export const ccApi = {
   runReport: (id) => cc.post(`/cc/reports/${id}/run`),
   config: (ns) => cc.get(`/cc/config/${ns}`),
   setConfig: (ns, d) => cc.put(`/cc/config/${ns}`, d),
+  // Desktop fleet management (Phase 7)
+  desktopFleet: () => cc.get('/cc/desktop/fleet'),
+  setDesktopPolicy: (d) => cc.post('/cc/desktop/policy', d),
 };
 
 // ── small shared formatters ──
