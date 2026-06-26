@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X, LayoutTemplate, Loader, RefreshCw, Wand2 } from 'lucide-react';
-import { mediaAPI } from '../../../../lib/api';
+import { mediaAPI, reelAPI } from '../../../../lib/api';
 import NavBar from '../../../../components/StudioShell';
 import { ASPECTS, ASPECT_LABELS } from '../../video-constants';
 
@@ -21,6 +21,7 @@ export default function ReelListPage() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [refreshing, setRefreshing] = useState(null);
+  const [building, setBuilding] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
@@ -51,6 +52,17 @@ export default function ReelListPage() {
     setRefreshing(null);
   };
 
+  // Auto-build a reel from Track-0 scores → renders a real video in the background.
+  const autoReel = async () => {
+    setBuilding(true);
+    try {
+      await reelAPI.render(id, { title: project?.title, target_count: 12 });
+      const tl = await mediaAPI.listTimelines(id);
+      setTimelines(tl.data.timelines || []);
+    } catch (e) { alert(e?.response?.data?.error || 'Could not build a reel — run AI analysis on the photos first.'); }
+    setBuilding(false);
+  };
+
   if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
 
   return (
@@ -62,6 +74,9 @@ export default function ReelListPage() {
             <p className="ms-eyebrow">Video Studio</p>
             <h1 className="ms-h2" style={{ fontSize: 'clamp(20px, 2.4vw, 28px)' }}>Reels{project?.title ? <span style={{ color: 'var(--ms-ink-3)', fontWeight: 400 }}> · {project.title}</span> : ''}</h1>
           </div>
+          <button onClick={autoReel} disabled={building} className="ms-btn-ghost" title="Auto-build a reel from your best shots (Track-0 scores) and render it">
+            {building ? <Loader size={15} className="ms-spin" /> : <Wand2 size={15} />} {building ? 'Building…' : 'Auto-reel'}
+          </button>
           <button onClick={() => setShowAi(true)} className="ms-btn-ghost"><Sparkles size={15} /> AI drafts</button>
           <button onClick={() => setShowTemplates(true)} className="ms-btn-ghost"><LayoutTemplate size={15} /> Templates</button>
           <button onClick={() => setShowNew(true)} className="ms-btn-ink"><Plus size={16} /> New reel</button>

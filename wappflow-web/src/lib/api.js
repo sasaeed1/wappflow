@@ -522,6 +522,12 @@ export const studioAiAPI = {
   deleteStyle: (sid) => api.delete(`/studio-ai/styles/${sid}`),
   autoEdit: (assetId, body) => api.post(`/studio-ai/assets/${assetId}/auto-edit`, body || {}),
 };
+// Reel engine (Phase 8) — Track-0-driven story plan + one-click render to video.
+export const reelAPI = {
+  plan:   (projectId, body) => api.post(`/media/projects/${projectId}/reel-plan`, body || {}),
+  render: (projectId, body) => api.post(`/media/projects/${projectId}/reel-render`, body || {}),
+};
+
 // Video AI — Story/Reel/templates (P7–P11)
 export const videoAiAPI = {
   templates: () => api.get('/video-ai/templates'),
