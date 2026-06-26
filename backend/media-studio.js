@@ -27,6 +27,7 @@ const videoEngine = require('./video-engine');
 const videoLuts = require('./video-luts');
 const videoTemplates = require('./video-templates');
 const videoAiDrafts = require('./video-ai-drafts');
+const styleApply = require('./style-apply');
 const crypto = require('crypto');
 
 module.exports = function mountMediaStudio(app, db, deps = {}) {
@@ -1108,6 +1109,53 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       logAudit(req.workspaceId, req.userId, 'edit_batch', 'ms_project', project.id, { count: n, edits });
       res.status(202).json({ status: 'rendering', updated: n });
     } catch (e2) { res.status(500).json({ error: e2.message }); }
+  });
+
+  // ── AI auto-edit: grade each photo toward the LEARNED house style (style_profiles)
+  //    and apply it as a real, non-destructive edit via the existing pipeline. This is
+  //    the "AI" in ai_editing — one click brings a whole shoot in line with how the
+  //    studio actually edits. Per-asset (unlike the batch route's one-size edit). ─────
+  app.post('/api/media/projects/:id/auto-edit', auth, (req, res) => {
+    try {
+      const project = getProject(req.workspaceId, req.params.id);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const prof = db.prepare("SELECT profile FROM style_profiles WHERE workspace_id = ? AND scope = 'workspace' AND scope_id = ?").get(req.workspaceId, req.workspaceId);
+      let target = null; try { target = prof ? JSON.parse(prof.profile) : null; } catch {}
+      if (!target || !(target.exposure || target.contrast || target.colourfulness)) {
+        return res.status(400).json({ error: 'No house style learned yet — keep/cull some work so a style profile can be derived first.' });
+      }
+      // scope: explicit asset_ids → those; keepers:true → kept photos; else all photos.
+      const explicit = Array.isArray(req.body.asset_ids) && req.body.asset_ids.length ? req.body.asset_ids.slice(0, 2000) : null;
+      let rows;
+      if (explicit) {
+        const sel = db.prepare("SELECT * FROM ms_assets WHERE id = ? AND project_id = ? AND workspace_id = ? AND type = 'photo' AND deleted_at IS NULL");
+        rows = explicit.map(aid => sel.get(aid, project.id, req.workspaceId)).filter(Boolean);
+      } else if (req.body.keepers) {
+        rows = db.prepare("SELECT a.* FROM ms_assets a JOIN ms_cull_decisions c ON c.asset_id = a.id AND c.decision = 'keep' WHERE a.project_id = ? AND a.workspace_id = ? AND a.type = 'photo' AND a.deleted_at IS NULL").all(project.id, req.workspaceId);
+      } else {
+        rows = db.prepare("SELECT * FROM ms_assets WHERE project_id = ? AND workspace_id = ? AND type = 'photo' AND deleted_at IS NULL").all(project.id, req.workspaceId);
+      }
+      if (!rows.length) return res.status(400).json({ error: 'No photos to auto-edit.' });
+      const ids = rows.map(r => r.id);
+      const reasons = {};
+      for (const r of db.prepare(`SELECT asset_id, reasons FROM ms_asset_scores WHERE score_type = 'aesthetic' AND asset_id IN (${ids.map(() => '?').join(',')})`).all(...ids)) { try { reasons[r.asset_id] = JSON.parse(r.reasons) || {}; } catch {} }
+      let queued = 0, skipped = 0;
+      const tx = db.transaction(() => {
+        for (const a of rows) {
+          const m = reasons[a.id] || {};
+          const { adjust } = styleApply.styleAdjust({ exposure: m.exposure, contrast: m.contrast, colourfulness: m.colourfulness }, target);
+          if (!styleApply.hasGrade(adjust)) { skipped++; continue; }      // already on-style / no data
+          // map the style grade → the edit pipeline's params (same -1..1 range)
+          const { edits } = sanitizeEdits({ exposure: adjust.brightness, contrast: adjust.contrast, saturation: adjust.saturation });
+          if (!edits || !Object.keys(edits).length) { skipped++; continue; }
+          stampAndQueueEdits(a, edits);
+          queued++;
+        }
+      });
+      tx();
+      logAudit(req.workspaceId, req.userId, 'auto_edit', 'ms_project', project.id, { queued, skipped, total: ids.length });
+      res.status(202).json({ ok: true, queued, skipped, total: ids.length, style: target, status: 'rendering', note: 'auto-edited to house style — rendering' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   // ── Studio Copilot (control-first AI assistant) ──────────────────────────────

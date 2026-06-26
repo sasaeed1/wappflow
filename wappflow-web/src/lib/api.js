@@ -374,6 +374,7 @@ export const mediaAPI = {
   setEdits:        (assetId, edits) => api.put(`/media/assets/${assetId}/edits`, edits),
   clearEdits:      (assetId)     => api.delete(`/media/assets/${assetId}/edits`),
   batchEdits:      (projectId, asset_ids, edits) => api.post(`/media/projects/${projectId}/edits/batch`, { asset_ids, edits }),
+  autoEdit:        (projectId, body) => api.post(`/media/projects/${projectId}/auto-edit`, body || {}), // AI: grade to house style
   copilot:         (body)        => api.post('/media/copilot', body),
   // ── Video Studio (timelines / export) ──
   videoPresets:    ()            => api.get('/media/video/presets'),

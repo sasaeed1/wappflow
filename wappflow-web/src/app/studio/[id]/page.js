@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
   Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
-  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause, Droplets, Wand2,
+  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause, Droplets, Wand2, SlidersHorizontal,
 } from 'lucide-react';
 
 // photo | video — RAW and stills both live under "photo"
@@ -250,6 +250,17 @@ export default function ProjectPage() {
     try { await mediaAPI.removeWatermark(id, ids); setBanner({ type: 'ok', msg: 'Watermark removed.' }); setSelected(new Set()); setTimeout(refreshAssets, 1500); }
     catch (e) { setBanner({ type: 'error', msg: e.response?.data?.error || 'Could not remove' }); }
   };
+  // AI auto-edit selected photos to the learned house style (non-destructive).
+  const autoEditSelected = async () => {
+    const ids = Array.from(selected).filter(x => kindOf(assets.find(a => a.id === x)) === 'photo');
+    if (!ids.length) { setBanner({ type: 'error', msg: 'Select some photos first.' }); return; }
+    try {
+      const r = await mediaAPI.autoEdit(id, { asset_ids: ids });
+      setBanner({ type: 'ok', msg: `Auto-editing ${r.data.queued} photo${r.data.queued === 1 ? '' : 's'} to your house style — they’ll update shortly.` });
+      setSelected(new Set());
+      setTimeout(refreshAssets, 1800);
+    } catch (e) { setBanner({ type: 'error', msg: e?.response?.data?.error || 'Auto-edit failed — keep/cull some work so a house style can be learned first.' }); }
+  };
 
   const deleteSelected = async () => {
     if (selected.size === 0) return;
@@ -456,6 +467,7 @@ export default function ProjectPage() {
             {selected.size > 0 && (
               <>
                 <span style={{ fontSize: 12.5, color: 'var(--ms-ink-3)' }}>{selected.size} selected</span>
+                <button onClick={autoEditSelected} className="ms-btn-text" title="AI: grade these photos to your learned house style (non-destructive)"><SlidersHorizontal size={13} /> Auto-edit</button>
                 <button onClick={() => setWmModal(true)} className="ms-btn-text"><Droplets size={13} /> Watermark</button>
                 <button onClick={deleteSelected} className="ms-btn-text" style={{ color: '#b3261e' }}><Trash2 size={13} /> Delete</button>
                 <button onClick={() => setSelected(new Set())} className="ms-btn-text">Clear</button>

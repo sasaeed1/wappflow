@@ -362,3 +362,37 @@ creds plumbing).
 **Verified on the Windows machine, live:** re-analyzed all 14 wedding photos →
 **14 analyzed · 60 scores uploaded**, and the window stayed **"WappFlow" (responsive) the
 entire run** — zero "Not Responding". The first-analyze freeze is fully resolved.
+
+---
+
+## ✅ ai_editing — the last unbuilt feature  · committed
+
+A 5-agent map showed the **manual editor is already fully built** (web cull page: tone/
+crop/straighten/presets/copy-paste/batch + a per-photo auto-enhance) on top of a complete
+non-destructive backend pipeline (`processRenderEdits` + `ms_assets.edits` + `render_edits`
+jobs). Two real gaps closed:
+
+- **R2-fixed the edit renderer (CRITICAL — editing was broken on prod).** `processRenderEdits`
+  read the original from local disk and wrote outputs locally only — so on the R2-backed
+  prod, editing any uploaded photo failed (original not local) and outputs never reached R2.
+  Now reads the original via `storage.getBuffer` (Jimp decodes a Buffer) and `persistVariant`s
+  every output to R2, incl. old-revision cleanup. **Fixes all editing (manual + AI) on prod.**
+- **AI auto-edit-to-house-style (the "AI" in ai_editing).** New
+  **`POST /api/media/projects/:id/auto-edit`** (media-studio): for each photo (scope: selected
+  / keepers / all), `styleAdjust(measured aesthetic-reasons, learned style_profiles)` →
+  maps {brightness,contrast,saturation} → the edit pipeline's params → `stampAndQueueEdits`.
+  One click brings a whole shoot in line with how the studio actually edits. Non-destructive,
+  reuses the rev/render machinery, delivery (ZIP/PDF/gallery) auto-picks `full_edit`.
+- **Frontend** — `mediaAPI.autoEdit` + an **"Auto-edit"** button in the project library's
+  selected-photos toolbar (`next build` ✓).
+
+**Verified:** `test-ai-edit.js` (new) — mounts media-studio (worker off): rejects with no
+house style; auto-edits all/keepers/explicit scopes; writes valid per-asset edit params
+(brightens toward a brighter house style, within −1..1); enqueues a `render_edits` job per
+photo; rev bumps on re-run. No regression in storage/style/reel tests. The ffmpeg-free
+jimp render runs on the worker (live after deploy).
+
+**`ai_editing` entitlement:** the AI editing *works* (it rides under `media_studio`); the
+entitlement flag stays gated for now because the one remaining piece is a **desktop-native
+offline editor** (the web editor already works everywhere, incl. the desktop webview). Un-gate
++ native desktop editor = your call / a follow-up.

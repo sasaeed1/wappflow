@@ -353,20 +353,27 @@ module.exports = function createMediaWorker(db, deps = {}) {
     const asset = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(job.asset_id);
     if (!asset) return { note: 'asset-gone' };
     if (!Jimp) return { note: 'degraded-no-jimp' };
-    const absPath = path.join(uploadsDir, asset.storage_key);
-    if (!fs.existsSync(absPath)) return { note: 'file-gone' };
 
     let edits = {}; try { edits = JSON.parse(asset.edits || '{}'); } catch {}
     const hasEdits = ['exposure', 'contrast', 'temperature', 'tint', 'saturation', 'fade', 'vignette', 'grain', 'bw', 'rotate', 'crop'].some(k => edits[k]);
 
-    const img = await Jimp.read(absPath);
+    // Source bytes: R2 (provider-aware) or local disk. Jimp decodes a Buffer directly,
+    // so the edit renderer works on R2-backed assets (no local original required).
+    const isR2 = asset.storage_provider === 'r2';
+    let srcBuf = null;
+    if (isR2) { try { srcBuf = await storage.getBuffer(asset.storage_key); } catch { srcBuf = null; } }
+    else { const absPath = path.join(uploadsDir, asset.storage_key); if (fs.existsSync(absPath)) srcBuf = fs.readFileSync(absPath); }
+    if (!srcBuf) return { note: 'file-gone' };
+    const img = await Jimp.read(srcBuf);
 
     if (!hasEdits) {
       // restore plain variants from the original
       const thumbRel = `media/variants/${asset.id}-thumb.jpg`;
       const webRel = `media/variants/${asset.id}-web.jpg`;
       await img.clone().resize(400, Jimp.AUTO).quality(72).writeAsync(path.join(uploadsDir, thumbRel));
+      await persistVariant(asset, thumbRel, 'image/jpeg');
       await img.clone().resize(Math.min(2048, img.bitmap.width), Jimp.AUTO).quality(82).writeAsync(path.join(uploadsDir, webRel));
+      await persistVariant(asset, webRel, 'image/jpeg');
       const variants = { original: publicUrl(asset.storage_key), web: publicUrl(webRel), thumb: publicUrl(thumbRel) };
       db.prepare('UPDATE ms_assets SET variants = ?, width = ?, height = ? WHERE id = ?')
         .run(JSON.stringify(variants), img.bitmap.width, img.bitmap.height, asset.id);
@@ -439,8 +446,11 @@ module.exports = function createMediaWorker(db, deps = {}) {
     const webRel = `media/edits/${asset.id}-r${rev}-web.jpg`;
     const thumbRel = `media/edits/${asset.id}-r${rev}-thumb.jpg`;
     await img.clone().quality(88).writeAsync(path.join(uploadsDir, fullRel));
+    await persistVariant(asset, fullRel, 'image/jpeg');
     await img.clone().resize(Math.min(2048, img.bitmap.width), Jimp.AUTO).quality(82).writeAsync(path.join(uploadsDir, webRel));
+    await persistVariant(asset, webRel, 'image/jpeg');
     await img.clone().resize(400, Jimp.AUTO).quality(72).writeAsync(path.join(uploadsDir, thumbRel));
+    await persistVariant(asset, thumbRel, 'image/jpeg');
 
     const variants = {
       original: publicUrl(asset.storage_key),
@@ -452,12 +462,15 @@ module.exports = function createMediaWorker(db, deps = {}) {
     db.prepare('UPDATE ms_assets SET variants = ?, width = ?, height = ? WHERE id = ?')
       .run(JSON.stringify(variants), img.bitmap.width, img.bitmap.height, asset.id);
 
-    // clean older revisions so disk doesn't accumulate stale renders
+    // clean older revisions so storage doesn't accumulate stale renders (local + R2)
     try {
       fs.readdirSync(editsDir).forEach(f => {
         if (f.startsWith(`${asset.id}-r`) && !f.includes(`-r${rev}-`)) fs.unlinkSync(path.join(editsDir, f));
       });
     } catch {}
+    if (isR2 && rev > 1) {
+      for (let r = 1; r < rev; r++) for (const suf of ['full', 'web', 'thumb']) { try { await storage.deleteFile(`media/edits/${asset.id}-r${r}-${suf}.jpg`); } catch {} }
+    }
 
     if (asset.workspace_id) broadcastToWorkspace(asset.workspace_id, 'ms_asset_processed', { asset_id: asset.id, project_id: asset.project_id });
     return { note: 'ok', rev };
