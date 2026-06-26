@@ -178,9 +178,13 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
   const [showActions, setShowActions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [draft, setDraft] = useState('');
+  const [receipts, setReceipts] = useState(null); // lazy-loaded "seen by"
   const isMe = msg.user_id === currentUserId;
   const isEditing = editingId === msg.id;
   const time = formatTime(msg.created_at);
+  const loadReceipts = async () => {
+    try { const r = await commsAPI.receipts(msg.id); setReceipts(r.data.seen_by || []); } catch { setReceipts([]); }
+  };
 
   // Group reactions
   const reactionGroups = (msg.reactions || []).reduce((acc, r) => {
@@ -245,6 +249,21 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
               <a href={msg.media_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '8px 14px', textDecoration: 'none', color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>
                 <FileText size={16} color="#6366f1" /> {msg.body || 'Download file'}
               </a>
+            )}
+          </div>
+        )}
+
+        {/* Read receipts (own messages, lazy) */}
+        {isMe && !isEditing && (
+          <div style={{ marginTop: 3 }}>
+            {receipts === null ? (
+              <button onClick={loadReceipts} title="Who's seen this" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', fontSize: 11, padding: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <Check size={12} /> Seen?
+              </button>
+            ) : (
+              <span style={{ color: receipts.length ? '#6366f1' : 'var(--text-dim)', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                <Check size={12} />{receipts.length ? <Check size={12} style={{ marginLeft: -7 }} /> : null} {receipts.length ? `Seen by ${receipts.length}` : 'Not seen yet'}
+              </span>
             )}
           </div>
         )}
