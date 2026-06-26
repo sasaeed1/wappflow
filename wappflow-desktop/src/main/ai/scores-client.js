@@ -44,13 +44,19 @@ async function listAssets(projectId, { limit = 500, offset = 0, type = 'photo' }
   return get(`/media/projects/${projectId}/assets?${q.toString()}`); // { total, assets }
 }
 
-// Download an asset's bytes for local analysis. asset.url is a host-relative
-// /uploads/... path; prefix it with the file host. No auth header needed.
+// Download an asset's bytes for local analysis. Prefer the smaller WEB variant
+// (≤2048px) over the full-size original — analysis downscales anyway, so this is
+// dramatically faster and avoids pulling multi-MB RAW/originals per asset. Falls
+// back to thumb → original → /uploads. Carries the auth header (harmless on the
+// public file route, required if a variant ever sits behind auth). Short timeout
+// so one slow/missing asset fails fast and the run continues instead of stalling.
+const V = (asset, k) => (asset.variants && asset.variants[k]) || null;
 async function downloadAsset(asset) {
-  let url = asset.url || (asset.variants && (asset.variants.web || asset.variants.original)) || (asset.storage_key ? `/uploads/${asset.storage_key}` : null);
+  let url = V(asset, 'web') || asset.url || V(asset, 'original') || V(asset, 'thumb')
+    || (asset.storage_key ? `/uploads/${asset.storage_key}` : null);
   if (!url) throw new Error('asset has no downloadable url');
   if (!/^https?:\/\//.test(url)) url = `${fileBase()}${url}`;
-  const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 120000 });
+  const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 45000, headers: auth.authHeader(), maxRedirects: 5 });
   return Buffer.from(res.data);
 }
 
