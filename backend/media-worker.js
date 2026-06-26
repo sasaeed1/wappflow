@@ -693,6 +693,39 @@ module.exports = function createMediaWorker(db, deps = {}) {
     } finally { local.cleanup(); }
   }
 
+  // Every assetId referenced by a timeline's clips (video/photo/audio/overlay).
+  function collectAssetIds(doc) {
+    const ids = new Set();
+    for (const tr of (doc.tracks || [])) for (const c of (tr.clips || [])) if (c && c.assetId) ids.add(c.assetId);
+    return [...ids];
+  }
+  // For an R2-backed asset, download the variant the renderer needs (web for photos,
+  // original for video) to a temp file so ffmpeg can read it. Local assets resolve in
+  // place. Returns { path, cleanup } or null (→ render shows a graceful placeholder).
+  async function localizeRenderAsset(assetId) {
+    const a = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(assetId);
+    if (!a) return null;
+    const isVideo = (a.type === 'video') || (a.mime || '').startsWith('video/');
+    if (a.storage_provider === 'r2') {
+      // canonical keys the worker writes: photos → web variant; video → original
+      const candidates = isVideo ? [a.storage_key] : [`media/variants/${a.id}-web.jpg`, a.storage_key];
+      for (const key of candidates) {
+        if (!key) continue;
+        try {
+          const buf = await storage.getBuffer(key);
+          if (buf && buf.length) {
+            const tmp = path.join(tmpDir, `exp-${a.id}-${path.basename(key)}`);
+            fs.writeFileSync(tmp, buf);
+            return { path: tmp, cleanup: () => { try { fs.unlinkSync(tmp); } catch {} } };
+          }
+        } catch { /* try next candidate */ }
+      }
+      return null;
+    }
+    const abs = resolveAssetPath(assetId);
+    return abs ? { path: abs, cleanup: () => {} } : null;
+  }
+
   async function processVideoExport(job) {
     const payload = (() => { try { return JSON.parse(job.payload || '{}'); } catch { return {}; } })();
     const exp = db.prepare('SELECT * FROM ms_video_exports WHERE id = ?').get(payload.export_id);
@@ -702,11 +735,22 @@ module.exports = function createMediaWorker(db, deps = {}) {
       if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'failed' });
       return { note: 'export-failed: ' + msg };
     };
+    const cleanups = [];
     try {
       if (!videoEngine.detectFfmpeg().ffmpeg) return fail('FFmpeg is not installed on the server. Run: apt install ffmpeg');
       const t = db.prepare('SELECT * FROM ms_timelines WHERE id = ?').get(exp.timeline_id);
       if (!t) return fail('timeline gone');
       let document = {}; try { document = JSON.parse(t.document || '{}'); } catch {}
+      // R2: pre-localize every referenced asset's render-variant to a temp file (the
+      // resolve callback is sync, so it can't download). Local assets resolve in place.
+      const localMap = new Map();
+      if (storage.isRemote) {
+        for (const id of collectAssetIds(document)) {
+          const loc = await localizeRenderAsset(id);
+          if (loc) { localMap.set(id, loc.path); cleanups.push(loc.cleanup); }
+        }
+      }
+      const resolve = (id) => localMap.get(id) || resolveAssetPath(id);
       // ensure the built-in LUT .cube files exist on disk, then resolve id → path
       const lutMap = videoLuts.ensureCubeFiles(fs, path, path.join(uploadsDir, 'media', 'luts'));
       const customLuts = {};
@@ -719,7 +763,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
       const fonts = videoEngine.detectFonts();
       const built = videoEngine.buildExportCommand(
         document, { width: exp.width, height: exp.height, fps: exp.fps },
-        resolveAssetPath,
+        resolve,
         (id) => lutMap[id] || customLuts[id] || null,
         (fam) => fonts[fam] || fonts.sans || null,
       );
@@ -743,11 +787,15 @@ module.exports = function createMediaWorker(db, deps = {}) {
       });
 
       const size = fs.existsSync(outAbs) ? fs.statSync(outAbs).size : 0;
+      // R2: push the rendered MP4 to the bucket so publicUrl()/the download route can
+      // serve it (the local copy stays as a dual-read fallback).
+      if (storage.isRemote && size) { try { await storage.uploadFile(outRel, fs.readFileSync(outAbs), 'video/mp4'); } catch {} }
       db.prepare("UPDATE ms_video_exports SET status='done', progress=100, storage_key=?, size_bytes=?, finished_at=CURRENT_TIMESTAMP WHERE id=?")
         .run(outRel, size, exp.id);
       if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'done', progress: 100, url: publicUrl(outRel) });
       return { note: 'ok', size, segments: built.segments };
     } catch (e) { return fail(e.message); }
+    finally { for (const c of cleanups) { try { c(); } catch {} } }
   }
 
   // ── job runner (claim → run → done/retry) ───────────────────────────────────

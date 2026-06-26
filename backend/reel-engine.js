@@ -12,8 +12,49 @@
 //  approves/edits the plan before any render.
 // ════════════════════════════════════════════════════════════════════════════
 
+const videoEngine = require('./video-engine');
+
 module.exports = function mountReelEngine(app, db, deps = {}) {
-  const { auth = (req, res, next) => next() } = deps;
+  const { auth = (req, res, next) => next(), generateId = () => require('crypto').randomUUID(), logAudit = () => {} } = deps;
+
+  // Per-role clip lengths + crossfade overlap (ms). Tuned for a punchy social reel.
+  const ROLE_DUR = { hook: 2800, build: 2200, climax: 3000, outro: 3400 };
+  const OVERLAP = 350;
+
+  // PURE: reel plan → a Media-Studio timeline EDL (the video-engine renders this).
+  // A 9:16 video track of the plan's segments — photos get a gentle alternating Ken
+  // Burns push, every cut is a crossDissolve, with a title card + optional music.
+  function planToTimeline(plan, opts = {}) {
+    const segs = plan.segments || [];
+    const clips = [];
+    let cursor = 0;
+    segs.forEach((seg, i) => {
+      const dur = ROLE_DUR[seg.role] || 2400;
+      const start = i === 0 ? 0 : Math.max(0, cursor - OVERLAP);
+      const isVideo = seg.type === 'video';
+      const dir = i % 2 ? -1 : 1;
+      const clip = {
+        id: `rc_${i}`, kind: isVideo ? 'video' : 'photo', assetId: seg.asset_id,
+        start, duration: dur, in: 0,
+        transitionIn: i > 0 ? { type: 'crossDissolve', duration: OVERLAP } : { type: 'fade', duration: 500 },
+        transitionOut: i < segs.length - 1 ? { type: 'crossDissolve', duration: OVERLAP } : { type: 'fade', duration: 600 },
+      };
+      if (!isVideo) clip.kenBurns = { fromScale: 1.0, toScale: 1.12, fromX: dir * 0.04, toX: -dir * 0.04, fromY: -0.02, toY: 0.03 };
+      clips.push(clip);
+      cursor = start + dur;
+    });
+    const tracks = [{ id: 'v1', type: 'video', clips }];
+    if (opts.title) {
+      tracks.push({ id: 'txt', type: 'text', clips: [{ id: 'title', start: 200, duration: 2600,
+        text: { content: String(opts.title).slice(0, 80), type: 'heading', size: 64, weight: 800, color: '#ffffff', align: 'center', animation: 'fade' },
+        transform: { x: 0, y: -0.05, opacity: 1 } }] });
+    }
+    if (opts.music_asset_id) {
+      tracks.push({ id: 'aud', type: 'audio', clips: [{ id: 'music', start: 0, duration: cursor, assetId: String(opts.music_asset_id), in: 0,
+        audio: { volume: 0.8, fadeIn: 400, fadeOut: 1200 } }] });
+    }
+    return { version: 1, aspect: '9:16', fps: 30, quality: 1080, preset: opts.preset || 'ig_reel', tracks };
+  }
 
   function scoreMap(assetIds) {
     const map = {};
@@ -89,6 +130,46 @@ module.exports = function mountReelEngine(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  console.log('🎬 Reel/Story planning engine mounted (POST /api/media/projects/:id/reel-plan)');
-  return { buildPlan };
+  // POST /api/media/projects/:id/reel-render { target_count?, preset?, quality?, title?, music_asset_id? }
+  // Build the plan → compose a timeline → enqueue a real video render (the existing
+  // video-engine export path). This is a deliberate human action (not the advisory
+  // plan), so it WRITES: a timeline + an export job. Returns ids to poll/download.
+  app.post('/api/media/projects/:id/reel-render', auth, (req, res) => {
+    try {
+      const project = db.prepare('SELECT id FROM ms_projects WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const assets = db.prepare("SELECT id, type FROM ms_assets WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL").all(req.params.id, req.workspaceId);
+      const sm = scoreMap(assets.map(a => a.id));
+      assets.forEach(a => { a.scores = sm[a.id] || {}; });
+      const target = Math.max(3, Math.min(40, parseInt(req.body && req.body.target_count, 10) || 12));
+      const plan = buildPlan(assets, target);
+      if (!plan.segments.length) return res.status(400).json({ error: 'No analyzed assets to build a reel from — run analysis first.' });
+
+      const opts = { preset: req.body && req.body.preset, title: req.body && req.body.title, music_asset_id: req.body && req.body.music_asset_id };
+      const doc = planToTimeline(plan, opts);
+      const san = videoEngine.sanitizeTimeline(doc);
+
+      const timelineId = generateId();
+      db.prepare(`INSERT INTO ms_timelines (id, workspace_id, project_id, name, source, aspect_ratio, width, height, fps, duration_ms, document, status, created_by)
+        VALUES (?,?,?,?, 'ai_reel', ?,?,?,?,?, ?, 'ready', ?)`)
+        .run(timelineId, req.workspaceId, project.id, (opts.title || 'AI Reel'), san.aspect, san.width, san.height, san.fps, san.duration, JSON.stringify(doc), req.userId);
+
+      const presetId = videoEngine.EXPORT_PRESETS[opts.preset] ? opts.preset : 'ig_reel';
+      const preset = videoEngine.EXPORT_PRESETS[presetId];
+      const quality = videoEngine.QUALITIES[req.body && req.body.quality] ? Number(req.body.quality) : 1080;
+      const aspect = preset.aspect || san.aspect;
+      const { width, height } = videoEngine.dimsFor(aspect, quality);
+      const exportId = generateId();
+      db.prepare(`INSERT INTO ms_video_exports (id, workspace_id, timeline_id, project_id, preset, width, height, fps, quality, created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(exportId, req.workspaceId, timelineId, project.id, presetId, width, height, san.fps, quality, req.userId);
+      db.prepare(`INSERT INTO ms_jobs (id, workspace_id, type, project_id, status, payload) VALUES (?,?,'video_export',?,'pending',?)`)
+        .run(generateId(), req.workspaceId, project.id, JSON.stringify({ export_id: exportId }));
+
+      try { logAudit(req.workspaceId, req.userId, 'reel_render', 'ms_project', project.id, { preset: presetId, segments: plan.segments.length }); } catch {}
+      res.status(202).json({ timeline_id: timelineId, export_id: exportId, segments: plan.segments.length, duration_ms: san.duration, structure: plan.structure, preset: presetId, status: 'rendering', note: 'rendering — poll GET /api/media/exports/:export_id' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  console.log('🎬 Reel/Story engine mounted (POST /api/media/projects/:id/reel-plan + /reel-render)');
+  return { buildPlan, planToTimeline };
 };

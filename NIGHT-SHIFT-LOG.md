@@ -276,3 +276,29 @@ Driven via computer-use on the user's Windows 10 machine, against the **live dep
 - 🐛 **Found + fixed** (`0b6a13a`): analysis stalled pulling full-size originals → now downloads the ≤2048px **web variant** + auth + fail-fast timeout. Re-ran → completed.
 - ✅ **"Warm-up freeze" — root-caused + fixed (2026-06-27).** Instrumented `onnxruntime-node` (event-loop-lag probe): session **create = 6.6s but NON-blocking** (0ms loop gap), **inference = 37ms**. So ONNX was never the freeze — my earlier "~60s DirectML shader-compile" guess was wrong. The real 60s hang was the **full-size original's download + synchronous jimp decode of a ~30MP photo**, already fixed by the **web-variant download change** (`0b6a13a`, verified: 14 analyzed → 60 uploaded). Tried an extra on-load session warm-up but it **regressed** (in Electron's main process ONNX create blocks long enough to time out the concurrent `loadProjects` axios call) → reverted. **Residual:** ~session-create latency on the very first analyze still briefly blocks the Local-AI view; fully removing it needs moving ONNX off the main process (a child-process "AI host" refactor, with token plumbing since `safeStorage` is main-only) — a separate, larger task, not a one-time-60s hang.
 - ⛔ **Not done by me (by safety rule):** typing the login password (already logged in, so moot) and toggling Wi-Fi for the offline-banner test. **Drag-drop** upload not automated (cross-app drag is unreliable) — wired in `native.js`, a 10-sec manual check.
+
+---
+
+## ✅ Reel RENDER (P8 follow-up) — plan → actual video  · committed
+
+The reel engine produced a *plan*; this turns it into a rendered MP4 via the existing
+video-engine, and makes that render path **R2-aware** so it works on prod.
+
+- **`reel-engine.js`** — new pure `planToTimeline(plan, opts)` composes a 9:16 timeline
+  EDL from the plan (one clip per segment, alternating Ken-Burns on photos, crossDissolve
+  cuts, a title card + optional music track). New **`POST /api/media/projects/:id/reel-render`**:
+  builds the plan → composes the timeline → writes an `ms_timelines` (source `ai_reel`)
+  row + an `ms_video_exports` row + enqueues the `video_export` job. Returns ids to poll.
+- **`media-worker.js`** — the video export was **local-only** (R2 assets rendered as gray
+  placeholders, output never reached R2 — same gap as poster/proxy). Made `processVideoExport`
+  **R2-aware**: pre-localizes each referenced asset's render-variant to a temp file
+  (`localizeRenderAsset` + `collectAssetIds`), renders, then **uploads the MP4 to R2**, with
+  temp cleanup in `finally`. This fixes **all** video exports on R2, not just reels.
+- **`server.js`** — passes `generateId` + `logAudit` into the reel-engine mount.
+
+**Verified:** `test-reel-render.js` (new) — plan→timeline EDL (clips/transitions/Ken-Burns/
+title/music), timeline→**valid ffmpeg render graph** via `buildExportCommand` (8 clips,
+17.75s, filter_complex + libx264 + audio), and the route writes timeline + export + job.
+No regression in `test-reel-engine` / `test-storage` / `test-storage-enforce`. The real
+ffmpeg render runs server-side (needs the deploy + ffmpeg on Hetzner). **Remaining:** a
+frontend "Generate AI Reel" button (the studio video page) — quick follow-up.
