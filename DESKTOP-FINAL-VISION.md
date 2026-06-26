@@ -405,7 +405,9 @@ Source: the "WappFlow Infrastructure + Desktop + Communications Roadmap" (Phases
 >
 > **Chat depth shipped (post-deploy):** edit · pin + pins panel · message search · voice notes · threads · huddle→call lifecycle (ring/missed-call/timeline) · read receipts (`949a5a6`→`df9e17a`). RoomPanel now on lead + contract + project.
 >
-> **Still open:** desktop on-GUI boot verification · reel/story **render** · P9 **auto-apply** style · entitlement **un-gates** (desktop_sync shippable once GUI-verified) · chat **@-autocomplete** + **in-call roster/raise-hand UI** (both need a browser/LiveKit session) · storage **by-region** (single bucket today) · video speech/emotion/action.
+> **Chat depth 100% complete** incl. @-autocomplete + in-call roster/raise-hand (`0f1ab05`, `ebf990f`).
+>
+> **Still open (all need a capability not in the build sandbox):** desktop on-GUI boot verification · reel/story **render** + video speech/emotion/action (video-engine + ML) · P9 **auto-apply** (needs edit-consumer spec) · entitlement **un-gates** (billing call) · storage **by-region** (single bucket) · **frontend deploy** (`pm2 restart wappflow-web`).
 
 ### R1 — Storage (R2) finishing
 | # | Item | Kind | State | Next step / blocker |

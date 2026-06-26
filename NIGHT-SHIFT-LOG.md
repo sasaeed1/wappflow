@@ -233,7 +233,31 @@ Browser-verifiable chat polish, all on `chat/page.js`, verified `next build` →
 **Chat depth is now substantially complete:** edit · pin + pins panel · message search ·
 voice notes · threads · call notifications/missed-call · receipts.
 
-**Only chat items left (both genuinely un-verifiable without a browser/LiveKit):**
-@-autocomplete (the composer is `contentEditable` — caret tracking is fiddly), and the
-**in-call roster + raise-hand UI** inside HuddleModal (needs LiveKit data-channels + a
-live 2-peer session to test). Gallery RoomPanel is N/A (no standalone gallery detail route).
+## ✅ Wave 9 — Chat bucket finished (@-autocomplete + in-call roster/raise-hand)  · committed
+
+- **@-autocomplete** (`0f1ab05`) — `contentEditable`-safe: detects the @token at the caret
+  in the current text node, shows a filtered member dropdown (Arrow/Enter/Tab/Esc), inserts
+  via Range + `execCommand` (onMouseDown preserves the caret). **Only intercepts keys while
+  the dropdown is open**, so normal typing/send is never affected.
+- **In-call roster + raise-hand** (`ebf990f`) — live participant roster panel + raise/lower
+  hand over a **LiveKit data channel** (`RoomEvent.DataReceived`), raised-hands badge on the
+  participants control. Shared HuddleModal → benefits chat + RoomPanel calls. Confirmed the
+  `publishData(data, {reliable:true})` / `DataReceived` / `remoteParticipants` APIs against
+  the installed **livekit-client v2.19.2**.
+
+**The chat depth bucket is now 100% complete:** edit · pin + pins · search · voice notes ·
+threads · call lifecycle (ring/missed/timeline) · receipts · @-autocomplete · roster + raise-hand.
+
+---
+
+## 🏁 End-of-run state
+
+**Everything build/test-verifiable here is done.** All backend (P1–P10 + R1–R5) is node-test
+green; all web frontend is `next build` green; desktop native shell is unit-tested.
+
+**What genuinely remains needs a capability not available in this environment:**
+- **Desktop on-GUI boot** (no GUI here) — the only thing between the desktop native shell and "done".
+- **Reel/story render** (heavy video-engine work) · **video speech/emotion/action** (audio + ML models).
+- **P9 auto-apply style** (needs a product spec for the edit consumer).
+- **Entitlement un-gates** (`desktop_sync` shippable post-GUI-verify) — a billing/product decision.
+- **Frontend deploy**: the web commits since the backend deploy need `pm2 restart wappflow-web`.
