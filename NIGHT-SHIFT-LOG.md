@@ -328,3 +328,37 @@ style), and the suggestions endpoint returns per-asset match + adjust. No regres
 
 **Note:** this makes `style_profiles` genuinely shippable — un-gating it from
 `UNBUILT_FEATURES` is a billing/tier call for you (same as `desktop_sync`).
+
+---
+
+## ✅ Entitlement un-gates  · committed
+
+`UNBUILT_FEATURES` now contains only **`ai_editing`** (desktop native editing — still
+unbuilt). Un-gated the four shipped features: **desktop_sync** (offline sync, verified
+live), **reel_engine** + **story_engine** (reel plan + render), **style_profiles** (style
+auto-apply). Updated `test-phase1` to the new reality. Their per-plan availability now
+follows the normal tier config.
+
+---
+
+## ✅ ONNX child-process refactor — the freeze is GONE (verified on hardware)  · committed
+
+The residual first-analyze block was Electron's **main process** stalling on the
+synchronous ONNX session-create (the probe showed plain-Node create is non-blocking, but
+in Electron's main it blocks + even starves concurrent IPC). Fix: moved the heavy ONNX/jimp
+work to a dedicated **Electron `utilityProcess`** — keeping auth/db/network in main (no
+creds plumbing).
+- **`ai/inference-host.js` (new)** — child worker: `{run, analyzer, buffer, meta}` →
+  `analyzers.runAnalyzer` → result. Stateless; no auth/db needed.
+- **`ai/inference-client.js` (new)** — main-side driver: spawns the utilityProcess, sends
+  the image bytes as a **cloneable Uint8Array** (Electron's utilityProcess MessagePort
+  doesn't accept an ArrayBuffer transfer list — that was the first cut's bug), awaits the
+  result. **Falls back to in-process** if the child is unavailable/dies, so analysis never
+  breaks. `warmup()` pre-spawns + pre-creates sessions off the main thread.
+- **`engine.js`** — `analyzers.runAnalyzer('vision'/'video', …)` → `inference.run(…)`;
+  keeps the lightweight `runtimeStatus()` in main for the badge.
+- **`main.js`** — `initServices` pre-warms the inference process on launch.
+
+**Verified on the Windows machine, live:** re-analyzed all 14 wedding photos →
+**14 analyzed · 60 scores uploaded**, and the window stayed **"WappFlow" (responsive) the
+entire run** — zero "Not Responding". The first-analyze freeze is fully resolved.

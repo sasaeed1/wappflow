@@ -67,6 +67,10 @@ function pushSyncState() { try { const st = sync.state(); win && win.webContents
 function initServices() {
   const version = app.getVersion();
 
+  // Pre-spawn the inference utilityProcess + warm the ONNX sessions OFF the main
+  // thread, so the first Local-AI analyze starts instantly without freezing the window.
+  try { require('./ai/inference-client').warmup(); } catch {}
+
   // System tray (background presence + quick actions).
   try {
     tray.build({ onOpen: showWindow, onSync: () => sync.syncNow().then(pushSyncState), getState: () => sync.state() });

@@ -9,7 +9,8 @@
 const { EventEmitter } = require('events');
 const auth = require('../auth');
 const client = require('./scores-client');
-const analyzers = require('./analyzers');
+const analyzers = require('./analyzers');        // runtimeStatus (lightweight, main-side)
+const inference = require('./inference-client');  // heavy ONNX/jimp work → utilityProcess
 
 const CLIENT_TIER = ['vision', 'video']; // client-tier analyzers the desktop fulfils
 const UPLOAD_CHUNK = 50;
@@ -66,7 +67,7 @@ class Engine extends EventEmitter {
         const a = work[i];
         try {
           const buf = await client.downloadAsset(a);
-          const res = await analyzers.runAnalyzer('vision', buf, a);
+          const res = await inference.run('vision', buf, a);
           if (res && res.scores && res.scores.length) {
             items.push({ asset_id: a.id, analyzer_id: res.analyzer_id, model_version: res.model_version, scores: res.scores, source: 'desktop' });
           }
@@ -99,7 +100,7 @@ class Engine extends EventEmitter {
             const a = vwork[i];
             try {
               const buf = await client.downloadAsset(a);
-              const res = await analyzers.runAnalyzer('video', buf, a);
+              const res = await inference.run('video', buf, a);
               if (res && res.scores && res.scores.length) {
                 summary.uploaded += await this._flush(projectId, [{ asset_id: a.id, analyzer_id: res.analyzer_id, model_version: res.model_version, scores: res.scores, source: 'desktop' }]);
               }
