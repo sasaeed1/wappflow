@@ -13,6 +13,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 const videoEngine = require('./video-engine');
+const styleApply = require('./style-apply');
 
 module.exports = function mountReelEngine(app, db, deps = {}) {
   const { auth = (req, res, next) => next(), generateId = () => require('crypto').randomUUID(), logAudit = () => {} } = deps;
@@ -40,6 +41,10 @@ module.exports = function mountReelEngine(app, db, deps = {}) {
         transitionOut: i < segs.length - 1 ? { type: 'crossDissolve', duration: OVERLAP } : { type: 'fade', duration: 600 },
       };
       if (!isVideo) clip.kenBurns = { fromScale: 1.0, toScale: 1.12, fromX: dir * 0.04, toX: -dir * 0.04, fromY: -0.02, toY: 0.03 };
+      // Auto-apply house style: bake a subtle colour grade nudging this clip toward the
+      // learned style profile (opt-in via styleByAsset; non-destructive — grades the render).
+      const grade = (opts.styleByAsset || {})[seg.asset_id];
+      if (styleApply.hasGrade(grade)) clip.color = { brightness: grade.brightness || 0, contrast: grade.contrast || 0, saturation: grade.saturation || 0 };
       clips.push(clip);
       cursor = start + dur;
     });
@@ -146,6 +151,25 @@ module.exports = function mountReelEngine(app, db, deps = {}) {
       if (!plan.segments.length) return res.status(400).json({ error: 'No analyzed assets to build a reel from — run analysis first.' });
 
       const opts = { preset: req.body && req.body.preset, title: req.body && req.body.title, music_asset_id: req.body && req.body.music_asset_id };
+      // Auto-apply the house style: grade each clip toward the learned style profile
+      // (on by default; pass auto_style:false to skip). Skipped silently if no profile yet.
+      let autoStyle = false;
+      if (!(req.body && req.body.auto_style === false)) {
+        try {
+          const prof = db.prepare("SELECT profile FROM style_profiles WHERE workspace_id = ? AND scope = 'workspace' AND scope_id = ?").get(req.workspaceId, req.workspaceId);
+          const target = prof ? JSON.parse(prof.profile) : null;
+          if (target && (target.exposure || target.contrast || target.colourfulness)) {
+            const ids = plan.segments.map(s => s.asset_id);
+            const rows = db.prepare(`SELECT asset_id, reasons FROM ms_asset_scores WHERE score_type = 'aesthetic' AND asset_id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+            const map = {};
+            for (const r of rows) {
+              let m = {}; try { m = JSON.parse(r.reasons) || {}; } catch {}
+              map[r.asset_id] = styleApply.styleAdjust({ exposure: m.exposure, contrast: m.contrast, colourfulness: m.colourfulness }, target).adjust;
+            }
+            opts.styleByAsset = map; autoStyle = true;
+          }
+        } catch { /* no profile / best-effort → render ungraded */ }
+      }
       const doc = planToTimeline(plan, opts);
       const san = videoEngine.sanitizeTimeline(doc);
 
@@ -166,7 +190,7 @@ module.exports = function mountReelEngine(app, db, deps = {}) {
         .run(generateId(), req.workspaceId, project.id, JSON.stringify({ export_id: exportId }));
 
       try { logAudit(req.workspaceId, req.userId, 'reel_render', 'ms_project', project.id, { preset: presetId, segments: plan.segments.length }); } catch {}
-      res.status(202).json({ timeline_id: timelineId, export_id: exportId, segments: plan.segments.length, duration_ms: san.duration, structure: plan.structure, preset: presetId, status: 'rendering', note: 'rendering — poll GET /api/media/exports/:export_id' });
+      res.status(202).json({ timeline_id: timelineId, export_id: exportId, segments: plan.segments.length, duration_ms: san.duration, structure: plan.structure, preset: presetId, auto_style: autoStyle, status: 'rendering', note: 'rendering — poll GET /api/media/exports/:export_id' });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

@@ -300,5 +300,31 @@ video-engine, and makes that render path **R2-aware** so it works on prod.
 title/music), timeline→**valid ffmpeg render graph** via `buildExportCommand` (8 clips,
 17.75s, filter_complex + libx264 + audio), and the route writes timeline + export + job.
 No regression in `test-reel-engine` / `test-storage` / `test-storage-enforce`. The real
-ffmpeg render runs server-side (needs the deploy + ffmpeg on Hetzner). **Remaining:** a
-frontend "Generate AI Reel" button (the studio video page) — quick follow-up.
+ffmpeg render runs server-side (needs the deploy + ffmpeg on Hetzner). Frontend
+**"Auto-reel" button** added to the studio video page (`reelAPI`, `next build` ✓).
+
+---
+
+## ✅ P9 Auto-apply style — the Style Engine's first real consumer  · committed
+
+The Style Engine learned a house-style profile but nothing consumed it. Now the reel
+renderer **auto-grades** toward it, plus a per-asset suggestions endpoint for the UI.
+
+- **`style-apply.js` (new, pure + tested)** — `styleAdjust(measured, target)`: from an
+  asset's measured look (aesthetic-score reasons: exposure/contrast/colourfulness) + the
+  house-style profile, computes a **subtle, bounded colour grade** (video-engine −1..1,
+  capped ±0.5) that nudges the asset toward the house style, plus a `style_match` score.
+- **`reel-engine.js`** — reel-render now **auto-applies** the house style: it loads the
+  workspace `style_profiles`, grades each clip toward it (baked into the timeline's clip
+  `color`), and reports `auto_style`. On by default; `auto_style:false` opts out; skipped
+  silently when no profile exists yet. Non-destructive (grades the render, not originals).
+- **`brains.js`** — new **`GET /api/media/projects/:id/style-suggestions`**: per-asset
+  `style_match` + the `adjust` grade — advisory, for the cull/edit UI to surface.
+
+**Verified:** `test-style-apply.js` (new) — pure grade (under/over-target, clamp, match,
+opt-out), reel render bakes the grade onto every clip (brightens toward a brighter house
+style), and the suggestions endpoint returns per-asset match + adjust. No regression in
+`test-reel-render` / `test-brains` / `test-reel-engine`.
+
+**Note:** this makes `style_profiles` genuinely shippable — un-gating it from
+`UNBUILT_FEATURES` is a billing/tier call for you (same as `desktop_sync`).

@@ -15,6 +15,8 @@
 //  the style_profiles entitlement un-gate, are tracked follow-ups).
 // ════════════════════════════════════════════════════════════════════════════
 
+const styleApply = require('./style-apply');
+
 module.exports = function mountBrains(app, db, deps = {}) {
   const { auth = (req, res, next) => next(), generateId = () => require('crypto').randomUUID() } = deps;
 
@@ -134,6 +136,32 @@ module.exports = function mountBrains(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  console.log('🧠 Brains & Style mounted (creator-brain, style-profile, recommendations)');
+  // Per-asset style auto-apply suggestions: for each scored asset in a project, how
+  // close it is to the house style + the subtle grade that would bring it in line. The
+  // reel renderer applies these automatically; the cull/edit UI can surface them.
+  app.get('/api/media/projects/:id/style-suggestions', auth, (req, res) => {
+    try {
+      const project = db.prepare('SELECT id FROM ms_projects WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      const style = deriveStyle(req.workspaceId, 'workspace', req.workspaceId);
+      const target = style.profile || {};
+      const assets = db.prepare("SELECT id FROM ms_assets WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL").all(req.params.id, req.workspaceId);
+      const ids = assets.map(a => a.id);
+      const reasons = {};
+      if (ids.length) {
+        for (const r of db.prepare(`SELECT asset_id, reasons FROM ms_asset_scores WHERE score_type = 'aesthetic' AND asset_id IN (${ids.map(() => '?').join(',')})`).all(...ids)) {
+          try { reasons[r.asset_id] = JSON.parse(r.reasons) || {}; } catch {}
+        }
+      }
+      const suggestions = ids.map(id => {
+        const m = reasons[id] || {};
+        const { adjust, style_match } = styleApply.styleAdjust({ exposure: m.exposure, contrast: m.contrast, colourfulness: m.colourfulness }, target);
+        return { asset_id: id, style_match, adjust };
+      }).filter(s => s.style_match != null);
+      res.json({ style: target, confidence: style.confidence, sample_n: style.sample_n, suggestions });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  console.log('🧠 Brains & Style mounted (creator-brain, style-profile, recommendations, style-suggestions)');
   return { deriveCreatorBrain, deriveStyle };
 };
