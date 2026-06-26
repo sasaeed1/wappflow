@@ -403,7 +403,9 @@ Source: the "WappFlow Infrastructure + Desktop + Communications Roadmap" (Phases
 > - **R4 Desktop native shell** ✅ built — offline store + work queue + LWW/append conflict merge + sync-on-reconnect + offline banner, fleet **/report** client, native **notifications** + **tray** + **folder-watch** + **drag-drop** + **direct-to-R2 upload** (`0736b91`). *Needs a GUI machine for the live boot check.*
 > - **R5 Video/AI** ✅ — desktop **video analyzer** real (ffmpeg frames → quality/motion/scene_cut/shake), version synced `video-v1` (`bfd3142`). *speech/emotion/action + Edit Brain = later.*
 >
-> **Still open after the night shift:** desktop on-GUI boot verification · reel/story **render** · P9 **auto-apply** style · entitlement **un-gates** (desktop_sync shippable once GUI-verified) · chat deep-polish (edit/search/pins/thread panels, @-autocomplete, call-roster, voice notes) · RoomPanel on project/gallery pages · storage **by-region** (single bucket today) · video speech/emotion/action.
+> **Chat depth shipped (post-deploy):** edit · pin + pins panel · message search · voice notes · threads · huddle→call lifecycle (ring/missed-call/timeline) · read receipts (`949a5a6`→`df9e17a`). RoomPanel now on lead + contract + project.
+>
+> **Still open:** desktop on-GUI boot verification · reel/story **render** · P9 **auto-apply** style · entitlement **un-gates** (desktop_sync shippable once GUI-verified) · chat **@-autocomplete** + **in-call roster/raise-hand UI** (both need a browser/LiveKit session) · storage **by-region** (single bucket today) · video speech/emotion/action.
 
 ### R1 — Storage (R2) finishing
 | # | Item | Kind | State | Next step / blocker |

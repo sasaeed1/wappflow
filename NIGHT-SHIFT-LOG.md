@@ -220,4 +220,20 @@ Browser-verifiable chat polish, all on `chat/page.js`, verified `next build` →
 - **Message search** — header 🔍 opens a server-side search box (`commsAPI.search`) across visible channels; clicking a hit jumps to that channel.
 - **Voice notes** — a mic button in the composer records via **MediaRecorder** → uploads through the chat media route (no backend change needed).
 
-**Still in the polish bucket:** @-autocomplete (the composer is `contentEditable` — caret tracking is fiddly; deferred to avoid a blind edit), thread side-panel, in-call roster + raise-hand UI, per-message receipt ticks, gallery RoomPanel (no standalone gallery detail route).
+## ✅ Wave 8 — Chat threads + call lifecycle + receipts  · committed
+
+- **Thread side-drawer** (`de837cd`) — click the reply-context or the action-menu thread
+  button → `commsAPI.thread` drawer (root + replies) with an inline in-thread reply.
+- **Huddle → call lifecycle** (`81a8ad6`) — the Huddle/Video buttons now call
+  `commsAPI.callStart` (rings the channel: invite + notify + **missed-call** tracking +
+  timeline) and `callEnd` on close. **This activates the entire Wave-2 call backend** —
+  previously the buttons opened LiveKit directly and none of the call notifications fired.
+- **Read receipts** (`df9e17a`) — lazy "Seen by N" on own messages (`commsAPI.receipts`).
+
+**Chat depth is now substantially complete:** edit · pin + pins panel · message search ·
+voice notes · threads · call notifications/missed-call · receipts.
+
+**Only chat items left (both genuinely un-verifiable without a browser/LiveKit):**
+@-autocomplete (the composer is `contentEditable` — caret tracking is fiddly), and the
+**in-call roster + raise-hand UI** inside HuddleModal (needs LiveKit data-channels + a
+live 2-peer session to test). Gallery RoomPanel is N/A (no standalone gallery detail route).
