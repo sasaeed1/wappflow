@@ -9,7 +9,7 @@ import {
   Bold, Italic, Code, Link2, AtSign, Search,
   Volume2, VolumeX, Bell, BellOff, Video, Phone,
   List, ListOrdered, Quote, Strikethrough, Underline as UnderlineIcon,
-  Pin, Mic, Square
+  Pin, Mic, Square, MessagesSquare
 } from 'lucide-react';
 import { chatAPI, commsAPI, workspaceAPI, BASE_URL } from '../../lib/api';
 import { formatTime, formatDate } from '../../lib/datetime';
@@ -174,7 +174,7 @@ function ChannelModal({ onSave, onClose }) {
 }
 
 // Single message bubble
-function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin, editingId, onEditSave, onEditStart, onEditCancel }) {
+function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin, onOpenThread, editingId, onEditSave, onEditStart, onEditCancel }) {
   const [showActions, setShowActions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [draft, setDraft] = useState('');
@@ -208,9 +208,10 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
           <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{time}</span>
         </div>
 
-        {/* Reply context */}
+        {/* Reply context — click to open the thread */}
         {msg.reply_to && (
-          <div style={{ background: 'var(--surface2)', borderLeft: '3px solid #6366f1', borderRadius: '0 8px 8px 0', padding: '4px 10px', marginBottom: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+          <div onClick={() => onOpenThread(msg.reply_to)} title="View thread"
+            style={{ background: 'var(--surface2)', borderLeft: '3px solid #6366f1', borderRadius: '0 8px 8px 0', padding: '4px 10px', marginBottom: 4, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>
             ↩ Replying to a message
           </div>
         )}
@@ -291,6 +292,10 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
           <button onClick={() => onReplyTo(msg)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 6, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }} title="Reply">
             <MessageCircle size={15} />
           </button>
+          {/* Thread */}
+          <button onClick={() => onOpenThread(msg.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 6, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }} title="View thread">
+            <MessagesSquare size={15} />
+          </button>
           {/* Pin */}
           <button onClick={() => onPin(msg.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 6, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }} title="Pin to channel">
             <Pin size={15} />
@@ -354,6 +359,9 @@ export default function ChatPage() {
   const [recording, setRecording] = useState(false);   // voice-note recording
   const mediaRecRef = useRef(null);
   const chunksRef = useRef([]);
+  const [threadFor, setThreadFor] = useState(null);     // root message id of the open thread
+  const [threadData, setThreadData] = useState(null);   // { root, replies }
+  const [threadReply, setThreadReply] = useState('');
   const activeChannelRef = useRef(null);
 
   const memberName = (uid) => { const m = members.find(x => x.user_id === uid); return m ? (m.full_name || m.business_name || m.email || 'Teammate') : 'Teammate'; };
@@ -627,6 +635,18 @@ export default function ChatPage() {
     } catch (e) { console.error('mic unavailable', e); }
   };
   const stopRecording = () => { try { mediaRecRef.current && mediaRecRef.current.stop(); } catch {} setRecording(false); };
+
+  // Threads — open a root message's thread + reply within it.
+  const openThread = async (messageId) => {
+    setThreadFor(messageId); setThreadData(null); setThreadReply('');
+    try { const r = await commsAPI.thread(messageId); setThreadData(r.data); } catch { setThreadData(null); }
+  };
+  const sendThreadReply = async () => {
+    const body = threadReply.trim();
+    if (!body || !activeChannel || !threadFor) return;
+    setThreadReply('');
+    try { await chatAPI.sendMessage(activeChannel.id, { body, reply_to: threadFor }); const r = await commsAPI.thread(threadFor); setThreadData(r.data); } catch (e) { console.error(e); }
+  };
 
   const handleCreateChannel = async (data) => {
     try {
@@ -914,6 +934,7 @@ export default function ChatPage() {
                       onDelete={handleDelete}
                       onReplyTo={setReplyTo}
                       onPin={handlePin}
+                      onOpenThread={openThread}
                       editingId={editing}
                       onEditStart={setEditing}
                       onEditSave={handleEditSave}
@@ -1074,6 +1095,45 @@ export default function ChatPage() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
       `}</style>
+      {/* Thread side-drawer */}
+      {threadFor && (
+        <div onClick={() => setThreadFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(8,8,12,0.35)', display: 'flex', justifyContent: 'flex-end' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 'min(420px, 92vw)', background: 'var(--surface)', borderLeft: '1px solid #e5e7eb', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 18px', borderBottom: '1px solid #e5e7eb' }}>
+              <MessagesSquare size={16} color="#6366f1" />
+              <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>Thread</span>
+              <button onClick={() => setThreadFor(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}><X size={17} /></button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {!threadData ? (
+                <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>Loading…</div>
+              ) : (
+                <>
+                  {threadData.root && (
+                    <div style={{ paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#6366f1', marginBottom: 3 }}>{threadData.root.sender_name}</div>
+                      <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5 }}><FormattedText text={threadData.root.body || ''} /></div>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{(threadData.replies || []).length} repl{(threadData.replies || []).length === 1 ? 'y' : 'ies'}</div>
+                  {(threadData.replies || []).map(r => (
+                    <div key={r.id}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{r.sender_name} <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-dim)' }}>{formatTime(r.created_at)}</span></div>
+                      <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.5 }}><FormattedText text={r.body || ''} /></div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid #e5e7eb' }}>
+              <input value={threadReply} onChange={e => setThreadReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendThreadReply(); } }}
+                placeholder="Reply in thread…" style={{ flex: 1, padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
+              <button onClick={sendThreadReply} disabled={!threadReply.trim()} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 9, padding: '0 14px', cursor: threadReply.trim() ? 'pointer' : 'default', opacity: threadReply.trim() ? 1 : 0.5 }}><Send size={15} /></button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <HuddleModal
         open={!!huddle}
         onClose={() => setHuddle(null)}
