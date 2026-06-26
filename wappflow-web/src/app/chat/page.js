@@ -382,6 +382,8 @@ export default function ChatPage() {
   const [threadData, setThreadData] = useState(null);   // { root, replies }
   const [threadReply, setThreadReply] = useState('');
   const callIdRef = useRef(null);                       // active call session (lifecycle/notifications)
+  const [mention, setMention] = useState(null);         // { query, node, start, end } @-autocomplete
+  const [mentionIdx, setMentionIdx] = useState(0);
   const activeChannelRef = useRef(null);
 
   const memberName = (uid) => { const m = members.find(x => x.user_id === uid); return m ? (m.full_name || m.business_name || m.email || 'Teammate') : 'Teammate'; };
@@ -558,7 +560,56 @@ export default function ChatPage() {
     } catch (e) { console.error(e); } finally { setSending(false); }
   };
 
+  // ── @-mention autocomplete (contentEditable-safe; only alters behaviour while open) ──
+  const mentionMatches = (() => {
+    if (!mention) return [];
+    const q = (mention.query || '').toLowerCase();
+    return members
+      .filter(m => m.user_id !== user?.id)
+      .filter(m => { const n = (m.full_name || m.business_name || m.email || '').toLowerCase(); return !q || n.includes(q); })
+      .slice(0, 6);
+  })();
+
+  // Read the @token immediately before the caret, within the current text node.
+  const detectMention = () => {
+    try {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !sel.isCollapsed) { setMention(null); return; }
+      const node = sel.anchorNode;
+      if (!node || node.nodeType !== 3) { setMention(null); return; } // text nodes only
+      const before = node.textContent.slice(0, sel.anchorOffset);
+      const m = before.match(/(^|\s)@([\p{L}\p{N}._-]*)$/u);
+      if (!m) { setMention(null); return; }
+      const token = '@' + m[2];
+      setMention({ query: m[2], node, start: sel.anchorOffset - token.length, end: sel.anchorOffset });
+      setMentionIdx(0);
+    } catch { setMention(null); }
+  };
+
+  const insertMention = (member) => {
+    try {
+      if (mention && mention.node) {
+        const name = member.full_name || member.business_name || member.email || 'teammate';
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.setStart(mention.node, mention.start);
+        range.setEnd(mention.node, mention.end);
+        sel.removeAllRanges(); sel.addRange(range);
+        document.execCommand('insertText', false, '@' + name + ' ');
+      }
+    } catch {}
+    setMention(null);
+    handleInputChange();
+  };
+
   const handleKeyDown = (e) => {
+    // @-mention navigation takes priority ONLY while the dropdown is open.
+    if (mention && mentionMatches.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx(i => (i + 1) % mentionMatches.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIdx(i => (i - 1 + mentionMatches.length) % mentionMatches.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(mentionMatches[mentionIdx] || mentionMatches[0]); return; }
+      if (e.key === 'Escape') { e.preventDefault(); setMention(null); return; }
+    }
     // Throttled typing indicator (max once / 2s) over the comms channel.
     const now = Date.now();
     if (activeChannel && now - lastTypingSentRef.current > 2000) { lastTypingSentRef.current = now; commsAPI.typing(activeChannel.id).catch(() => {}); }
@@ -570,11 +621,12 @@ export default function ChatPage() {
     // Keyboard shortcuts: bold/italic/underline are handled natively by contentEditable
   };
 
-  // Track input emptiness for the send button enable/disable
+  // Track input emptiness for the send button enable/disable + refresh @-mention state.
   const handleInputChange = () => {
     const el = inputRef.current;
     const empty = !el || !(el.innerText || '').trim();
     setHasContent(!empty);
+    detectMention();
   };
 
   // Strip rich formatting on paste — keep plain text only (avoids importing weird MS Word styles)
@@ -1050,6 +1102,20 @@ export default function ChatPage() {
                   fontFamily: 'system-ui, -apple-system, sans-serif',
                 }}
               />
+
+              {/* @-mention autocomplete dropdown */}
+              {mention && mentionMatches.length > 0 && (
+                <div style={{ position: 'absolute', bottom: 52, left: 10, zIndex: 30, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', overflow: 'hidden', minWidth: 220, maxWidth: 300 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-dim)', padding: '6px 12px 2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Mention</div>
+                  {mentionMatches.map((m, i) => (
+                    <button key={m.user_id} onMouseDown={e => { e.preventDefault(); insertMention(m); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', cursor: 'pointer', background: i === mentionIdx ? 'rgba(99,102,241,0.12)' : 'transparent', color: 'var(--text)', fontSize: 13 }}>
+                      <span style={{ width: 22, height: 22, borderRadius: 7, background: 'linear-gradient(135deg,#6366f1,#06b6d4)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{(m.full_name || m.business_name || m.email || '?')[0]?.toUpperCase()}</span>
+                      <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.full_name || m.business_name || m.email}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Bottom action row inside the input box */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', borderRadius: '0 0 12px 12px' }}>
