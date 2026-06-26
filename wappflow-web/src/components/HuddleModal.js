@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Video, VideoOff, Phone, PhoneOff, Mic, MicOff, MonitorUp, Users, Loader2, AlertCircle } from 'lucide-react';
+import { X, Video, VideoOff, Phone, PhoneOff, Mic, MicOff, MonitorUp, Users, Loader2, AlertCircle, Hand } from 'lucide-react';
 import { commsAPI } from '../lib/api';
 
 /**
@@ -25,6 +25,10 @@ export default function HuddleModal({ open, onClose, roomName, displayName, star
   const [camOn, setCamOn] = useState(!!startWithVideo);
   const [sharing, setSharing] = useState(false);
   const [count, setCount] = useState(1);
+  const [raisedSelf, setRaisedSelf] = useState(false);
+  const [hands, setHands] = useState({});       // identity → raised?
+  const [roster, setRoster] = useState([]);     // [{ identity, name, isLocal }]
+  const [showRoster, setShowRoster] = useState(false);
 
   const roomRef = useRef(null);
   const tilesRef = useRef(null);
@@ -85,14 +89,25 @@ export default function HuddleModal({ open, onClose, roomName, displayName, star
         const w = tileMap.current.get(key); if (w) { w.remove(); tileMap.current.delete(key); }
       };
       const refreshCount = () => setCount(1 + (room.remoteParticipants ? room.remoteParticipants.size : (room.participants?.size || 0)));
+      const refreshRoster = () => {
+        const list = [];
+        if (room.localParticipant) list.push({ identity: room.localParticipant.identity, name: `${displayName || 'You'} (you)`, isLocal: true });
+        const rps = room.remoteParticipants || room.participants;
+        if (rps) rps.forEach(p => list.push({ identity: p.identity, name: p.name || p.identity, isLocal: false }));
+        setRoster(list);
+      };
+      const onParticipants = () => { refreshCount(); refreshRoster(); };
 
       room
         .on(RoomEvent.TrackSubscribed, (track, pub, participant) => attach(track, participant))
         .on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => detach(track, participant))
         .on(RoomEvent.LocalTrackPublished, (pub) => pub.track && attach(pub.track, room.localParticipant))
         .on(RoomEvent.LocalTrackUnpublished, (pub) => pub.track && detach(pub.track, room.localParticipant))
-        .on(RoomEvent.ParticipantConnected, refreshCount)
-        .on(RoomEvent.ParticipantDisconnected, refreshCount)
+        .on(RoomEvent.ParticipantConnected, onParticipants)
+        .on(RoomEvent.ParticipantDisconnected, (p) => { onParticipants(); if (p?.identity) setHands(h => { const n = { ...h }; delete n[p.identity]; return n; }); })
+        .on(RoomEvent.DataReceived, (payload, participant) => {
+          try { const msg = JSON.parse(new TextDecoder().decode(payload)); if (msg && msg.kind === 'hand') setHands(h => ({ ...h, [participant?.identity || msg.identity]: !!msg.raised })); } catch {}
+        })
         .on(RoomEvent.Disconnected, () => { if (!cancelled) onClose?.(); });
 
       try {
@@ -100,7 +115,7 @@ export default function HuddleModal({ open, onClose, roomName, displayName, star
         if (cancelled) { room.disconnect(); return; }
         await room.localParticipant.setMicrophoneEnabled(true);
         if (startWithVideo) await room.localParticipant.setCameraEnabled(true);
-        refreshCount();
+        refreshCount(); refreshRoster();
         setPhase('live');
       } catch (e) {
         if (cancelled) return;
@@ -122,6 +137,14 @@ export default function HuddleModal({ open, onClose, roomName, displayName, star
   const toggleMic = async () => { const r = roomRef.current; if (!r) return; const next = !micOn; await r.localParticipant.setMicrophoneEnabled(next); setMicOn(next); };
   const toggleCam = async () => { const r = roomRef.current; if (!r) return; const next = !camOn; await r.localParticipant.setCameraEnabled(next); setCamOn(next); };
   const toggleShare = async () => { const r = roomRef.current; if (!r) return; const next = !sharing; try { await r.localParticipant.setScreenShareEnabled(next); setSharing(next); } catch {} };
+  const toggleHand = async () => {
+    const r = roomRef.current; if (!r) return;
+    const next = !raisedSelf; setRaisedSelf(next);
+    const id = r.localParticipant?.identity;
+    if (id) setHands(h => ({ ...h, [id]: next }));
+    try { await r.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ kind: 'hand', raised: next, identity: id })), { reliable: true }); } catch {}
+  };
+  const raisedCount = Object.values(hands).filter(Boolean).length;
 
   return (
     <div className="hd-overlay" onClick={onClose}>
@@ -142,6 +165,20 @@ export default function HuddleModal({ open, onClose, roomName, displayName, star
           {phase === 'unconfigured' && <div className="hd-state"><AlertCircle size={26} /><div>Calls aren’t enabled yet.<br /><span className="hd-dim">An admin needs to configure LiveKit (see LIVEKIT-SETUP.md).</span></div></div>}
           {phase === 'error' && <div className="hd-state"><AlertCircle size={26} /><div>{error}</div></div>}
           <div ref={tilesRef} className="hd-tiles" style={{ display: phase === 'live' ? 'grid' : 'none' }} />
+
+          {/* Roster panel */}
+          {phase === 'live' && showRoster && (
+            <div className="hd-roster">
+              <div className="hd-roster-head">In this call · {roster.length}</div>
+              {roster.map(p => (
+                <div key={p.identity} className="hd-roster-row">
+                  <span className="hd-roster-dot" />
+                  <span className="hd-roster-name">{p.name}</span>
+                  {hands[p.identity] && <Hand size={13} color="#fbbf24" />}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {phase === 'live' && (
@@ -149,6 +186,10 @@ export default function HuddleModal({ open, onClose, roomName, displayName, star
             <button className={`hd-ctl ${micOn ? '' : 'off'}`} onClick={toggleMic} title={micOn ? 'Mute' : 'Unmute'}>{micOn ? <Mic size={18} /> : <MicOff size={18} />}</button>
             <button className={`hd-ctl ${camOn ? '' : 'off'}`} onClick={toggleCam} title={camOn ? 'Stop video' : 'Start video'}>{camOn ? <Video size={18} /> : <VideoOff size={18} />}</button>
             <button className={`hd-ctl ${sharing ? 'on' : ''}`} onClick={toggleShare} title="Share screen"><MonitorUp size={18} /></button>
+            <button className={`hd-ctl ${raisedSelf ? 'on' : ''}`} onClick={toggleHand} title={raisedSelf ? 'Lower hand' : 'Raise hand'}><Hand size={18} /></button>
+            <button className={`hd-ctl ${showRoster ? 'on' : ''}`} onClick={() => setShowRoster(s => !s)} title="Participants">
+              <Users size={18} />{raisedCount > 0 && <span className="hd-ctl-badge">{raisedCount}✋</span>}
+            </button>
             <button className="hd-ctl leave" onClick={onClose} title="Leave"><PhoneOff size={18} /></button>
           </div>
         )}
@@ -181,6 +222,13 @@ export default function HuddleModal({ open, onClose, roomName, displayName, star
         .hd-ctl.on { background: rgba(99,102,241,0.25); color: #c7d2fe; border-color: rgba(99,102,241,0.5); }
         .hd-ctl.leave { background: #ef4444; color: #fff; border-color: #ef4444; }
         .hd-ctl.leave:hover { background: #dc2626; }
+        .hd-ctl { position: relative; }
+        .hd-ctl-badge { position: absolute; top: -4px; right: -6px; background: #fbbf24; color: #1f2937; font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 999px; }
+        .hd-roster { position: absolute; top: 12px; right: 12px; width: 220px; max-height: calc(100% - 24px); overflow: auto; background: rgba(11,13,22,0.92); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 10px 12px; backdrop-filter: blur(6px); }
+        .hd-roster-head { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .hd-roster-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; color: #e7eaf3; }
+        .hd-roster-dot { width: 7px; height: 7px; border-radius: 999px; background: #34d399; flex-shrink: 0; }
+        .hd-roster-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         @media (max-width: 768px) { .hd-overlay { padding: 0; } .hd-card { max-height: none; border-radius: 0; } }
       `}</style>
     </div>
