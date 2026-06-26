@@ -209,3 +209,15 @@ layouts); chat edit-button / search / pins / thread panels / @-autocomplete / ca
 roster + raise-hand UI / receipts ticks / voice-note recorder; reel **render** (video
 engine); P9 auto-apply style; entitlement un-gates (desktop_sync now shippable once the
 desktop is verified on a GUI machine); video speech/emotion/action sub-scores.
+
+---
+
+## ✅ Wave 7 — Chat depth UI (after deploy)  · committed
+
+Browser-verifiable chat polish, all on `chat/page.js`, verified `next build` → "✓ Compiled successfully":
+- **Edit message** — inline editor for own text messages (`commsAPI.edit`); shows "(edited)"; live via the existing `chat_edit` SSE.
+- **Pin / unpin** + **Pinned panel** — pin from the message action menu; a header 📌 toggles a panel listing pins with unpin; live via `chat_pin`/`chat_unpin` SSE.
+- **Message search** — header 🔍 opens a server-side search box (`commsAPI.search`) across visible channels; clicking a hit jumps to that channel.
+- **Voice notes** — a mic button in the composer records via **MediaRecorder** → uploads through the chat media route (no backend change needed).
+
+**Still in the polish bucket:** @-autocomplete (the composer is `contentEditable` — caret tracking is fiddly; deferred to avoid a blind edit), thread side-panel, in-call roster + raise-hand UI, per-message receipt ticks, gallery RoomPanel (no standalone gallery detail route).

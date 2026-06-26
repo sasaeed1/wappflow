@@ -8,7 +8,8 @@ import {
   MessageCircle, Users, Lock, Check, Edit3,
   Bold, Italic, Code, Link2, AtSign, Search,
   Volume2, VolumeX, Bell, BellOff, Video, Phone,
-  List, ListOrdered, Quote, Strikethrough, Underline as UnderlineIcon
+  List, ListOrdered, Quote, Strikethrough, Underline as UnderlineIcon,
+  Pin, Mic, Square
 } from 'lucide-react';
 import { chatAPI, commsAPI, workspaceAPI, BASE_URL } from '../../lib/api';
 import { formatTime, formatDate } from '../../lib/datetime';
@@ -173,10 +174,12 @@ function ChannelModal({ onSave, onClose }) {
 }
 
 // Single message bubble
-function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo }) {
+function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin, editingId, onEditSave, onEditStart, onEditCancel }) {
   const [showActions, setShowActions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [draft, setDraft] = useState('');
   const isMe = msg.user_id === currentUserId;
+  const isEditing = editingId === msg.id;
   const time = formatTime(msg.created_at);
 
   // Group reactions
@@ -212,10 +215,22 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo }) {
           </div>
         )}
 
-        {/* Body */}
-        {msg.body && !msg.media_url && (
+        {/* Body (or inline editor) */}
+        {isEditing ? (
+          <div style={{ maxWidth: '80%' }}>
+            <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEditSave(msg.id, draft); } if (e.key === 'Escape') onEditCancel(); }}
+              style={{ width: '100%', minHeight: 60, padding: '8px 12px', borderRadius: 10, border: '1.5px solid #c7d2fe', background: 'var(--surface)', color: 'var(--text)', fontSize: 14, lineHeight: 1.5, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <button onClick={() => onEditSave(msg.id, draft)} style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: '#6366f1', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save</button>
+              <button onClick={onEditCancel} style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+              <span style={{ fontSize: 11, color: 'var(--text-dim)', alignSelf: 'center' }}>Enter to save · Esc to cancel</span>
+            </div>
+          </div>
+        ) : msg.body && !msg.media_url && (
           <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5, background: isMe ? 'rgba(99,102,241,0.12)' : 'var(--surface2)', border: `1.5px solid ${isMe ? '#c7d2fe' : 'var(--surface2)'}`, borderRadius: '0 12px 12px 12px', padding: '8px 12px', display: 'inline-block', maxWidth: '80%', wordBreak: 'break-word' }}>
             <FormattedText text={msg.body} />
+            {msg.is_edited ? <span style={{ fontSize: 10.5, color: 'var(--text-dim)', marginLeft: 6 }}>(edited)</span> : null}
           </div>
         )}
 
@@ -276,6 +291,16 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo }) {
           <button onClick={() => onReplyTo(msg)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 6, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }} title="Reply">
             <MessageCircle size={15} />
           </button>
+          {/* Pin */}
+          <button onClick={() => onPin(msg.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 6, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }} title="Pin to channel">
+            <Pin size={15} />
+          </button>
+          {/* Edit (only own, text messages) */}
+          {isMe && msg.body && !msg.media_url && (
+            <button onClick={() => { setDraft((msg.body || '').replace(/<br\s*\/?>(?=)/gi, '\n').replace(/<[^>]+>/g, '')); onEditStart(msg.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 6, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }} title="Edit">
+              <Edit3 size={15} />
+            </button>
+          )}
           {/* Delete (only own) */}
           {isMe && (
             <button onClick={() => onDelete(msg.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 6, color: '#ef4444', display: 'flex', alignItems: 'center' }} title="Delete">
@@ -320,8 +345,15 @@ export default function ChatPage() {
   const [myPresence, setMyPresence] = useState('online'); // online | away | dnd
   const [typingUser, setTypingUser] = useState(null);
   const [dms, setDms] = useState([]);                 // my direct-message channels
-  const [editing, setEditing] = useState(null);       // { id, body } when editing a message
+  const [editing, setEditing] = useState(null);       // message id currently being edited
   const [showDmPicker, setShowDmPicker] = useState(false);
+  const [showPins, setShowPins] = useState(false);     // pinned-messages panel
+  const [pins, setPins] = useState([]);
+  const [showSearch, setShowSearch] = useState(false); // server-side message search
+  const [msgQuery, setMsgQuery] = useState('');
+  const [recording, setRecording] = useState(false);   // voice-note recording
+  const mediaRecRef = useRef(null);
+  const chunksRef = useRef([]);
   const activeChannelRef = useRef(null);
 
   const memberName = (uid) => { const m = members.find(x => x.user_id === uid); return m ? (m.full_name || m.business_name || m.email || 'Teammate') : 'Teammate'; };
@@ -394,6 +426,10 @@ export default function ChatPage() {
           // someone changed away/dnd → refresh the online roster
           commsAPI.presence().then(r => setOnline(r.data.online || [])).catch(() => {});
           break;
+        case 'chat_pin':
+        case 'chat_unpin':
+          if (inActive) loadPins();
+          break;
         default: break;
       }
     };
@@ -453,6 +489,9 @@ export default function ChatPage() {
     setActiveChannel(channel);
     setMessages([]);
     setReplyTo(null);
+    setEditing(null);
+    setShowPins(false);
+    setShowSearch(false);
     loadMessages(channel.id);
   };
 
@@ -542,6 +581,52 @@ export default function ChatPage() {
       setMessages(prev => prev.filter(m => m.id !== id));
     } catch (e) { console.error(e); }
   };
+
+  // Edit (own message) — SSE 'chat_edit' fans the update to everyone.
+  const handleEditSave = async (id, body) => {
+    const b = (body || '').trim();
+    if (!b) { setEditing(null); return; }
+    try { const res = await commsAPI.edit(id, b); if (res.data.message) setMessages(prev => prev.map(m => m.id === id ? { ...m, ...res.data.message } : m)); } catch (e) { console.error(e); }
+    setEditing(null);
+  };
+
+  // Pin / unpin + load the channel's pinned messages.
+  const handlePin = async (id) => { try { await commsAPI.pin(id); if (showPins) loadPins(); } catch (e) { console.error(e); } };
+  const handleUnpin = async (id) => { try { await commsAPI.unpin(id); setPins(prev => prev.filter(p => p.message_id !== id)); } catch (e) { console.error(e); } };
+  const loadPins = useCallback(async () => {
+    if (!activeChannelRef.current) return;
+    try { const r = await commsAPI.pins(activeChannelRef.current.id); setPins(r.data.pins || []); } catch { setPins([]); }
+  }, []);
+
+  // Server-side message search across visible channels; clicking a hit jumps to its channel.
+  const runMsgSearch = async (q) => {
+    setMsgQuery(q);
+    if (q.trim().length < 2) { setSearchResults([]); return; }
+    try { const r = await commsAPI.search(q.trim()); setSearchResults(r.data.results || []); } catch { setSearchResults([]); }
+  };
+
+  // Voice notes — record via MediaRecorder, upload through the chat media route.
+  const startRecording = async () => {
+    if (!activeChannel) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = async () => {
+        try { stream.getTracks().forEach(t => t.stop()); } catch {}
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' });
+        if (!blob.size) return;
+        const fd = new FormData();
+        fd.append('file', blob, `voice-${Date.now()}.webm`);
+        try { const result = await chatAPI.sendMedia(activeChannel.id, fd); if (result && result.message) setMessages(prev => [...prev, result.message]); } catch (e) { console.error(e); }
+      };
+      rec.start();
+      mediaRecRef.current = rec;
+      setRecording(true);
+    } catch (e) { console.error('mic unavailable', e); }
+  };
+  const stopRecording = () => { try { mediaRecRef.current && mediaRecRef.current.stop(); } catch {} setRecording(false); };
 
   const handleCreateChannel = async (data) => {
     try {
@@ -730,6 +815,14 @@ export default function ChatPage() {
                 <span style={{ fontSize: 12, color: 'var(--text-dim)', borderLeft: '1px solid #e5e7eb', paddingLeft: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeChannel.description}</span>
               )}
             </div>
+            <button onClick={() => { setShowSearch(s => !s); setShowPins(false); }} title="Search messages"
+              style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)', background: showSearch ? 'rgba(99,102,241,0.12)' : 'none', color: showSearch ? '#6366f1' : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Search size={15} />
+            </button>
+            <button onClick={() => { const n = !showPins; setShowPins(n); setShowSearch(false); if (n) loadPins(); }} title="Pinned messages"
+              style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)', background: showPins ? 'rgba(99,102,241,0.12)' : 'none', color: showPins ? '#6366f1' : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Pin size={15} />
+            </button>
             <button
               onClick={() => setHuddle({ roomName: `huddle_${activeChannel.id || activeChannel.name}`, video: false })}
               title="Start voice huddle"
@@ -746,6 +839,48 @@ export default function ChatPage() {
             </button>
             <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 4 }}>{messages.length} messages</span>
           </div>
+
+          {/* Search panel (server-side, across channels) */}
+          {showSearch && (
+            <div style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-dim)' }} />
+                <input autoFocus value={msgQuery} onChange={e => runMsgSearch(e.target.value)} placeholder="Search all messages…"
+                  style={{ width: '100%', padding: '8px 12px 8px 32px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
+              </div>
+              {msgQuery.trim().length >= 2 && (
+                <div style={{ marginTop: 8, maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {!searchResults.length && <div style={{ fontSize: 13, color: 'var(--text-dim)', padding: '8px 4px' }}>No matches.</div>}
+                  {searchResults.map(r => (
+                    <button key={r.id} onClick={() => { const ch = channels.find(c => c.id === r.channel_id); if (ch) handleChannelSelect(ch); setShowSearch(false); setMsgQuery(''); }}
+                      style={{ textAlign: 'left', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 11px', cursor: 'pointer' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}><strong>{r.sender_name || 'Someone'}</strong> in #{r.channel_name || 'channel'}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(r.body || '').replace(/<[^>]+>/g, '')}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pinned messages panel */}
+          {showPins && (
+            <div style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}><Pin size={13} /> Pinned</div>
+              {!pins.length && <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>No pinned messages yet.</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
+                {pins.map(p => (
+                  <div key={p.message_id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 11px' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}><strong>{p.sender_name || 'Someone'}</strong></div>
+                      <div style={{ fontSize: 13, color: 'var(--text)' }}>{(p.body || (p.media_url ? '📎 attachment' : '')).replace(/<[^>]+>/g, '')}</div>
+                    </div>
+                    <button onClick={() => handleUnpin(p.message_id)} title="Unpin" style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 2 }}><X size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Messages area */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -778,6 +913,11 @@ export default function ChatPage() {
                       onReact={handleReact}
                       onDelete={handleDelete}
                       onReplyTo={setReplyTo}
+                      onPin={handlePin}
+                      editingId={editing}
+                      onEditStart={setEditing}
+                      onEditSave={handleEditSave}
+                      onEditCancel={() => setEditing(null)}
                     />
                   ))}
                 </div>
@@ -868,6 +1008,12 @@ export default function ChatPage() {
                     <Paperclip size={14} />
                   </button>
                   <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
+                  <button onMouseDown={e => e.preventDefault()} onClick={() => recording ? stopRecording() : startRecording()}
+                    title={recording ? 'Stop & send voice note' : 'Record voice note'}
+                    style={{ width: 30, height: 30, padding: 0, borderRadius: 8, border: 'none', background: recording ? 'rgba(239,68,68,0.15)' : 'none', color: recording ? '#ef4444' : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {recording ? <Square size={13} fill="#ef4444" /> : <Mic size={14} />}
+                  </button>
+                  {recording && <span style={{ fontSize: 11, color: '#ef4444', alignSelf: 'center', fontWeight: 600 }}>Recording… tap to send</span>}
                 </div>
                 <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
                   <strong>Enter</strong> to send · <strong>Shift+Enter</strong> new line
