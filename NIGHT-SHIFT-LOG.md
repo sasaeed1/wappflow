@@ -261,3 +261,18 @@ green; all web frontend is `next build` green; desktop native shell is unit-test
 - **P9 auto-apply style** (needs a product spec for the edit consumer).
 - **Entitlement un-gates** (`desktop_sync` shippable post-GUI-verify) — a billing/product decision.
 - **Frontend deploy**: the web commits since the backend deploy need `pm2 restart wappflow-web`.
+
+---
+
+## ✅ DESKTOP GUI VERIFICATION — done on the real Windows machine (2026-06-26)
+
+Driven via computer-use on the user's Windows 10 machine, against the **live deployed backend**. Result: **the desktop native shell works end-to-end.**
+- ✅ **Boot + one-login** — session restored, Dashboard live with real data (171 leads, matches sync).
+- ✅ **Fleet reporting** — `device.json` written on boot (`dev_9b5d44…`).
+- ✅ **Offline-first sync** — pulled 206 KB of real prod data into `offline.json` (171 leads/7 projects/58 assets/4 galleries), cursor advancing, entitlements cached, queue clean.
+- ✅ **System tray** — generated the missing `tray.png` (white "W" on indigo); icon now visible. **Close-to-tray confirmed** (window hid, 9 procs survived) + reopen.
+- ✅ **ONNX + DirectML GPU runtime** — "Face AI ready · detect + emotion · DML".
+- ✅ **Local AI analysis END-TO-END** — ran the "Ayesha & Bilal — The Wedding" project: **14 analyzed → 60 score-sets uploaded** to prod.
+- 🐛 **Found + fixed** (`0b6a13a`): analysis stalled pulling full-size originals → now downloads the ≤2048px **web variant** + auth + fail-fast timeout. Re-ran → completed.
+- ⚠️ **Finding (tracked, not yet fixed):** the FIRST DirectML inference has a **~60s one-time shader-compile** that blocks the UI ("Not Responding"); fine after warm-up. Fix idea: warm up the ONNX session during the "checking…" status (or show a "warming up models…" state) so the first real analyze isn't frozen.
+- ⛔ **Not done by me (by safety rule):** typing the login password (already logged in, so moot) and toggling Wi-Fi for the offline-banner test. **Drag-drop** upload not automated (cross-app drag is unreliable) — wired in `native.js`, a 10-sec manual check.
