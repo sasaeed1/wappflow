@@ -21,19 +21,20 @@ const ent = entitlements.getEntitlements(db, 'ws1', { fresh: true });
 assert(ent.plan === 'studio_plus', 'studio_plus resolves');
 assert(ent.features.media_studio === true, 'real feature (media_studio) stays ON');
 assert(ent.features.local_ai === true, 'built feature (local_ai) stays ON');
-assert(ent.features.style_profiles === false, 'style_profiles forced OFF (unbuilt)');
-assert(ent.features.story_engine === false, 'story_engine forced OFF (unbuilt)');
-assert(ent.features.reel_engine === false, 'reel_engine forced OFF (unbuilt)');
-assert(ent.features.ai_editing === false, 'ai_editing forced OFF (unbuilt)');
-assert(ent.features.desktop_sync === false, 'desktop_sync forced OFF (unbuilt)');
-assert(ent.sources.style_profiles === 'unbuilt', 'unbuilt source tagged');
+// ai_editing is the only still-unbuilt feature → force OFF + tagged unbuilt.
+assert(ent.features.ai_editing === false, 'ai_editing forced OFF (still unbuilt)');
+assert(ent.sources.ai_editing === 'unbuilt', 'ai_editing tagged unbuilt');
+// The rest shipped (reel render, story arc, style auto-apply, offline sync) → un-gated:
+// no longer force-off-as-unbuilt (their value now follows the plan config).
+assert(ent.sources.style_profiles !== 'unbuilt', 'style_profiles un-gated (shipped)');
+assert(ent.sources.reel_engine !== 'unbuilt', 'reel_engine un-gated (shipped)');
+assert(ent.sources.story_engine !== 'unbuilt', 'story_engine un-gated (shipped)');
+assert(ent.sources.desktop_sync !== 'unbuilt', 'desktop_sync un-gated (shipped)');
 
-console.log('\n[2] Catalog hides unbuilt features (no selling vapor)');
+console.log('\n[2] Catalog hides only the still-unbuilt feature (no selling vapor)');
 const plans = entitlements.getAllPlans(db);
 const sp = plans.find(p => p.key === 'studio_plus');
-assert(sp && !('style_profiles' in sp.features), 'catalog omits style_profiles');
-assert(sp && !('reel_engine' in sp.features), 'catalog omits reel_engine');
-assert(sp && !('story_engine' in sp.features), 'catalog omits story_engine');
+assert(sp && !('ai_editing' in sp.features), 'catalog omits ai_editing (still unbuilt)');
 assert(sp && sp.features.media_studio === true, 'catalog keeps media_studio');
 
 console.log('\n[3] Command Center schema (ai_usage + grace)');
