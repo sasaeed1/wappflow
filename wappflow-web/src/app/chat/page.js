@@ -362,6 +362,7 @@ export default function ChatPage() {
   const [threadFor, setThreadFor] = useState(null);     // root message id of the open thread
   const [threadData, setThreadData] = useState(null);   // { root, replies }
   const [threadReply, setThreadReply] = useState('');
+  const callIdRef = useRef(null);                       // active call session (lifecycle/notifications)
   const activeChannelRef = useRef(null);
 
   const memberName = (uid) => { const m = members.find(x => x.user_id === uid); return m ? (m.full_name || m.business_name || m.email || 'Teammate') : 'Teammate'; };
@@ -636,6 +637,19 @@ export default function ChatPage() {
   };
   const stopRecording = () => { try { mediaRecRef.current && mediaRecRef.current.stop(); } catch {} setRecording(false); };
 
+  // Huddle wired to the call lifecycle: callStart rings the channel (invite + notify +
+  // missed-call tracking + timeline); callEnd closes it. The A/V itself is HuddleModal.
+  const startHuddle = (video) => {
+    if (!activeChannel) return;
+    setHuddle({ roomName: `huddle_${activeChannel.id || activeChannel.name}`, video });
+    commsAPI.callStart(activeChannel.id).then(r => { callIdRef.current = r.data.call_id; }).catch(() => {});
+  };
+  const endHuddle = () => {
+    const id = callIdRef.current; callIdRef.current = null;
+    setHuddle(null);
+    if (id) commsAPI.callEnd(id).catch(() => {});
+  };
+
   // Threads — open a root message's thread + reply within it.
   const openThread = async (messageId) => {
     setThreadFor(messageId); setThreadData(null); setThreadReply('');
@@ -844,14 +858,14 @@ export default function ChatPage() {
               <Pin size={15} />
             </button>
             <button
-              onClick={() => setHuddle({ roomName: `huddle_${activeChannel.id || activeChannel.name}`, video: false })}
+              onClick={() => startHuddle(false)}
               title="Start voice huddle"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.35)', background: 'rgba(34,197,94,0.10)', color: '#22c55e', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
             >
               <Phone size={13} /> Huddle
             </button>
             <button
-              onClick={() => setHuddle({ roomName: `huddle_${activeChannel.id || activeChannel.name}`, video: true })}
+              onClick={() => startHuddle(true)}
               title="Start video huddle"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.12)', color: '#818cf8', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}
             >
@@ -1136,7 +1150,7 @@ export default function ChatPage() {
 
       <HuddleModal
         open={!!huddle}
-        onClose={() => setHuddle(null)}
+        onClose={endHuddle}
         roomName={huddle?.roomName || ''}
         displayName={(() => { try { return JSON.parse(localStorage.getItem('user') || '{}')?.full_name || JSON.parse(localStorage.getItem('user') || '{}')?.business_name || 'Teammate'; } catch { return 'Teammate'; } })()}
         startWithVideo={!!huddle?.video}
