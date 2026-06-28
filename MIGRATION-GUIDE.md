@@ -34,6 +34,14 @@ The repos don't contain secrets. On the new machine recreate these from your sav
 
 **`wappflow/wappflow-desktop`** — `npm install`; on first run it recreates `%APPDATA%\wappflow-desktop\` (config.json, session.json, device.json, offline.json). Drop the ONNX models back in `src/main/ai/models/` (`npm run fetch-models`) and install `ffmpeg` for video.
 
+> **Desktop app runtime data is backed up** in the private `claude-history` repo as
+> `wappflow-desktop-appdata.zip` (~30 KB — durable files only; the 16 MB of regenerable Chromium
+> cache is excluded). You **don't need it to restore** — the app rebuilds itself from install +
+> login + re-sync. ⚠️ Note `session.json` is `safeStorage`-encrypted (machine-bound DPAPI on
+> Windows) so it **won't decrypt on the new laptop — you'll re-login regardless**; `offline.json`
+> re-syncs from the server (queue was empty, nothing unsynced lost). See that repo's README for the
+> unzip-into-`%APPDATA%` steps.
+
 **The SQLite DB** (`backend/*.db`) lives on the **server**, not locally — production data is safe on Hetzner. For local dev a fresh DB is created on boot.
 
 ---
