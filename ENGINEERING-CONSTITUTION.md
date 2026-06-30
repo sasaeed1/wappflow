@@ -40,6 +40,13 @@ and prevents drift back into the feature race.
 cross-module workflow, an auth/permission/billing path, or more than a localized edit. Trivial,
 localized fixes do not need a proposal — but they still obey every other Article.
 
+**The governance flow** (heavier as reversibility drops):
+`RFC` (explore a direction for big/ambiguous work — [`/rfc`](rfc/), optional) →
+`Proposal` (implementation design — [`/proposals`](proposals/), required before significant code) →
+Implementation → Verification → Deployment →
+`ADR` (record the decision, immutable — [`/adr`](adr/)).
+Any proposal or RFC that settles an architectural question **must produce an ADR.**
+
 ---
 
 ## Article 1 — Role
@@ -74,14 +81,32 @@ Every task is ranked by this order. A lower priority never justifies regressing 
 The audit found 3 reel engines, 2 album editors, 2 schedulers, 2 invoice templates, multiple AI
 FABs, 4 app shells, and a doubly-declared `ms_albums` schema. No new parallel subsystems. Ever.
 
+### The Rule of Three
+
+**If the same pattern appears three times, stop and extract it.** Two occurrences may be coincidence;
+the third is a pattern asking to become a primitive. This is the concrete threshold that triggers the
+Golden Rule — abstraction without over-engineering.
+
+- Three near-identical dialogs → one reusable Dialog.
+- Three upload flows → one upload service.
+- Three timeline implementations → one Timeline.
+- Three card layouts → one Card.
+
+The corollary: don't abstract on the *first* occurrence either. Build it inline, build it again, and
+when the third appears, unify all three.
+
 ---
 
-## Article 4 — Phase 0 is a Blocker
+## Article 4 — The Foundation Sprint is a Blocker
+
+The first phase of the maturity roadmap is the **Foundation Sprint** (formerly "Phase 0"). The name
+is deliberate: this is not bug-fixing cleanup, it is *strengthening the platform* — an investment.
 
 Resolve **all critical findings** from the Product Audit before adding functionality. Treat these
 as merge blockers: security issues, authentication, authorization, **workspace isolation**, payment
 & billing integrity, broken routes, broken workflows, duplicate engines, duplicate schemas, and
-data integrity. Nothing in Priority 5–8 ships while a Phase-0 blocker is open.
+data integrity. Nothing in Priority 5–8 ships while a Foundation-Sprint blocker is open. (Tracked in
+[`proposals/PROP-001`](proposals/PROP-001-phase-0-truth-and-integrity.md).)
 
 ---
 
@@ -168,6 +193,25 @@ upload experience, image previews, success moments, meaningful onboarding — su
 
 ---
 
+## Article 11 — Deprecation Policy
+
+When you replace something, **do not delete it immediately.** Every retirement follows a lifecycle:
+
+> **Deprecated → Migration → Removal → Cleanup**
+
+1. **Deprecated** — mark the old path clearly (comment/annotation, and a log/console warning if it's
+   a runtime path). Point to the replacement. Stop using it in new code.
+2. **Migration** — move existing callers/data to the replacement. The old and new coexist during this
+   window; nothing breaks.
+3. **Removal** — once no caller remains, delete the old implementation (recoverable from git history).
+4. **Cleanup** — remove now-dead styles, tables/columns, flags, and references; record the change.
+
+**Exception:** code that is *provably dead* — never imported, never mounted, never shipped (e.g. a
+component referenced from nowhere) — may be removed directly, **with evidence of non-use** in the
+proposal. The lifecycle protects things users or code depend on; it doesn't protect phantom code.
+
+---
+
 ## The Definition of Done — every change must answer "yes"
 
 1. Does this **avoid duplicating** existing functionality? (else Refactor/Unify/Extend/Reuse)
@@ -182,6 +226,47 @@ upload experience, image previews, success moments, meaningful onboarding — su
 10. Is it **maintainable**?
 
 If any answer is "no," refactor before merging.
+
+---
+
+## The Definition of Complete — when is a *feature* finished?
+
+"Done" is per-change. **"Complete" is per-feature** — and a feature is not complete just because it
+functions. A feature is **Feature Complete** only when it has, *where applicable*:
+
+Permissions · Audit · Notifications · Search registration · Command-Palette registration · Timeline
+integration · Analytics · Keyboard shortcuts · Bulk actions · Mobile responsiveness · Accessibility ·
+Empty state · Loading state · Error state · Documentation · Tests.
+
+This list is what prevents "80%-finished" features that look done in a demo but are second-class
+citizens of the platform. "Where applicable" is a judgment call to justify in the proposal — not an
+excuse to skip the list. A feature ships to users only when it is Feature Complete (or its gaps are
+explicitly accepted and tracked).
+
+---
+
+## How we measure progress
+
+Not by features shipped. By:
+
+**Bugs eliminated · Duplication removed · Workflows simplified · Performance improved · User friction
+reduced · Product consistency increased.**
+
+This is the progress that compounds — it's what turns a powerful product into one people genuinely
+enjoy using.
+
+---
+
+## The Canon — read before touching the code
+
+Three documents are the canon every contributor (human or AI) reads first:
+
+1. **[Engineering Constitution](ENGINEERING-CONSTITUTION.md)** (this doc) — *how* we build. Changes rarely.
+2. **[Product Bible](PRODUCT-BIBLE.md)** — *what* we're building and *why*. Evolves intentionally.
+3. **[ADRs](adr/)** — the immutable record of *which decisions* we made and why.
+
+Companion (non-canon, living): the [Product Audit](PRODUCT-AUDIT.md) (current-state snapshot +
+roadmap) and the [Feature Spec](WAPPFLOW-FEATURE-SPEC.md) (inventory).
 
 ---
 

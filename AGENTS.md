@@ -1,23 +1,31 @@
 # WappFlow — agent operating rules (repo root)
 
-**Before doing anything, you are bound by the [Engineering Constitution](ENGINEERING-CONSTITUTION.md).**
-It is permanent and governs every change in this repository. The [Product Audit](PRODUCT-AUDIT.md)
-is the companion source of truth for current state and the maturity roadmap.
+**Before touching the code, read the Canon.** Three documents govern every change here, permanently:
+the [Engineering Constitution](ENGINEERING-CONSTITUTION.md) (*how* we build), the
+[Product Bible](PRODUCT-BIBLE.md) (*what* & *why*), and the [ADRs](adr/) (immutable decision history).
+Companion: the [Product Audit](PRODUCT-AUDIT.md) (current state + roadmap).
 
-## The five things you must not forget
+## The non-negotiables
 
 1. **Proposal before implementation** (Constitution Article 0). For any *significant* change — new
    DB schema/column, API contract, shared component, cross-module workflow, or auth/permission/
    billing path — first write a proposal from [`proposals/_TEMPLATE.md`](proposals/_TEMPLATE.md) and
-   get it approved. Trivial localized fixes are exempt but still obey every other rule.
+   get it approved. Big/ambiguous direction? Start with an [RFC](rfc/). Architectural decision? Record
+   an [ADR](adr/). Trivial localized fixes are exempt but still obey every other rule.
 2. **Priority order:** Security → Data Integrity → Consistency → Performance → Workflow Integration
    → UX → Delight → New Features. New features are last.
-3. **Golden Rule:** never build a second implementation if one exists. Refactor → Unify → Extend →
-   Reuse → Delete duplication.
+3. **Golden Rule + Rule of Three:** never build a second implementation if one exists (Refactor →
+   Unify → Extend → Reuse → Delete). When a pattern appears a third time, extract it.
 4. **One question gates everything:** *does this make WappFlow feel more like one operating system?*
    If no, don't build it.
-5. **Phase 0 critical findings are merge blockers** (security, workspace isolation, payment/billing
-   integrity, broken routes/workflows, duplicate engines/schemas, data integrity).
+5. **The Foundation Sprint (formerly "Phase 0") criticals are merge blockers** (security, workspace
+   isolation, payment/billing integrity, broken routes/workflows, duplicate engines/schemas, data
+   integrity). See [`proposals/PROP-001`](proposals/PROP-001-phase-0-truth-and-integrity.md).
+6. **Deprecate, don't nuke:** replacements follow Deprecated → Migration → Removal → Cleanup
+   (Article 11). Only *provably-dead* code may be removed directly, with evidence.
+7. **Feature Complete, not just functional:** a user-facing feature isn't finished until it has (where
+   applicable) permissions, audit, notifications, search/palette registration, timeline, analytics,
+   empty/loading/error states, responsive, a11y, docs, and tests.
 
 ## Standing constraints
 
