@@ -801,3 +801,53 @@ No copy or layout changes required.
 - Idempotency discipline: all four items lean on guards that must run ONCE — mark-as-paid backfill (NOT EXISTS + optional partial UNIQUE), ms-albums ALTER (safeAlter swallows duplicate-column), pricing grandfather (pricing_config marker l.68/85), dead-code (no-op). The existing pricing_config single-row marker pattern (pricing.js:68/85) is the proven idiom — mark-as-paid's backfill should adopt the SAME bookkeeping-row mechanism rather than inventing a per-boot scan, for consistency and auditability.
 - Mount-order is an IMPLICIT migration contract relied on by two items: media-studio(5467)→studio-ai(5543) for ms_albums ownership, and payments(5546) mounting after the core invoices/workspace_members schema for the backfill. This ordering is currently correct but UNDOCUMENTED and fragile — any reordering of the require() block at server.js:5467-5546 silently breaks both migrations. Recommend a one-line comment block above that require sequence stating the ordering is load-bearing for schema ownership + backfills.
 - Stored-vs-derived count duplication (ms_albums.page_count stored by studio-ai vs derived live by media-studio) is the same class of split-brain bug the Constitution's Data-Integrity priority targets — resolve to a single source of truth rather than shipping two divergent numbers for one album.
+
+---
+
+## Implementation log — Batch 1 (security guards)
+
+**Status: implemented on branch `foundation-sprint/batch-1-security` — awaiting review/merge.** Items
+`wa-auth`, `ws-scope`, and `impersonation-banner` only (Batch 1 of 4). `stripe-webhook` (Batch 2) and
+the data-migration / consistency batches are not in this change.
+
+### What changed
+**`wa-auth`** — `backend/server.js`: added `resolveWorkspaceWaAccount(workspaceId)`; `GET /api/whatsapp/status`
+and `POST /api/whatsapp/disconnect` now require `auth` and resolve the caller's own account (status no
+longer leaks the pairing QR; disconnect can't be triggered anonymously). `POST /reconnect` and `/sync-missed`
+are now workspace-scoped. `PATCH /api/whatsapp/groups/:groupId` verifies `account_id` + group ownership
+**before** any live-session call. `backend/whatsapp-service.js`: added `syncMissedForAccount(accountId)`.
+`wappflow-web/src/app/whatsapp/page.js`: sends the bearer token, redirects to `/login` on 401, maps
+`not_initialized` → Disconnected. **The WhatsApp message send/receive flow (`POST /api/whatsapp/send`,
+service send paths) is untouched.**
+
+**`ws-scope`** — `backend/server.js`: added `getScopedLead(req, leadId)` (workspace-ownership guard,
+centralizing the existing inline `WHERE id=? AND workspace_id=?` pattern) and applied it to every
+unguarded lead sub-resource route — closing cross-tenant **read** leaks (messages, history, notes,
+reminders, channels, timeline, invoices, email-workflows, emails) and cross-tenant **write** leaks
+(POST notes/reminders/channels/email-workflows/email, lead-tags attach/detach, lead-relations
+create/delete, the reminder toggle, and the permanent-delete cascade).
+
+**`impersonation-banner`** — mounted the existing `ImpersonationBanner` in `wappflow-web/src/app/providers.js`
+(app-wide); made it reactive (`storage` event) and mode-aware (read-only vs WRITE, with a red accent in
+write mode); `backend/server.js` `GET /api/auth/me` additively returns `impersonation`; `impersonate/page.js`
+stores `cc_imp_mode`.
+
+### Scope extended beyond the written proposal (newly-found, same leak class — guarded here)
+`POST /channels`, `POST/DELETE /lead-relations`, `POST/DELETE /leads/:id/tags`, `GET/POST /email-workflows`,
+and `GET /emails` + `POST /email` were also unguarded cross-tenant read/write leaks found during
+implementation (the static coverage test caught the email routes). All now use `getScopedLead`.
+
+### Deliberately deferred (not regressions — need a decision / their own change)
+- The `role=user` **assigned-leads** restriction on lead detail/sub-resources (open question #7). This
+  change enforces the **workspace** boundary only (the actual P0 cross-tenant breach). Tightening
+  intra-workspace visibility to match the list endpoint is a separate change pending the #7 decision,
+  to avoid over-restricting legitimate users.
+- Invoice **P1** schema migration (add `invoices.workspace_id`). P0 closes the only invoice-adjacent
+  exposure by guarding the lead on `GET /leads/:leadId/invoices`; the schema re-keying is a later batch.
+
+### Verification
+- `node --check` passes on `server.js` and `whatsapp-service.js`.
+- `backend/test-batch1-security.js` — 14/14 pass: live SQL tenant-isolation proof + static coverage
+  asserting **no** unguarded lead route remains, the 4 WhatsApp control routes are authed+scoped, the
+  message-send flow is untouched, the groups guard precedes session mutation, and the banner is mounted.
+- Frontend `next build` + manual verification: see review notes.
