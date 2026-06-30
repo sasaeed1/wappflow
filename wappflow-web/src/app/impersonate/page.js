@@ -29,6 +29,7 @@ export default function Impersonate() {
         if (me.workspace) localStorage.setItem('workspace', JSON.stringify(me.workspace));
         localStorage.setItem('cc_impersonating', '1');
         localStorage.setItem('cc_imp_name', me.workspace?.name || u?.business_name || u?.full_name || 'workspace');
+        localStorage.setItem('cc_imp_mode', me.impersonation?.mode || 'read');
         window.location.replace('/dashboard');
       } catch (e) {
         setMsg('Failed to start impersonation: ' + (e?.message || 'error'));

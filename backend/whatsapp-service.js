@@ -1116,6 +1116,14 @@ class WhatsAppManager {
     await Promise.all(promises);
   }
 
+  // Scoped sync for a single account (mirrors the per-account reconnect/disconnect proxies).
+  // Used by the workspace-scoped /api/whatsapp/sync-missed route so a sync never reaches
+  // another tenant's instance.
+  async syncMissedForAccount(accountId) {
+    const service = this.instances.get(accountId);
+    if (service?.isReady) await service.syncMissedMessages().catch(() => {});
+  }
+
   // ── Group proxies ──────────────────────────────────────────
   async createGroup(name, phones, description, accountId = null) {
     const service = this.getReadyService(accountId);

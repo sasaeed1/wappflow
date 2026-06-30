@@ -205,6 +205,15 @@ const auth = (req, res, next) => {
   }
 };
 
+// Workspace-ownership guard for a lead. Returns the lead row iff it belongs to the caller's
+// workspace, else null. Centralizes the `WHERE id=? AND workspace_id=?` check already used inline
+// (e.g. POST /api/leads/:leadId/messages) and applies it to the sub-resource routes that were
+// missed during the per-workspace migration — closing cross-tenant read/write leaks.
+function getScopedLead(req, leadId) {
+  if (!leadId) return null;
+  return db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId) || null;
+}
+
 // ════════════════════════════════════════════════════════════
 //  DATABASE SCHEMA
 // ════════════════════════════════════════════════════════════
@@ -1094,7 +1103,7 @@ app.get('/api/auth/me', auth, (req, res) => {
     const cs = db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(req.workspaceId);
     const memberInfo = db.prepare('SELECT role, full_name FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(req.workspaceId, req.userId);
-    res.json({ user: { ...user, role: req.userRole }, company: cs, workspace, memberRole: memberInfo?.role });
+    res.json({ user: { ...user, role: req.userRole }, company: cs, workspace, memberRole: memberInfo?.role, impersonation: req.impersonation || null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1596,6 +1605,7 @@ app.post('/api/leads/bulk-upload', auth, (req, res) => {
 // Messages — BEFORE /:id
 app.get('/api/leads/:leadId/messages', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     // Optionally filter by ?platform=whatsapp|instagram|facebook|website
     const platform = (req.query.platform || '').toLowerCase();
     let messages;
@@ -1732,6 +1742,7 @@ app.post('/api/leads/:leadId/messages/sync', auth, async (req, res) => {
 // Contact history
 app.get('/api/leads/:leadId/history', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const history = db.prepare(`
       SELECT ch.*, u.business_name as user_name
       FROM contact_history ch
@@ -1745,6 +1756,7 @@ app.get('/api/leads/:leadId/history', auth, (req, res) => {
 // Lead invoices
 app.get('/api/leads/:leadId/invoices', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const invoices = db.prepare(`SELECT * FROM invoices WHERE lead_id = ? AND user_id = ? ORDER BY created_at DESC`).all(req.params.leadId, req.workspaceOwnerId);
     res.json({ invoices });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1753,6 +1765,7 @@ app.get('/api/leads/:leadId/invoices', auth, (req, res) => {
 // Email workflows for lead
 app.get('/api/leads/:leadId/email-workflows', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const workflows = db.prepare(`
       SELECT ew.*, et.subject, et.body as template_body
       FROM email_workflows ew
@@ -1768,6 +1781,7 @@ app.post('/api/leads/:leadId/email-workflows', auth, (req, res) => {
   try {
     const { template_id, scheduled_at } = req.body;
     const { leadId } = req.params;
+    if (!getScopedLead(req, leadId)) return res.status(404).json({ error: 'Lead not found' });
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ? AND user_id = ?').get(template_id, req.workspaceOwnerId);
     if (!template) return res.status(404).json({ error: 'Template not found' });
     const id = generateId();
@@ -1952,6 +1966,8 @@ app.post('/api/leads/:id/restore', auth, (req, res) => {
 
 app.delete('/api/leads/:id/permanent', auth, (req, res) => {
   try {
+    // Guard the lead BEFORE the cascade so child rows are never deleted cross-tenant.
+    if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
     db.prepare('DELETE FROM notes WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM reminders WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM messages WHERE lead_id = ?').run(req.params.id);
@@ -2054,6 +2070,7 @@ app.post('/api/leads/merge', auth, (req, res) => {
 
 app.get('/api/leads/:leadId/notes', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const notes = db.prepare('SELECT * FROM notes WHERE lead_id = ? ORDER BY created_at DESC').all(req.params.leadId);
     res.json({ notes });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2061,6 +2078,7 @@ app.get('/api/leads/:leadId/notes', auth, (req, res) => {
 
 app.post('/api/leads/:leadId/notes', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const { content } = req.body;
     const id = generateId();
     db.prepare('INSERT INTO notes (id, lead_id, user_id, content) VALUES (?, ?, ?, ?)').run(id, req.params.leadId, req.userId, content);
@@ -2078,6 +2096,7 @@ app.delete('/api/notes/:id', auth, (req, res) => {
 
 app.get('/api/leads/:leadId/reminders', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const reminders = db.prepare('SELECT * FROM reminders WHERE lead_id = ? ORDER BY reminder_date ASC, due_date ASC').all(req.params.leadId);
     res.json({ reminders });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2085,6 +2104,7 @@ app.get('/api/leads/:leadId/reminders', auth, (req, res) => {
 
 app.post('/api/leads/:leadId/reminders', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const { reminder_date, message, title } = req.body;
     const id = generateId();
     db.prepare('INSERT INTO reminders (id, lead_id, user_id, reminder_date, message, title, due_date) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, req.params.leadId, req.userId, reminder_date, message, title || message, reminder_date);
@@ -2112,6 +2132,8 @@ app.put('/api/reminders/:id/toggle', auth, (req, res) => {
   try {
     const reminder = db.prepare('SELECT * FROM reminders WHERE id = ?').get(req.params.id);
     if (!reminder) return res.status(404).json({ error: 'Not found' });
+    // The reminder's lead must belong to the caller's workspace (closes cross-tenant toggle).
+    if (!getScopedLead(req, reminder.lead_id)) return res.status(404).json({ error: 'Not found' });
     const newVal = reminder.is_completed ? 0 : 1;
     db.prepare('UPDATE reminders SET is_completed = ?, completed = ? WHERE id = ?').run(newVal, newVal, req.params.id);
     res.json(db.prepare('SELECT * FROM reminders WHERE id = ?').get(req.params.id));
@@ -2532,11 +2554,19 @@ app.delete('/api/tags/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/leads/:leadId/tags/:tagId', auth, (req, res) => {
-  try { db.prepare('INSERT OR IGNORE INTO lead_tags (lead_id, tag_id) VALUES (?, ?)').run(req.params.leadId, req.params.tagId); res.json({ ok: true }); }
+  try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
+    const tag = db.prepare('SELECT 1 FROM tags WHERE id = ? AND user_id = ?').get(req.params.tagId, req.workspaceOwnerId);
+    if (!tag) return res.status(404).json({ error: 'Tag not found' });
+    db.prepare('INSERT OR IGNORE INTO lead_tags (lead_id, tag_id) VALUES (?, ?)').run(req.params.leadId, req.params.tagId); res.json({ ok: true });
+  }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/leads/:leadId/tags/:tagId', auth, (req, res) => {
-  try { db.prepare('DELETE FROM lead_tags WHERE lead_id=? AND tag_id=?').run(req.params.leadId, req.params.tagId); res.json({ ok: true }); }
+  try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
+    db.prepare('DELETE FROM lead_tags WHERE lead_id=? AND tag_id=?').run(req.params.leadId, req.params.tagId); res.json({ ok: true });
+  }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2568,7 +2598,18 @@ app.delete('/api/presets/:id', auth, (req, res) => {
 //  WHATSAPP ROUTES
 // ════════════════════════════════════════════════════════════
 
-app.get('/api/whatsapp/status', (req, res) => res.json(whatsappService.getLegacyStatus()));
+// Resolve the calling workspace's primary WhatsApp account (lowest slot_index). Reuses the same
+// scoping predicate as the per-account routes (id/workspace_id/platform), so the legacy
+// single-account endpoints can become authed + workspace-scoped without changing their shape.
+function resolveWorkspaceWaAccount(workspaceId) {
+  return db.prepare("SELECT * FROM platform_accounts WHERE workspace_id = ? AND platform = 'whatsapp' ORDER BY slot_index ASC LIMIT 1").get(workspaceId);
+}
+
+app.get('/api/whatsapp/status', auth, (req, res) => {
+  const account = resolveWorkspaceWaAccount(req.workspaceId);
+  if (!account) return res.json({ status: 'disconnected', isReady: false });
+  res.json(whatsappService.getStatus(account.id));
+});
 
 // ── Per-account WhatsApp routes ──────────────────────────────────────────────
 app.get('/api/whatsapp/accounts/:id/status', auth, (req, res) => {
@@ -2592,24 +2633,30 @@ app.post('/api/whatsapp/accounts/:id/disconnect', auth, async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/whatsapp/disconnect', async (req, res) => {
-  try { await whatsappService.disconnect(); res.json({ message: 'Disconnected' }); }
+app.post('/api/whatsapp/disconnect', auth, async (req, res) => {
+  const account = resolveWorkspaceWaAccount(req.workspaceId);
+  if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
+  try { await whatsappService.disconnect(account.id); res.json({ message: 'Disconnected' }); }
   catch (e) { res.status(500).json({ error: 'Failed to disconnect' }); }
 });
 
 app.post('/api/whatsapp/reconnect', auth, async (req, res) => {
+  const account = resolveWorkspaceWaAccount(req.workspaceId);
+  if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
   try {
-    res.json({ message: 'Reconnecting...' }); // respond immediately
-    await whatsappService.reconnect();         // runs async after response
+    res.json({ message: 'Reconnecting...' });    // respond immediately
+    await whatsappService.reconnect(account.id);  // runs async after response, scoped to this workspace
   } catch (e) { console.error('Reconnect error:', e.message); }
 });
 
 // Manually trigger missed-message sync (also runs automatically on every reconnect)
 app.post('/api/whatsapp/sync-missed', auth, async (req, res) => {
   try {
-    if (!whatsappService.isReady) return res.status(400).json({ error: 'WhatsApp not connected' });
+    const account = resolveWorkspaceWaAccount(req.workspaceId);
+    if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
+    if (!whatsappService.getStatus(account.id).isReady) return res.status(400).json({ error: 'WhatsApp not connected' });
     res.json({ message: 'Sync started...' });
-    await whatsappService.syncMissedMessages();
+    await whatsappService.syncMissedForAccount(account.id);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3152,6 +3199,7 @@ app.post('/api/settings/email-imap/test', auth, async (req, res) => {
 // GET /api/leads/:id/emails
 app.get('/api/leads/:id/emails', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
     const emails = db.prepare('SELECT * FROM lead_emails WHERE lead_id = ? ORDER BY created_at DESC').all(req.params.id);
     res.json({ emails });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3160,6 +3208,7 @@ app.get('/api/leads/:id/emails', auth, (req, res) => {
 // POST /api/leads/:id/email — compose and send an email
 app.post('/api/leads/:id/email', auth, async (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
     const { to_email, subject, body } = req.body;
     if (!to_email || !subject || !body) return res.status(400).json({ error: 'to_email, subject, and body required' });
 
@@ -4691,6 +4740,7 @@ app.options('/api/website-form/:formToken/submit', (req, res) => {
 // GET /api/leads/:leadId/channels — list extra communication channels linked to a lead
 app.get('/api/leads/:leadId/channels', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const channels = db.prepare(`
       SELECT lc.*, pa.nickname AS account_nickname, pa.account_name
       FROM lead_channels lc
@@ -4703,6 +4753,7 @@ app.get('/api/leads/:leadId/channels', auth, (req, res) => {
 
 app.post('/api/leads/:leadId/channels', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const { platform, identifier, platform_account_id, display_name } = req.body || {};
     if (!platform || !identifier) return res.status(400).json({ error: 'platform and identifier required' });
     const id = generateId();
@@ -4717,6 +4768,7 @@ app.post('/api/leads/:leadId/channels', auth, (req, res) => {
 
 app.delete('/api/leads/:leadId/channels/:channelId', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     db.prepare('DELETE FROM lead_channels WHERE id = ? AND lead_id = ?').run(req.params.channelId, req.params.leadId);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4768,6 +4820,8 @@ app.post('/api/lead-relations', auth, (req, res) => {
   try {
     const { lead_id_a, lead_id_b, relation_type } = req.body || {};
     if (!lead_id_a || !lead_id_b || lead_id_a === lead_id_b) return res.status(400).json({ error: 'two different leads required' });
+    // Both leads must belong to the caller's workspace (closes cross-tenant relation writes).
+    if (!getScopedLead(req, lead_id_a) || !getScopedLead(req, lead_id_b)) return res.status(404).json({ error: 'Lead not found' });
     // Canonical ordering so UNIQUE works regardless of which side initiated
     const [a, b] = [lead_id_a, lead_id_b].sort();
     const id = generateId();
@@ -4782,6 +4836,9 @@ app.post('/api/lead-relations', auth, (req, res) => {
 
 app.delete('/api/lead-relations/:id', auth, (req, res) => {
   try {
+    const rel = db.prepare('SELECT * FROM lead_relations WHERE id = ?').get(req.params.id);
+    // Allow only if the caller owns either side of the relation.
+    if (!rel || (!getScopedLead(req, rel.lead_id_a) && !getScopedLead(req, rel.lead_id_b))) return res.status(404).json({ error: 'Not found' });
     db.prepare('DELETE FROM lead_relations WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4790,6 +4847,7 @@ app.delete('/api/lead-relations/:id', auth, (req, res) => {
 // GET /api/leads/:leadId/timeline — unified activity feed
 app.get('/api/leads/:leadId/timeline', auth, (req, res) => {
   try {
+    if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
     const items = [];
     // 1) Native activity rows
     const acts = db.prepare(`SELECT * FROM activity_timeline WHERE lead_id = ? ORDER BY created_at ASC`).all(req.params.leadId);
@@ -5123,6 +5181,21 @@ app.patch('/api/whatsapp/groups/:groupId', auth, (req, res) => {
     try {
       const groupId = req.params.groupId;
       const { name, description, account_id } = req.body || {};
+
+      // Workspace-scope BEFORE touching the live WhatsApp session: a caller-supplied account_id
+      // must belong to this workspace, and the group must be owned here (fall back to account-level
+      // ownership when the local mirror row is missing). Clean up any uploaded icon on rejection.
+      const denyGroup = (msg) => {
+        if (req.file) { try { require('fs').unlinkSync(req.file.path); } catch {} }
+        return res.status(404).json({ error: msg });
+      };
+      if (account_id) {
+        const acct = db.prepare("SELECT 1 FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = 'whatsapp'").get(account_id, req.workspaceId);
+        if (!acct) return denyGroup('Account not found');
+      }
+      const ownsGroup = db.prepare('SELECT 1 FROM whatsapp_groups WHERE workspace_id = ? AND group_id = ?').get(req.workspaceId, groupId);
+      if (!ownsGroup && !account_id) return denyGroup('Group not found');
+
       if (name) await whatsappService.setGroupSubject(groupId, String(name).trim(), account_id || null);
       if (typeof description === 'string') await whatsappService.setGroupDescription(groupId, description, account_id || null);
       if (req.file) await whatsappService.setGroupPicture(groupId, req.file.path, req.file.mimetype, account_id || null);

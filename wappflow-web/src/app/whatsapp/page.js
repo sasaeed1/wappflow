@@ -25,7 +25,12 @@ export default function WhatsAppPage() {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch(`${BASE_URL}/api/whatsapp/status`, { cache: 'no-store' });
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BASE_URL}/api/whatsapp/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      if (res.status === 401) { router.push('/login'); return; }
       const data = await res.json();
       setStatus(data);
       setLoading(false);
@@ -65,6 +70,7 @@ export default function WhatsAppPage() {
       case 'qr_ready':     return { color: '#6366f1', label: 'Scan QR Code' };
       case 'authenticated':return { color: '#10b981', label: 'Authenticating…' };
       case 'disconnected': return { color: '#ef4444', label: 'Disconnected' };
+      case 'not_initialized': return { color: '#ef4444', label: 'Disconnected' };
       case 'auth_failed':  return { color: '#ef4444', label: 'Authentication Failed' };
       case 'error':        return { color: '#ef4444', label: 'Connection Error' };
       case 'initializing': return { color: '#f59e0b', label: 'Initializing…' };
@@ -73,7 +79,7 @@ export default function WhatsAppPage() {
   };
 
   const meta = getStatusMeta();
-  const isError = ['disconnected', 'error', 'auth_failed'].includes(status?.status);
+  const isError = ['disconnected', 'not_initialized', 'error', 'auth_failed'].includes(status?.status);
 
   return (
     <NavBar>

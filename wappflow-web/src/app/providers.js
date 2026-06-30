@@ -5,6 +5,7 @@ import { SoundProvider } from '@/lib/sounds';
 import { PlanProvider } from '@/lib/plan';
 import { PlanLockStyles } from '@/components/PlanLock';
 import UsageWarnings from '@/components/UsageWarnings';
+import ImpersonationBanner from '@/components/ImpersonationBanner';
 
 export default function Providers({ children }) {
   return (
@@ -13,6 +14,7 @@ export default function Providers({ children }) {
         <PlanProvider>
           <PlanLockStyles />
           <UsageWarnings />
+          <ImpersonationBanner />
           {children}
         </PlanProvider>
       </SoundProvider>
