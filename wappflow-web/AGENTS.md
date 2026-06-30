@@ -1,3 +1,7 @@
+<!-- Governance: you are bound by ../ENGINEERING-CONSTITUTION.md (permanent) and ../AGENTS.md.
+     Proposal before implementation (Article 0); priority order Security→…→Features; never build a
+     second implementation if one exists; every change must make WappFlow feel like one OS. -->
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
