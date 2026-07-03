@@ -145,7 +145,7 @@ module.exports = function mountPayments(app, db, deps = {}) {
   // uq_payments_invoice_paid partial UNIQUE index. Shared by the new route AND the legacy
   // PUT /api/invoices/:id delegate in server.js, so no path can bypass the ledger.
   function markPaidByInvoice(invoiceId, { workspaceId, workspaceOwnerId, userId, note } = {}) {
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND user_id = ?').get(invoiceId, workspaceOwnerId);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').get(invoiceId, workspaceId, workspaceOwnerId);
     if (!invoice) return { error: 'not_found' };
     const existing = db.prepare("SELECT id FROM payments WHERE workspace_id = ? AND kind = 'invoice' AND ref_id = ? AND status = 'paid'").get(workspaceId, invoiceId);
     if (existing) return { ok: true, payment_id: existing.id, already: true };

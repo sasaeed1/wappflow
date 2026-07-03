@@ -27,7 +27,7 @@ const settings = read(path.join(WEB, 'app', 'settings', 'page.js'));
 const apiLib = read(path.join(WEB, 'lib', 'api.js'));
 
 // ── (1a) Live: formatMoney + nextPlanFor extracted from source ───────────────
-const fmSrc = planLib.match(/export const formatMoney = (\(amount[\s\S]*?);\n/);
+const fmSrc = planLib.match(/export const formatMoney = (\(amount[\s\S]*?);\r?\n/);
 const formatMoney = eval(fmSrc[1]);
 check('formatMoney(7999) === "PKR 7,999"', () => assert.strictEqual(formatMoney(7999), 'PKR 7,999'));
 check('formatMoney(null) === "Custom"', () => assert.strictEqual(formatMoney(null), 'Custom'));

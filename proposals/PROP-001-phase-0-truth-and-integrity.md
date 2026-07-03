@@ -998,3 +998,40 @@ alive — no wasted work on deleted code.**
   so drift fails the test), purge-is-total scan, no dead-tier literals/navigations, TIER_STYLE
   rekey, alias validation, route ordering, client bindings.
 - Batches 1 (14/14), 2 (23/23), 3 (28/28) still green. `node --check` clean. `next build` green.
+
+---
+
+## Implementation log — Batch 5 (Q#7 lead-visibility rule + Q#8 workspace re-key)
+
+**Status: implemented on branch `foundation-sprint/batch-5-scope` — awaiting review/merge.
+Owner decisions applied: Q#7 = match the list (+ honor view_all_leads) · Q#8 = now.
+⚠️ Deploy step: DB snapshot first (`cp /data/wappflow.db* /root/db-backup-$(date +%F)/`) — this
+batch runs a boot-time backfill.**
+
+### Q#7 — ONE lead-visibility rule everywhere
+- Auth middleware computes `req.canViewAllLeads`: per-member custom `view_all_leads` permission wins
+  when set, else the role default — the custom permission now actually works (it was ignored).
+- `getScopedLead()` enforces the exact list rule (no view-all → own assigned leads only; unassigned
+  invisible), so all 20 previously-guarded sub-resource routes inherit it automatically.
+- **17 remaining inline lead-by-id fetches swapped to `getScopedLead`** (lead detail aggregate,
+  message send/voice/sync/media, restore, merge, AI summary/replies/analyze, industry ×3,
+  meetings ×3) — no route can bypass the rule (test enforces exactly one inline fetch remains:
+  the helper's own).
+- Trash list + Empty-Trash scope to the member's own leads when view-all is off (list/detail/trash
+  all agree). Members can still toggle reminders they personally created on since-reassigned leads.
+- Admin/manager/super_admin unchanged (view_all_leads=true by default).
+
+### Q#8 — invoices/email_workflows re-keyed to the workspace
+- Additive `workspace_id` columns + indexes; idempotent boot backfill via `users.workspace_id`
+  with the auth-middleware-identical fallback (scalar mapping — no fan-out possible).
+- INSERTs write `workspace_id`; ALL route reads/writes go dual-mode
+  `(workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))` for one release (11 sites in
+  server.js + `markPaidByInvoice` in payments.js), after which the `user_id` fallback can be
+  retired. Workspace export snapshot intentionally left owner-keyed (equivalent post-backfill).
+
+### Verification
+- `backend/test-batch5-scope.js` — **20/20 pass**: live visibility-rule matrix (member/admin ×
+  own/teammate/unassigned/cross-tenant + list↔detail agreement), live backfill (mapping, fallback,
+  idempotency), **every dual-read query shape executed with its exact param count** (catches
+  binding mismatches), and static one-rule/no-bypass/write-path checks.
+- Batches 1–4 all green (fixed a CRLF-tolerance issue in batch-4's extraction regex — test-only).

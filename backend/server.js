@@ -182,6 +182,10 @@ const auth = (req, res, next) => {
     const member = db.prepare('SELECT role, permissions FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(workspaceId, decoded.userId);
     req.userRole = member?.role || 'super_admin';
     req.userPermissions = member?.permissions ? JSON.parse(member.permissions) : DEFAULT_ROLE_PERMISSIONS[req.userRole] || {};
+    // ONE lead-visibility rule (list + detail + sub-resources): custom per-member
+    // view_all_leads wins when set; otherwise the role default applies.
+    req.canViewAllLeads = req.userPermissions.view_all_leads
+      ?? (DEFAULT_ROLE_PERMISSIONS[req.userRole] || DEFAULT_ROLE_PERMISSIONS.user).view_all_leads;
 
     // Workspace owner's user_id (super_admin) — used for shared data (tags, presets, settings)
     const ownerRow = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(workspaceId);
@@ -216,7 +220,12 @@ const auth = (req, res, next) => {
 // missed during the per-workspace migration — closing cross-tenant read/write leaks.
 function getScopedLead(req, leadId) {
   if (!leadId) return null;
-  return db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId) || null;
+  const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+  if (!lead) return null;
+  // Mirror the list filter exactly: members without view_all_leads see only leads
+  // assigned to them (unassigned leads are invisible to them there too).
+  if (!req.canViewAllLeads && lead.assigned_to !== req.userId) return null;
+  return lead;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -648,6 +657,22 @@ safeAlter('ALTER TABLE leads ADD COLUMN platform_source TEXT');
 safeAlter('ALTER TABLE platform_accounts ADD COLUMN nickname TEXT');
 safeAlter('ALTER TABLE platform_accounts ADD COLUMN account_handle TEXT');
 safeAlter('ALTER TABLE platform_accounts ADD COLUMN slot_index INTEGER DEFAULT 0');
+
+// ── Workspace re-key (Foundation Sprint Batch 5 / PROP-001 ws-scope P1) ─────────
+// invoices + email_workflows were scoped by the workspace OWNER's user_id (a derived
+// value); the authoritative tenant boundary is workspace_id. Additive columns + an
+// idempotent boot backfill (users.workspace_id with the auth-identical fallback), then
+// reads go dual-mode `(workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`
+// for one release before user_id is retired.
+safeAlter('ALTER TABLE invoices ADD COLUMN workspace_id TEXT');
+safeAlter('ALTER TABLE email_workflows ADD COLUMN workspace_id TEXT');
+try {
+  db.exec('CREATE INDEX IF NOT EXISTS idx_invoices_ws ON invoices(workspace_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_email_workflows_ws ON email_workflows(workspace_id)');
+  const bf1 = db.prepare(`UPDATE invoices SET workspace_id = COALESCE((SELECT u.workspace_id FROM users u WHERE u.id = invoices.user_id), user_id) WHERE workspace_id IS NULL OR workspace_id = ''`).run();
+  const bf2 = db.prepare(`UPDATE email_workflows SET workspace_id = COALESCE((SELECT u.workspace_id FROM users u WHERE u.id = email_workflows.user_id), user_id) WHERE workspace_id IS NULL OR workspace_id = ''`).run();
+  if (bf1.changes || bf2.changes) console.log(`🏷️  workspace re-key backfill: invoices=${bf1.changes}, email_workflows=${bf2.changes}`);
+} catch (e) { console.error('workspace re-key backfill failed (non-fatal):', e.message); }
 
 // ── Reminders schema drift fix: older DBs created the table BEFORE these columns existed.
 // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so add the columns explicitly.
@@ -1515,8 +1540,8 @@ app.get('/api/leads', auth, (req, res) => {
     //   omitted  → everything (keeps clients visible in chat)
     if (client === '1') query += ' AND is_client = 1';
     else if (client === '0') query += ' AND (is_client = 0 OR is_client IS NULL)';
-    // 'user' role can only see assigned leads
-    if (req.userRole === 'user') { query += ' AND assigned_to = ?'; params.push(req.userId); }
+    // Members without view_all_leads see only their assigned leads (custom permission honored)
+    if (!req.canViewAllLeads) { query += ' AND assigned_to = ?'; params.push(req.userId); }
     if (status && status !== 'all') { query += ' AND status = ?'; params.push(status); }
     if (assigned_to) { query += ' AND assigned_to = ?'; params.push(assigned_to); }
     if (source) { query += ' AND lead_source = ?'; params.push(source); }
@@ -1552,7 +1577,11 @@ app.get('/api/leads', auth, (req, res) => {
 
 app.get('/api/leads/trash', auth, (req, res) => {
   try {
-    const leads = db.prepare(`SELECT * FROM leads WHERE workspace_id = ? AND is_deleted = 1 ORDER BY deleted_at DESC`).all(req.workspaceId);
+    // Same visibility rule as the leads list: no view_all_leads → own assigned leads only.
+    let q = `SELECT * FROM leads WHERE workspace_id = ? AND is_deleted = 1`;
+    const params = [req.workspaceId];
+    if (!req.canViewAllLeads) { q += ' AND assigned_to = ?'; params.push(req.userId); }
+    const leads = db.prepare(q + ' ORDER BY deleted_at DESC').all(...params);
     res.json({ leads });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1633,7 +1662,7 @@ app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
   try {
     const { body, platform } = req.body;
     const { leadId } = req.params;
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+    const lead = getScopedLead(req, leadId);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     const targetPlatform = (platform || 'whatsapp').toLowerCase();
 
@@ -1667,7 +1696,7 @@ app.post('/api/leads/:leadId/messages/voice', auth, (req, res) => {
     try {
       const { leadId } = req.params;
       const platform = ((req.body && req.body.platform) || 'whatsapp').toLowerCase();
-      const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+      const lead = getScopedLead(req, leadId);
       if (!lead) return res.status(404).json({ error: 'Lead not found' });
       if (!req.file) return res.status(400).json({ error: 'No audio file uploaded — check the field name is "audio"' });
 
@@ -1703,7 +1732,7 @@ app.post('/api/leads/:leadId/messages/voice', auth, (req, res) => {
 app.post('/api/leads/:leadId/messages/sync', auth, async (req, res) => {
   try {
     const { leadId } = req.params;
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+    const lead = getScopedLead(req, leadId);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     // Rate-limit: skip if this lead was synced in the last 5 minutes
@@ -1763,7 +1792,7 @@ app.get('/api/leads/:leadId/history', auth, (req, res) => {
 app.get('/api/leads/:leadId/invoices', auth, (req, res) => {
   try {
     if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
-    const invoices = db.prepare(`SELECT * FROM invoices WHERE lead_id = ? AND user_id = ? ORDER BY created_at DESC`).all(req.params.leadId, req.workspaceOwnerId);
+    const invoices = db.prepare(`SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC`).all(req.params.leadId, req.workspaceId, req.workspaceOwnerId);
     res.json({ invoices });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1776,9 +1805,9 @@ app.get('/api/leads/:leadId/email-workflows', auth, (req, res) => {
       SELECT ew.*, et.subject, et.body as template_body
       FROM email_workflows ew
       LEFT JOIN email_templates et ON et.id = ew.template_id
-      WHERE ew.lead_id = ? AND ew.user_id = ?
+      WHERE ew.lead_id = ? AND (ew.workspace_id = ? OR (ew.workspace_id IS NULL AND ew.user_id = ?))
       ORDER BY ew.created_at DESC
-    `).all(req.params.leadId, req.workspaceOwnerId);
+    `).all(req.params.leadId, req.workspaceId, req.workspaceOwnerId);
     res.json({ workflows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1792,9 +1821,9 @@ app.post('/api/leads/:leadId/email-workflows', auth, (req, res) => {
     if (!template) return res.status(404).json({ error: 'Template not found' });
     const id = generateId();
     db.prepare(`
-      INSERT INTO email_workflows (id, user_id, lead_id, template_id, template_name, template_subject, status, scheduled_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
-    `).run(id, req.workspaceOwnerId, leadId, template_id, template.name, template.subject, scheduled_at || new Date().toISOString());
+      INSERT INTO email_workflows (id, user_id, workspace_id, lead_id, template_id, template_name, template_subject, status, scheduled_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).run(id, req.workspaceOwnerId, req.workspaceId, leadId, template_id, template.name, template.subject, scheduled_at || new Date().toISOString());
     addContactHistory(leadId, req.userId, 'email', `Email workflow started: ${template.name}`);
     const wf = db.prepare('SELECT * FROM email_workflows WHERE id = ?').get(id);
     res.status(201).json({ workflow: wf });
@@ -1804,8 +1833,8 @@ app.post('/api/leads/:leadId/email-workflows', auth, (req, res) => {
 app.put('/api/email-workflows/:id/status', auth, (req, res) => {
   try {
     const { status } = req.body;
-    db.prepare(`UPDATE email_workflows SET status = ?, sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE sent_at END WHERE id = ? AND user_id = ?`)
-      .run(status, status, req.params.id, req.workspaceOwnerId);
+    db.prepare(`UPDATE email_workflows SET status = ?, sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE sent_at END WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`)
+      .run(status, status, req.params.id, req.workspaceId, req.workspaceOwnerId);
     const wf = db.prepare('SELECT * FROM email_workflows WHERE id = ?').get(req.params.id);
     res.json({ workflow: wf });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1813,7 +1842,7 @@ app.put('/api/email-workflows/:id/status', auth, (req, res) => {
 
 app.get('/api/leads/:id', auth, (req, res) => {
   try {
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const lead = getScopedLead(req, req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     // Core queries — always present
@@ -1833,10 +1862,10 @@ app.get('/api/leads/:id', auth, (req, res) => {
     try { history = db.prepare('SELECT * FROM contact_history WHERE lead_id = ? ORDER BY created_at DESC LIMIT 50').all(req.params.id); } catch {}
 
     let invoices = [];
-    try { invoices = db.prepare('SELECT * FROM invoices WHERE lead_id = ? AND user_id = ? ORDER BY created_at DESC').all(req.params.id, req.workspaceOwnerId).map(parseInvoice); } catch {}
+    try { invoices = db.prepare('SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.params.id, req.workspaceId, req.workspaceOwnerId).map(parseInvoice); } catch {}
 
     let emailWorkflows = [];
-    try { emailWorkflows = db.prepare('SELECT * FROM email_workflows WHERE lead_id = ? AND user_id = ? ORDER BY created_at DESC').all(req.params.id, req.workspaceOwnerId); } catch {}
+    try { emailWorkflows = db.prepare('SELECT * FROM email_workflows WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.params.id, req.workspaceId, req.workspaceOwnerId); } catch {}
 
     let assignee = null;
     try {
@@ -1912,7 +1941,7 @@ app.put('/api/leads/:id', auth, (req, res) => {
 app.put('/api/leads/:id/client', auth, (req, res) => {
   try {
     const makeClient = req.body.is_client !== false; // default true
-    const existing = db.prepare('SELECT id FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const existing = getScopedLead(req, req.params.id);
     if (!existing) return res.status(404).json({ error: 'Lead not found' });
     if (makeClient) {
       db.prepare('UPDATE leads SET is_client = 1, client_since = COALESCE(client_since, CURRENT_TIMESTAMP) WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
@@ -1959,7 +1988,11 @@ app.put('/api/leads/:id/status', auth, (req, res) => {
 app.delete('/api/leads/trash', auth, (req, res) => {
   try {
     const emptyTrash = db.transaction(() => {
-      const ids = db.prepare('SELECT id FROM leads WHERE workspace_id = ? AND is_deleted = 1').all(req.workspaceId).map(r => r.id);
+      // Members without view_all_leads may only empty THEIR trashed leads (matches the trash list).
+      let q = 'SELECT id FROM leads WHERE workspace_id = ? AND is_deleted = 1';
+      const params = [req.workspaceId];
+      if (!req.canViewAllLeads) { q += ' AND assigned_to = ?'; params.push(req.userId); }
+      const ids = db.prepare(q).all(...params).map(r => r.id);
       if (!ids.length) return 0;
       const ph = ids.map(() => '?').join(',');
       for (const table of ['notes', 'reminders', 'messages', 'contact_history', 'invoices']) {
@@ -2047,9 +2080,9 @@ app.post('/api/leads/merge', auth, (req, res) => {
     if (!primary_id || !Array.isArray(duplicate_ids) || duplicate_ids.length === 0) return res.status(400).json({ error: 'primary_id and duplicate_ids[] required' });
     if (duplicate_ids.includes(primary_id)) return res.status(400).json({ error: 'primary cannot be in duplicate_ids' });
 
-    const primary = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(primary_id, req.workspaceId);
+    const primary = getScopedLead(req, primary_id);
     if (!primary) return res.status(404).json({ error: 'Primary lead not found' });
-    const dups = duplicate_ids.map(id => db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(id, req.workspaceId)).filter(Boolean);
+    const dups = duplicate_ids.map(id => getScopedLead(req, id)).filter(Boolean);
     if (dups.length === 0) return res.status(404).json({ error: 'No valid duplicate leads' });
 
     // Tables that carry a lead_id FK (discovered, so new modules are covered automatically)
@@ -2159,8 +2192,10 @@ app.put('/api/reminders/:id/toggle', auth, (req, res) => {
   try {
     const reminder = db.prepare('SELECT * FROM reminders WHERE id = ?').get(req.params.id);
     if (!reminder) return res.status(404).json({ error: 'Not found' });
-    // The reminder's lead must belong to the caller's workspace (closes cross-tenant toggle).
-    if (!getScopedLead(req, reminder.lead_id)) return res.status(404).json({ error: 'Not found' });
+    // The reminder's lead must be visible to the caller (workspace + assigned-leads rule) —
+    // EXCEPT a member may always toggle a reminder they personally created (e.g. on a lead
+    // that was later reassigned).
+    if (!getScopedLead(req, reminder.lead_id) && reminder.user_id !== req.userId) return res.status(404).json({ error: 'Not found' });
     const newVal = reminder.is_completed ? 0 : 1;
     db.prepare('UPDATE reminders SET is_completed = ?, completed = ? WHERE id = ?').run(newVal, newVal, req.params.id);
     res.json(db.prepare('SELECT * FROM reminders WHERE id = ?').get(req.params.id));
@@ -2182,7 +2217,7 @@ app.post('/api/leads/:leadId/messages/media', auth, (req, res) => {
       const { leadId } = req.params;
       const caption = req.body.caption || '';
       const platform = ((req.body && req.body.platform) || 'whatsapp').toLowerCase();
-      const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+      const lead = getScopedLead(req, leadId);
       if (!lead) return res.status(404).json({ error: 'Lead not found' });
       if (!req.file) return res.status(400).json({ error: 'No file' });
 
@@ -2228,14 +2263,14 @@ function parseInvoice(inv) {
 
 app.get('/api/invoices', auth, (req, res) => {
   try {
-    const invoices = db.prepare('SELECT * FROM invoices WHERE user_id = ? ORDER BY created_at DESC').all(req.workspaceOwnerId).map(parseInvoice);
+    const invoices = db.prepare('SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.workspaceId, req.workspaceOwnerId).map(parseInvoice);
     res.json({ invoices });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/invoices/:id', auth, (req, res) => {
   try {
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').get(req.params.id, req.workspaceId, req.workspaceOwnerId);
     if (!invoice) return res.status(404).json({ error: 'Not found' });
     res.json({ invoice: parseInvoice(invoice) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2258,10 +2293,10 @@ app.post('/api/invoices', auth, (req, res) => {
 
     const id = generateId();
     db.prepare(`
-      INSERT INTO invoices (id, user_id, lead_id, invoice_number, customer_name, customer_email, customer_phone,
+      INSERT INTO invoices (id, user_id, workspace_id, lead_id, invoice_number, customer_name, customer_email, customer_phone,
         customer_address, items, subtotal, tax_rate, tax_amount, discount, total, currency, currency_symbol, due_date, notes, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, req.workspaceOwnerId, lead_id, invoiceNumber, customer_name, customer_email, customer_phone,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.workspaceOwnerId, req.workspaceId, lead_id, invoiceNumber, customer_name, customer_email, customer_phone,
       customer_address, JSON.stringify(items || []), subtotal, tax_rate, tax_amount, discount || 0,
       total, cs?.currency || 'USD', cs?.currency_symbol || '$', due_date, notes, status || 'draft');
 
@@ -2279,7 +2314,7 @@ app.put('/api/invoices/:id', auth, (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address,
       items, subtotal, tax_rate, tax_amount, discount, total, due_date, notes, status } = req.body;
-    const current = db.prepare('SELECT status FROM invoices WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId);
+    const current = db.prepare('SELECT status FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').get(req.params.id, req.workspaceId, req.workspaceOwnerId);
     if (!current) return res.status(404).json({ error: 'Invoice not found' });
     // Ledger truth: status='paid' never lands via a direct write. Field updates apply as
     // before (status preserved), then the paid flip delegates to the payments ledger —
@@ -2289,10 +2324,10 @@ app.put('/api/invoices/:id', auth, (req, res) => {
     db.prepare(`
       UPDATE invoices SET customer_name=?, customer_email=?, customer_phone=?, customer_address=?,
         items=?, subtotal=?, tax_rate=?, tax_amount=?, discount=?, total=?, due_date=?, notes=?, status=?
-      WHERE id=? AND user_id=?
+      WHERE id=? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))
     `).run(customer_name, customer_email, customer_phone, customer_address,
       JSON.stringify(items || []), subtotal, tax_rate, tax_amount, discount, total,
-      due_date, notes, writeStatus, req.params.id, req.workspaceOwnerId);
+      due_date, notes, writeStatus, req.params.id, req.workspaceId, req.workspaceOwnerId);
     if (wantsPaid) {
       if (!paymentsApi) return res.status(503).json({ error: 'Payments module unavailable — cannot mark paid' });
       paymentsApi.markPaidByInvoice(req.params.id, {
@@ -2306,7 +2341,7 @@ app.put('/api/invoices/:id', auth, (req, res) => {
 
 app.delete('/api/invoices/:id', auth, (req, res) => {
   try {
-    db.prepare('DELETE FROM invoices WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
+    db.prepare('DELETE FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').run(req.params.id, req.workspaceId, req.workspaceOwnerId);
     res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2411,7 +2446,7 @@ app.post('/api/invoices/:id/email', auth, async (req, res) => {
     const { to, subject, message } = req.body || {};
     if (!to || !/.+@.+\..+/.test(String(to))) return res.status(400).json({ error: 'A valid recipient email (to) is required' });
 
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').get(req.params.id, req.workspaceId, req.workspaceOwnerId);
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     const inv = parseInvoice(invoice);
     const company = db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId) || {};
@@ -2437,7 +2472,7 @@ app.post('/api/invoices/:id/email', auth, async (req, res) => {
 
     // Reload consistency: a sent draft becomes pending (the UI already does this optimistically).
     if (invoice.status === 'draft') {
-      db.prepare("UPDATE invoices SET status = 'pending' WHERE id = ? AND user_id = ?").run(req.params.id, req.workspaceOwnerId);
+      db.prepare("UPDATE invoices SET status = 'pending' WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))").run(req.params.id, req.workspaceId, req.workspaceOwnerId);
     }
     logAudit(req.workspaceId, req.userId, 'invoice_emailed', 'invoice', req.params.id, { to, subject: subject || null });
     res.json({ ok: true, messageId: mailResult.messageId });
@@ -3715,7 +3750,7 @@ ${msgText || 'No messages yet.'}
 // POST /api/leads/:id/ai/summary
 app.post('/api/leads/:id/ai/summary', auth, async (req, res) => {
   try {
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const lead = getScopedLead(req, req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC').all(req.params.id);
 
@@ -3746,7 +3781,7 @@ ${context}
 // POST /api/leads/:id/ai/reply-suggestions
 app.post('/api/leads/:id/ai/reply-suggestions', auth, async (req, res) => {
   try {
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const lead = getScopedLead(req, req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC LIMIT 20').all(req.params.id);
 
@@ -3791,7 +3826,7 @@ ${context}
 // POST /api/leads/:id/ai/analyze — uses centralized ai-engine, persists sentiment/urgency/intent
 app.post('/api/leads/:id/ai/analyze', auth, async (req, res) => {
   try {
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const lead = getScopedLead(req, req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC LIMIT 30').all(req.params.id);
 
@@ -4533,7 +4568,7 @@ function detectIndustryFromMessages(messages) {
 // GET /api/leads/:id/industry — detect industry for a lead
 app.get('/api/leads/:id/industry', auth, async (req, res) => {
   try {
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const lead = getScopedLead(req, req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const messages = db.prepare('SELECT body FROM messages WHERE lead_id = ? ORDER BY timestamp ASC').all(req.params.id);
@@ -4596,7 +4631,7 @@ app.get('/api/workspace/industry', auth, async (req, res) => {
 app.post('/api/leads/:id/vertical-action', auth, async (req, res) => {
   try {
     const { action_id, industry, custom_message } = req.body;
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const lead = getScopedLead(req, req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const workflow = INDUSTRY_WORKFLOWS[industry] || INDUSTRY_WORKFLOWS.general;
@@ -4619,7 +4654,7 @@ app.post('/api/leads/:id/vertical-action', auth, async (req, res) => {
 app.post('/api/leads/:id/vertical-suggest', auth, async (req, res) => {
   try {
     const { industry } = req.body;
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const lead = getScopedLead(req, req.params.id);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC LIMIT 20').all(req.params.id);
@@ -4953,7 +4988,7 @@ app.delete('/api/leads/:leadId/channels/:channelId', auth, (req, res) => {
 // GET /api/leads/:leadId/related — heuristic suggestions + already-linked relations
 app.get('/api/leads/:leadId/related', auth, (req, res) => {
   try {
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.leadId, req.workspaceId);
+    const lead = getScopedLead(req, req.params.leadId);
     if (!lead) return res.json({ suggestions: [], linked: [] });
 
     // Linked = lead_relations rows where this lead is on either side
@@ -5597,7 +5632,7 @@ app.delete('/api/integrations/google-calendar', auth, (req, res) => {
 app.post('/api/leads/:leadId/meetings', auth, async (req, res) => {
   try {
     const { leadId } = req.params;
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
+    const lead = getScopedLead(req, leadId);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const { provider = 'google', title, starts_at, ends_at, notes, send_invite } = req.body || {};
@@ -5736,7 +5771,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS client_portals (
 
 app.post('/api/client-portal/:leadId', auth, (req, res) => {
   try {
-    const lead = db.prepare('SELECT id FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.leadId, req.workspaceId);
+    const lead = getScopedLead(req, req.params.leadId);
     if (!lead) return res.status(404).json({ error: 'Client not found' });
     let row = db.prepare('SELECT * FROM client_portals WHERE lead_id = ?').get(lead.id);
     if (!row) { const token = crypto.randomBytes(18).toString('hex'); db.prepare('INSERT INTO client_portals (lead_id, workspace_id, token) VALUES (?,?,?)').run(lead.id, req.workspaceId, token); row = { token }; }
