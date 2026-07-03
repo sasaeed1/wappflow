@@ -3,7 +3,7 @@
 > _(The "Foundation Sprint" is the roadmap's first phase, formerly "Phase 0" — renamed per the
 > Constitution to reflect that this is platform-strengthening investment, not cleanup.)_
 
-> **Status: draft → awaiting approval.** Authored 2026-07-01. Required by [Engineering Constitution](../ENGINEERING-CONSTITUTION.md) Article 0 before any Foundation-Sprint code. Companion: [PRODUCT-AUDIT.md](../PRODUCT-AUDIT.md). **No code has been written.**
+> **Status: IMPLEMENTED & DEPLOYED — all 9 work-items live in production (4 batches, completed 2026-07-04).** Authored 2026-07-01. Required by [Engineering Constitution](../ENGINEERING-CONSTITUTION.md) Article 0 before any Foundation-Sprint code. Companion: [PRODUCT-AUDIT.md](../PRODUCT-AUDIT.md). **No code has been written.**
 
 **Scope:** 9 work-items re-verified against current code (9 confirmed live, 0 already-fixed/not-reproduced), reviewed by 2 adversarial reviewers (security + migration).
 
