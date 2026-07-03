@@ -77,6 +77,11 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
   credentials: true,
 }));
+// Stripe webhook signature verification needs the RAW request bytes, so a path-scoped
+// raw parser is registered BEFORE the global JSON parser (which would otherwise consume
+// the stream). type:()=>true so charset-suffixed content-types can't slip through to
+// express.json and silently break verification. DO NOT reorder below express.json.
+app.use('/api/payments/webhook', express.raw({ type: () => true, limit: '1mb' }));
 app.use(express.json({ limit: '50mb' }));
 // Static uploads — add an explicit Access-Control-Allow-Origin so cross-origin <img> tags work.
 app.use('/uploads', (req, res, next) => {

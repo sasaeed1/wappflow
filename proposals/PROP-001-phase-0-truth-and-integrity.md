@@ -851,3 +851,39 @@ implementation (the static coverage test caught the email routes). All now use `
   asserting **no** unguarded lead route remains, the 4 WhatsApp control routes are authed+scoped, the
   message-send flow is untouched, the groups guard precedes session mutation, and the banner is mounted.
 - Frontend `next build` + manual verification: see review notes.
+
+---
+
+## Implementation log — Batch 2 (stripe-webhook)
+
+**Status: implemented on branch `foundation-sprint/batch-2-stripe` (stacked on batch-1) — awaiting
+review/merge. Deploys ALONE per the rollout plan.**
+
+### What changed
+- `backend/server.js`: path-scoped `express.raw({ type: () => true, limit: '1mb' })` for
+  `/api/payments/webhook`, registered **before** the global `express.json` so the raw bytes survive
+  for HMAC verification (with a do-not-reorder comment).
+- `backend/payments.js`:
+  - `verifyStripeSignature()` — manual HMAC-SHA256 of `t.<raw body>` against the `Stripe-Signature`
+    header (`t=`/`v1=` pairs), `crypto.timingSafeEqual`, 5-minute replay window. No SDK (by design);
+    exported for the test harness.
+  - Webhook handler hardened: 400 when `STRIPE_WEBHOOK_SECRET` unset (closes the forgery hole on
+    manual-only deployments — settlement still flows through the authed mark-paid route); 400 on
+    missing raw Buffer / bad signature / bad JSON; **idempotency** via the previously-dead
+    `webhook_events` table (`UNIQUE(platform,event_id)`) — generated PK distinct from the Stripe
+    event id, recorded **only** for handled event types (`checkout.session.completed`) per review;
+    duplicates return `200 {duplicate:true}` so Stripe stops retrying; post-verification settlement
+    errors still return 200 (no retry storms). Settlement path (`client_reference_id` → `markPaid`)
+    unchanged.
+  - Boot warning when `STRIPE_SECRET_KEY` is set but `STRIPE_WEBHOOK_SECRET` is not.
+
+### Ops step at rollout (when Stripe goes live)
+Set `STRIPE_WEBHOOK_SECRET` in the server `.env` **together with** `STRIPE_SECRET_KEY`, and register
+the endpoint in the Stripe Dashboard. Until then all webhook POSTs are rejected 400 — intended.
+
+### Verification
+- `backend/test-batch2-stripe.js` — **23/23 pass**: live HMAC round-trip (valid/tampered/wrong-secret/
+  stale/multi-v1/malformed), live `UNIQUE(platform,event_id)` dedup proof, and static checks
+  (parser ordering, all-content-types matcher, reject-when-unconfigured, verify-before-parse,
+  branch-scoped idempotency insert, unchanged settlement, boot warning, mark-paid untouched).
+- Batch 1 test still green on this branch (14/14). `node --check` clean on both files.

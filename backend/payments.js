@@ -12,6 +12,30 @@
  */
 const crypto = require('crypto');
 
+// Verify a Stripe-Signature header (`t=<ts>,v1=<sig>[,v1=...]`) over the RAW body.
+// Manual HMAC-SHA256 — this module deliberately has no Stripe SDK. Pure function,
+// exported below for the test harness.
+function verifyStripeSignature(rawBuf, sigHeader, secret, toleranceSec = 300, nowSec = Math.floor(Date.now() / 1000)) {
+  if (!secret || !sigHeader || !Buffer.isBuffer(rawBuf)) return false;
+  const parts = { v1: [] };
+  for (const kv of String(sigHeader).split(',')) {
+    const i = kv.indexOf('=');
+    if (i < 1) continue;
+    const k = kv.slice(0, i).trim(), v = kv.slice(i + 1).trim();
+    if (k === 't') parts.t = v;
+    else if (k === 'v1') parts.v1.push(v);
+  }
+  const ts = Number(parts.t);
+  if (!ts || !parts.v1.length) return false;
+  if (Math.abs(nowSec - ts) > toleranceSec) return false; // replay window (Stripe default 5 min)
+  // signed_payload = `${t}.${raw body bytes}` — feed the Buffer directly to stay byte-exact.
+  const expected = crypto.createHmac('sha256', secret).update(parts.t + '.').update(rawBuf).digest();
+  return parts.v1.some((v) => {
+    try { const got = Buffer.from(v, 'hex'); return got.length === expected.length && crypto.timingSafeEqual(got, expected); }
+    catch { return false; }
+  });
+}
+
 module.exports = function mountPayments(app, db, deps = {}) {
   const {
     auth = (req, res, next) => next(),
@@ -22,7 +46,11 @@ module.exports = function mountPayments(app, db, deps = {}) {
   } = deps;
 
   const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || '';
+  const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
   const configured = !!STRIPE_KEY;
+  if (configured && !STRIPE_WEBHOOK_SECRET) {
+    console.warn('⚠️  Stripe is live (STRIPE_SECRET_KEY set) but STRIPE_WEBHOOK_SECRET is missing — webhooks will be REJECTED until it is set. Payments still settle via manual mark-paid.');
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS payments (
@@ -111,13 +139,39 @@ module.exports = function mountPayments(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  // Stripe webhook (best-effort: marks the referenced payment paid on completion).
-  // NOTE: production should verify Stripe-Signature against STRIPE_WEBHOOK_SECRET
-  // using the raw body; wire that when enabling Stripe.
+  // Stripe webhook — signature-verified + idempotent.
+  //   · 400 for signature/parse/config failures (Stripe surfaces misconfiguration);
+  //   · 200 for accepted, duplicate, and post-verification settlement errors (stops retries).
+  // server.js registers a path-scoped express.raw for this route BEFORE the global JSON
+  // parser, so req.body is the raw Buffer needed for HMAC verification.
   app.post('/api/payments/webhook', (req, res) => {
+    // No secret ⇒ manual-only / pre-launch deployment: Stripe never calls this, so any
+    // POST here is a forgery attempt. Settlement still works via the authed mark-paid.
+    if (!STRIPE_WEBHOOK_SECRET) return res.status(400).json({ error: 'webhook not configured' });
+    if (!Buffer.isBuffer(req.body)) {
+      console.error('stripe webhook: req.body is not a raw Buffer — check body-parser order in server.js');
+      return res.status(400).json({ error: 'invalid signature' });
+    }
+    if (!verifyStripeSignature(req.body, req.header('Stripe-Signature'), STRIPE_WEBHOOK_SECRET)) {
+      console.warn('stripe webhook: signature verification failed');
+      return res.status(400).json({ error: 'invalid signature' });
+    }
+    let ev;
+    try { ev = JSON.parse(req.body.toString('utf8')) || {}; }
+    catch { return res.status(400).json({ error: 'invalid payload' }); }
+
     try {
-      const ev = req.body || {};
       if (ev.type === 'checkout.session.completed') {
+        // Idempotency: exactly-once per Stripe event id via webhook_events UNIQUE(platform,event_id).
+        // Recorded ONLY for handled event types so a future handler for other types isn't
+        // pre-marked as processed. id is a generated PK, distinct from the Stripe event id.
+        try {
+          db.prepare('INSERT INTO webhook_events (id, platform, event_id) VALUES (?, ?, ?)')
+            .run(generateId(), 'stripe', String(ev.id || ''));
+        } catch (e) {
+          if (String(e.message).includes('UNIQUE')) return res.json({ received: true, duplicate: true });
+          throw e;
+        }
         const sess = ev.data && ev.data.object;
         const pid = sess && sess.client_reference_id;
         const p = pid ? db.prepare('SELECT * FROM payments WHERE id = ?').get(pid) : null;
@@ -127,3 +181,6 @@ module.exports = function mountPayments(app, db, deps = {}) {
     } catch (e) { res.status(200).json({ received: true, note: e.message }); }
   });
 };
+
+// Exposed for the test harness (pure function; no closure state).
+module.exports.verifyStripeSignature = verifyStripeSignature;
