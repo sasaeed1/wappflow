@@ -869,6 +869,7 @@ function broadcastToWorkspace(workspaceId, type, data) {
 // Presence source for Communications 2.0 — user ids with a live SSE connection.
 function onlineUsers() { return Array.from(sseClients.keys()); }
 let commsApi = null; // assigned when ./comms mounts; used by the chat send routes below.
+let paymentsApi = null; // assigned when ./payments mounts; PUT /api/invoices/:id delegates status='paid' through it (ledger truth).
 
 // Send Web Push notification to all subscriptions for a user
 async function sendPushToUser(userId, title, body, data = {}) {
@@ -2257,13 +2258,26 @@ app.put('/api/invoices/:id', auth, (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address,
       items, subtotal, tax_rate, tax_amount, discount, total, due_date, notes, status } = req.body;
+    const current = db.prepare('SELECT status FROM invoices WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId);
+    if (!current) return res.status(404).json({ error: 'Invoice not found' });
+    // Ledger truth: status='paid' never lands via a direct write. Field updates apply as
+    // before (status preserved), then the paid flip delegates to the payments ledger —
+    // same idempotency-guarded path as POST /api/payments/invoice/:id/mark-paid.
+    const wantsPaid = status === 'paid' && current.status !== 'paid';
+    const writeStatus = wantsPaid ? current.status : status;
     db.prepare(`
       UPDATE invoices SET customer_name=?, customer_email=?, customer_phone=?, customer_address=?,
         items=?, subtotal=?, tax_rate=?, tax_amount=?, discount=?, total=?, due_date=?, notes=?, status=?
       WHERE id=? AND user_id=?
     `).run(customer_name, customer_email, customer_phone, customer_address,
       JSON.stringify(items || []), subtotal, tax_rate, tax_amount, discount, total,
-      due_date, notes, status, req.params.id, req.workspaceOwnerId);
+      due_date, notes, writeStatus, req.params.id, req.workspaceOwnerId);
+    if (wantsPaid) {
+      if (!paymentsApi) return res.status(503).json({ error: 'Payments module unavailable — cannot mark paid' });
+      paymentsApi.markPaidByInvoice(req.params.id, {
+        workspaceId: req.workspaceId, workspaceOwnerId: req.workspaceOwnerId, userId: req.userId,
+      });
+    }
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
     res.json({ invoice: parseInvoice(invoice) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -5621,7 +5635,7 @@ require('./print-store')(app, db, {
 require('./studio-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./video-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./studio-experience')(app, db, { auth, generateId, broadcastToWorkspace });
-require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, clientBaseUrl: process.env.FRONTEND_URL || '' });
+paymentsApi = require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, logAudit, clientBaseUrl: process.env.FRONTEND_URL || '' });
 
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,

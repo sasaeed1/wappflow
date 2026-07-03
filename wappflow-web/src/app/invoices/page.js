@@ -351,7 +351,8 @@ export default function InvoicesPage() {
 
   const handleMarkPaid = async (id) => {
     try {
-      await invoicesAPI.update(id, { status: 'paid' });
+      // Ledger truth: settles via the payments rail (records who/when/how), not a raw status write.
+      await paymentsAPI.markInvoicePaid(id);
       setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'paid' } : inv));
       if (viewInvoice?.id === id) setViewInvoice(prev => ({ ...prev, status: 'paid' }));
       flashToast('Invoice marked as paid.');

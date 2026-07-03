@@ -551,6 +551,8 @@ export const paymentsAPI = {
   link: (data) => api.post('/payments/link', data),
   list: () => api.get('/payments'),
   markPaid: (id) => api.post(`/payments/${id}/mark-paid`),
+  // Ledger-truth path for invoices: records who marked it (+ optional note) then settles.
+  markInvoicePaid: (invoiceId, note) => api.post(`/payments/invoice/${invoiceId}/mark-paid`, note ? { note } : {}),
 };
 export async function fetchPayment(token) {
   const r = await fetch(`${API_URL}/payments/public/${encodeURIComponent(token)}`);

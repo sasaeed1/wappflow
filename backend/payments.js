@@ -42,6 +42,7 @@ module.exports = function mountPayments(app, db, deps = {}) {
     generateId = () => crypto.randomUUID(),
     broadcastToWorkspace = () => {},
     addContactHistory = () => {},
+    logAudit = () => {},
     clientBaseUrl = process.env.FRONTEND_URL || '',
   } = deps;
 
@@ -63,7 +64,45 @@ module.exports = function mountPayments(app, db, deps = {}) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, paid_at TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_payments_ws ON payments(workspace_id);
+    CREATE TABLE IF NOT EXISTS payments_meta (
+      key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+
+  // ── Ledger-truth guards (Foundation Sprint / PROP-001 mark-as-paid) ─────────
+  // 1) One PAID ledger row per invoice, hard-enforced. Created BEFORE the backfill so
+  //    even the backfill INSERTs are constrained (defense in depth). try/catch: a legacy
+  //    duplicate must not abort boot — log loudly for manual cleanup instead.
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_invoice_paid ON payments(workspace_id, kind, ref_id) WHERE status='paid' AND kind='invoice'");
+  } catch (e) {
+    console.error('⚠️  uq_payments_invoice_paid index creation failed (duplicate paid rows exist? clean up manually):', e.message);
+  }
+
+  // 2) One-time backfill: every already-paid invoice gets a synthetic ledger row so the
+  //    payments table becomes the complete historical record of cash received. Marker-gated
+  //    (runs once) AND NOT-EXISTS-guarded (idempotent regardless). Workspace resolved via
+  //    users.workspace_id — the same scalar mapping the auth middleware uses (no join fan-out
+  //    possible), falling back to the user's own id exactly like auth does.
+  //    Rows are tagged provider_ref='backfill' so finance can exclude them from cash-flow
+  //    TIMING analysis (paid_at is best-effort = invoice created_at).
+  try {
+    const done = db.prepare("SELECT value FROM payments_meta WHERE key='backfill_invoice_payments'").get();
+    if (!done) {
+      const r = db.prepare(`
+        INSERT OR IGNORE INTO payments (id, workspace_id, kind, ref_id, lead_id, amount, currency, currency_symbol,
+                                        description, status, provider, provider_ref, created_by, created_at, paid_at)
+        SELECT lower(hex(randomblob(16))), COALESCE(u.workspace_id, i.user_id), 'invoice', i.id, i.lead_id, i.total,
+               COALESCE(i.currency, 'USD'), COALESCE(i.currency_symbol, '$'),
+               'Backfilled: invoice marked paid (pre-ledger)', 'paid', 'manual', 'backfill', i.user_id, i.created_at, i.created_at
+        FROM invoices i LEFT JOIN users u ON u.id = i.user_id
+        WHERE i.status = 'paid'
+          AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.kind='invoice' AND p.ref_id=i.id AND p.status='paid')
+      `).run();
+      db.prepare("INSERT OR REPLACE INTO payments_meta (key, value) VALUES ('backfill_invoice_payments', ?)").run(String(r.changes));
+      if (r.changes) console.log(`💰 payments: backfilled ${r.changes} paid invoice(s) into the ledger (provider_ref='backfill')`);
+    }
+  } catch (e) { console.error('payments backfill failed (non-fatal):', e.message); }
 
   // Stripe via REST (no SDK dependency). Returns a hosted checkout URL or null.
   async function createStripeCheckout(p, token) {
@@ -100,6 +139,53 @@ module.exports = function mountPayments(app, db, deps = {}) {
     settle(p);
     broadcastToWorkspace(p.workspace_id, 'payment_paid', { id: p.id, kind: p.kind, ref_id: p.ref_id });
   }
+
+  // THE one way an invoice becomes paid manually: writes a ledger row (who/when/how), then
+  // reuses markPaid→settle to flip the invoice. Idempotent per invoice — pre-check plus the
+  // uq_payments_invoice_paid partial UNIQUE index. Shared by the new route AND the legacy
+  // PUT /api/invoices/:id delegate in server.js, so no path can bypass the ledger.
+  function markPaidByInvoice(invoiceId, { workspaceId, workspaceOwnerId, userId, note } = {}) {
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND user_id = ?').get(invoiceId, workspaceOwnerId);
+    if (!invoice) return { error: 'not_found' };
+    const existing = db.prepare("SELECT id FROM payments WHERE workspace_id = ? AND kind = 'invoice' AND ref_id = ? AND status = 'paid'").get(workspaceId, invoiceId);
+    if (existing) return { ok: true, payment_id: existing.id, already: true };
+    const id = generateId();
+    db.prepare(`INSERT INTO payments (id, workspace_id, kind, ref_id, lead_id, amount, currency, currency_symbol, description, status, provider, created_by)
+                VALUES (?, ?, 'invoice', ?, ?, ?, ?, ?, ?, 'pending', 'manual', ?)`)
+      .run(id, workspaceId, invoiceId, invoice.lead_id || null, Number(invoice.total) || 0,
+           invoice.currency || 'USD', invoice.currency_symbol || '$',
+           note ? `Marked paid manually — ${String(note).slice(0, 300)}` : 'Marked paid manually', userId || null);
+    const p = db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+    try {
+      markPaid(p);
+    } catch (e) {
+      // Concurrent duplicate hit the partial UNIQUE index → someone else settled it first.
+      if (String(e.message).includes('UNIQUE')) {
+        db.prepare('DELETE FROM payments WHERE id = ? AND status = ?').run(id, 'pending');
+        const winner = db.prepare("SELECT id FROM payments WHERE workspace_id = ? AND kind = 'invoice' AND ref_id = ? AND status = 'paid'").get(workspaceId, invoiceId);
+        return { ok: true, payment_id: winner ? winner.id : id, already: true };
+      }
+      throw e;
+    }
+    // settle() is best-effort (empty catch) — surface a failed invoice flip instead of masking it.
+    const after = db.prepare('SELECT status FROM invoices WHERE id = ?').get(invoiceId);
+    const warning = after && after.status !== 'paid' ? 'ledger row written but invoice status did not update — investigate' : undefined;
+    try { logAudit(workspaceId, userId, 'invoice_mark_paid', 'invoice', invoiceId, { payment_id: id, note: note || null, warning: warning || null }); } catch {}
+    if (warning) console.error(`payments: settle() failed to flip invoice ${invoiceId} to paid (ledger row ${id} exists)`);
+    return { ok: true, payment_id: id, warning };
+  }
+
+  // ── Mark an INVOICE paid through the ledger (authed) ─────────────────────────
+  app.post('/api/payments/invoice/:invoiceId/mark-paid', auth, (req, res) => {
+    try {
+      const out = markPaidByInvoice(req.params.invoiceId, {
+        workspaceId: req.workspaceId, workspaceOwnerId: req.workspaceOwnerId,
+        userId: req.userId, note: (req.body || {}).note,
+      });
+      if (out.error === 'not_found') return res.status(404).json({ error: 'Invoice not found' });
+      res.json(out);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
 
   // ── Create a payment link (authed) ──────────────────────────────────────────
   app.post('/api/payments/link', auth, async (req, res) => {
@@ -180,6 +266,10 @@ module.exports = function mountPayments(app, db, deps = {}) {
       res.json({ received: true });
     } catch (e) { res.status(200).json({ received: true, note: e.message }); }
   });
+
+  // Exposed so server.js's legacy PUT /api/invoices/:id can delegate status='paid'
+  // through the same idempotency-guarded ledger path (never a direct status write).
+  return { markPaidByInvoice };
 };
 
 // Exposed for the test harness (pure function; no closure state).

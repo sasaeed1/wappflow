@@ -33,13 +33,15 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
       id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, name TEXT,
       params TEXT DEFAULT '{}', is_default INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-    CREATE TABLE IF NOT EXISTS ms_albums (
-      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, project_id TEXT NOT NULL,
-      title TEXT, page_count INTEGER, spec TEXT DEFAULT '{}', status TEXT DEFAULT 'draft',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
     CREATE INDEX IF NOT EXISTS idx_ms_selections_project ON ms_selections(project_id);
   `);
+
+  // ms_albums is owned by media-studio.js (single canonical DDL — no duplicate CREATE here).
+  // media-studio mounts before this module (server.js contract); fail LOUDLY if that ever changes
+  // rather than silently recreating a divergent schema.
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ms_albums'").get()) {
+    throw new Error('ms_albums must be created by media-studio before studio-ai mounts');
+  }
 
   const J = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
   const getProject = (ws, id) => db.prepare('SELECT * FROM ms_projects WHERE id = ? AND workspace_id = ?').get(id, ws);
@@ -173,14 +175,17 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
       }
       const albumId = generateId();
       const spec = { pages, spreads, source_selection: gen.id };
-      db.prepare('INSERT INTO ms_albums (id, workspace_id, project_id, title, page_count, spec) VALUES (?,?,?,?,?,?)')
-        .run(albumId, project.workspace_id, project.id, req.body.title || `${project.title} Album`, pages, JSON.stringify(spec));
+      // page_count is ACTUAL built pages (derived live from ms_album_pages everywhere);
+      // the intended page target lives in spec.pages — not written as a column.
+      db.prepare('INSERT INTO ms_albums (id, workspace_id, project_id, title, spec) VALUES (?,?,?,?,?)')
+        .run(albumId, project.workspace_id, project.id, req.body.title || `${project.title} Album`, JSON.stringify(spec));
       res.json({ ok: true, album_id: albumId, pages, spreads: spreads.length, images: seq.length });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.get('/api/studio-ai/albums/:id', auth, (req, res) => {
     try {
-      const a = db.prepare('SELECT * FROM ms_albums WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      const a = db.prepare(`SELECT a.*, (SELECT COUNT(*) FROM ms_album_pages p WHERE p.album_id = a.id) AS page_count
+        FROM ms_albums a WHERE a.id = ? AND a.workspace_id = ?`).get(req.params.id, req.workspaceId);
       if (!a) return res.status(404).json({ error: 'Album not found' });
       res.json({ album: { ...a, spec: J(a.spec, {}) } });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -192,7 +197,7 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
       const set = {};
       if (req.body.title !== undefined) set.title = req.body.title;
       if (req.body.status !== undefined) set.status = req.body.status;
-      if (req.body.spec !== undefined) { set.spec = JSON.stringify(req.body.spec); if (req.body.spec.pages) set.page_count = req.body.spec.pages; }
+      if (req.body.spec !== undefined) set.spec = JSON.stringify(req.body.spec); // intended pages stay inside spec.pages
       const keys = Object.keys(set);
       if (keys.length) db.prepare(`UPDATE ms_albums SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: a.id });
       res.json({ ok: true });
@@ -202,7 +207,8 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
     try {
       const project = getProject(req.workspaceId, req.params.id);
       if (!project) return res.status(404).json({ error: 'Project not found' });
-      res.json({ albums: db.prepare('SELECT id, title, page_count, spec, status, created_at FROM ms_albums WHERE project_id = ? ORDER BY created_at DESC').all(project.id).map(a => ({ ...a, spec: J(a.spec, {}) })) });
+      res.json({ albums: db.prepare(`SELECT id, title, (SELECT COUNT(*) FROM ms_album_pages p WHERE p.album_id = ms_albums.id) AS page_count, spec, status, created_at
+        FROM ms_albums WHERE project_id = ? ORDER BY created_at DESC`).all(project.id).map(a => ({ ...a, spec: J(a.spec, {}) })) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

@@ -1444,6 +1444,17 @@ Only suggest actions that make sense for the question. If none make sense, retur
     );
   `);
 
+  // ms_albums canonical-shape self-heal: this module is the SINGLE owner of the ms_albums DDL
+  // (studio-ai's duplicate slim CREATE was removed). On the rare legacy DB where the slim schema
+  // won historically, these idempotent ALTERs add the canonical columns it lacked; on normal DBs
+  // every line no-ops via safeAlter's duplicate-column swallow. page_count is intentionally NOT
+  // a column anywhere — it is derived live from ms_album_pages (one source of truth).
+  for (const col of ['cover_asset_id TEXT', "pdf_status TEXT DEFAULT 'none'", 'pdf_storage_key TEXT',
+    'pdf_size INTEGER DEFAULT 0', 'pdf_pages INTEGER DEFAULT 0', 'pdf_built_at TIMESTAMP',
+    'created_by TEXT', 'updated_at TIMESTAMP']) {
+    safeAlter(`ALTER TABLE ms_albums ADD COLUMN ${col}`);
+  }
+
   function getGallery(workspaceId, id) {
     return db.prepare('SELECT * FROM ms_galleries WHERE id = ? AND workspace_id = ?').get(id, workspaceId);
   }

@@ -887,3 +887,57 @@ the endpoint in the Stripe Dashboard. Until then all webhook POSTs are rejected 
   (parser ordering, all-content-types matcher, reject-when-unconfigured, verify-before-parse,
   branch-scoped idempotency insert, unchanged settlement, boot warning, mark-paid untouched).
 - Batch 1 test still green on this branch (14/14). `node --check` clean on both files.
+
+---
+
+## Implementation log — Batch 3 (mark-as-paid + ms-albums-schema)
+
+**Status: implemented on branch `foundation-sprint/batch-3-data` — awaiting review/merge.
+Owner decisions applied: Q#1 = actual pages · Q#2 = who + optional note · Q#3/Q#5 defaults.
+⚠️ Deploy step: take a DB-file snapshot on the server BEFORE this deploy (it runs a boot-time backfill).**
+
+### mark-as-paid — the ledger is now the only way an invoice becomes paid
+- `backend/payments.js`:
+  - `uq_payments_invoice_paid` partial UNIQUE index (one PAID row per invoice), created **before**
+    the backfill per review; try/catch so a legacy duplicate logs loudly instead of aborting boot.
+  - One-time **backfill**: every already-paid invoice without a ledger row gets a synthetic manual
+    payment (`provider_ref='backfill'`, description-tagged, `paid_at` = invoice `created_at`).
+    Marker-gated via a module-owned `payments_meta` table (pricing-config idiom) + `NOT EXISTS`
+    idempotency + `INSERT OR IGNORE` under the index. Workspace resolved via `users.workspace_id`
+    with the auth-middleware-identical fallback — a scalar mapping, so the reviewer's JOIN fan-out
+    hole is structurally impossible.
+  - `markPaidByInvoice()` shared helper: workspace-scoped invoice load → idempotency pre-check →
+    ledger INSERT (explicit `workspace_id`, **who** = `created_by`, optional **note** in description)
+    → existing `markPaid()`/`settle()` reuse → UNIQUE-race handled as `already:true` → re-reads the
+    invoice and surfaces a `warning` + `logAudit` if settle failed (no silent money discrepancies).
+  - NEW route `POST /api/payments/invoice/:invoiceId/mark-paid` (auth); module now returns
+    `{ markPaidByInvoice }`.
+- `backend/server.js`: `paymentsApi` captured at mount (commsApi idiom, + `logAudit` dep).
+  `PUT /api/invoices/:id` **delegates** `status='paid'` through the same helper (Q#5 default) —
+  field updates still apply, but a paid flip can never land as a raw status write. 404 on missing
+  invoice (was a blind update).
+- Web: `paymentsAPI.markInvoicePaid(id, note?)`; invoices-page Mark-as-Paid button repointed —
+  same one-click UX, now writes who/when/how.
+
+### ms-albums-schema — one DDL owner, one page-count truth
+- `backend/studio-ai.js`: duplicate slim `CREATE TABLE ms_albums` **deleted**; boot assertion fails
+  loudly if media-studio hasn't created the table first. INSERT/PUT no longer write `page_count`
+  (the intended page target stays inside `spec.pages`); list + detail reads derive `page_count`
+  live from `ms_album_pages`. **This un-breaks the studio-ai album endpoints, which 500 today.**
+- `backend/media-studio.js`: sole DDL owner; idempotent healing ALTERs add the canonical columns
+  (`cover_asset_id`, `pdf_*`, `created_by`, `updated_at`) to any legacy DB where the slim schema
+  won; its own derived-count list query is untouched.
+- **Mechanism deviation from the proposal text (documented per Article 0):** the approved semantics
+  ("page_count = real pages") are implemented by **deriving live everywhere** instead of adding a
+  stored `page_count` column + backfill. This is the accuracy-first variant the migration reviewer
+  itself endorsed ("have studio-ai's reads also derive live"), and it eliminates outright the two
+  added risks (same-name column collision in `a.*` queries; stored-vs-live split-brain staleness).
+  No schema change, no backfill, nothing to keep in sync. Frontend contract unchanged (`page_count`
+  still present in every album response).
+
+### Verification
+- `backend/test-batch3-data.js` — **28/28 pass**: live backfill proof (exact-scope inserts, workspace
+  mapping + fallback, skip-already-ledgered, tagging, idempotent rerun, fan-out impossible, index
+  blocks a second paid row, non-invoice kinds unaffected) + live derived page_count + static
+  ordering/ownership/delegation/UI-repoint checks.
+- Batch 1 (14/14) and Batch 2 (23/23) still green. `node --check` clean ×4. `next build` green.
