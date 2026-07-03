@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { FLUX_PARKED } from '@/lib/flux';
+import { formatMoney } from '@/lib/plan';
 
 // Flux — sibling AI Instagram content engine. Lives at its own URL.
 const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
@@ -1827,7 +1828,7 @@ const LANDING_PLANS = [
   },
 ];
 
-const pkr = (n) => 'PKR ' + Number(n).toLocaleString('en-US');
+const pkr = (n) => formatMoney(n); // shared formatter — lib/plan.js (single currency impl)
 
 function Pricing({ authed }) {
   const [remote, setRemote] = useState(null);

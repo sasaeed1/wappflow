@@ -21,6 +21,37 @@ const PlanContext = createContext(null);
 
 export const PLAN_PRIORITY = { creator: 0, studio: 1, studio_plus: 2, enterprise: 3 };
 
+// ── Shared plan vocabulary — the ONLY client-side tier→display mapping. ──────
+// Mirrors backend/entitlements.js (creator/studio/studio_plus/enterprise). Null-safe:
+// an unknown/legacy tier string degrades to the entry-plan label, never blank.
+export const PLAN_META = {
+  creator: { label: 'Creator', crown: false },
+  studio: { label: 'Studio', crown: false },
+  studio_plus: { label: 'Studio+', crown: true },
+  enterprise: { label: 'Enterprise', crown: true },
+};
+export const planLabel = (plan) => PLAN_META[plan]?.label || 'Creator';
+
+// The next tier up (upgrade target). enterprise → null (nothing above).
+// Unknown/loading plan → 'studio' (the most common upgrade destination).
+export function nextPlanFor(plan) {
+  if (plan === 'creator') return 'studio';
+  if (plan === 'studio') return 'studio_plus';
+  if (plan === 'studio_plus') return 'enterprise';
+  if (plan === 'enterprise') return null;
+  return 'studio';
+}
+export const nextPlanLabel = (plan) => planLabel(nextPlanFor(plan) || plan);
+
+// Every upgrade CTA routes here — one definition, no drift. ('plan' is the real
+// settings tab id; 'billing' is accepted there as a legacy alias.)
+export const UPGRADE_ROUTE = '/settings?tab=plan';
+
+// One currency formatter for all plan pricing. Currency should come from the
+// price row (all_plans[].currency); 'PKR' is strictly the absent-value fallback.
+export const formatMoney = (amount, currency = 'PKR') =>
+  amount == null ? 'Custom' : `${currency} ${Number(amount).toLocaleString('en-US')}`;
+
 export function PlanProvider({ children }) {
   const [planInfo, setPlanInfo] = useState(null);
   const [loading, setLoading] = useState(true);

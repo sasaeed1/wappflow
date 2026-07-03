@@ -29,20 +29,21 @@ function PlanBadge() {
   const router = useRouter();
   if (loading || !plan) return null;
 
+  // Real tiers only (mirrors backend/entitlements.js via lib/plan.js PLAN_META).
   const TIER_STYLE = {
-    free: {
+    creator: {
       bg: 'rgba(148,163,184,0.12)',
       border: 'rgba(148,163,184,0.32)',
       color: '#cbd5e1',
       crown: false,
     },
-    starter: {
+    studio: {
       bg: 'linear-gradient(135deg, rgba(96,165,250,0.18), rgba(99,102,241,0.18))',
       border: 'rgba(99,102,241,0.45)',
       color: '#a5b4fc',
       crown: false,
     },
-    growth: {
+    studio_plus: {
       bg: 'linear-gradient(135deg, rgba(167,139,250,0.20), rgba(236,72,153,0.20))',
       border: 'rgba(167,139,250,0.55)',
       color: '#e9d5ff',
@@ -55,13 +56,13 @@ function PlanBadge() {
       crown: true,
     },
   };
-  const style = TIER_STYLE[plan] || TIER_STYLE.free;
+  const style = TIER_STYLE[plan] || TIER_STYLE.creator;
   const label = (planName || plan).toUpperCase();
 
   return (
     <button
       type="button"
-      onClick={() => router.push('/settings?tab=billing')}
+      onClick={() => router.push('/settings?tab=plan')}
       title={`You're on the ${planName || plan} plan. Click to manage billing.`}
       style={{
         display: 'inline-flex',
@@ -586,7 +587,7 @@ export default function NavBar({ children }) {
 
                 {/* Plan & billing — the tier badge now lives here */}
                 <button
-                  onClick={() => { router.push('/settings?tab=billing'); setShowUserMenu(false); }}
+                  onClick={() => { router.push('/settings?tab=plan'); setShowUserMenu(false); }}
                   style={{ ...menuItem, borderTop: '1px solid var(--border)' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
@@ -795,7 +796,7 @@ export default function NavBar({ children }) {
 
               <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
                 <button
-                  onClick={() => { router.push('/settings?tab=billing'); setFluxUpgrade(null); }}
+                  onClick={() => { router.push('/settings?tab=plan'); setFluxUpgrade(null); }}
                   style={{
                     flex: 1, padding: '12px 16px', borderRadius: 11, border: 'none',
                     background: 'linear-gradient(135deg, #A78BFA 0%, #22D3EE 50%, #EC4899 100%)',

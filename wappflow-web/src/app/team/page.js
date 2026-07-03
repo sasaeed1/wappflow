@@ -564,8 +564,8 @@ export default function TeamPage() {
         <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px' }}>
           <LockedOverlay
             feature="Team management"
-            requiredPlan="Growth"
-            currentPlan={(plan.planName || 'Free')}
+            requiredPlan="Studio"
+            currentPlan={(plan.planName || 'Creator')}
             description="Invite teammates, assign roles, fine-tune per-user permissions, and see the audit log."
             perks={[
               'Up to 5 (Growth) or unlimited (Enterprise) team members',
@@ -608,7 +608,7 @@ export default function TeamPage() {
             const atLimit = limit && limit !== -1 && used >= limit;
             if (atLimit) {
               return (
-                <button onClick={() => router.push('/settings?tab=workspace')}
+                <button onClick={() => router.push('/settings?tab=plan')}
                   title={`Plan limit: ${used}/${limit} team members`}
                   style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'1.5px solid rgba(245,158,11,0.4)', background:'rgba(245,158,11,0.10)', color:'#fbbf24', fontWeight:700, cursor:'pointer', fontSize:13 }}>
                   <Lock size={14} /> {used}/{limit} · Upgrade for more

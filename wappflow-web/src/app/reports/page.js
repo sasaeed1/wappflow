@@ -239,8 +239,8 @@ export default function ReportsPage() {
           <div style={{ maxWidth: 720, margin: '40px auto' }}>
             <LockedOverlay
               feature="Reports & Analytics"
-              requiredPlan="Starter"
-              currentPlan={plan.planName || 'Free'}
+              requiredPlan="Studio"
+              currentPlan={plan.planName || 'Creator'}
               description="Get the data behind every conversation — revenue trends, conversion funnels, per-rep performance, lead source breakdowns."
               perks={[
                 'Revenue trend line chart (daily/weekly/monthly)',

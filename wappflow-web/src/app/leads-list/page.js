@@ -904,7 +904,7 @@ export default function LeadsListPage() {
             const atLimit = limit && limit !== -1 && usage >= limit;
             if (atLimit) {
               return (
-                <button onClick={() => router.push('/settings?tab=workspace')} title={`Plan limit reached: ${usage}/${limit} leads`}
+                <button onClick={() => router.push('/settings?tab=plan')} title={`Plan limit reached: ${usage}/${limit} leads`}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: 'rgba(245,158,11,0.10)', border: '1.5px solid rgba(245,158,11,0.4)', borderRadius: 10, color: '#fbbf24', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                   <Lock style={{ width: 14, height: 14 }} /> {usage}/{limit} · Upgrade
                 </button>

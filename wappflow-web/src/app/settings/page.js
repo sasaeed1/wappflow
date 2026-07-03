@@ -17,7 +17,7 @@ import { Send as SendIcon } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { useSound, SOUND_KINDS } from '@/lib/sounds';
-import { usePlan } from '@/lib/plan';
+import { usePlan, nextPlanLabel, formatMoney } from '@/lib/plan';
 import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
 
 // Map of settings tab → required feature flag + required plan name.
@@ -1013,7 +1013,7 @@ function PlanLockBadge({ feature, requiredPlan, currentPlan }) {
       <span style={{ flex: 1 }}>
         <strong>{feature}</strong> is part of the {requiredPlan} plan. You&apos;re on {currentPlan}.
       </span>
-      <a href="/settings?tab=workspace" style={{ color: '#fbbf24', fontWeight: 700, textDecoration: 'none' }}>Upgrade →</a>
+      <a href="/settings?tab=plan" style={{ color: '#fbbf24', fontWeight: 700, textDecoration: 'none' }}>Upgrade →</a>
     </div>
   );
 }
@@ -1146,7 +1146,7 @@ function IntegrationsContent({ showToast }) {
           )}
 
           {!gCalUnlocked && (
-            <PlanLockBadge feature="Google Calendar" requiredPlan="Growth" currentPlan={plan.planName || 'Free'} />
+            <PlanLockBadge feature="Google Calendar" requiredPlan="Studio" currentPlan={plan.planName || 'Creator'} />
           )}
 
           {g.connected ? (
@@ -1198,7 +1198,7 @@ function IntegrationsContent({ showToast }) {
           </div>
 
           {!calendlyUnlocked && (
-            <PlanLockBadge feature="Calendly" requiredPlan="Growth" currentPlan={plan.planName || 'Free'} />
+            <PlanLockBadge feature="Calendly" requiredPlan="Studio" currentPlan={plan.planName || 'Creator'} />
           )}
 
           <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1301,7 +1301,7 @@ function PlanBillingTab({ showToast }) {
   const founding = plan.founding || null;
   const curKey = plan.plan;
 
-  const pkr = (n) => 'PKR ' + Number(n).toLocaleString('en-US');
+  const pkr = (n) => formatMoney(n); // shared formatter — lib/plan.js (single currency impl)
   const fmtReset = (s) => { try { return new Date(String(s).replace(' ', 'T') + 'Z').toLocaleDateString(); } catch { return ''; } };
   const levelColor = (lvl) => lvl === 'reached' ? '#ef4444' : (lvl === 'critical' || lvl === 'warn') ? '#f59e0b' : '#10b981';
 
@@ -1841,7 +1841,7 @@ function ConnectionsTab({ showToast }) {
               {count > 0 && !locked && (
                 <span style={{ fontSize: 10, background: p.color, color: 'white', padding: '1px 6px', borderRadius: 8, fontWeight: 800 }}>{count}</span>
               )}
-              {locked && <LockBadge requiredPlan="Growth" size="sm" />}
+              {locked && <LockBadge requiredPlan="Studio" size="sm" />}
             </button>
           );
         })}
@@ -1851,9 +1851,9 @@ function ConnectionsTab({ showToast }) {
       {activeDef && platformLocked(activeDef.id) ? (
         <LockedOverlay
           feature={`${activeDef.label} integration`}
-          requiredPlan="Growth"
-          currentPlan={plan.planName || 'Free'}
-          description={`${activeDef.label} is a multi-channel feature available on the Growth plan and above. Unify all your customer conversations in one inbox.`}
+          requiredPlan="Studio"
+          currentPlan={plan.planName || 'Creator'}
+          description={`${activeDef.label} is a multi-channel feature available on the Studio plan and above. Unify all your customer conversations in one inbox.`}
           perks={[
             'Unified inbox across WhatsApp + IG + FB + Website',
             'Auto-create leads from every channel',
@@ -1872,10 +1872,10 @@ function ConnectionsTab({ showToast }) {
             return (
               <div style={{ marginBottom: 16, padding: '10px 14px', background: atLimit ? 'rgba(245,158,11,0.08)' : 'rgba(99,102,241,0.06)', border: `1px solid ${atLimit ? 'rgba(245,158,11,0.3)' : 'rgba(99,102,241,0.25)'}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 13, color: atLimit ? '#fde68a' : 'var(--text-dim)', fontWeight: 600 }}>
-                  {atLimit ? '⚠ ' : ''}You&apos;ve used <strong style={{ color: 'var(--text)' }}>{used} of {limit}</strong> {activeDef.label} account{limit === 1 ? '' : 's'} on the {plan.planName || 'Free'} plan.
+                  {atLimit ? '⚠ ' : ''}You&apos;ve used <strong style={{ color: 'var(--text)' }}>{used} of {limit}</strong> {activeDef.label} account{limit === 1 ? '' : 's'} on the {plan.planName || 'Creator'} plan.
                 </div>
                 {atLimit && plan.plan !== 'enterprise' && (
-                  <UpgradeCta planName={plan.plan === 'growth' ? 'Enterprise' : 'Growth'} size="sm" label="Upgrade for more" />
+                  <UpgradeCta planName={nextPlanLabel(plan.plan)} size="sm" label="Upgrade for more" />
                 )}
               </div>
             );
@@ -1924,7 +1924,7 @@ function ConnectionsTab({ showToast }) {
                         <Lock size={12} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />
                         Plan limit — you can add up to {limit} {activeDef.label} account{limit === 1 ? '' : 's'} on {plan.planName}.
                       </span>
-                      {plan.plan !== 'enterprise' && <UpgradeCta planName={plan.plan === 'growth' ? 'Enterprise' : 'Growth'} size="sm" />}
+                      {plan.plan !== 'enterprise' && <UpgradeCta planName={nextPlanLabel(plan.plan)} size="sm" />}
                     </div>
                   );
                 }
@@ -2370,7 +2370,14 @@ export default function SettingsPage() {
     if (!localStorage.getItem('token')) { router.push('/login'); return; }
     fetchCompany();
     const params = new URLSearchParams(window.location.search);
-    if (params.get('tab')) setActiveTab(params.get('tab'));
+    const requested = params.get('tab');
+    if (requested) {
+      // Legacy aliases + validation against TABS so an unknown ?tab= never renders a
+      // blank panel (the old ?tab=billing bug). 'billing' → the real 'plan' tab.
+      const TAB_ALIASES = { billing: 'plan' };
+      const resolved = TAB_ALIASES[requested] || requested;
+      setActiveTab(TABS.some(t => t.id === resolved) ? resolved : 'connections');
+    }
   }, []);
 
   // Reset scroll to the top whenever the tab changes — otherwise switching from a
@@ -2468,7 +2475,7 @@ export default function SettingsPage() {
             <LockedOverlay
               feature={activeTabMeta?.label || 'This feature'}
               requiredPlan={activeGate.plan}
-              currentPlan={plan.planName || 'Free'}
+              currentPlan={plan.planName || 'Creator'}
               description={`${activeTabMeta?.label} is available on the ${activeGate.plan} plan and above. Upgrade to unlock this and other team-grade features.`}
               perks={activeGate.perks}
             />

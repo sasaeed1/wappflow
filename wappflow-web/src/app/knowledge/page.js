@@ -240,8 +240,8 @@ export default function KnowledgePage() {
         <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px' }}>
           <LockedOverlay
             feature="Knowledge base"
-            requiredPlan="Growth"
-            currentPlan={(plan.planName || 'Free')}
+            requiredPlan="Studio"
+            currentPlan={(plan.planName || 'Creator')}
             description="Upload PDFs, FAQs, pricing sheets, and brand docs that the AI grounds every reply in."
             perks={[
               'Upload PDFs / docs / pasted text',

@@ -941,3 +941,60 @@ Owner decisions applied: Q#1 = actual pages · Q#2 = who + optional note · Q#3/
   blocks a second paid row, non-invoice kinds unaffected) + live derived page_count + static
   ordering/ownership/delegation/UI-repoint checks.
 - Batch 1 (14/14) and Batch 2 (23/23) still green. `node --check` clean ×4. `next build` green.
+
+---
+
+## Implementation log — Batch 4 (pricing-reconcile + dead-code-purge + broken-routes)
+
+**Status: implemented on branch `foundation-sprint/batch-4-truth` — awaiting review/merge.
+Owner decision applied: Q#4 = hard-delete dead plan UI (git-recoverable). Sequencing note: purge ran
+FIRST (per the purge spec's own recommendation), so the reconcile only rewired components that are
+alive — no wasted work on deleted code.**
+
+### dead-code-purge — the phantom plan UI is gone
+- Deleted `PlanBanner` + `PlanChip` exports and their `.pl-banner*`/`.pl-chip*` CSS from
+  `components/PlanLock.js`; deleted `components/PlanWelcomeModal.js`. All three were proven
+  unreferenced (zero imports/JSX/string refs — verified again post-delete) and keyed to the retired
+  free/starter/growth tiers. Kept exports (LockTooltip/LockBadge/LockedOverlay/UpgradeCta/
+  PlanLockStyles) and their CSS untouched — used by 6 live files.
+- `ms_galleries.expires_at` marked RESERVED for Gallery Expiry inline (deferred, not dead).
+
+### pricing-reconcile — one plan vocabulary, one currency impl, one upgrade route
+- `lib/plan.js` now exports the single client-side vocabulary (mirrors backend/entitlements.js):
+  `PLAN_META`, `planLabel()` (null-safe — unknown/legacy tier degrades to Creator, never blank),
+  `nextPlanFor()/nextPlanLabel()` (upgrade ladder), `UPGRADE_ROUTE='/settings?tab=plan'`, and
+  `formatMoney(amount, currency)` (row-level currency respected; PKR strictly the fallback;
+  `null → 'Custom'`).
+- `PlanLock.js` kept components rewired: defaults derive from the live plan context (no more
+  `requiredPlan='Growth'` / `currentPlan='Free'` defaults); both CTAs route to `UPGRADE_ROUTE`.
+- `NavBar.js` PlanBadge TIER_STYLE rekeyed to creator/studio/studio_plus/enterprise (fallback →
+  creator); all 3 dead `?tab=billing` links → `?tab=plan`.
+- Literal sweep: settings (4× Growth→Studio incl. Google Calendar/Calendly/multi-platform copy,
+  2× UpgradeCta ternaries → `nextPlanLabel`), team/knowledge (Growth→Studio),
+  reports (Starter→Studio), 8× `|| 'Free'` fallbacks → `|| 'Creator'`, 3× upgrade links
+  `?tab=workspace` → `?tab=plan` (settings/team/leads-list).
+- Currency unification: both local `pkr()` copies (settings + landing) are now one-line shims over
+  `formatMoney`. Bonus defect found: the landing copy used a **non-breaking space** (`PKR 7,999`)
+  vs settings' regular space — two subtly different currency formats, now one.
+
+### broken-routes — three dead controls now work
+- **Invoice email (was broken end-to-end):** new `POST /api/invoices/:id/email` reusing the exact
+  lead-email SMTP/transporter pattern + the same 400 "SMTP not configured…" contract;
+  `renderInvoiceEmailHTML()` ported from the frontend Print/PDF template (its own comment already
+  promised a backend twin) — linked comments on both copies to keep them in sync; draft→pending on
+  success; `logAudit('invoice_emailed')`. Client: `invoicesAPI.sendEmail()` — the SendInvoiceModal
+  already called it.
+- **Blank billing links:** NavBar links corrected + settings now aliases `?tab=billing`→`plan` and
+  validates every `?tab=` against TABS (unknown ids fall back to a populated tab — a blank settings
+  panel is now impossible).
+- **Empty Trash (was a TypeError):** new `DELETE /api/leads/trash` — transactional, workspace-scoped,
+  reusing the permanent-delete cascade list (linked comments), registered BEFORE `/api/leads/:id` so
+  Express can't swallow 'trash' as an id; `logAudit('leads_empty_trash')`. Client:
+  `leadsAPI.emptyTrash()` — the trash page already called it.
+
+### Verification
+- `backend/test-batch4-truth.js` — **20/20 pass**: live `formatMoney`/`nextPlanFor` (extracted from
+  source), live empty-trash cascade proof (workspace isolation, cascade list parsed from server.js
+  so drift fails the test), purge-is-total scan, no dead-tier literals/navigations, TIER_STYLE
+  rekey, alias validation, route ordering, client bindings.
+- Batches 1 (14/14), 2 (23/23), 3 (28/28) still green. `node --check` clean. `next build` green.

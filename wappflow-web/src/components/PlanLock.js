@@ -1,22 +1,26 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Lock, Zap, Sparkles, ArrowRight, CheckCircle2, X } from 'lucide-react';
-import { useState } from 'react';
+import { Lock, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { usePlan, planLabel, nextPlanLabel, UPGRADE_ROUTE } from '@/lib/plan';
 
 /**
  * Plan-lock UI primitives. All visible, all clickable to upgrade.
+ * Tier vocabulary comes from lib/plan.js (PLAN_META — mirrors backend/entitlements.js);
+ * defaults derive from the live plan context, so no dead-tier strings can render.
  *
  * Components:
- *   <LockTooltip feature="..." requiredPlan="Growth">  → wraps anything, shows hover banner
- *   <LockBadge requiredPlan="Growth" inline />          → standalone "🔒 Growth" pill
- *   <LockedOverlay feature="..." requiredPlan="Growth" />→ full-card lock overlay
- *   <UpgradeCta planName="Growth" />                    → standalone upgrade button
+ *   <LockTooltip feature="..." requiredPlan="Studio">  → wraps anything, shows hover banner
+ *   <LockBadge requiredPlan="Studio" inline />          → standalone "🔒 Studio" pill
+ *   <LockedOverlay feature="..." requiredPlan="Studio" />→ full-card lock overlay
+ *   <UpgradeCta planName="Studio" />                    → standalone upgrade button
  *   <PlanLockStyles />                                   → shared CSS (mount once near root)
  */
 
 // ── Hover wrapper ──────────────────────────────────────────────────────────────
-export function LockTooltip({ feature, requiredPlan = 'Growth', children, className = '', style = {} }) {
+export function LockTooltip({ feature, requiredPlan, children, className = '', style = {} }) {
+  const { plan } = usePlan();
+  requiredPlan = requiredPlan || nextPlanLabel(plan);
   return (
     <span className={`pl-tt ${className}`} style={style}>
       {children}
@@ -28,8 +32,10 @@ export function LockTooltip({ feature, requiredPlan = 'Growth', children, classN
   );
 }
 
-// ── Standalone "🔒 Growth" pill ────────────────────────────────────────────────
-export function LockBadge({ requiredPlan = 'Growth', size = 'md', inline = false }) {
+// ── Standalone "🔒 Studio" pill ────────────────────────────────────────────────
+export function LockBadge({ requiredPlan, size = 'md', inline = false }) {
+  const { plan } = usePlan();
+  requiredPlan = requiredPlan || nextPlanLabel(plan);
   return (
     <span className={`pl-badge pl-badge-${size} ${inline ? 'pl-badge-inline' : ''}`}>
       <Lock size={size === 'sm' ? 10 : 12} />
@@ -42,13 +48,16 @@ export function LockBadge({ requiredPlan = 'Growth', size = 'md', inline = false
 // Renders a centered locked card explaining what's missing + upgrade CTA.
 export function LockedOverlay({
   feature,
-  requiredPlan = 'Growth',
-  currentPlan = 'Free',
+  requiredPlan,
+  currentPlan,
   description,
   perks = [],
   compact = false,
 }) {
   const router = useRouter();
+  const { plan, planName } = usePlan();
+  requiredPlan = requiredPlan || nextPlanLabel(plan);
+  currentPlan = currentPlan || planName || planLabel(plan);
   return (
     <div className={`pl-overlay ${compact ? 'pl-overlay-compact' : ''}`}>
       <div className="pl-overlay-bg" aria-hidden />
@@ -73,7 +82,7 @@ export function LockedOverlay({
         )}
         <button
           className="pl-overlay-cta"
-          onClick={() => router.push('/settings?tab=workspace')}
+          onClick={() => router.push(UPGRADE_ROUTE)}
         >
           <Sparkles size={14} /> Upgrade to {requiredPlan} <ArrowRight size={14} />
         </button>
@@ -83,12 +92,14 @@ export function LockedOverlay({
 }
 
 // ── Standalone upgrade button ─────────────────────────────────────────────────
-export function UpgradeCta({ planName = 'Growth', size = 'md', label }) {
+export function UpgradeCta({ planName, size = 'md', label }) {
   const router = useRouter();
+  const { plan } = usePlan();
+  planName = planName || nextPlanLabel(plan);
   return (
     <button
       className={`pl-cta pl-cta-${size}`}
-      onClick={() => router.push('/settings?tab=workspace')}
+      onClick={() => router.push(UPGRADE_ROUTE)}
     >
       <Sparkles size={size === 'sm' ? 12 : 14} />
       {label || `Upgrade to ${planName}`}
@@ -97,87 +108,10 @@ export function UpgradeCta({ planName = 'Growth', size = 'md', label }) {
   );
 }
 
-// ── Persistent top banner ─────────────────────────────────────────────────────
-// Shown on Free / Starter plans. Dismissable for 24h via localStorage.
-export function PlanBanner({ plan, planName, usage, limits, lockedCount = 0 }) {
-  const router = useRouter();
-  const [dismissed, setDismissed] = useState(() => {
-    try {
-      const t = localStorage.getItem('wf_plan_banner_dismissed');
-      if (!t) return false;
-      return Date.now() - parseInt(t, 10) < 24 * 60 * 60 * 1000;
-    } catch { return false; }
-  });
-
-  if (!plan || plan === 'growth' || plan === 'enterprise') return null;
-  if (dismissed) return null;
-
-  const handleDismiss = () => {
-    setDismissed(true);
-    try { localStorage.setItem('wf_plan_banner_dismissed', String(Date.now())); } catch {}
-  };
-
-  const leadsLimit = limits?.leads;
-  const leadsUsed = usage?.leads || 0;
-  const leadsPct = leadsLimit && leadsLimit > 0 ? Math.min(100, (leadsUsed / leadsLimit) * 100) : 0;
-  const leadsCritical = leadsPct >= 80;
-
-  return (
-    <div className={`pl-banner ${plan === 'free' ? 'pl-banner-free' : 'pl-banner-starter'}`}>
-      <div className="pl-banner-inner">
-        <div className="pl-banner-icon">
-          <Zap size={14} />
-        </div>
-        <div className="pl-banner-text">
-          <span>You&apos;re on the <strong>{planName}</strong> plan.</span>
-          {leadsLimit && leadsLimit > 0 && (
-            <span className={`pl-banner-meter ${leadsCritical ? 'crit' : ''}`}>
-              <span className="pl-banner-meter-track">
-                <span className="pl-banner-meter-fill" style={{ width: leadsPct + '%' }} />
-              </span>
-              <span>{leadsUsed}/{leadsLimit} leads</span>
-            </span>
-          )}
-          {lockedCount > 0 && (
-            <span className="pl-banner-locked">{lockedCount} features locked</span>
-          )}
-        </div>
-        <button className="pl-banner-cta" onClick={() => router.push('/settings?tab=workspace')}>
-          <Sparkles size={13} /> Upgrade
-        </button>
-        <button className="pl-banner-x" onClick={handleDismiss} aria-label="Dismiss">
-          <X size={15} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── NavBar plan chip ──────────────────────────────────────────────────────────
-export function PlanChip({ plan, planName, usage, limits, compact = false }) {
-  const router = useRouter();
-  if (!plan) return null;
-
-  const tone = plan === 'free' ? 'free' : plan === 'starter' ? 'starter' : plan === 'growth' ? 'growth' : 'enterprise';
-  const leadsLimit = limits?.leads;
-  const leadsUsed = usage?.leads || 0;
-  const showLeads = leadsLimit && leadsLimit > 0;
-
-  return (
-    <button
-      className={`pl-chip pl-chip-${tone}`}
-      onClick={() => router.push('/settings?tab=workspace')}
-      title={plan === 'free' || plan === 'starter' ? 'Click to upgrade' : 'View plan'}
-    >
-      {(plan === 'free' || plan === 'starter') && <Lock size={11} />}
-      {plan === 'growth' && <Sparkles size={11} />}
-      {plan === 'enterprise' && <Zap size={11} />}
-      <span>{planName}</span>
-      {!compact && showLeads && <span className="pl-chip-sep">·</span>}
-      {!compact && showLeads && <span>{leadsUsed}/{leadsLimit}</span>}
-    </button>
-  );
-}
+// (PlanBanner and PlanChip were deleted 2026-07-01 — Foundation Sprint dead-code-purge.
+//  They were never imported anywhere and were keyed to the retired free/starter/growth
+//  tiers. Recoverable from git history; a future in-nav plan widget should be built
+//  against the live usePlan() context.)
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 export function PlanLockStyles() {
@@ -337,133 +271,6 @@ export function PlanLockStyles() {
       .pl-cta-sm { padding: 6px 12px; font-size: 11.5px; }
       .pl-cta-lg { padding: 12px 22px; font-size: 14.5px; }
 
-      /* ── Persistent top banner ── */
-      .pl-banner {
-        position: sticky;
-        top: 0;
-        z-index: 50;
-        width: 100%;
-        background: linear-gradient(90deg, #1f1432 0%, #2b1a3d 50%, #1f1432 100%);
-        border-bottom: 1px solid rgba(168,85,247,0.3);
-        color: #f3f4f6;
-        font-family: inherit;
-        box-shadow: 0 1px 0 rgba(168,85,247,0.15);
-      }
-      .pl-banner-free   { border-bottom-color: rgba(245,158,11,0.35); }
-      .pl-banner-starter { border-bottom-color: rgba(99,102,241,0.35); }
-      .pl-banner-inner {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 8px 20px;
-        display: flex; align-items: center; gap: 14px;
-      }
-      .pl-banner-icon {
-        width: 26px; height: 26px;
-        border-radius: 7px;
-        background: linear-gradient(135deg, #f59e0b, #a855f7);
-        color: #fff;
-        display: grid; place-items: center;
-        flex-shrink: 0;
-      }
-      .pl-banner-text {
-        flex: 1;
-        display: flex; align-items: center; gap: 14px;
-        font-size: 13px;
-        color: #e7eaf3;
-        flex-wrap: wrap;
-      }
-      .pl-banner-text strong { color: #fff; font-weight: 700; }
-      .pl-banner-meter { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #b5bac9; }
-      .pl-banner-meter-track {
-        display: inline-block;
-        width: 80px; height: 6px;
-        background: rgba(255,255,255,0.1);
-        border-radius: 999px;
-        overflow: hidden;
-      }
-      .pl-banner-meter-fill {
-        display: block; height: 100%;
-        background: linear-gradient(90deg, #818cf8, #c084fc);
-        transition: width 0.3s;
-      }
-      .pl-banner-meter.crit .pl-banner-meter-fill { background: linear-gradient(90deg, #f59e0b, #ef4444); }
-      .pl-banner-meter.crit { color: #fca5a5; font-weight: 600; }
-      .pl-banner-locked {
-        display: inline-flex; align-items: center; gap: 4px;
-        padding: 2px 8px;
-        background: rgba(245,158,11,0.15);
-        border: 1px solid rgba(245,158,11,0.30);
-        color: #fde68a;
-        font-size: 11px; font-weight: 700;
-        border-radius: 999px;
-      }
-      .pl-banner-cta {
-        display: inline-flex; align-items: center; gap: 5px;
-        padding: 6px 14px;
-        background: linear-gradient(135deg, #f59e0b, #a855f7);
-        color: #fff; border: none;
-        border-radius: 8px;
-        font-size: 12.5px; font-weight: 700;
-        cursor: pointer;
-        font-family: inherit;
-        box-shadow: 0 4px 12px rgba(168,85,247,0.35);
-        white-space: nowrap;
-      }
-      .pl-banner-cta:hover { transform: translateY(-1px); }
-      .pl-banner-x {
-        width: 26px; height: 26px;
-        background: transparent;
-        border: 1px solid rgba(255,255,255,0.1);
-        color: #9ca3af;
-        border-radius: 7px;
-        cursor: pointer;
-        display: grid; place-items: center;
-        flex-shrink: 0;
-      }
-      .pl-banner-x:hover { background: rgba(255,255,255,0.06); color: #f3f4f6; }
-
-      @media (max-width: 700px) {
-        .pl-banner-meter-track { display: none; }
-        .pl-banner-locked { display: none; }
-      }
-
-      /* ── NavBar plan chip ── */
-      .pl-chip {
-        display: inline-flex; align-items: center; gap: 5px;
-        padding: 5px 11px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.10);
-        color: var(--text, #f3f4f6);
-        font-size: 11.5px; font-weight: 700;
-        border-radius: 999px;
-        cursor: pointer;
-        font-family: inherit;
-        transition: all 0.15s;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-      }
-      .pl-chip:hover { transform: translateY(-1px); }
-      .pl-chip-sep { opacity: 0.4; }
-      .pl-chip-free {
-        background: rgba(245,158,11,0.10);
-        border-color: rgba(245,158,11,0.35);
-        color: #fde68a;
-      }
-      .pl-chip-starter {
-        background: rgba(99,102,241,0.10);
-        border-color: rgba(99,102,241,0.35);
-        color: #c7d2fe;
-      }
-      .pl-chip-growth {
-        background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(99,102,241,0.15));
-        border-color: rgba(168,85,247,0.35);
-        color: #d8b4fe;
-      }
-      .pl-chip-enterprise {
-        background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.15));
-        border-color: rgba(34,197,94,0.35);
-        color: #6ee7b7;
-      }
     `}</style>
   );
 }

@@ -1259,7 +1259,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
       status TEXT DEFAULT 'draft',           -- draft|published|archived
       version INTEGER DEFAULT 1,
       settings TEXT DEFAULT '{}',            -- JSON: { watermark, download_policy, layout_theme }
-      expires_at TIMESTAMP,
+      expires_at TIMESTAMP,                  -- RESERVED for Gallery Expiry (named roadmap feature) — not dead, do not purge
+
       published_at TIMESTAMP,
       created_by TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
