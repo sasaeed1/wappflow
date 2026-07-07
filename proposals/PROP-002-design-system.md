@@ -808,3 +808,48 @@ Optimized for reviewability and evidence, not speed. Batch A is the substrate an
 **Sequencing note:** the cheapest immediate wins live in Batch A (the confirm re-skin unblocks light mode for 12 files; the z-index ladder + one focus rule are quick and unblock Modal) and the 1-line `window.confirm` swaps in Batch C. First batch is deliberately tokens + the confirm fix + the focus rule on ONE proving-ground surface — the smallest change that proves the substrate and delivers a visible, high-confidence win before any broad migration begins.
 
 ---
+
+---
+
+## Approval, decisions & implementation log
+
+**Approved 2026-07-07 with all recommended decisions D1–D8.**
+
+**D3 clarification (owner):** canonical **domain keys** and **display labels** stay separate. Stable
+internal keys (`needs_approval`, `super_admin`) drive business logic, APIs, DB values, filtering,
+analytics, permissions, and integrations. The status/role **registries** (Batch B) map keys →
+*presentation metadata* (`label`, badge variant/tone, optional icon, ordering, and allowed
+transitions only where already appropriate to the existing architecture). Presentation copy is
+**never** the domain value. This is **not** a workflow/state-machine redesign.
+
+### Batch A — token substrate + focus foundation + confirm retokenize — IMPLEMENTED
+
+Branch `design-system/batch-a-tokens` — **awaiting review before Batch B.** Tightly scoped to the
+substrate; **no Button, no Badge, no page migration, no Studio/Contracts identity change, no domain
+semantics.**
+
+- **`globals.css` (additive):** new `:root` + `html.light` blocks — spacing/radius/type/weight/motion
+  scales, a z-index ladder (`--z-dropdown..--z-banner`, replacing the 1..99999 sprawl), `--focus-ring`,
+  `--overlay-bg/--overlay-blur`, an elevation scale (`--elev-1..3`), `--on-accent`, and semantic status
+  pairs (`--success-bg/-fg`, `--info-bg/-fg`, `--danger-fg`, `--warning-fg`, `--accent-bg/-fg`) with
+  hand-tuned per-mode values. **Nothing renamed or removed** — `--radius` and `--shadow` retained
+  verbatim (verified: all 25 original tokens present). One global `:focus-visible` box-shadow ring
+  (D7) that coexists with the existing `outline:none` suppression, plus a neutralizer inside
+  `.ms-root` (Studio) and `.cs-doc` (Contracts) so their own focus treatment stays the sole indicator
+  — no double ring.
+- **`lib/confirm.js` (retokenize only):** the inline `<style>` now reads tokens — hardcoded color
+  literals **52 → 0**, `z-index:9999 → var(--z-modal)`, token refs **0 → 40**. It now themes in light
+  mode (was a dark slab) for all 12 consumers. **JS logic byte-identical** (role=dialog, aria-modal,
+  Escape/Enter, autoFocus, backdrop, per-tone icon, provider API, animations all unchanged).
+- **`scripts/verify-batchA.js`:** boot-free harness (12 checks) — additive-token proof, z-ladder order,
+  per-mode semantic overrides, focus rule + dialect neutralizer, confirm retokenized-yet-behavioral.
+
+**Verification:** verify-batchA 12/12 · `next build` ✓ · backend regression 5/5 · live: tokens resolve
+in dark+light with intentional per-mode flip (`--success-fg #34d399→#047857`, `--elev-3` .5→.18,
+`--overlay-bg` black→slate), focus rule + neutralizer compiled into the live cascade, login screen
+pixel-identical to baseline (substrate is inert until adopted).
+
+**Deferred to post-deploy spot-check** (needs an authenticated + real-keyboard session): keyboard
+focus-ring rendering in-app, and the confirm dialog opening in light mode. Transitively proven (confirm
+reads the verified tokens; the ring rule is in the cascade), to be eyeballed after deploy — consistent
+with how every prior batch was confirmed against production.

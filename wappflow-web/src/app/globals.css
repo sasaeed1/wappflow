@@ -47,6 +47,74 @@ html.light {
   --shadow: 0 4px 24px rgba(0,0,0,0.08);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   BATCH A — design-system token substrate (PROP-002 §2).
+   PURELY ADDITIVE: nothing above is renamed or removed. --radius and --shadow
+   are retained as-is. New tokens layer on top so the existing ~5,148 inline
+   var(--*) styles keep resolving identically. Tier 1 (primitives) live only in
+   :root; Tier 2 (semantic, mode-varying) also appear in html.light below.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Spacing scale (4px base) */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
+  /* Radius scale — --radius (10px) retained as the medium rung */
+  --radius-sm: 6px; --radius-md: var(--radius); --radius-lg: 14px; --radius-xl: 18px; --radius-pill: 999px;
+  /* Type scale */
+  --fs-caption: 11px; --fs-body-sm: 12.5px; --fs-body: 14px; --fs-lg: 16px;
+  --fs-h3: 18px; --fs-h2: 22px; --fs-h1: 28px;
+  /* Font weights — 700 is the only "bold" in Core (D2); heavier weights stay a Studio dialect */
+  --fw-normal: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  /* Motion */
+  --dur-fast: 0.12s; --dur: 0.15s; --dur-slow: 0.3s;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1); --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Z-index ladder — replaces the ad-hoc 1..99999 sprawl */
+  --z-base: 1; --z-dropdown: 1000; --z-sticky: 1100; --z-overlay: 1200;
+  --z-modal: 1300; --z-toast: 1400; --z-banner: 1500;
+  /* Text on an --accent fill (accent is indigo in both modes) */
+  --on-accent: #ffffff;
+  /* Focus ring — one indicator, token-only; resolves per-mode via --accent/--accent-light */
+  --focus-ring: 0 0 0 1px var(--accent), 0 0 0 4px var(--accent-light);
+  /* Overlay */
+  --overlay-bg: rgba(0,0,0,0.6); --overlay-blur: 8px;
+  /* Elevation scale (dark). --shadow is retained separately and unchanged. */
+  --elev-1: 0 1px 2px rgba(0,0,0,0.3);
+  --elev-2: 0 4px 24px rgba(0,0,0,0.35);
+  --elev-3: 0 30px 80px rgba(0,0,0,0.5);
+  /* Semantic status pairs (dark). --accent-bg/--warning-fg alias existing tokens. */
+  --accent-bg: var(--accent-light); --accent-fg: #a5b4fc;
+  --success-bg: rgba(16,185,129,0.12); --success-fg: #34d399;
+  --warning-fg: var(--warning-text);
+  --danger-fg: #f87171;
+  --info-bg: rgba(6,182,212,0.12); --info-fg: #22d3ee;
+}
+html.light {
+  /* Batch A semantic overrides — intentional per-mode values (never auto-inversion) */
+  --overlay-bg: rgba(15,23,42,0.4);
+  --elev-1: 0 1px 2px rgba(0,0,0,0.04);
+  --elev-2: 0 4px 24px rgba(0,0,0,0.08);
+  --elev-3: 0 30px 80px rgba(0,0,0,0.18);
+  --accent-fg: #4f46e5;
+  --success-bg: #ecfdf5; --success-fg: #047857;
+  --danger-fg: #dc2626;
+  --info-bg: #ecfeff; --info-fg: #0e7490;
+  /* --warning-fg follows --warning-text (html.light sets it to #92400e) */
+}
+
+/* ── Batch A — keyboard focus foundation. One visible ring via box-shadow, which
+   coexists with the existing `outline:none` suppression (so most inputs gain a ring
+   with zero per-file edits). Box-shadow follows each element's own border-radius. ── */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, summary:focus-visible, [role="button"]:focus-visible,
+[role="tab"]:focus-visible, [role="menuitem"]:focus-visible, [role="link"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+/* Dialects keep their OWN focus treatment (Studio uses outline; Contracts' canvas has
+   its own). Suppress our ring inside them so there is exactly one indicator — no double. */
+.ms-root :focus-visible, .cs-doc :focus-visible { box-shadow: none; }
+
 * {
   box-sizing: border-box;
   margin: 0;

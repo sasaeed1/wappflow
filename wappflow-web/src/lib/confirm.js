@@ -120,10 +120,10 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
 
       <style>{`
         .cm-overlay {
-          position: fixed; inset: 0; z-index: 9999;
-          background: rgba(0,0,0,0.6);
-          backdrop-filter: blur(8px);
-          -webkit-backdrop-filter: blur(8px);
+          position: fixed; inset: 0; z-index: var(--z-modal);
+          background: var(--overlay-bg);
+          backdrop-filter: blur(var(--overlay-blur));
+          -webkit-backdrop-filter: blur(var(--overlay-blur));
           display: flex; align-items: center; justify-content: center;
           padding: 20px;
           animation: cm-fade 0.15s ease-out;
@@ -133,13 +133,13 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
         .cm-card {
           position: relative;
           width: 100%; max-width: 420px;
-          background: #14161f;
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 16px;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
           padding: 28px;
-          color: #f3f4f6;
+          color: var(--text);
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-          box-shadow: 0 30px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+          box-shadow: var(--elev-3);
           animation: cm-pop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         @keyframes cm-pop {
@@ -149,16 +149,16 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
 
         .cm-close {
           position: absolute; top: 14px; right: 14px;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.08);
-          color: #9ca3af;
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          color: var(--text-dim);
           width: 28px; height: 28px;
           border-radius: 8px;
           display: grid; place-items: center;
           cursor: pointer;
           transition: all 0.15s;
         }
-        .cm-close:hover { background: rgba(255,255,255,0.1); color: #f3f4f6; }
+        .cm-close:hover { background: var(--border); color: var(--text); }
 
         .cm-head {
           display: flex; align-items: center; gap: 14px;
@@ -168,20 +168,20 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
           width: 40px; height: 40px;
           border-radius: 10px;
           display: grid; place-items: center;
-          background: rgba(99,102,241,0.12);
-          color: #818cf8;
-          border: 1px solid rgba(99,102,241,0.25);
+          background: var(--accent-bg);
+          color: var(--accent-fg);
+          border: 1px solid var(--border);
           flex-shrink: 0;
         }
-        .cm-tone-danger .cm-icon { background: rgba(239,68,68,0.12); color: #f87171; border-color: rgba(239,68,68,0.3); }
-        .cm-tone-warning .cm-icon { background: rgba(245,158,11,0.12); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
-        .cm-tone-success .cm-icon { background: rgba(16,185,129,0.12); color: #34d399; border-color: rgba(16,185,129,0.3); }
-        .cm-tone-info .cm-icon { background: rgba(6,182,212,0.12); color: #22d3ee; border-color: rgba(6,182,212,0.3); }
+        .cm-tone-danger .cm-icon { background: var(--danger-bg); color: var(--danger-fg); }
+        .cm-tone-warning .cm-icon { background: var(--warning-bg); color: var(--warning-fg); }
+        .cm-tone-success .cm-icon { background: var(--success-bg); color: var(--success-fg); }
+        .cm-tone-info .cm-icon { background: var(--info-bg); color: var(--info-fg); }
 
         .cm-title {
           font-size: 17px; font-weight: 700;
           letter-spacing: -0.01em;
-          color: #fff;
+          color: var(--text);
           flex: 1;
           padding-right: 32px;
         }
@@ -189,7 +189,7 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
         .cm-body {
           font-size: 14px;
           line-height: 1.55;
-          color: #b5bac9;
+          color: var(--text-dim);
           margin-bottom: 24px;
         }
 
@@ -209,33 +209,36 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
           display: inline-flex; align-items: center; gap: 6px;
         }
         .cm-btn-ghost {
-          background: rgba(255,255,255,0.05);
-          color: #d1d5db;
-          border: 1px solid rgba(255,255,255,0.1);
+          background: var(--surface2);
+          color: var(--text);
+          border: 1px solid var(--border);
         }
-        .cm-btn-ghost:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .cm-btn-ghost:hover { background: var(--border); color: var(--text); }
 
         .cm-btn-primary {
-          background: linear-gradient(135deg, #6366f1, #a855f7);
-          color: #fff;
-          box-shadow: 0 6px 16px rgba(99,102,241,0.4), inset 0 1px 0 rgba(255,255,255,0.18);
+          background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+          color: var(--on-accent);
+          box-shadow: var(--elev-1);
         }
-        .cm-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(99,102,241,0.55); }
+        .cm-btn-primary:hover { transform: translateY(-1px); box-shadow: var(--elev-2); }
 
         .cm-btn-danger {
-          background: linear-gradient(135deg, #ef4444, #dc2626);
-          box-shadow: 0 6px 16px rgba(239,68,68,0.4), inset 0 1px 0 rgba(255,255,255,0.18);
+          background: var(--danger);
+          color: var(--on-accent);
+          box-shadow: var(--elev-1);
         }
-        .cm-btn-danger:hover { box-shadow: 0 10px 24px rgba(239,68,68,0.55); }
+        .cm-btn-danger:hover { box-shadow: var(--elev-2); }
 
         .cm-btn-success {
-          background: linear-gradient(135deg, #10b981, #059669);
-          box-shadow: 0 6px 16px rgba(16,185,129,0.4), inset 0 1px 0 rgba(255,255,255,0.18);
+          background: var(--success);
+          color: var(--on-accent);
+          box-shadow: var(--elev-1);
         }
 
         .cm-btn-warning {
-          background: linear-gradient(135deg, #f59e0b, #d97706);
-          box-shadow: 0 6px 16px rgba(245,158,11,0.4), inset 0 1px 0 rgba(255,255,255,0.18);
+          background: var(--warning);
+          color: var(--on-accent);
+          box-shadow: var(--elev-1);
         }
       `}</style>
     </div>
