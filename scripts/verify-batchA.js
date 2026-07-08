@@ -47,8 +47,10 @@ check('semantic status tokens overridden in html.light (intentional per-mode)', 
 });
 check('global :focus-visible ring uses --focus-ring via box-shadow', () =>
   assert(/:focus-visible\s*,[\s\S]*?box-shadow:\s*var\(--focus-ring\)/.test(css) || /\[tabindex\]:focus-visible\s*\{[\s\S]*?box-shadow:\s*var\(--focus-ring\)/.test(css)));
-check('dialect neutralizer prevents double ring in .ms-root + .cs-doc', () =>
-  assert(/\.ms-root :focus-visible,\s*\.cs-doc :focus-visible\s*\{\s*box-shadow:\s*none/.test(css)));
+check('neutralizer scoped to .ms-root ONLY (Studio has universal :focus-visible; Contracts does not)', () => {
+  assert(/\.ms-root :focus-visible\s*\{\s*box-shadow:\s*none/.test(css), 'Studio neutralizer missing');
+  assert(!/\.cs-doc :focus-visible\s*\{\s*box-shadow:\s*none/.test(css), '.cs-doc must NOT be neutralized — it lacks equivalent focus treatment');
+});
 
 // ── (2) confirm.js retokenized but behavior-intact ──────────────────────────
 check('confirm has NO hardcoded surface/overlay/text hex in its <style>', () =>

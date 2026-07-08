@@ -111,9 +111,13 @@ textarea:focus-visible, summary:focus-visible, [role="button"]:focus-visible,
   outline: none;
   box-shadow: var(--focus-ring);
 }
-/* Dialects keep their OWN focus treatment (Studio uses outline; Contracts' canvas has
-   its own). Suppress our ring inside them so there is exactly one indicator — no double. */
-.ms-root :focus-visible, .cs-doc :focus-visible { box-shadow: none; }
+/* Studio (.ms-root) has a UNIVERSAL :focus-visible outline (studio.css:435) covering every
+   focusable descendant — suppress our ring there so its themed outline is the single indicator.
+   Contracts' .cs-doc is intentionally NOT neutralized: it has no equivalent :focus-visible rule
+   (only .cs-ce{outline:none} + a JS selection outline), so suppressing the global ring would leave
+   its contenteditable blocks/inputs with no visible keyboard focus. The ring (box-shadow) coexists
+   with .cs-ce's outline:none, so it correctly indicates focus without a double treatment. */
+.ms-root :focus-visible { box-shadow: none; }
 
 * {
   box-sizing: border-box;
