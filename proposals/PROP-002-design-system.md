@@ -835,8 +835,11 @@ semantics.**
   hand-tuned per-mode values. **Nothing renamed or removed** — `--radius` and `--shadow` retained
   verbatim (verified: all 25 original tokens present). One global `:focus-visible` box-shadow ring
   (D7) that coexists with the existing `outline:none` suppression, plus a neutralizer inside
-  `.ms-root` (Studio) and `.cs-doc` (Contracts) so their own focus treatment stays the sole indicator
-  — no double ring.
+  `.ms-root` (Studio) so its universal `:focus-visible` outline stays the sole indicator — no double
+  ring. *(Corrected pre-merge in 6f85376: `.cs-doc` was initially neutralized too, but Contracts has
+  **no** equivalent focus treatment — only `.cs-ce{outline:none}` plus a JS selection outline — so the
+  neutralizer would have left its controls with no visible focus indicator. `.cs-doc` now gets the
+  global ring.)*
 - **`lib/confirm.js` (retokenize only):** the inline `<style>` now reads tokens — hardcoded color
   literals **52 → 0**, `z-index:9999 → var(--z-modal)`, token refs **0 → 40**. It now themes in light
   mode (was a dark slab) for all 12 consumers. **JS logic byte-identical** (role=dialog, aria-modal,
@@ -853,3 +856,49 @@ pixel-identical to baseline (substrate is inert until adopted).
 focus-ring rendering in-app, and the confirm dialog opening in light mode. Transitively proven (confirm
 reads the verified tokens; the ring rule is in the cascade), to be eyeballed after deploy — consistent
 with how every prior batch was confirmed against production.
+
+### Batch B — Button + Badge primitives + status registries — IMPLEMENTED, APPROVED FOR MERGE
+
+Branch `design-system/batch-b-button-badge` (ad51245 + dd16434 + review polish). Scope held to:
+Button primitive, Badge primitive, key→metadata registries, approved first targets only (invoices
+fully; leads-list status badge only).
+
+- **`components/ui/Button.js`** — visual/interaction primitive, 4 variants (`primary`/`secondary`/
+  `ghost`/`danger`) × `sm`/`md`, `loading` (spinner + `aria-busy` + disable) + `disabled`, token-driven,
+  **no inline box-shadow** (keeps the Batch A focus ring visible), **zero domain knowledge/props** (D1).
+- **`components/ui/Badge.js`** — presentation primitive, 6 tones mapping to the Batch A status pairs,
+  `dot` + `color` escape hatch (`color-mix` tint), renders a `<span>` (no border, no pointer cursor —
+  reads as a chip, cannot compete with buttons). Zero domain knowledge.
+- **`lib/leadStatus.js` + `lib/invoiceStatus.js`** — registries: stable **DB key** → `{label, tone,
+  order}` (D3). Keys are the canonical domain values; labels are presentation-only.
+- **`lib/statusRegistry.js`** — shared fallback contract (owner review requirement): an unknown/legacy
+  status **never crashes, never disappears, never masquerades** — it renders a **neutral** Badge with
+  the **humanized original value** (`closed_won` → “Closed Won”, empty/null → “Unknown”), flagged
+  `unknown: true`, with a **one-shot, SSR-safe** `console.warn` for telemetry. This replaced two silent
+  normalizers (`unknown → 'Draft'` in invoices, `unknown → 'New'` in leads). **No DB-layer
+  normalization** — bad data surfaces instead of being laundered by the UI.
+- **Migrations:** invoices — 2 status pills → `<Badge>`, `STATUS_COLORS` deleted, 4 buttons →
+  `<Button>` (send=primary, delete=danger, cancel=secondary, send-invoice=primary+loading), −14 raw
+  color literals. leads-list — status badge → `<Badge>` + registry; `STATUS_META`’s non-badge uses
+  (avatar gradient, value color, filter tabs) deliberately untouched, migrate on-touch.
+
+**Owner decision — no `success` Button variant (Rule of Three).** State semantics ≠ action hierarchy.
+**“Mark as Paid” is recorded as an unresolved pattern under observation:** it keeps its local green
+treatment, sitting beside the migrated primary “Send via Email” in the InvoiceViewModal footer (two
+filled CTAs in one group — a known hierarchy tension, accepted for now). If ≥3 genuinely equivalent
+affirmative actions with a consistent semantic need emerge in later batches, bring back a small
+proposal for `variant="success"` covering: concrete surfaces, semantic rationale, hierarchy behavior
+when primary and success coexist, contrast, light/dark, confirmation semantics.
+
+**Verification:** verify-batchB **19/19** (primitive purity incl. regex domain scan; registry shape;
+fallback contract incl. live `humanizeStatus` execution; no-silent-normalize; one-shot SSR-safe
+telemetry; key-drives-logic/label-display-only) · `next build` ✓ (pre-fallback; fallback = 1 pure-JS
+module + 2 import lines, ESM-load verified) · adversarial 3-lens audit (hierarchy / keys-vs-labels /
+fallback safety): **0 unaccepted findings** — every filter/sort/write/analytic uses the raw key; a
+label edit provably cannot change API/DB/filter/analytics semantics; danger hover feedback fixed
+during review (`hoverBg` was `=== bg`).
+
+**Known/accepted (on-touch backlog):** leads-list filter tabs still render the raw key as their
+caption (a label-only registry edit would not propagate to tabs); `statusColors` inside the invoice
+print template stays local (print document ≠ app UI, keyed on the raw key); Mark-as-Paid per above;
+remaining lead-status maps + contract/role/plan registries migrate when their surfaces are touched.

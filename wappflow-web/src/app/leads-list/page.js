@@ -18,6 +18,8 @@ import { TagChip, TagPicker } from '../../components/TagPicker';
 import AddLeadModal from '../../components/AddLeadModal';
 import { useConfirm } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
+import Badge from '@/components/ui/Badge';
+import { leadStatusMeta } from '@/lib/leadStatus';
 import { UpgradeCta } from '@/components/PlanLock';
 import { Lock } from 'lucide-react';
 
@@ -1193,7 +1195,7 @@ export default function LeadsListPage() {
 
                 {/* Status + inline AI score */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 20, background: sc.bg, color: sc.text, display: 'inline-block' }}>{lead.status}</span>
+                  <Badge tone={leadStatusMeta(lead.status).tone} dot>{leadStatusMeta(lead.status).label}</Badge>
                   {(lead.sentiment || lead.urgency || lead.lead_score > 0) && (() => {
                     const SENT = { positive: '😊', neutral: '😐', negative: '😟', frustrated: '😠' };
                     const URG_COLORS = { low: '#10b981', medium: '#f59e0b', high: '#f97316', critical: '#ef4444' };

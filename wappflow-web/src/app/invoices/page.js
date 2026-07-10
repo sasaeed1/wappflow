@@ -11,13 +11,13 @@ import { invoicesAPI, settingsAPI, displayPhone, BASE_URL, paymentsAPI } from '.
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { formatDate } from '../../lib/datetime';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import { invoiceStatusMeta } from '@/lib/invoiceStatus';
 
-const STATUS_COLORS = {
-  draft:   { bg: 'rgba(148,163,184,0.15)', text: '#64748b', dot: '#94a3b8', label: 'Draft' },
-  pending: { bg: 'rgba(245,158,11,0.12)', text: '#b45309', dot: '#f59e0b', label: 'Pending' },
-  paid:    { bg: 'rgba(16,185,129,0.12)', text: '#047857', dot: '#10b981', label: 'Paid' },
-  overdue: { bg: 'rgba(239,68,68,0.12)', text: '#b91c1c', dot: '#ef4444', label: 'Overdue' },
-};
+// Invoice status presentation now lives in the shared registry (lib/invoiceStatus.js) rendered
+// through <Badge>. The printed-document status colors below (statusColors) are a separate,
+// document-template concern and intentionally stay local to buildInvoiceHTML.
 
 // ── Premium invoice document — used for Print / Save-as-PDF (matches the
 // emailed version produced by the backend so customers see one consistent doc).
@@ -113,7 +113,6 @@ function buildInvoiceHTML(invoice, company) {
 
 function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, onDelete }) {
   const sym = company?.currency_symbol || '$';
-  const sc = STATUS_COLORS[invoice.status] || STATUS_COLORS.draft;
   const [payLink, setPayLink] = useState('');
   const makePayLink = async () => {
     try {
@@ -144,7 +143,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
             <div>
               <h2 style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)', margin: 0 }}>{invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : `Invoice #${invoice.id}`}</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20, background: sc.bg, color: sc.text }}>● {sc.label}</span>
+                <Badge tone={invoiceStatusMeta(invoice.status).tone} dot>{invoiceStatusMeta(invoice.status).label}</Badge>
                 {invoice.customer_name && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{invoice.customer_name}</span>}
               </div>
             </div>
@@ -235,9 +234,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
           <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface2)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
             <Printer size={14} /> Print / PDF
           </button>
-          <button onClick={() => onSendEmail(invoice)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', border: 'none', borderRadius: 12, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
-            <Send size={14} /> Send via Email
-          </button>
+          <Button variant="primary" onClick={() => onSendEmail(invoice)}><Send size={14} /> Send via Email</Button>
           {invoice.status !== 'paid' && (
             <button onClick={makePayLink} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'transparent', color: 'var(--text)', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
               {payLink ? '✓ Link copied' : '💳 Payment link'}
@@ -248,9 +245,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
               <CheckCircle size={14} /> Mark as Paid
             </button>
           )}
-          <button onClick={() => onDelete(invoice)} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', border: '1.5px solid var(--danger-border)', borderRadius: 12, background: 'var(--danger-bg)', color: 'var(--danger)', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
-            <Trash2 size={14} /> Delete
-          </button>
+          <Button variant="danger" onClick={() => onDelete(invoice)} style={{ marginLeft: 'auto' }}><Trash2 size={14} /> Delete</Button>
         </div>
       </div>
     </div>
@@ -314,10 +309,8 @@ function SendInvoiceModal({ invoice, company, onClose, onSent }) {
           </div>
         </div>
         <div style={{ padding: '14px 26px 22px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} disabled={sending} style={{ padding: '10px 18px', border: '1.5px solid var(--border)', borderRadius: 11, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-          <button onClick={handleSend} disabled={sending} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', border: 'none', borderRadius: 11, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', fontWeight: 700, cursor: sending ? 'default' : 'pointer', fontSize: 13, opacity: sending ? 0.7 : 1 }}>
-            <Send size={14} /> {sending ? 'Sending…' : 'Send Invoice'}
-          </button>
+          <Button variant="secondary" onClick={onClose} disabled={sending}>Cancel</Button>
+          <Button variant="primary" onClick={handleSend} loading={sending}>Send Invoice</Button>
         </div>
       </div>
     </div>
@@ -467,7 +460,7 @@ export default function InvoicesPage() {
                   color: filterStatus === s ? '#a5b4fc' : 'var(--text-muted)',
                   fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
                 }}>
-                {s === 'all' ? 'All' : (STATUS_COLORS[s]?.label || s)}
+                {s === 'all' ? 'All' : invoiceStatusMeta(s).label}
               </button>
             ))}
           </div>
@@ -492,7 +485,6 @@ export default function InvoicesPage() {
               <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Create invoices from any lead profile.</p>
             </div>
           ) : filtered.map((inv, idx) => {
-            const sc = STATUS_COLORS[inv.status] || STATUS_COLORS.draft;
             return (
               <div key={inv.id}
                 style={{ display: 'grid', gridTemplateColumns: '50px 1fr 130px 120px 110px 200px', padding: '14px 20px', borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', transition: 'background 0.1s' }}
@@ -508,7 +500,7 @@ export default function InvoicesPage() {
                 <span style={{ fontSize: 13, color: 'var(--text-muted)', alignSelf: 'center' }}>{formatDate(inv.created_at) || '—'}</span>
                 <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', alignSelf: 'center' }}>{sym}{parseFloat(inv.total || 0).toFixed(2)}</span>
                 <div style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: sc.bg, color: sc.text }}>● {sc.label}</span>
+                  <Badge tone={invoiceStatusMeta(inv.status).tone} dot>{invoiceStatusMeta(inv.status).label}</Badge>
                   <button onClick={e => { e.stopPropagation(); setEmailInvoice(inv); }} title="Email invoice"
                     style={{ padding: 6, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: '#6366f1', cursor: 'pointer', display: 'flex' }}>
                     <Send size={13} />
