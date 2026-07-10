@@ -15,7 +15,7 @@ const VARIANT = {
   primary:   { bg: 'var(--accent)',  fg: 'var(--on-accent)', border: 'none',                    hoverBg: 'var(--accent-hover)' },
   secondary: { bg: 'var(--surface)', fg: 'var(--text)',      border: '1px solid var(--border)', hoverBg: 'var(--surface2)' },
   ghost:     { bg: 'transparent',    fg: 'var(--text)',      border: '1px solid transparent',   hoverBg: 'var(--surface2)' },
-  danger:    { bg: 'var(--danger)',  fg: 'var(--on-accent)', border: 'none',                    hoverBg: 'var(--danger)' },
+  danger:    { bg: 'var(--danger)',  fg: 'var(--on-accent)', border: 'none',                    hoverBg: 'color-mix(in srgb, var(--danger) 85%, black)' },
 };
 const SIZE = {
   sm: { padding: '6px 12px', fontSize: 'var(--fs-body-sm)' },
