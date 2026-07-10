@@ -3,6 +3,8 @@
 // turns `tone` into tokens. Keys are the canonical domain values used by logic/API/DB —
 // never change them here; change only presentation metadata. (PROP-002 Batch B, D3.)
 
+import { makeStatusLookup } from './statusRegistry';
+
 export const LEAD_STATUS = {
   'New':           { label: 'New',           tone: 'accent',  order: 1 },
   'Contacted':     { label: 'Contacted',     tone: 'info',    order: 2 },
@@ -12,8 +14,9 @@ export const LEAD_STATUS = {
   'Closed - Lost': { label: 'Closed - Lost', tone: 'danger',  order: 6 },
 };
 
-// Unknown/legacy keys degrade to a neutral badge (never blank, never a thrown color lookup).
-export const leadStatusMeta = (key) => LEAD_STATUS[key] || { label: key || 'New', tone: 'neutral', order: 99 };
+// Unknown/legacy keys (e.g. "Closed Won") → neutral Badge + humanized original value +
+// one-shot telemetry. Never crashes, never normalizes an unknown value to a valid status.
+export const leadStatusMeta = makeStatusLookup('lead-status', LEAD_STATUS);
 
 // Pipeline order (excludes the synthetic "All" filter, which surfaces own).
 export const LEAD_STATUS_KEYS = Object.keys(LEAD_STATUS);

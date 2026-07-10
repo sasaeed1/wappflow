@@ -74,5 +74,47 @@ check('leads-list: status badge renders via <Badge> + leadStatusMeta', () => {
   assert(/<Badge tone=\{leadStatusMeta\(lead\.status\)\.tone\} dot>/.test(leads));
 });
 
+// ── Registry fallback contract (unknown/legacy keys) ────────────────────────
+const registry = R('lib/statusRegistry.js');
+check('shared fallback contract exists (humanizeStatus + makeStatusLookup)', () => {
+  assert(/export function humanizeStatus/.test(registry) && /export function makeStatusLookup/.test(registry));
+});
+check('unknown key → NEUTRAL tone + humanized ORIGINAL value + unknown flag (no crash)', () => {
+  assert(/tone: 'neutral'/.test(registry), 'fallback not neutral');
+  assert(/label: humanizeStatus\(key\)/.test(registry), 'fallback does not humanize the original value');
+  assert(/unknown: true/.test(registry), 'fallback not flagged unknown');
+});
+check('fallback does NOT silently normalize (no "|| draft/New" masquerade)', () => {
+  assert(!/\|\| INVOICE_STATUS\.draft/.test(invReg), 'invoice fallback still normalizes unknown→Draft');
+  assert(!/\|\| \{ label: key \|\| 'New'/.test(leadReg), 'lead fallback still normalizes unknown→New');
+  assert(/makeStatusLookup\('invoice-status'/.test(invReg) && /makeStatusLookup\('lead-status'/.test(leadReg), 'registries not wired to shared fallback');
+});
+check('telemetry is one-shot + SSR-safe (no log spam, no server noise)', () => {
+  assert(/typeof window === 'undefined'/.test(registry), 'not SSR-guarded');
+  assert(/_warned\.has\(id\)/.test(registry) && /_warned\.add\(id\)/.test(registry), 'not deduped');
+});
+// LIVE humanizeStatus behavior (extracted from source — no ESM import needed).
+const humSrc = registry.match(/export function humanizeStatus\(key\) \{([\s\S]*?)\n\}/)[1];
+const humanizeStatus = new Function('key', humSrc);
+check('humanizeStatus: legacy values render readable, empty→Unknown', () => {
+  assert.strictEqual(humanizeStatus('closed_won'), 'Closed Won');
+  assert.strictEqual(humanizeStatus('CLOSED-WON'), 'CLOSED WON'); // already-caps preserved, separators → space
+  assert.strictEqual(humanizeStatus(''), 'Unknown');
+  assert.strictEqual(humanizeStatus(null), 'Unknown');
+  assert.strictEqual(humanizeStatus('needs_approval'), 'Needs Approval');
+});
+
+// ── Keys drive logic; labels are display-only (steps 6-7) ───────────────────
+check('filtering/sorting uses the stable KEY, not the display label', () => {
+  // invoices filters by the raw status key; .label appears only for display text.
+  assert(/statusFilter/.test(invoices) || /=== 'all'/.test(invoices), 'no key-based filter found');
+  assert(!/=== invoiceStatusMeta\([^)]*\)\.label/.test(invoices), 'a comparison uses the display label');
+  assert(!/=== leadStatusMeta\([^)]*\)\.label/.test(leads), 'a comparison uses the display label');
+});
+check('registry label is presentation-only (never used as an object key or query param)', () => {
+  // .label must not be interpolated into a key/param position — only rendered.
+  assert(!/\[[^\]]*Meta\([^)]*\)\.label\]/.test(invoices + leads), 'a display label is used as an object key');
+});
+
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
