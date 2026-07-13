@@ -19,6 +19,7 @@ import AddLeadModal from '../../components/AddLeadModal';
 import { useConfirm } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
 import Badge from '@/components/ui/Badge';
+import { toast } from '@/components/ui/Toast';
 import { leadStatusMeta } from '@/lib/leadStatus';
 import { UpgradeCta } from '@/components/PlanLock';
 import { Lock } from 'lucide-react';
@@ -587,6 +588,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
 
 // ── Merge Duplicates Modal ───────────────────────────────────────────────────
 function MergeDuplicatesModal({ onClose, onDone }) {
+  const confirm = useConfirm();
   const [groups, setGroups] = useState(null);
   const [busy, setBusy] = useState(null);   // group key currently merging
   const [primaryByKey, setPrimaryByKey] = useState({});
@@ -613,13 +615,18 @@ function MergeDuplicatesModal({ onClose, onDone }) {
     const warn = phones.size > 1
       ? `\n\n⚠ These leads have different phone numbers. After merging, the survivor keeps "${primary.customer_phone || '—'}". Future WhatsApp messages to the other number(s) will start a fresh lead.`
       : '';
-    if (!window.confirm(`Merge ${dupIds.length} duplicate${dupIds.length > 1 ? 's' : ''} into "${primary.customer_name || 'Unknown'}"?\n\nAll messages, notes, invoices, tags & history move to the survivor. The other${dupIds.length > 1 ? 's go' : ' goes'} to Trash (restorable for 90 days).${warn}`)) return;
+    const ok = await confirm({
+      title: `Merge ${dupIds.length} duplicate${dupIds.length > 1 ? 's' : ''} into "${primary.customer_name || 'Unknown'}"?`,
+      message: `All messages, notes, invoices, tags & history move to the survivor. The other${dupIds.length > 1 ? 's go' : ' goes'} to Trash (restorable for 90 days).${warn}`,
+      tone: 'danger', confirmLabel: 'Merge', requireTyped: 'MERGE',
+    });
+    if (!ok) return;
     setBusy(grp.key);
     try {
       await leadsAPI.merge(primaryId, dupIds);
       setGroups(gs => gs.filter(x => x.key !== grp.key));
       setDoneCount(c => c + 1);
-    } catch (e) { window.alert(e.response?.data?.error || 'Merge failed'); }
+    } catch (e) { toast.error('Merge failed', { description: e.response?.data?.error }); }
     finally { setBusy(null); }
   };
 

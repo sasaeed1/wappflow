@@ -65,7 +65,7 @@ export default function TrashPage() {
     const ok = await confirm({
       title: `Empty trash — delete all ${leads.length}?`,
       message: 'Every lead in the trash will be permanently deleted along with its messages, notes and invoices. This cannot be undone.',
-      confirmLabel: 'Empty trash', tone: 'danger',
+      confirmLabel: 'Empty trash', tone: 'danger', requireTyped: 'DELETE',
     });
     if (!ok) return;
     setEmptying(true);

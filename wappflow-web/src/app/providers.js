@@ -1,6 +1,7 @@
 'use client';
 
 import { ConfirmProvider } from '@/lib/confirm';
+import { ToastViewport } from '@/components/ui/Toast';
 import { SoundProvider } from '@/lib/sounds';
 import { PlanProvider } from '@/lib/plan';
 import { PlanLockStyles } from '@/components/PlanLock';
@@ -15,6 +16,7 @@ export default function Providers({ children }) {
           <PlanLockStyles />
           <UsageWarnings />
           <ImpersonationBanner />
+          <ToastViewport />
           {children}
         </PlanProvider>
       </SoundProvider>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchBookingManage, rescheduleBookingPublic, cancelBookingPublic } from '../../../../lib/api';
+import { useConfirm } from '@/lib/confirm';
 
 const fmtDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const fmtTime = (iso) => new Date(iso.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -10,6 +11,7 @@ const fmtFull = (iso) => new Date(iso.replace(' ', 'T')).toLocaleString('en-US',
 
 export default function BookingManagePage() {
   const { token } = useParams();
+  const confirm = useConfirm();
   const [data, setData] = useState(null);
   const [state, setState] = useState('loading');
   const [mode, setMode] = useState(null); // null | reschedule
@@ -25,7 +27,12 @@ export default function BookingManagePage() {
   const activeDay = useMemo(() => days.find(d => d.date === day) || days[0], [days, day]);
 
   const reschedule = async () => { if (!time) return; setBusy(true); try { await rescheduleBookingPublic(token, time); setMsg('Rescheduled — see you then!'); setMode(null); load(); } catch (e) { setMsg(e.message || 'Failed'); } finally { setBusy(false); } };
-  const cancel = async () => { if (!window.confirm('Cancel this booking?')) return; setBusy(true); try { await cancelBookingPublic(token); setMsg('Your booking has been cancelled.'); load(); } finally { setBusy(false); } };
+  const cancel = async () => {
+    const ok = await confirm({ title: 'Cancel this booking?', message: 'Your reserved time slot will be released.', tone: 'danger', confirmLabel: 'Cancel booking', cancelLabel: 'Keep booking', requireTyped: 'CANCEL' });
+    if (!ok) return;
+    setBusy(true);
+    try { await cancelBookingPublic(token); setMsg('Your booking has been cancelled.'); load(); } finally { setBusy(false); }
+  };
 
   if (state === 'loading') return <div style={c}><div style={sp} /><style>{`@keyframes csp{to{transform:rotate(360deg)}}`}</style></div>;
   if (state !== 'ok') return <div style={{ ...c, flexDirection: 'column', gap: 8 }}><h1 style={{ margin: 0, fontSize: 24 }}>Booking not found</h1><p style={{ color: '#70707a' }}>This link is incorrect or expired.</p></div>;

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { csAPI, leadsAPI } from '../../lib/api';
 import ContractsStudioShell from '../../components/ContractsStudioShell';
+import { useConfirm } from '@/lib/confirm';
 
 const TYPES = ['contract', 'proposal', 'quote', 'nda', 'sow', 'retainer', 'agreement'];
 const STATUS = {
@@ -26,6 +27,7 @@ const fmtMoney = (n) => { if (!n) return '0'; try { return new Intl.NumberFormat
 
 export default function ContractsStudioPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [docs, setDocs] = useState([]);
   const [ov, setOv] = useState({ byStatus: {}, activity: [], revenue: 0, total: 0 });
   const [loading, setLoading] = useState(true);
@@ -113,7 +115,7 @@ export default function ContractsStudioPage() {
                         <div style={{ fontSize: 12.5, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{d.type}{d.client_name ? ` · ${d.client_name}` : ''} · {d.updated_at ? `updated ${fmtDate(d.updated_at)}` : ''}</div>
                       </div>
                       <Pill s={d.status} />
-                      <button onClick={async (e) => { e.stopPropagation(); if (window.confirm(`Delete "${d.title}"?`)) { try { await csAPI.remove(d.id); load(); } catch {} } }} title="Delete" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={15} /></button>
+                      <button onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: `Delete "${d.title}"?`, message: 'The contract and its signing links will be permanently deleted.', tone: 'danger', confirmLabel: 'Delete', requireTyped: 'DELETE' }); if (ok) { try { await csAPI.remove(d.id); load(); } catch {} } }} title="Delete" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={15} /></button>
                     </div>
                   ))}
                   {shown.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 14, padding: '20px 0' }}>No documents match.</p>}

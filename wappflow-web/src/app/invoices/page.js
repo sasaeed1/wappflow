@@ -13,6 +13,8 @@ import { useConfirm } from '@/lib/confirm';
 import { formatDate } from '../../lib/datetime';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
+import Modal from '@/components/ui/Modal';
+import { toast } from '@/components/ui/Toast';
 import { invoiceStatusMeta } from '@/lib/invoiceStatus';
 
 // Invoice status presentation now lives in the shared registry (lib/invoiceStatus.js) rendered
@@ -132,8 +134,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}>
-      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 24, boxShadow: '0 40px 100px rgba(0,0,0,0.4)', maxWidth: 720, width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border)' }}>
+    <Modal open onClose={onClose} labelledBy="inv-view-title" hideClose padded={false} size="lg" style={{ maxWidth: 720 }}>
 
         <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -141,7 +142,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
               <FileText size={22} color="#6366f1" />
             </div>
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)', margin: 0 }}>{invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : `Invoice #${invoice.id}`}</h2>
+              <h2 id="inv-view-title" style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)', margin: 0 }}>{invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : `Invoice #${invoice.id}`}</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                 <Badge tone={invoiceStatusMeta(invoice.status).tone} dot>{invoiceStatusMeta(invoice.status).label}</Badge>
                 {invoice.customer_name && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{invoice.customer_name}</span>}
@@ -247,8 +248,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
           )}
           <Button variant="danger" onClick={() => onDelete(invoice)} style={{ marginLeft: 'auto' }}><Trash2 size={14} /> Delete</Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -277,14 +277,13 @@ function SendInvoiceModal({ invoice, company, onClose, onSent }) {
   const field = { width: '100%', padding: '10px 13px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13.5, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}>
-      <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 22, boxShadow: '0 40px 100px rgba(0,0,0,0.4)', maxWidth: 520, width: '100%', border: '1px solid var(--border)' }}>
+    <Modal open onClose={onClose} labelledBy="send-inv-title" hideClose padded={false} size="sm" style={{ maxWidth: 520 }} dismissable={!sending}>
         <div style={{ padding: '22px 26px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 13 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Mail size={20} color="#6366f1" />
           </div>
           <div style={{ flex: 1 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Email Invoice</h3>
+            <h3 id="send-inv-title" style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Email Invoice</h3>
             <p style={{ fontSize: 12.5, color: 'var(--text-dim)', margin: 0 }}>{invoice.invoice_number || `#${invoice.id}`} · A premium invoice will be sent.</p>
           </div>
           <button onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 7, cursor: 'pointer', color: 'var(--text-muted)' }}>
@@ -312,8 +311,7 @@ function SendInvoiceModal({ invoice, company, onClose, onSent }) {
           <Button variant="secondary" onClick={onClose} disabled={sending}>Cancel</Button>
           <Button variant="primary" onClick={handleSend} loading={sending}>Send Invoice</Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -327,7 +325,6 @@ export default function InvoicesPage() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [viewInvoice, setViewInvoice] = useState(null);
   const [emailInvoice, setEmailInvoice] = useState(null);
-  const [toast, setToast] = useState('');
 
   useEffect(() => {
     if (!localStorage.getItem('token')) { router.push('/login'); return; }
@@ -340,16 +337,14 @@ export default function InvoicesPage() {
     }).finally(() => setLoading(false));
   }, []);
 
-  const flashToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3200); };
-
   const handleMarkPaid = async (id) => {
     try {
       // Ledger truth: settles via the payments rail (records who/when/how), not a raw status write.
       await paymentsAPI.markInvoicePaid(id);
       setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'paid' } : inv));
       if (viewInvoice?.id === id) setViewInvoice(prev => ({ ...prev, status: 'paid' }));
-      flashToast('Invoice marked as paid.');
-    } catch (e) { await confirm({ title: 'Could not update invoice', message: e.message, alertOnly: true, tone: 'danger' }); }
+      toast.success('Invoice marked as paid.');
+    } catch (e) { toast.error('Could not update invoice', { description: e.message }); }
   };
 
   const handleDelete = async (inv) => {
@@ -363,8 +358,8 @@ export default function InvoicesPage() {
       await invoicesAPI.delete(inv.id);
       setInvoices(prev => prev.filter(i => i.id !== inv.id));
       if (viewInvoice?.id === inv.id) setViewInvoice(null);
-      flashToast('Invoice deleted.');
-    } catch (e) { await confirm({ title: 'Could not delete invoice', message: e.message, alertOnly: true, tone: 'danger' }); }
+      toast.success('Invoice deleted.');
+    } catch (e) { toast.error('Could not delete invoice', { description: e.message }); }
   };
 
   const handleEmailSent = () => {
@@ -372,7 +367,7 @@ export default function InvoicesPage() {
     setInvoices(prev => prev.map(i => (i.id === id && i.status === 'draft') ? { ...i, status: 'pending' } : i));
     if (viewInvoice?.id === id && viewInvoice.status === 'draft') setViewInvoice(p => ({ ...p, status: 'pending' }));
     setEmailInvoice(null);
-    flashToast('Invoice emailed to the customer.');
+    toast.success('Invoice emailed to the customer.');
   };
 
   const filtered = invoices.filter(inv => {
@@ -407,13 +402,6 @@ export default function InvoicesPage() {
             onSent={handleEmailSent}
           />
         )}
-        {toast && (
-          <div style={{ position: 'fixed', top: 20, right: 24, zIndex: 9999, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 12, padding: '12px 18px', boxShadow: '0 12px 40px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', gap: 9 }}>
-            <CheckCircle size={16} color="#10b981" />
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{toast}</span>
-          </div>
-        )}
-
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: 0, letterSpacing: '-0.5px' }}>Invoices</h1>

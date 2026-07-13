@@ -1,7 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { X, User, Phone, DollarSign, MessageSquare, Tag } from 'lucide-react';
+import { User, Phone, DollarSign, MessageSquare, Tag } from 'lucide-react';
+import Modal from '@/components/ui/Modal';
+import Button from '@/components/ui/Button';
+import { LEAD_STATUS_KEYS, leadStatusMeta } from '@/lib/leadStatus';
+
+// Batch C migration: was the app's only Tailwind modal — a hardcoded #0f1117 dark slab
+// that ignored light mode and had no focus trap/Escape/aria. Now a Modal-primitive
+// adopter with token-driven fields; status options come from the lead-status registry
+// (single source of keys, D3) instead of a duplicated hardcoded list.
+
+const label = {
+  fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase',
+  letterSpacing: '0.5px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6,
+};
+const field = {
+  width: '100%', padding: '10px 14px', background: 'var(--surface2)',
+  border: '1.5px solid var(--border)', borderRadius: 'var(--radius)',
+  color: 'var(--text)', fontSize: 13.5, fontFamily: 'inherit', boxSizing: 'border-box',
+};
 
 export default function AddLeadModal({ isOpen, onClose, onLeadAdded }) {
   const [formData, setFormData] = useState({
@@ -35,122 +53,88 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded }) {
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-md" onClick={onClose} />
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-lg">
-          {/* Glow effect */}
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-violet-600 to-cyan-600 rounded-2xl blur opacity-30" />
-          <div className="relative bg-[#0f1117] border border-white/10 rounded-2xl shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
-              <div>
-                <h2 className="text-xl font-bold text-white">New Lead</h2>
-                <p className="text-sm text-gray-400 mt-0.5">Add a contact to your pipeline</p>
-              </div>
-              <button onClick={onClose} className="p-2 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-all">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="New Lead"
+      description="Add a contact to your pipeline"
+      size="sm"
+      style={{ maxWidth: 512 }}
+      dismissable={!loading}
+    >
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {error && (
+          <div style={{ padding: '10px 13px', background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)', borderRadius: 'var(--radius)', color: 'var(--danger-fg)', fontSize: 12.5 }}>
+            {error}
+          </div>
+        )}
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-              {error && (
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-                  <p className="text-red-400 text-sm">{error}</p>
-                </div>
-              )}
+        <div>
+          <label style={label}><User size={13} /> Customer Name</label>
+          <input
+            type="text"
+            data-autofocus
+            value={formData.customer_name}
+            onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+            placeholder="Ahmed Khan"
+            style={field}
+          />
+        </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5" /> Customer Name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.customer_name}
-                    onChange={(e) => setFormData({...formData, customer_name: e.target.value})}
-                    placeholder="Ahmed Khan"
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-violet-500 focus:bg-white/8 transition-all text-sm"
-                  />
-                </div>
+        <div>
+          <label style={label}><Phone size={13} /> Phone Number *</label>
+          <input
+            type="tel"
+            value={formData.customer_phone}
+            onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+            placeholder="+92 300 1234567"
+            required
+            style={field}
+          />
+        </div>
 
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5" /> Phone Number *
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData.customer_phone}
-                    onChange={(e) => setFormData({...formData, customer_phone: e.target.value})}
-                    placeholder="+92 300 1234567"
-                    required
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 focus:bg-white/8 transition-all text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5" /> Status
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({...formData, status: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-violet-500 transition-all text-sm"
-                  >
-                    <option value="New" className="bg-[#0f1117]">New</option>
-                    <option value="Contacted" className="bg-[#0f1117]">Contacted</option>
-                    <option value="Interested" className="bg-[#0f1117]">Interested</option>
-                    <option value="Negotiating" className="bg-[#0f1117]">Negotiating</option>
-                    <option value="Closed - Won" className="bg-[#0f1117]">Closed - Won</option>
-                    <option value="Closed - Lost" className="bg-[#0f1117]">Closed - Lost</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5" /> Value (Rs)
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.estimated_value}
-                    onChange={(e) => setFormData({...formData, estimated_value: e.target.value})}
-                    placeholder="25,000"
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-green-500 focus:bg-white/8 transition-all text-sm"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5" /> First Message
-                  </label>
-                  <textarea
-                    value={formData.first_message}
-                    onChange={(e) => setFormData({...formData, first_message: e.target.value})}
-                    placeholder="Hi! I'm interested in your products..."
-                    rows="3"
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-violet-500 focus:bg-white/8 transition-all text-sm resize-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button type="button" onClick={onClose}
-                  className="px-5 py-2.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl font-medium transition-all text-sm">
-                  Cancel
-                </button>
-                <button type="submit" disabled={loading}
-                  className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-cyan-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-violet-500/25 transition-all disabled:opacity-50 text-sm">
-                  {loading ? 'Creating...' : 'Create Lead'}
-                </button>
-              </div>
-            </form>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div>
+            <label style={label}><Tag size={13} /> Status</label>
+            <select
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              style={field}
+            >
+              {LEAD_STATUS_KEYS.map((key) => (
+                <option key={key} value={key}>{leadStatusMeta(key).label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={label}><DollarSign size={13} /> Value (Rs)</label>
+            <input
+              type="number"
+              value={formData.estimated_value}
+              onChange={(e) => setFormData({ ...formData, estimated_value: e.target.value })}
+              placeholder="25,000"
+              style={field}
+            />
           </div>
         </div>
-      </div>
-    </div>
+
+        <div>
+          <label style={label}><MessageSquare size={13} /> First Message</label>
+          <textarea
+            value={formData.first_message}
+            onChange={(e) => setFormData({ ...formData, first_message: e.target.value })}
+            placeholder="Hi! I'm interested in your products..."
+            rows={3}
+            style={{ ...field, resize: 'none', lineHeight: 1.5 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button type="submit" variant="primary" loading={loading}>Create Lead</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

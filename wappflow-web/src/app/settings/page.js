@@ -16,6 +16,7 @@ import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, team
 import { Send as SendIcon } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
+import { toast } from '@/components/ui/Toast';
 import { useSound, SOUND_KINDS } from '@/lib/sounds';
 import { usePlan, nextPlanLabel, formatMoney } from '@/lib/plan';
 import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
@@ -70,22 +71,6 @@ const TABS = [
   { id: 'ai_command', label: 'AI Command', icon: Sparkles, color: '#8b5cf6' },
   { id: 'password', label: 'Change Password', icon: Lock, color: '#ef4444' },
 ];
-
-function Toast({ message, type = 'success' }) {
-  return (
-    <div style={{
-      position: 'fixed', top: 20, right: 24, zIndex: 9999,
-      background: type === 'error' ? '#ef4444' : '#111827',
-      color: 'white', padding: '13px 20px', borderRadius: 14, fontSize: 13, fontWeight: 600,
-      display: 'flex', alignItems: 'center', gap: 10,
-      boxShadow: '0 12px 40px rgba(0,0,0,0.25)', maxWidth: 360,
-      animation: 'slideIn 0.3s ease'
-    }}>
-      {type === 'error' ? <AlertCircle size={16} /> : <CheckCircle size={16} color="#10b981" />}
-      {message}
-    </div>
-  );
-}
 
 function SectionCard({ icon: Icon, title, subtitle, color, children }) {
   return (
@@ -2359,7 +2344,6 @@ export default function SettingsPage() {
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
 
   // Resolve whether the active tab is gated on the current plan.
   const activeGate = TAB_GATING[activeTab];
@@ -2391,9 +2375,11 @@ export default function SettingsPage() {
     } catch { } finally { setLoading(false); }
   };
 
+  // Thin adapter over the shared Toast engine — every tab receives this as a prop.
   const showToast = (msg, type = 'success') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
+    if (type === 'error') toast.error(msg);
+    else if (type === 'info') toast.info(msg);
+    else toast.success(msg);
   };
 
   const handleSaveCompany = async () => {
@@ -2412,7 +2398,6 @@ export default function SettingsPage() {
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
 
-      {toast && <Toast message={toast.msg} type={toast.type} />}
 
 
 

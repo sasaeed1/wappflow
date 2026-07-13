@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Trash2, RotateCcw, AlertTriangle, Undo2 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../lib/api';
 import NavBar from '../../../components/StudioShell';
+import { useConfirm } from '@/lib/confirm';
 
 const daysLeft = (deletedAt) => {
   try { const elapsed = (Date.now() - new Date(deletedAt + 'Z').getTime()) / 86400000; return Math.max(0, Math.ceil(30 - elapsed)); } catch { return 30; }
@@ -13,6 +14,7 @@ const daysLeft = (deletedAt) => {
 
 export default function StudioTrashPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(null);
   const [toast, setToast] = useState(null);
@@ -34,7 +36,12 @@ export default function StudioTrashPage() {
     setBusy(null);
   };
   const purge = async (a) => {
-    if (!window.confirm('Delete this permanently? This cannot be undone.')) return;
+    const ok = await confirm({
+      title: 'Delete permanently?',
+      message: 'This asset will be permanently deleted. This cannot be undone.',
+      tone: 'danger', confirmLabel: 'Delete forever', requireTyped: 'DELETE',
+    });
+    if (!ok) return;
     setBusy(a.id);
     try { await mediaAPI.purgeAsset(a.id); setItems(prev => prev.filter(x => x.id !== a.id)); say('Permanently deleted'); }
     catch { say('Could not delete'); }
