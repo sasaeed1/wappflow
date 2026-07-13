@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, Calendar, Video, Copy, Check, ExternalLink, Loader2 } from 'lucide-react';
-import { useConfirm } from '@/lib/confirm';
+import { Calendar, Video, Copy, Check, ExternalLink, Loader2 } from 'lucide-react';
+import Modal from '@/components/ui/Modal';
+import { toast } from '@/components/ui/Toast';
 import api from '@/lib/api';
 
 /**
@@ -11,9 +12,13 @@ import api from '@/lib/api';
  * Modes:
  *   - Google Calendar (creates real event with Google Meet link, sends invite to lead's email)
  *   - Calendly (sends the workspace's Calendly URL to the lead)
+ *
+ * Batch C migration: the styled-jsx overlay sat at z-index 9998, ABOVE the confirm
+ * dialog (1300) — its own success/error dialogs rendered invisibly underneath while
+ * capturing Enter/Escape. Now a Modal-primitive adopter on --z-modal; outcome notices
+ * are toasts; the hardcoded #14161f palette is tokenized so it themes in light mode.
  */
 export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled }) {
-  const confirm = useConfirm();
   const [tab, setTab] = useState('google'); // google | calendly
   const [integrations, setIntegrations] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -48,12 +53,7 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
   async function handleGoogleSchedule(e) {
     e.preventDefault();
     if (!googleConnected) {
-      await confirm({
-        title: 'Google Calendar not connected',
-        message: 'Connect your Google Calendar in Settings → Integrations first.',
-        alertOnly: true,
-        tone: 'warning',
-      });
+      toast.warning('Google Calendar not connected', { description: 'Connect your Google Calendar in Settings → Integrations first.' });
       return;
     }
     setLoading(true);
@@ -68,21 +68,13 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
         notes: form.notes,
         send_invite: form.sendInvite,
       });
-      await confirm({
-        title: 'Meeting scheduled',
-        message: 'A Google Meet event has been created and added to your calendar.' + (form.sendInvite && lead.email ? ` Invite sent to ${lead.email}.` : ''),
-        alertOnly: true,
-        tone: 'success',
+      toast.success('Meeting scheduled', {
+        description: 'A Google Meet event has been added to your calendar.' + (form.sendInvite && lead.email ? ` Invite sent to ${lead.email}.` : ''),
       });
       onScheduled?.(res.data);
       onClose();
     } catch (err) {
-      await confirm({
-        title: 'Could not schedule',
-        message: err.response?.data?.error || err.message || 'Unknown error',
-        alertOnly: true,
-        tone: 'danger',
-      });
+      toast.error('Could not schedule', { description: err.response?.data?.error || err.message || 'Unknown error' });
     } finally {
       setLoading(false);
     }
@@ -105,34 +97,22 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
         body: `Hi ${lead.name || 'there'}! Pick a time that works for you: ${calendlyUrl}`,
         channel: 'whatsapp',
       });
-      await confirm({
-        title: 'Sent',
-        message: 'Calendly link sent to the lead on WhatsApp.',
-        alertOnly: true,
-        tone: 'success',
-      });
+      toast.success('Sent', { description: 'Calendly link sent to the lead on WhatsApp.' });
       onClose();
     } catch (err) {
-      await confirm({
-        title: 'Could not send',
-        message: err.response?.data?.error || 'Send failed',
-        alertOnly: true,
-        tone: 'danger',
-      });
+      toast.error('Could not send', { description: err.response?.data?.error || 'Send failed' });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="sm-overlay" onClick={onClose}>
-      <div className="sm-card" onClick={(e) => e.stopPropagation()}>
-        <button className="sm-close" onClick={onClose}><X size={16} /></button>
-
+    <Modal open onClose={onClose} labelledBy="sm-title" size="sm" style={{ maxWidth: 540 }} dismissable={!loading}>
+      <div className="sm-body">
         <div className="sm-head">
           <div className="sm-icon"><Calendar size={20} /></div>
           <div>
-            <div className="sm-title">Schedule a meeting</div>
+            <div className="sm-title" id="sm-title">Schedule a meeting</div>
             <div className="sm-sub">{lead?.name ? `with ${lead.name}` : 'with this lead'}</div>
           </div>
         </div>
@@ -158,6 +138,7 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
                 <label>Title</label>
                 <input
                   type="text"
+                  data-autofocus
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   required
@@ -258,98 +239,59 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
         )}
 
         <style>{`
-          .sm-overlay {
-            position: fixed; inset: 0; z-index: 9998;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(8px);
-            display: flex; align-items: center; justify-content: center;
-            padding: 20px;
-            animation: sm-fade 0.15s ease-out;
-          }
-          @keyframes sm-fade { from { opacity: 0; } to { opacity: 1; } }
-
-          .sm-card {
-            position: relative;
-            width: 100%; max-width: 540px;
-            background: #14161f;
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 16px;
-            padding: 28px;
-            color: #f3f4f6;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-            box-shadow: 0 30px 80px rgba(0,0,0,0.5);
-            animation: sm-pop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-          }
-          @keyframes sm-pop {
-            from { opacity: 0; transform: scale(0.94); }
-            to { opacity: 1; transform: scale(1); }
-          }
-          .sm-close {
-            position: absolute; top: 14px; right: 14px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: #9ca3af;
-            width: 28px; height: 28px;
-            border-radius: 8px;
-            display: grid; place-items: center;
-            cursor: pointer;
-          }
-          .sm-close:hover { background: rgba(255,255,255,0.1); color: #f3f4f6; }
-
           .sm-head { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
           .sm-icon {
             width: 40px; height: 40px;
             border-radius: 10px;
-            background: linear-gradient(135deg, #6366f1, #a855f7);
-            color: #fff;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            color: var(--on-accent);
             display: grid; place-items: center;
           }
-          .sm-title { font-size: 18px; font-weight: 700; color: #fff; }
-          .sm-sub { font-size: 13px; color: #9ca3af; margin-top: 2px; }
+          .sm-title { font-size: 18px; font-weight: 700; color: var(--text); }
+          .sm-sub { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
 
-          .sm-tabs { display: flex; gap: 4px; padding: 4px; background: rgba(255,255,255,0.04); border-radius: 10px; margin-bottom: 18px; }
+          .sm-tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface2); border-radius: 10px; margin-bottom: 18px; }
           .sm-tab {
             flex: 1;
             display: inline-flex; align-items: center; justify-content: center; gap: 6px;
             padding: 9px 12px;
             background: none; border: none;
-            color: #9ca3af; font-size: 13px; font-weight: 600;
+            color: var(--text-dim); font-size: 13px; font-weight: 600;
             border-radius: 7px;
             cursor: pointer;
             font-family: inherit;
             transition: all 0.15s;
           }
-          .sm-tab.on { background: rgba(99,102,241,0.18); color: #c7d2fe; box-shadow: inset 0 0 0 1px rgba(99,102,241,0.3); }
+          .sm-tab.on { background: var(--accent-bg); color: var(--accent-fg); box-shadow: inset 0 0 0 1px var(--accent-light); }
 
           .sm-form { display: flex; flex-direction: column; gap: 12px; }
           .sm-row { display: flex; gap: 10px; }
           .sm-row .sm-field { flex: 1; min-width: 0; }
           .sm-field { display: flex; flex-direction: column; gap: 5px; }
-          .sm-field label { font-size: 12px; font-weight: 600; color: #b5bac9; text-transform: uppercase; letter-spacing: 0.04em; }
+          .sm-field label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
           .sm-field input, .sm-field select, .sm-field textarea {
             padding: 10px 12px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.1);
+            background: var(--surface2);
+            border: 1px solid var(--border);
             border-radius: 9px;
-            color: #f3f4f6;
+            color: var(--text);
             font-size: 14px;
             font-family: inherit;
             outline: none;
             transition: all 0.15s;
           }
           .sm-field input:focus, .sm-field select:focus, .sm-field textarea:focus {
-            border-color: #818cf8;
-            background: rgba(99,102,241,0.06);
-            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-light);
           }
-          .sm-checkbox { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #b5bac9; }
-          .sm-checkbox strong { color: #fff; }
+          .sm-checkbox { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+          .sm-checkbox strong { color: var(--text); }
 
           .sm-submit {
             margin-top: 6px;
             padding: 13px;
-            background: linear-gradient(135deg, #6366f1, #a855f7);
-            color: #fff;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            color: var(--on-accent);
             border: none;
             border-radius: 10px;
             font-size: 14px; font-weight: 700;
@@ -357,33 +299,33 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
             display: flex; align-items: center; justify-content: center; gap: 8px;
             font-family: inherit;
             transition: all 0.15s;
-            box-shadow: 0 6px 18px rgba(99,102,241,0.4);
+            box-shadow: var(--elev-1);
           }
-          .sm-submit:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(99,102,241,0.5); }
+          .sm-submit:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--elev-2); }
           .sm-submit:disabled { opacity: 0.6; cursor: not-allowed; }
           .sm-spin { animation: sm-spin 1s linear infinite; }
           @keyframes sm-spin { to { transform: rotate(360deg); } }
 
           .sm-warn {
             padding: 10px 14px;
-            background: rgba(245,158,11,0.08);
-            border: 1px solid rgba(245,158,11,0.25);
-            color: #fde68a;
+            background: var(--warning-bg);
+            border: 1px solid var(--warning-border);
+            color: var(--warning-fg);
             border-radius: 9px;
             font-size: 13px;
             margin-bottom: 14px;
           }
-          .sm-warn a { color: #fbbf24; font-weight: 600; }
+          .sm-warn a { color: var(--warning-fg); font-weight: 600; }
 
           .sm-cly { display: flex; flex-direction: column; gap: 16px; }
           .sm-cly-url {
             padding: 14px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
+            background: var(--surface2);
+            border: 1px solid var(--border);
             border-radius: 10px;
           }
-          .sm-cly-url span { display: block; font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-          .sm-cly-url code { font-size: 13px; color: #c7d2fe; word-break: break-all; }
+          .sm-cly-url span { display: block; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+          .sm-cly-url code { font-size: 13px; color: var(--accent-fg); word-break: break-all; }
           .sm-cly-actions { display: flex; gap: 8px; flex-wrap: wrap; }
           .sm-btn {
             display: inline-flex; align-items: center; gap: 6px;
@@ -396,21 +338,21 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
             transition: all 0.15s;
           }
           .sm-btn-ghost {
-            background: rgba(255,255,255,0.06);
-            color: #e7eaf3;
-            border: 1px solid rgba(255,255,255,0.1);
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
             text-decoration: none;
           }
-          .sm-btn-ghost:hover { background: rgba(255,255,255,0.1); }
+          .sm-btn-ghost:hover { background: var(--border); }
           .sm-btn-primary {
-            background: linear-gradient(135deg, #6366f1, #a855f7);
-            color: #fff;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            color: var(--on-accent);
           }
           .sm-empty { text-align: center; padding: 24px; }
-          .sm-empty p { color: #9ca3af; margin: 0 0 8px; }
-          .sm-link { color: #818cf8; font-weight: 600; }
+          .sm-empty p { color: var(--text-dim); margin: 0 0 8px; }
+          .sm-link { color: var(--accent); font-weight: 600; }
         `}</style>
       </div>
-    </div>
+    </Modal>
   );
 }

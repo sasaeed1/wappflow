@@ -902,3 +902,77 @@ during review (`hoverBg` was `=== bg`).
 caption (a label-only registry edit would not propagate to tabs); `statusColors` inside the invoice
 print template stays local (print document ≠ app UI, keyed on the raw key); Mark-as-Paid per above;
 remaining lead-status maps + contract/role/plan registries migrate when their surfaces are touched.
+
+### Batch C — overlay infrastructure: Modal + Toast + confirm tier — IMPLEMENTED
+
+Branch `design-system/batch-c-modal-toast`. Owner approval 2026-07-13 scoped this to ONE reusable
+overlay architecture (not lots of components): Modal primitive, one Toast engine, approved confirm
+migrations — no Drawers/Popovers/Palette/Overlay-Manager. Exact inventory first
+(`proposals/PROP-002-batch-c-inventory.md`, 188 sites: 40 overlays / 36 toasts / 50 native dialogs /
+62 z-index owners; headline finding: ZERO hand-rolled overlays had focus trap, focus restore,
+scroll-lock, or dialog aria).
+
+- **`components/ui/overlay.js` — the shared foundation** (the "future Overlay Manager" seam,
+  deliberately manager-free: no context, no controller — five composable pieces): SSR-safe `Portal`;
+  an overlay **stack registry** (registration order = stacking; answers "am I top?" so Escape and
+  backdrop-close peel ONE overlay at a time); `useEscape`; **reference-counted** `useScrollLock`
+  (nested overlays don't fight over `body.overflow`); `useFocusTrap` (Tab/Shift+Tab cycle +
+  `[data-autofocus]` initial target + focus restore to opener; takes the container *element*, not a
+  ref — Portal children mount one effect-tick late, a plain ref is still null when the trap engages).
+  Future Drawer/Popover/Tooltip/Palette/Dropdown compose these same hooks.
+- **`components/ui/Modal.js`** — centered-card dialog primitive: `role="dialog"`, `aria-modal`,
+  labelledBy/describedBy (auto from `title`/`description` or explicit ids), portal, `--z-modal`,
+  motion tokens, sm/md/lg, `padded={false}` for surfaces with their own internal chrome,
+  **`dismissable={false}`** (disables backdrop + Escape + hides X — live calls, wizards, destructive
+  flows). **`useModal()`** lifecycle hook (open/close/toggle) with the **promise seam**: `open()`
+  returns a Promise resolved by `close('confirmed'|'cancelled')` or dismissal → `'dismissed'`.
+- **`components/ui/Toast.js`** — ONE engine: module-level store + importable `toast` API
+  (`toast.show({title, description, tone, action, duration})`; success/error/warning/info are thin
+  delegates). `<ToastViewport />` mounted once in `app/providers.js`: **bottom-right** (top-right is
+  what caused the invoices toast-over-modal-close bug), `--z-toast`, `aria-live=polite` region,
+  `role=alert` for errors only, queue (max 4 visible, rest surface as slots free), pause-on-hover,
+  keyboard-dismissable, token-driven.
+- **`lib/confirm.js`** — rebased onto the foundation (portal + stack + scroll-lock + a real focus
+  trap: previously Tab escaped the dialog into the page). `confirm()` API unchanged for all existing
+  consumers. New **`requireTyped: 'PHRASE'`** tier: exact-match input gates the confirm button AND
+  the Enter key; case-sensitive; cancel always available.
+- **Overlay migrations (approved adopters):** invoices ×2 (dead backdrops z 300/320 → Modal;
+  the z-9999 toast inversion eliminated), team ×4 (invite form + result, role, permissions),
+  AddLeadModal (the app's only Tailwind modal — hardcoded `#0f1117` slab that ignored light mode →
+  tokenized Modal; status options now come from the lead-status registry, D3), ScheduleMeetingModal
+  (styled-jsx z-9998 overlay that buried its own success/error dialogs → Modal; hardcoded palette
+  tokenized; outcome notices → toasts).
+- **Toast migrations:** invoices (local z-9999), team (local component, z 9999), settings (local
+  component, z 9999 — `showToast(msg, type)` kept as a thin adapter over the engine because 12 tab
+  components consume it as a prop; zero call-site churn, zero duplicate logic). Alert-style failure
+  notices on those surfaces → `toast.error`.
+- **Typed confirmations (owner list):** Merge Leads → `MERGE`; Empty Trash (leads) → `DELETE`;
+  Delete Contract → `DELETE`; Studio Trash permanent delete → `DELETE`; Public Booking cancel →
+  `CANCEL`. **Token Management (d/[token]): no native dialog exists in the file — nothing to
+  migrate** (recorded). Flag for review: typed `CANCEL` on the PUBLIC booking page is heavy ceremony
+  for an end client — implemented as approved, one prop to soften if desired.
+
+**Verification:** verify-batchC **19/19** (foundation shape, manager-free architecture, Modal a11y +
+dismissable gating, useModal promise seam, single-engine toast + delegating wrappers, viewport
+mounted once, requireTyped gates, per-surface migration proofs, scoped grep gates, no numeric
+z-index in primitives) · **real-browser interaction tests** (Next dev in the worktree + lab page,
+real keyboard): initial focus into dialog, 7-focusable Tab cycle wraps, Shift+Tab reverse-wraps,
+Escape closes + restores focus to opener + resolves `'dismissed'`, nested modals stack on ONE
+`--z-modal` rung by DOM order and Escape peels one at a time, ref-counted scroll lock holds across
+nesting, `dismissable={false}` survives backdrop + Escape, confirm-inside-modal stacks and Escape
+closes only the confirm, toast region aria-live/roles/queue(7→4)/action-dismiss verified, typed tier:
+Enter inert until exact phrase (case-sensitive), then Enter confirms · light/dark computed-style
+flip verified on modal + backdrop · `next build` ✓ · all 8 migrated routes compile 200.
+
+**Interaction-test caveats:** browser-driver screenshots timed out (long-standing environment quirk)
+— visual evidence is computed-style numeric proofs, consistent with Batches A/B; the lab page was a
+worktree-only scratch harness (deleted before commit — the repo still has no committed interaction
+test infra; adopting a test framework needs its own proposal).
+
+**Known/accepted (recorded, NOT migrated — approved-list discipline):** leads-list saved-view
+`window.prompt` + move-to-clients `window.confirm`; all remaining overlays/toasts/dialogs in the
+inventory (leads-list ×3+bulk, leads/[id] ×3+lightbox, chat, dashboard, contracts builder ×9, studio
+family, HuddleModal, NavBar drawer + Flux modal, FloatingChat/SidePanel/AICommandCenter/Copilot
+z-fixes, control plane ×8 files, public g/[token] + d/[token] + folio) — each with its ladder-token
+target already mapped in the inventory doc. Drawers + full-page takeovers are explicitly a different
+species (future Drawer primitive is a legitimate Rule-of-Three proposal — 4+ exist).

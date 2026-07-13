@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { AlertTriangle, Info, CheckCircle, XCircle, X } from 'lucide-react';
+import { Portal, useOverlayStack, useEscape, useScrollLock, useFocusTrap } from '@/components/ui/overlay';
 
 /**
  * Global confirm/alert provider.
@@ -13,12 +14,22 @@ import { AlertTriangle, Info, CheckCircle, XCircle, X } from 'lucide-react';
  *
  *   // Alert-style (single button):
  *   await confirm({ title: 'Saved', message: 'Your changes were saved.', tone: 'success', alertOnly: true });
+ *
+ *   // Typed confirmation (irreversible/bulk destruction — PROP-002 Batch C tier):
+ *   const ok = await confirm({
+ *     title: 'Empty trash?', message: 'Permanently deletes all 12 leads.',
+ *     tone: 'danger', requireTyped: 'DELETE',
+ *   });
+ *
+ * Batch C: the dialog now runs on the shared overlay foundation (components/ui/overlay)
+ * — portal, overlay stack (Escape peels the top overlay only), reference-counted scroll
+ * lock, and a real focus trap with focus restore. The confirm() API is unchanged.
  */
 
 const ConfirmContext = createContext(null);
 
 export function ConfirmProvider({ children }) {
-  const [state, setState] = useState(null); // { title, message, confirmLabel, cancelLabel, tone, alertOnly, resolve }
+  const [state, setState] = useState(null); // { title, message, confirmLabel, cancelLabel, tone, alertOnly, requireTyped, resolve }
 
   const confirm = useCallback((opts = {}) => {
     return new Promise((resolve) => {
@@ -29,6 +40,7 @@ export function ConfirmProvider({ children }) {
         cancelLabel: opts.cancelLabel || 'Cancel',
         tone: opts.tone || 'default', // default | danger | success | warning | info
         alertOnly: !!opts.alertOnly,
+        requireTyped: opts.requireTyped || null, // exact phrase the user must type to enable Confirm
         resolve,
       });
     });
@@ -38,16 +50,6 @@ export function ConfirmProvider({ children }) {
     state?.resolve(value);
     setState(null);
   };
-
-  useEffect(() => {
-    if (!state) return;
-    const onKey = (e) => {
-      if (e.key === 'Escape') handleClose(false);
-      if (e.key === 'Enter') handleClose(true);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [state]);
 
   return (
     <ConfirmContext.Provider value={confirm}>
@@ -79,7 +81,29 @@ export function useConfirm() {
   return ctx;
 }
 
-function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertOnly, onConfirm, onCancel }) {
+function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertOnly, requireTyped, onConfirm, onCancel }) {
+  const [cardEl, setCardEl] = useState(null);
+  const [typed, setTyped] = useState('');
+  const canConfirm = !requireTyped || typed === requireTyped;
+
+  const isTop = useOverlayStack(true);
+  useScrollLock(true);
+  useEscape(true, isTop, onCancel);
+  useFocusTrap(cardEl, true);
+
+  // Enter confirms — but never a typed confirmation whose phrase doesn't match.
+  useEffect(() => {
+    if (!isTop) return;
+    const onKey = (e) => {
+      if (e.key !== 'Enter') return;
+      if (!canConfirm) return;
+      e.preventDefault();
+      onConfirm();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isTop, canConfirm, onConfirm]);
+
   const icon = {
     danger:  <AlertTriangle size={20} />,
     success: <CheckCircle size={20} />,
@@ -89,36 +113,66 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
   }[tone];
 
   return (
-    <div className="cm-overlay" onClick={onCancel} role="dialog" aria-modal="true">
-      <div className={`cm-card cm-tone-${tone}`} onClick={(e) => e.stopPropagation()}>
-        <button className="cm-close" onClick={onCancel} aria-label="Close">
-          <X size={16} />
-        </button>
-
-        <div className="cm-head">
-          <div className="cm-icon">{icon}</div>
-          <div className="cm-title">{title}</div>
-        </div>
-
-        {message && <div className="cm-body">{message}</div>}
-
-        <div className="cm-actions">
-          {!alertOnly && (
-            <button className="cm-btn cm-btn-ghost" onClick={onCancel}>
-              {cancelLabel}
-            </button>
-          )}
-          <button
-            className={`cm-btn cm-btn-primary cm-btn-${tone}`}
-            onClick={onConfirm}
-            autoFocus
-          >
-            {alertOnly ? 'OK' : confirmLabel}
+    <Portal>
+      <div
+        className="cm-overlay"
+        onMouseDown={(e) => { if (isTop && e.target === e.currentTarget) onCancel(); }}
+      >
+        <div
+          ref={setCardEl}
+          className={`cm-card cm-tone-${tone}`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cm-title"
+          aria-describedby={message ? 'cm-body' : undefined}
+        >
+          <button className="cm-close" onClick={onCancel} aria-label="Close">
+            <X size={16} />
           </button>
-        </div>
-      </div>
 
-      <style>{`
+          <div className="cm-head">
+            <div className="cm-icon">{icon}</div>
+            <div className="cm-title" id="cm-title">{title}</div>
+          </div>
+
+          {message && <div className="cm-body" id="cm-body">{message}</div>}
+
+          {requireTyped && (
+            <div className="cm-typed">
+              <label className="cm-typed-label" htmlFor="cm-typed-input">
+                Type <b>{requireTyped}</b> to confirm
+              </label>
+              <input
+                id="cm-typed-input"
+                className="cm-typed-input"
+                data-autofocus
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={requireTyped}
+              />
+            </div>
+          )}
+
+          <div className="cm-actions">
+            {!alertOnly && (
+              <button className="cm-btn cm-btn-ghost" onClick={onCancel}>
+                {cancelLabel}
+              </button>
+            )}
+            <button
+              className={`cm-btn cm-btn-primary cm-btn-${tone}`}
+              onClick={onConfirm}
+              disabled={!canConfirm}
+              data-autofocus={requireTyped ? undefined : true}
+            >
+              {alertOnly ? 'OK' : confirmLabel}
+            </button>
+          </div>
+        </div>
+
+        <style>{`
         .cm-overlay {
           position: fixed; inset: 0; z-index: var(--z-modal);
           background: var(--overlay-bg);
@@ -193,6 +247,23 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
           margin-bottom: 24px;
         }
 
+        .cm-typed { margin: -8px 0 20px; }
+        .cm-typed-label {
+          display: block;
+          font-size: 12.5px; color: var(--text-dim);
+          margin-bottom: 6px;
+        }
+        .cm-typed-label b { color: var(--danger-fg); font-weight: 700; letter-spacing: 0.02em; }
+        .cm-typed-input {
+          width: 100%;
+          padding: 9px 12px;
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          border-radius: 9px;
+          color: var(--text);
+          font-family: inherit; font-size: 13.5px;
+        }
+
         .cm-actions {
           display: flex; justify-content: flex-end;
           gap: 10px;
@@ -208,6 +279,7 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
           transition: all 0.15s;
           display: inline-flex; align-items: center; gap: 6px;
         }
+        .cm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
         .cm-btn-ghost {
           background: var(--surface2);
           color: var(--text);
@@ -220,14 +292,14 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
           color: var(--on-accent);
           box-shadow: var(--elev-1);
         }
-        .cm-btn-primary:hover { transform: translateY(-1px); box-shadow: var(--elev-2); }
+        .cm-btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--elev-2); }
 
         .cm-btn-danger {
           background: var(--danger);
           color: var(--on-accent);
           box-shadow: var(--elev-1);
         }
-        .cm-btn-danger:hover { box-shadow: var(--elev-2); }
+        .cm-btn-danger:hover:not(:disabled) { box-shadow: var(--elev-2); }
 
         .cm-btn-success {
           background: var(--success);
@@ -240,7 +312,8 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
           color: var(--on-accent);
           box-shadow: var(--elev-1);
         }
-      `}</style>
-    </div>
+        `}</style>
+      </div>
+    </Portal>
   );
 }

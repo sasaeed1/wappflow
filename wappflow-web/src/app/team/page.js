@@ -12,6 +12,8 @@ import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
 import { LockedOverlay } from '@/components/PlanLock';
+import Modal from '@/components/ui/Modal';
+import { toast } from '@/components/ui/Toast';
 
 const ROLES = [
   { value: 'super_admin', label: 'Super Admin', color: '#f59e0b', icon: Crown,     desc: 'Full access · Workspace owner' },
@@ -40,21 +42,6 @@ const DEFAULTS = {
   user:        { view_all_leads:false,create_lead:true,edit_lead:true,delete_lead:false,view_reports:false,manage_settings:false,manage_team:false,manage_invoices:false,manage_whatsapp:false },
 };
 
-function Toast({ message, type = 'success' }) {
-  return (
-    <div style={{
-      position: 'fixed', top: 20, right: 24, zIndex: 9999,
-      background: type === 'error' ? 'rgba(239,68,68,0.95)' : 'rgba(16,185,129,0.95)',
-      color: 'white', padding: '13px 20px', borderRadius: 14, fontSize: 13, fontWeight: 600,
-      display: 'flex', alignItems: 'center', gap: 10,
-      boxShadow: '0 12px 40px rgba(0,0,0,0.35)', maxWidth: 380,
-    }}>
-      {type === 'error' ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
-      {message}
-    </div>
-  );
-}
-
 // ── Toggle Switch ────────────────────────────────────────────
 function Toggle({ value, onChange, color = '#6366f1', disabled }) {
   return (
@@ -80,7 +67,6 @@ function Toggle({ value, onChange, color = '#6366f1', disabled }) {
 
 // ── Invite Modal ─────────────────────────────────────────────
 function InviteModal({ onSave, onClose }) {
-  const confirm = useConfirm();
   const [form, setForm] = useState({ email: '', role: 'user', full_name: '' });
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
@@ -94,7 +80,7 @@ function InviteModal({ onSave, onClose }) {
       if (res?.invite_link) setResult(res);
       else onClose(true);
     } catch (e) {
-      await confirm({ title: 'Could not invite', message: e.response?.data?.error || 'Failed to invite', alertOnly: true, tone: 'danger' });
+      toast.error('Could not invite', { description: e.response?.data?.error || 'Failed to invite' });
     } finally { setSaving(false); }
   };
 
@@ -104,13 +90,13 @@ function InviteModal({ onSave, onClose }) {
   };
 
   if (result) return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
-      <div className="r-modal" style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:460, width:'100%', padding:32 }}>
+    <Modal open onClose={() => onClose(true)} labelledBy="invite-result-title" hideClose padded={false} size="sm" style={{ maxWidth: 460 }}>
+      <div style={{ padding: 32 }}>
         <div style={{ textAlign:'center', marginBottom:24 }}>
           <div style={{ width:60, height:60, borderRadius:20, background:'rgba(16,185,129,0.15)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
             <CheckCircle size={28} color="#10b981" />
           </div>
-          <h2 style={{ fontSize:20, fontWeight:800, color:'var(--text)', margin:'0 0 8px' }}>
+          <h2 id="invite-result-title" style={{ fontSize:20, fontWeight:800, color:'var(--text)', margin:'0 0 8px' }}>
             {result.email_sent ? 'Invite sent!' : 'Invite link created!'}
           </h2>
           <p style={{ fontSize:14, color:'var(--text-muted)', margin:0 }}>
@@ -139,19 +125,11 @@ function InviteModal({ onSave, onClose }) {
         )}
         <button onClick={() => onClose(true)} style={{ width:'100%', padding:'13px', border:'1.5px solid var(--border)', borderRadius:12, background:'var(--surface)', color:'var(--text)', fontWeight:700, cursor:'pointer', fontSize:14, marginTop: result.email_sent ? 0 : undefined }}>Done</button>
       </div>
-    </div>
+    </Modal>
   );
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
-      <div className="r-modal" style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:480, width:'100%', padding:32 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
-          <div>
-            <h2 style={{ fontSize:20, fontWeight:800, color:'var(--text)', margin:0 }}>Invite Team Member</h2>
-            <p style={{ fontSize:13, color:'var(--text-dim)', margin:'4px 0 0' }}>They'll get a link to set up their account</p>
-          </div>
-          <button onClick={() => onClose(false)} style={{ background:'var(--surface2)', border:'none', borderRadius:10, padding:8, cursor:'pointer' }}><X size={18} color="#6b7280" /></button>
-        </div>
+    <Modal open onClose={() => onClose(false)} title="Invite Team Member" description="They'll get a link to set up their account" size="sm" style={{ maxWidth: 480 }}>
         <div style={{ marginBottom:14 }}>
           <label style={{ fontSize:12, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:8 }}>Full Name</label>
           <input value={form.full_name} onChange={e => setForm(p => ({...p, full_name:e.target.value}))} placeholder="John Smith"
@@ -190,32 +168,22 @@ function InviteModal({ onSave, onClose }) {
             <Send size={14} /> {saving ? 'Creating...' : 'Create Invite Link'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 // ── Role Change Modal ─────────────────────────────────────────
 function RoleModal({ member, onSave, onClose }) {
-  const confirm = useConfirm();
   const [role, setRole] = useState(member.role);
   const [saving, setSaving] = useState(false);
   const handle = async () => {
     setSaving(true);
     try { await onSave(member.id, { role }); onClose(); }
-    catch (e) { await confirm({ title: 'Failed to update role', message: e.response?.data?.error || 'Unknown error', alertOnly: true, tone: 'danger' }); }
+    catch (e) { toast.error('Failed to update role', { description: e.response?.data?.error || 'Unknown error' }); }
     finally { setSaving(false); }
   };
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
-      <div className="r-modal" style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:420, width:'100%', padding:32 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-          <div>
-            <h2 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:0 }}>Change Role</h2>
-            <p style={{ fontSize:13, color:'var(--text-dim)', margin:'4px 0 0' }}>{member.full_name || member.email || member.invite_email}</p>
-          </div>
-          <button onClick={onClose} style={{ background:'var(--surface2)', border:'none', borderRadius:10, padding:8, cursor:'pointer' }}><X size={18} color="#6b7280" /></button>
-        </div>
+    <Modal open onClose={onClose} title="Change Role" description={member.full_name || member.email || member.invite_email} size="sm" style={{ maxWidth: 420 }}>
         <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:24 }}>
           {ROLES.filter(r => r.value !== 'super_admin').map(r => {
             const RI = r.icon; const sel = role === r.value;
@@ -237,14 +205,12 @@ function RoleModal({ member, onSave, onClose }) {
             {saving ? 'Saving...' : 'Update Role'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 // ── Per-Member Permission Override Modal ─────────────────────
 function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
-  const confirm = useConfirm();
   const roleDefs = roleDefaults[member.role] || DEFAULTS[member.role] || {};
   const existingOverrides = member.permissions ? (typeof member.permissions === 'string' ? JSON.parse(member.permissions) : member.permissions) : null;
   const [hasOverride, setHasOverride] = useState(!!existingOverrides);
@@ -259,7 +225,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
     try {
       await onSave(member.id, { permissions: hasOverride ? local : null });
       onClose();
-    } catch (e) { await confirm({ title: 'Failed to update permissions', message: e.response?.data?.error || 'Unknown error', alertOnly: true, tone: 'danger' }); }
+    } catch (e) { toast.error('Failed to update permissions', { description: e.response?.data?.error || 'Unknown error' }); }
     finally { setSaving(false); }
   };
 
@@ -273,15 +239,9 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
   const allKeys = [...new Set([...Object.keys(PERM_LABELS), ...Object.keys(local)])];
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300, padding:16 }}>
-      <div className="r-modal" style={{ background:'var(--surface)', borderRadius:24, boxShadow:'0 32px 80px rgba(0,0,0,0.2)', maxWidth:520, width:'100%', padding:32, maxHeight:'90vh', overflowY:'auto' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-          <div>
-            <h2 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:0 }}>Custom Permissions</h2>
-            <p style={{ fontSize:13, color:'var(--text-dim)', margin:'4px 0 0' }}>{member.full_name || member.email || member.invite_email} · <span style={{ color:roleInfo.color, fontWeight:600 }}>{roleInfo.label}</span></p>
-          </div>
-          <button onClick={onClose} style={{ background:'var(--surface2)', border:'none', borderRadius:10, padding:8, cursor:'pointer' }}><X size={18} color="#6b7280" /></button>
-        </div>
+    <Modal open onClose={onClose} title="Custom Permissions"
+      description={<>{member.full_name || member.email || member.invite_email} · <span style={{ color:roleInfo.color, fontWeight:600 }}>{roleInfo.label}</span></>}
+      size="sm" style={{ maxWidth: 520 }}>
 
         {/* Override toggle */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'rgba(99,102,241,0.06)', borderRadius:14, border:'1.5px solid rgba(99,102,241,0.35)', marginBottom:20 }}>
@@ -336,8 +296,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
             {saving ? 'Saving...' : hasOverride ? 'Save Custom Permissions' : 'Remove Override (use role defaults)'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -351,18 +310,15 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
     return base;
   });
   const [saving, setSaving] = useState(null);
-  const [toast, setToast] = useState(null);
   const [addingKey, setAddingKey] = useState(null); // role
   const [newKey, setNewKey] = useState('');
-
-  const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
 
   const handleSave = async (role) => {
     setSaving(role);
     try {
       await onSaveRole(role, local[role]);
-      showToast(`${ROLES.find(r=>r.value===role)?.label || role} permissions saved`);
-    } catch { showToast('Error saving','error'); } finally { setSaving(null); }
+      toast.success(`${ROLES.find(r=>r.value===role)?.label || role} permissions saved`);
+    } catch { toast.error('Error saving'); } finally { setSaving(null); }
   };
 
   const addCustomPerm = (role) => {
@@ -377,7 +333,6 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
 
   return (
     <div>
-      {toast && <Toast message={toast.msg} type={toast.type} />}
       <div style={{ background: 'var(--warning-bg)', border: '1.5px solid var(--warning-border)', borderRadius:14, padding:'14px 18px', marginBottom:24, display:'flex', alignItems:'flex-start', gap:10 }}>
         <AlertCircle size={16} color="#d97706" style={{ flexShrink:0, marginTop:1 }} />
         <p style={{ fontSize:13, color: 'var(--warning-text)', margin:0 }}>
@@ -465,7 +420,6 @@ export default function TeamPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [roleModal, setRoleModal] = useState(null);
   const [permModal, setPermModal] = useState(null);
-  const [toast, setToast] = useState(null);
   const [tab, setTab] = useState('members');
   const [search, setSearch] = useState('');
   const [currentRole, setCurrentRole] = useState('super_admin');
@@ -499,13 +453,9 @@ export default function TeamPage() {
     setLoading(false);
   };
 
-  const showToast = (msg, type = 'success') => {
-    setToast({ msg, type }); setTimeout(() => setToast(null), 3000);
-  };
-
   const handleInvite = async (form) => {
     const res = await workspaceAPI.invite(form);
-    showToast('Invite created!');
+    toast.success('Invite created!');
     return res.data;
   };
 
@@ -516,13 +466,13 @@ export default function TeamPage() {
 
   const handleRoleUpdate = async (id, data) => {
     await workspaceAPI.updateMember(id, data);
-    showToast('Role updated!');
+    toast.success('Role updated!');
     fetchAll();
   };
 
   const handlePermUpdate = async (id, data) => {
     await workspaceAPI.updateMember(id, data);
-    showToast('Permissions updated!');
+    toast.success('Permissions updated!');
     fetchAll();
   };
 
@@ -536,9 +486,9 @@ export default function TeamPage() {
     if (!ok) return;
     try {
       await workspaceAPI.removeMember(id);
-      showToast('Member removed.');
+      toast.success('Member removed.');
       fetchAll();
-    } catch (e) { showToast(e.response?.data?.error || 'Error', 'error'); }
+    } catch (e) { toast.error(e.response?.data?.error || 'Error'); }
   };
 
   const handleSaveRolePermissions = async (role, perms) => {
@@ -582,7 +532,6 @@ export default function TeamPage() {
   return (
     <NavBar>
     <div style={{ minHeight:'100vh', background:'var(--bg)', fontFamily:'system-ui,-apple-system,sans-serif' }}>
-      {toast && <Toast message={toast.msg} type={toast.type} />}
       {showInvite && <InviteModal onSave={handleInvite} onClose={handleInviteClose} />}
       {roleModal && <RoleModal member={roleModal} onSave={handleRoleUpdate} onClose={()=>setRoleModal(null)} />}
       {permModal && <MemberPermissionsModal member={permModal} roleDefaults={permissions} onSave={handlePermUpdate} onClose={()=>setPermModal(null)} />}
