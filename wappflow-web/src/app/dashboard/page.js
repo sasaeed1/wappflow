@@ -924,8 +924,6 @@ export default function DashboardPage() {
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search leads…"
               style={{ width: '100%', padding: '8px 12px 8px 34px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-              onFocus={e => e.target.style.borderColor = '#6366f1'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
 

@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Zap, Lock, User, ArrowRight, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
 import { inviteAPI } from '../../lib/api';
+import { Field, Input } from '@/components/ui/Field';
 
 function AcceptInviteContent() {
   const router = useRouter();
@@ -120,56 +121,51 @@ function AcceptInviteContent() {
               )}
 
               <form onSubmit={handleSubmit}>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Full Name</label>
+                <Field label="Full Name" required style={{ marginBottom: 14 }}>
                   <div style={{ position: 'relative' }}>
                     <User size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-                    <input
+                    <Input
                       type="text" required
                       value={form.full_name}
                       onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))}
                       placeholder="John Smith"
-                      style={{ width: '100%', padding: '12px 14px 12px 40px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
-                      onFocus={e => e.target.style.borderColor = '#6366f1'}
-                      onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+                      style={{ paddingLeft: 40 }}
                     />
                   </div>
-                </div>
+                </Field>
 
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Password</label>
+                <Field label="Password" required style={{ marginBottom: 14 }}>
                   <div style={{ position: 'relative' }}>
                     <Lock size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-                    <input
+                    <Input
                       type={showPwd ? 'text' : 'password'} required minLength={6}
                       value={form.password}
                       onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
                       placeholder="At least 6 characters"
-                      style={{ width: '100%', padding: '12px 44px 12px 40px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
-                      onFocus={e => e.target.style.borderColor = '#6366f1'}
-                      onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+                      style={{ paddingLeft: 40, paddingRight: 44 }}
                     />
                     <button type="button" onClick={() => setShowPwd(s => !s)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}>
                       {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
-                </div>
+                </Field>
 
-                <div style={{ marginBottom: 22 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Confirm Password</label>
+                <Field
+                  label="Confirm Password" required
+                  error={form.confirm && form.confirm !== form.password ? 'Passwords do not match' : null}
+                  style={{ marginBottom: 22 }}
+                >
                   <div style={{ position: 'relative' }}>
                     <Lock size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-                    <input
+                    <Input
                       type={showPwd ? 'text' : 'password'} required
                       value={form.confirm}
                       onChange={e => setForm(p => ({ ...p, confirm: e.target.value }))}
                       placeholder="Repeat password"
-                      style={{ width: '100%', padding: '12px 14px 12px 40px', border: `1.5px solid ${form.confirm && form.confirm !== form.password ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 11, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
-                      onFocus={e => e.target.style.borderColor = '#6366f1'}
-                      onBlur={e => e.target.style.borderColor = (form.confirm && form.confirm !== form.password) ? '#fca5a5' : '#e5e7eb'}
+                      style={{ paddingLeft: 40 }}
                     />
                   </div>
-                </div>
+                </Field>
 
                 <button
                   type="submit" disabled={submitting}
