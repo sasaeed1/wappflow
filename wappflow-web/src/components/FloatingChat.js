@@ -328,7 +328,6 @@ export default function FloatingChat() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder="Type a message…" rows={1}
               style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 20, padding: '7px 12px', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, minHeight: 34, maxHeight: 80, overflowY: 'auto', boxSizing: 'border-box' }}
-              onFocus={e => e.target.style.borderColor='#25d366'} onBlur={e => e.target.style.borderColor='var(--border)'}
             />
             <button onClick={handleSend} disabled={sending || !newMsg.trim()}
               style={{ width: 34, height: 34, background: newMsg.trim() ? 'linear-gradient(135deg, #25d366, #128c7e)' : 'var(--surface2)', border: 'none', borderRadius: '50%', cursor: newMsg.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>

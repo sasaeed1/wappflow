@@ -976,3 +976,62 @@ family, HuddleModal, NavBar drawer + Flux modal, FloatingChat/SidePanel/AIComman
 z-fixes, control plane ×8 files, public g/[token] + d/[token] + folio) — each with its ladder-token
 target already mapped in the inventory doc. Drawers + full-page takeovers are explicitly a different
 species (future Drawer primitive is a legitimate Rule-of-Three proposal — 4+ exist).
+
+### Batch D — Field system + the `!important` scope-down — IMPLEMENTED
+
+Branch `design-system/batch-d-fields`. The proposal called this the batch's one genuinely
+dangerous move: narrowing a global `!important` override without disturbing every unmigrated form.
+
+- **`components/ui/Field.js` (new)** — one field anatomy: `Field` owns the label/required/error/hint
+  wiring (`htmlFor`, `aria-required`, `aria-invalid`, `aria-describedby`, `role="alert"` on the
+  message, `useId` for collision-safe ids); `Input`/`Textarea`/`Select` are the controls;
+  `Checkbox`/`Switch` cover the boolean patterns. Every control sets **`data-ui`** — the opt-out flag
+  the scope-down keys on. Wiring is spread AFTER caller props so a stray `id` can never orphan the
+  label. Label is flex, so `label={<><User size={13}/> Name</>}` composes.
+- **The scope-down (`globals.css`)** — `input, textarea, select {…!important}` became
+  `input:not([data-ui]), …` across **all three** groups (base, `::placeholder`, `:focus`). Declarations
+  are byte-identical, so **every unmigrated control behaves exactly as before**, including keeping
+  `outline: none !important` (so no unmigrated field regains a UA outline that would collide with the
+  Batch A ring). Primitives are freed from the override and style their own states via `.wf-input`.
+- **The dead-handler purge — 90 handlers across 11 files.** The `!important` border-color pair always
+  beat inline writes, so every `onFocus/onBlur → e.target.style.borderColor` handler was **provably
+  dead code**: it could never have had a visual effect. Deleted app-wide (82 by an automated sweep, 8
+  more removed by hand while rewriting adopters). The **two** handlers in `leads/[id]` that write
+  `e.currentTarget.parentElement.style.borderColor` target a wrapper div around a contentEditable —
+  those are alive and were deliberately kept.
+- **Adopters:** AddLeadModal, invoices `SendInvoiceModal`, settings (the local `Input` wrapper became
+  a thin adapter over `Field`, preserving its prop shape for ~12 tab consumers, plus PasswordTab),
+  accept-invite, profile.
+
+**Verification:** verify-batchD **22/22** · `next build` ✓ · live lab (real browser): label↔control
+association, `aria-required`/`aria-invalid`/`aria-describedby`→message with `role="alert"`,
+`role="switch"` toggling, and — the critical regression test — an **unmigrated** input still forced to
+`--surface2` in dark and `#f8fafc` in light despite inline white styling, while a `tone="public"`
+field stays white in both. Batch A's focus ring renders on primitives
+(`box-shadow: 0 0 0 1px #6366f1, 0 0 0 4px rgba(99,102,241,.15)`).
+
+**Adversarial 3-lens audit (scope-down / purge / Field API): 0 high findings; the core claims held**
+— a programmatic tag census over `git show HEAD:` proved all 90 deleted handlers sat on real form
+controls (input 72, textarea 16, select 2) and that the only two `div` sites are the two that were
+kept. Every medium finding it raised was **fixed before commit**: the invoices modal could render the
+same error twice (or two contradictory errors) — errors are now routed to exactly one surface;
+`Checkbox`/`Switch` ignored `FieldContext`, so composing them inside a labelled `Field` emitted an
+orphaned `htmlFor` — both now claim the Field id; both spread `{...rest}` after their own wiring, so a
+caller's `className`/`onClick` silently disabled them — now merged; the Switch thumb hardcoded an
+un-themed `rgba()` shadow → `--elev-1`; the invalid border used `--danger` while its message used
+`--danger-fg` → unified; `.wf-input` metrics were improvised from one modal → aligned to the app's
+dominant 12px-label/14px-control anatomy so migrated fields sit flush beside unmigrated ones; the
+public tone was incomplete (`option` and `:-webkit-autofill` are styled by app-theme rules that would
+repaint a light field dark) → both overridden; and AddLeadModal's five icon-led labels, silently
+dropped by the migration, were **restored**. Three verifier checks were also hardened after the audit
+showed they were unfalsifiable: the dead-handler gate now matches every handler spelling, the
+functional-onBlur check is scoped to the purged files (repo-wide it passed regardless), and the
+hex gate no longer strips `rgba()` — the syntax the one real offender used.
+
+**Known/accepted:** `Checkbox`, `Switch` and `tone="public"` ship with **zero adopters** — the four
+page-local Toggles (team, studio settings, contracts builder) and the public token pages migrate
+on-touch, not here. Pre-existing and out of scope: the global `:-webkit-autofill` rule's `!important`
+box-shadow suppresses the Batch A focus ring on an autofilled field (affects legacy and primitives
+alike, predates this batch); and the contracts builder's title input has never rendered borderless as
+its author intended, because the global override always painted it — deleting its dead handlers
+changes nothing, but the underlying defect stays open.

@@ -1998,8 +1998,6 @@ useEffect(() => {
                     : 'Type a message... (Enter to send)'}
                   rows={1}
                   style={{ flex: 1, padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 14, fontSize: 14, outline: 'none', resize: 'none', lineHeight: 1.5, maxHeight: 120, overflow: 'auto', fontFamily: 'inherit', color: 'var(--text)', background: 'var(--surface2)' }}
-                  onFocus={e => { e.target.style.borderColor = '#25d366'; }}
-                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                   onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
                 />
               )}
@@ -2421,8 +2419,6 @@ useEffect(() => {
                                     onChange={e => setCustomActionMsg(e.target.value)}
                                     rows={3}
                                     style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 10 }}
-                                    onFocus={e => e.target.style.borderColor = verticalIndustry.workflow?.color || '#10b981'}
-                                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
                                   />
                                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
                                     <button onClick={() => setEditingActionMsg(null)} style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Cancel</button>
@@ -2868,15 +2864,13 @@ function EmailComposeModal({ lead, onClose, onSent }) {
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>To</label>
           <input value={form.to_email} onChange={e => setForm(f => ({ ...f, to_email: e.target.value }))} placeholder="recipient@email.com" type="email"
-            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }}
-            onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }} />
         </div>
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Subject</label>
           <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Email subject"
-            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }}
-            onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }} />
         </div>
 
         {/* Rich text editor */}

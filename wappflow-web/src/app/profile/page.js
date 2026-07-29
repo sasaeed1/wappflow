@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '../../components/NavBar';
 import { profileAPI, BASE_URL } from '../../lib/api';
+import { Field, Input, Textarea } from '@/components/ui/Field';
 import {
   User, Mail, Phone, FileText, Camera, Save,
   ChevronLeft, Shield, Building2, Check, AlertCircle
@@ -245,81 +246,61 @@ export default function ProfilePage() {
 
           <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
             {/* Full Name */}
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>
-                Full Name
-              </label>
+            <Field label="Full Name">
               <div style={{ position: 'relative' }}>
                 <User size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
-                <input
+                <Input
                   type="text"
                   value={form.full_name}
                   onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
                   placeholder="Your full name"
-                  style={{ width: '100%', padding: '11px 12px 11px 36px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
-                  onFocus={e => e.target.style.borderColor = '#6366f1'}
-                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  style={{ paddingLeft: 36 }}
                 />
               </div>
-            </div>
+            </Field>
 
-            {/* Phone */}
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>
-                Phone Number
-              </label>
+            <Field label="Phone Number">
               <div style={{ position: 'relative' }}>
                 <Phone size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
-                <input
+                <Input
                   type="tel"
                   value={form.phone}
                   onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                   placeholder="+1 234 567 8900"
-                  style={{ width: '100%', padding: '11px 12px 11px 36px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
-                  onFocus={e => e.target.style.borderColor = '#6366f1'}
-                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  style={{ paddingLeft: 36 }}
                 />
               </div>
-            </div>
+            </Field>
           </div>
 
           {/* Email (read-only) */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>
-              Email Address
-            </label>
+          <Field label="Email Address" style={{ marginBottom: 16 }}>
             <div style={{ position: 'relative' }}>
               <Mail size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
-              <input
+              <Input
                 type="email"
                 value={profile?.email || ''}
                 disabled
-                style={{ width: '100%', padding: '11px 12px 11px 36px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: 'var(--text-dim)', background: 'var(--surface2)', boxSizing: 'border-box', cursor: 'not-allowed' }}
+                style={{ paddingLeft: 36, color: 'var(--text-dim)', cursor: 'not-allowed' }}
               />
               <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: 'var(--text-dim)', background: 'var(--surface2)', padding: '2px 7px', borderRadius: 5, fontWeight: 600 }}>
                 Read-only
               </span>
             </div>
-          </div>
+          </Field>
 
-          {/* Bio */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>
-              Bio
-            </label>
+          <Field label="Bio" style={{ marginBottom: 24 }}>
             <div style={{ position: 'relative' }}>
               <FileText size={14} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-dim)' }} />
-              <textarea
+              <Textarea
                 value={form.bio}
                 onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
                 placeholder="Tell your team a little about yourself…"
                 rows={3}
-                style={{ width: '100%', padding: '11px 12px 11px 36px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
-                onFocus={e => e.target.style.borderColor = '#6366f1'}
-                onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                style={{ paddingLeft: 36 }}
               />
             </div>
-          </div>
+          </Field>
 
           {/* Save button */}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

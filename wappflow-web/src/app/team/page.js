@@ -133,14 +133,12 @@ function InviteModal({ onSave, onClose }) {
         <div style={{ marginBottom:14 }}>
           <label style={{ fontSize:12, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:8 }}>Full Name</label>
           <input value={form.full_name} onChange={e => setForm(p => ({...p, full_name:e.target.value}))} placeholder="John Smith"
-            style={{ width:'100%', padding:'11px 14px', border:'1.5px solid var(--border)', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }}
-            onFocus={e=>e.target.style.borderColor='#6366f1'} onBlur={e=>e.target.style.borderColor='var(--border)'} />
+            style={{ width:'100%', padding:'11px 14px', border:'1.5px solid var(--border)', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }} />
         </div>
         <div style={{ marginBottom:14 }}>
           <label style={{ fontSize:12, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:8 }}>Email Address</label>
           <input value={form.email} onChange={e => setForm(p => ({...p, email:e.target.value}))} placeholder="john@company.com" type="email" autoFocus
-            style={{ width:'100%', padding:'11px 14px', border:'1.5px solid var(--border)', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }}
-            onFocus={e=>e.target.style.borderColor='#6366f1'} onBlur={e=>e.target.style.borderColor='var(--border)'} />
+            style={{ width:'100%', padding:'11px 14px', border:'1.5px solid var(--border)', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }} />
         </div>
         <div style={{ marginBottom:24 }}>
           <label style={{ fontSize:12, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:10 }}>Role</label>

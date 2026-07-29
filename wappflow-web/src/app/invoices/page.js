@@ -14,6 +14,7 @@ import { formatDate } from '../../lib/datetime';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
+import { Field, Input, Textarea } from '@/components/ui/Field';
 import { toast } from '@/components/ui/Toast';
 import { invoiceStatusMeta } from '@/lib/invoiceStatus';
 
@@ -261,8 +262,15 @@ function SendInvoiceModal({ invoice, company, onClose, onSent }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
+  // A field-level problem renders on the field; anything else renders in the banner.
+  // Never both — two copies of one message (or a stale banner beside a fresh field
+  // error) is worse than either alone.
+  const RECIPIENT_ERROR = 'A recipient email is required.';
+  const fieldError = error === RECIPIENT_ERROR ? error : null;
+  const bannerError = error === RECIPIENT_ERROR ? null : error;
+
   const handleSend = async () => {
-    if (!to.trim()) { setError('A recipient email is required.'); return; }
+    if (!to.trim()) { setError(RECIPIENT_ERROR); return; }
     setSending(true);
     setError('');
     try {
@@ -273,8 +281,6 @@ function SendInvoiceModal({ invoice, company, onClose, onSent }) {
       setSending(false);
     }
   };
-
-  const field = { width: '100%', padding: '10px 13px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13.5, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' };
 
   return (
     <Modal open onClose={onClose} labelledBy="send-inv-title" hideClose padded={false} size="sm" style={{ maxWidth: 520 }} dismissable={!sending}>
@@ -291,21 +297,18 @@ function SendInvoiceModal({ invoice, company, onClose, onSent }) {
           </button>
         </div>
         <div style={{ padding: '20px 26px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {error && (
-            <div style={{ padding: '10px 13px', background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)', borderRadius: 10, color: 'var(--danger)', fontSize: 12.5 }}>{error}</div>
+          {bannerError && (
+            <div style={{ padding: '10px 13px', background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)', borderRadius: 10, color: 'var(--danger)', fontSize: 12.5 }}>{bannerError}</div>
           )}
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Send to</label>
-            <input type="email" value={to} onChange={e => setTo(e.target.value)} placeholder="customer@example.com" style={field} />
-          </div>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Subject</label>
-            <input value={subject} onChange={e => setSubject(e.target.value)} style={field} />
-          </div>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Message</label>
-            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} style={{ ...field, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
-          </div>
+          <Field label="Send to" required error={fieldError}>
+            <Input type="email" value={to} onChange={e => setTo(e.target.value)} placeholder="customer@example.com" data-autofocus />
+          </Field>
+          <Field label="Subject">
+            <Input value={subject} onChange={e => setSubject(e.target.value)} />
+          </Field>
+          <Field label="Message">
+            <Textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} />
+          </Field>
         </div>
         <div style={{ padding: '14px 26px 22px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <Button variant="secondary" onClick={onClose} disabled={sending}>Cancel</Button>
@@ -436,8 +439,7 @@ export default function InvoicesPage() {
           <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
             <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..."
-              style={{ width: '100%', padding: '10px 12px 10px 36px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-              onFocus={e => e.target.style.borderColor = '#6366f1'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
+              style={{ width: '100%', padding: '10px 12px 10px 36px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {['all', 'draft', 'pending', 'paid', 'overdue'].map(s => (

@@ -458,8 +458,7 @@ export default function KnowledgePage() {
                   {/* Toolbar */}
                   <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search memories..."
-                      style={{ padding: '9px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', width: 220 }}
-                      onFocus={e => e.target.style.borderColor='#8b5cf6'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+                      style={{ padding: '9px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', width: 220 }} />
                     <select value={filterType} onChange={e => setFilterType(e.target.value)}
                       style={{ padding: '9px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)', cursor: 'pointer' }}>
                       <option value="all">All Types</option>
@@ -495,14 +494,12 @@ export default function KnowledgePage() {
                       <div style={{ marginBottom: 12 }}>
                         <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Key (Label)</label>
                         <input value={memoryForm.key} onChange={e => setMemoryForm(p => ({ ...p, key: e.target.value }))} placeholder="e.g. Graphic Design Course Fee"
-                          style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                          onFocus={e => e.target.style.borderColor='#8b5cf6'} onBlur={e => e.target.style.borderColor='#ddd6fe'} />
+                          style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                       </div>
                       <div style={{ marginBottom: 16 }}>
                         <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Value</label>
                         <textarea value={memoryForm.value} onChange={e => setMemoryForm(p => ({ ...p, value: e.target.value }))} placeholder="e.g. 45,000 PKR" rows={2}
-                          style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                          onFocus={e => e.target.style.borderColor='#8b5cf6'} onBlur={e => e.target.style.borderColor='#ddd6fe'} />
+                          style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                       </div>
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                         <button onClick={() => { setShowMemoryForm(false); setEditingMemory(null); }} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>

@@ -17,6 +17,7 @@ import { Send as SendIcon } from 'lucide-react';
 import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { toast } from '@/components/ui/Toast';
+import { Field, Input as UIInput } from '@/components/ui/Field';
 import { useSound, SOUND_KINDS } from '@/lib/sounds';
 import { usePlan, nextPlanLabel, formatMoney } from '@/lib/plan';
 import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
@@ -95,22 +96,12 @@ function SectionCard({ icon: Icon, title, subtitle, color, children }) {
   );
 }
 
+// Thin adapter over the Field system — dozens of tabs use this prop shape (Batch D).
 function Input({ label, value, onChange, placeholder, type = 'text', hint }) {
   return (
-    <div style={{ marginBottom: 18 }}>
-      <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>{label}</label>
-      <input
-        type={type} value={value || ''} onChange={onChange} placeholder={placeholder}
-        style={{
-          width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11,
-          fontSize: 14, outline: 'none', color: 'var(--text)', boxSizing: 'border-box',
-          transition: 'border-color 0.15s', background: 'var(--surface2)'
-        }}
-        onFocus={e => e.target.style.borderColor = '#6366f1'}
-        onBlur={e => e.target.style.borderColor = 'var(--border)'}
-      />
-      {hint && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{hint}</p>}
-    </div>
+    <Field label={label} hint={hint} style={{ marginBottom: 18 }}>
+      <UIInput type={type} value={value || ''} onChange={onChange} placeholder={placeholder} />
+    </Field>
   );
 }
 
@@ -174,8 +165,6 @@ function CompanyTab({ company, setCompany, onSave, saving }) {
             onChange={e => setCompany(p => ({ ...p, company_address: e.target.value }))}
             placeholder="123 Business Street, City, State, Country"
             style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
-            onFocus={e => e.target.style.borderColor = '#6366f1'}
-            onBlur={e => e.target.style.borderColor = 'var(--border)'}
           />
         </div>
 
@@ -186,8 +175,6 @@ function CompanyTab({ company, setCompany, onSave, saving }) {
             onChange={e => setCompany(p => ({ ...p, email_signature: e.target.value }))}
             placeholder="Best regards,&#10;Your Name&#10;Company | Phone | Website"
             style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
-            onFocus={e => e.target.style.borderColor = '#6366f1'}
-            onBlur={e => e.target.style.borderColor = 'var(--border)'}
           />
         </div>
 
@@ -219,8 +206,6 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
                 setCompany(p => ({ ...p, currency: cur.code, currency_symbol: cur.symbol }));
               }}
               style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', color: 'var(--text)', background: 'var(--surface)', boxSizing: 'border-box' }}
-              onFocus={e => e.target.style.borderColor = '#10b981'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             >
               {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.name} ({c.symbol})</option>)}
             </select>
@@ -231,8 +216,6 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
               value={company.currency_symbol || '$'}
               onChange={e => setCompany(p => ({ ...p, currency_symbol: e.target.value }))}
               style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
-              onFocus={e => e.target.style.borderColor = '#10b981'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
           <div style={{ marginBottom: 18 }}>
@@ -265,8 +248,6 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
               value={company.tax_rate || 0}
               onChange={e => setCompany(p => ({ ...p, tax_rate: parseFloat(e.target.value) || 0 }))}
               style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
-              onFocus={e => e.target.style.borderColor = '#10b981'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
         </div>
@@ -352,8 +333,7 @@ function PresetsTab({ showToast }) {
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Message Body</label>
             <textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4}
-              placeholder="Hi {name}, thanks for reaching out!..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
-              onFocus={e => e.target.style.borderColor = '#06b6d4'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
+              placeholder="Hi {name}, thanks for reaching out!..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
             <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Tip: Use *bold*, _italic_ for WhatsApp formatting.</p>
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -432,8 +412,7 @@ function LostReasonsTab({ showToast }) {
         <input value={newReason} onChange={e => setNewReason(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
           placeholder="e.g. Too expensive, Went with competitor, No budget…"
-          style={{ flex: 1, padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
-          onFocus={e => e.target.style.borderColor = '#ef4444'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
+          style={{ flex: 1, padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
         <button onClick={handleAdd} disabled={saving || !newReason.trim()} style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px',
           background: newReason.trim() ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'var(--surface2)',
@@ -1523,12 +1502,6 @@ function PasswordTab({ showToast }) {
     } finally { setSaving(false); }
   };
 
-  const inputStyle = {
-    width: '100%', padding: '11px 14px', borderRadius: 10,
-    border: '1.5px solid var(--border)', background: 'var(--surface2)',
-    color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box',
-  };
-
   return (
     <div style={{ maxWidth: 480 }}>
       <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', marginBottom: 6 }}>Change Password</h2>
@@ -1537,48 +1510,38 @@ function PasswordTab({ showToast }) {
       </p>
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {/* Current password */}
-        <div>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>
-            Current Password
-          </label>
+        <Field label="Current Password" required>
           <div style={{ position: 'relative' }}>
-            <input
+            <UIInput
               type={showCurrent ? 'text' : 'password'}
               value={form.current_password}
               onChange={e => setForm(f => ({ ...f, current_password: e.target.value }))}
               placeholder="Enter current password"
               required
-              style={{ ...inputStyle, paddingRight: 44 }}
-              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+              style={{ paddingRight: 44 }}
             />
             <button type="button" onClick={() => setShowCurrent(v => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex' }}>
               {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-        </div>
+        </Field>
 
-        {/* New password */}
         <div>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>
-            New Password
-          </label>
-          <div style={{ position: 'relative' }}>
-            <input
-              type={showNew ? 'text' : 'password'}
-              value={form.new_password}
-              onChange={e => setForm(f => ({ ...f, new_password: e.target.value }))}
-              placeholder="At least 6 characters"
-              required
-              style={{ ...inputStyle, paddingRight: 44 }}
-              onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
-            />
-            <button type="button" onClick={() => setShowNew(v => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex' }}>
-              {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
+          <Field label="New Password" required>
+            <div style={{ position: 'relative' }}>
+              <UIInput
+                type={showNew ? 'text' : 'password'}
+                value={form.new_password}
+                onChange={e => setForm(f => ({ ...f, new_password: e.target.value }))}
+                placeholder="At least 6 characters"
+                required
+                style={{ paddingRight: 44 }}
+              />
+              <button type="button" onClick={() => setShowNew(v => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex' }}>
+                {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </Field>
           {form.new_password.length > 0 && (
             <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
               {[...Array(4)].map((_, i) => (
@@ -1591,26 +1554,20 @@ function PasswordTab({ showToast }) {
           )}
         </div>
 
-        {/* Confirm new password */}
         <div>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>
-            Confirm New Password
-          </label>
-          <input
-            type="password"
-            value={form.confirm_password}
-            onChange={e => setForm(f => ({ ...f, confirm_password: e.target.value }))}
-            placeholder="Repeat new password"
+          <Field
+            label="Confirm New Password"
             required
-            style={{ ...inputStyle, borderColor: form.confirm_password && form.confirm_password !== form.new_password ? '#ef4444' : undefined }}
-            onFocus={e => e.target.style.borderColor = form.confirm_password !== form.new_password ? '#ef4444' : 'var(--accent)'}
-            onBlur={e => e.target.style.borderColor = form.confirm_password && form.confirm_password !== form.new_password ? '#ef4444' : 'var(--border)'}
-          />
-          {form.confirm_password && form.confirm_password !== form.new_password && (
-            <p style={{ fontSize: 12, color: '#ef4444', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <AlertCircle size={12} /> Passwords do not match
-            </p>
-          )}
+            error={form.confirm_password && form.confirm_password !== form.new_password ? 'Passwords do not match' : null}
+          >
+            <UIInput
+              type="password"
+              value={form.confirm_password}
+              onChange={e => setForm(f => ({ ...f, confirm_password: e.target.value }))}
+              placeholder="Repeat new password"
+              required
+            />
+          </Field>
           {form.confirm_password && form.confirm_password === form.new_password && form.new_password.length >= 6 && (
             <p style={{ fontSize: 12, color: '#10b981', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
               <CheckCircle size={12} /> Passwords match
@@ -2202,8 +2159,6 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
             <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>Account Name</label>
             <input value={form.account_name || ''} onChange={e => setForm(f => ({ ...f, account_name: e.target.value }))} placeholder="e.g. Main Business Account"
               style={{ width: '100%', padding: '10px 13px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-              onFocus={e => e.target.style.borderColor = def.color}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
           </div>
 
@@ -2238,8 +2193,6 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
                   onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
                   placeholder={field.placeholder}
                   style={{ width: '100%', padding: `10px ${field.secret ? '40px' : '13px'} 10px 13px`, border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-                  onFocus={e => e.target.style.borderColor = def.color}
-                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
                 />
                 {field.secret && (
                   <button type="button" onClick={() => setShowSecrets(p => ({ ...p, [field.key]: !p[field.key] }))} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
@@ -2589,26 +2542,22 @@ function EmailSendingTab({ showToast }) {
         <div style={{ paddingRight: 16 }}>
           <SettingsField label="SMTP Host" hint="e.g. smtp.gmail.com">
             <input value={form.smtp_host} onChange={e => setForm(f => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.gmail.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-              onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
           <SettingsField label="SMTP Username / Email" hint="Usually your email address">
             <input value={form.smtp_user} onChange={e => setForm(f => ({ ...f, smtp_user: e.target.value }))} placeholder="you@gmail.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-              onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
           <SettingsField label="From Name">
             <input value={form.from_name} onChange={e => setForm(f => ({ ...f, from_name: e.target.value }))} placeholder="Your Business Name"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-              onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
         </div>
         <div style={{ paddingLeft: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <SettingsField label="Port" hint="Usually 587 or 465">
               <input type="number" value={form.smtp_port} onChange={e => setForm(f => ({ ...f, smtp_port: e.target.value }))} placeholder="587"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-                onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
             </SettingsField>
             <SettingsField label="Encryption">
               <div style={{ display: 'flex', gap: 8 }}>
@@ -2624,8 +2573,7 @@ function EmailSendingTab({ showToast }) {
           <SettingsField label="SMTP Password / App Password" hint="For Gmail: use an App Password">
             <div style={{ position: 'relative' }}>
               <input type={showPass ? 'text' : 'password'} value={form.smtp_pass} onChange={e => setForm(f => ({ ...f, smtp_pass: e.target.value }))} placeholder="App password"
-                style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-                onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+                style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
               <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
@@ -2633,8 +2581,7 @@ function EmailSendingTab({ showToast }) {
           </SettingsField>
           <SettingsField label="From Email Address" hint="Email address recipients will see">
             <input value={form.from_email} onChange={e => setForm(f => ({ ...f, from_email: e.target.value }))} placeholder="noreply@yourbusiness.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-              onFocus={e => e.target.style.borderColor='#6366f1'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
         </div>
       </div>
@@ -2802,14 +2749,12 @@ function EmailReceivingTab({ showToast }) {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>IMAP Host</label>
             <input value={form.imap_host} onChange={e => setForm(f => ({ ...f, imap_host: e.target.value }))} placeholder="imap.gmail.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-              onFocus={e => e.target.style.borderColor='#06b6d4'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Email Address</label>
             <input value={form.imap_user} onChange={e => setForm(f => ({ ...f, imap_user: e.target.value }))} placeholder="you@gmail.com"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-              onFocus={e => e.target.style.borderColor='#06b6d4'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </div>
         </div>
         <div>
@@ -2817,8 +2762,7 @@ function EmailReceivingTab({ showToast }) {
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Port</label>
               <input type="number" value={form.imap_port} onChange={e => setForm(f => ({ ...f, imap_port: e.target.value }))} placeholder="993"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-                onFocus={e => e.target.style.borderColor='#06b6d4'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Encryption</label>
@@ -2837,8 +2781,7 @@ function EmailReceivingTab({ showToast }) {
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>App Password</label>
             <div style={{ position: 'relative' }}>
               <input type={showPass ? 'text' : 'password'} value={form.imap_pass} onChange={e => setForm(f => ({ ...f, imap_pass: e.target.value }))} placeholder="16-character app password"
-                style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
-                onFocus={e => e.target.style.borderColor='#06b6d4'} onBlur={e => e.target.style.borderColor='var(--border)'} />
+                style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
               <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>

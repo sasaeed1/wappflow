@@ -186,19 +186,60 @@ body {
 }
 .input-field:focus { border-color: var(--accent); }
 
-/* Global dark-mode override for all native form controls */
-input, textarea, select {
+/* Global dark-mode override for LEGACY native form controls.
+   Batch D scope-down: field primitives (components/ui/Field.js) carry data-ui and are
+   excluded, so they can style their own states (error borders, public tone) — every
+   unmigrated input keeps this override byte-for-byte. NOTE: the !important here beats
+   inline styles, which is why the old per-input onFocus/onBlur borderColor handlers
+   were provably dead code (removed in Batch D). */
+input:not([data-ui]), textarea:not([data-ui]), select:not([data-ui]) {
   background: var(--surface2) !important;
   color: var(--text) !important;
   border-color: var(--border) !important;
 }
-input::placeholder, textarea::placeholder {
+input:not([data-ui])::placeholder, textarea:not([data-ui])::placeholder {
   color: var(--text-muted) !important;
 }
-input:focus, textarea:focus, select:focus {
+input:not([data-ui]):focus, textarea:not([data-ui]):focus, select:not([data-ui]):focus {
   border-color: var(--accent) !important;
   outline: none !important;
 }
+
+/* ── Field primitives (PROP-002 Batch D) — used via components/ui/Field.js ─────────
+   Controls carry data-ui (opting out of the legacy override above); focus ring comes
+   from the global :focus-visible rule; accent border on :focus; danger on invalid. */
+.wf-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--dur);
+}
+.wf-input::placeholder { color: var(--text-muted); }
+.wf-input:focus { border-color: var(--accent); }
+/* --danger-fg (not --danger) so the border matches the error text beside it */
+.wf-input[aria-invalid='true'] { border-color: var(--danger-fg); }
+textarea.wf-input { resize: vertical; line-height: 1.5; }
+/* Public token pages (booking/gallery/shop) are light regardless of app theme.
+   The hexes mirror the existing public-page field consts (book/[slug], d/[token],
+   shop/[token]) so a migrated public field is pixel-identical to its neighbours.
+   The option + autofill overrides are required: both of those are styled by
+   app-theme rules that would otherwise repaint a light field dark. */
+.wf-input--public { background: #fff; border-color: #d8d8e0; color: #0f172a; }
+.wf-input--public::placeholder { color: #94a3b8; }
+.wf-input--public option { background: #fff; color: #0f172a; }
+.wf-input--public:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0px 1000px #fff inset !important;
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a !important;
+}
+.wf-checkbox { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
 /* Kill browser autofill white background */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
