@@ -8,6 +8,9 @@ import {
 } from 'lucide-react';
 import { leadsAPI, displayPhone, settingsAPI } from '../../lib/api';
 import NavBar from '../../components/NavBar';
+import Spinner from '@/components/ui/Spinner';
+import EmptyState from '@/components/ui/EmptyState';
+import ErrorState from '@/components/ui/ErrorState';
 
 const fmtMoney = (n, sym = '$') => {
   if (!n) return null;
@@ -22,6 +25,7 @@ export default function ClientsPage() {
   const router = useRouter();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(null);
   const [toast, setToast] = useState(null);
@@ -38,7 +42,16 @@ export default function ClientsPage() {
 
   const load = async () => {
     setLoading(true);
-    try { const r = await leadsAPI.getAll({ client: 1 }); setClients(r.data.leads || []); } catch {}
+    // The catch used to be empty, so a failed fetch left clients=[] and the page
+    // rendered "No clients yet" — telling the user their data is gone during an
+    // outage. Record the failure instead and let the render branch on it.
+    setError(null);
+    try {
+      const r = await leadsAPI.getAll({ client: 1 });
+      setClients(r.data.leads || []);
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || 'Request failed');
+    }
     setLoading(false);
   };
 
@@ -83,17 +96,34 @@ export default function ClientsPage() {
             style={{ width: '100%', height: 42, padding: '0 14px 0 38px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
         </div>
 
-        {loading ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 14, padding: '40px 0' }}>Loading clients…</p>
+        {/* Order matters: error → loading → empty → filtered-empty → content. Anything
+            else lets a failure or a pending fetch masquerade as "you have no data". */}
+        {error ? (
+          <ErrorState
+            title="Could not load your clients"
+            description="Your clients are safe — we just couldn’t fetch them right now."
+            detail={error}
+            onRetry={load}
+          />
+        ) : loading ? (
+          <Spinner size="lg" center label="Loading clients" />
         ) : clients.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 'clamp(50px, 10vh, 110px) 20px', border: '1px dashed var(--border)', borderRadius: 16 }}>
-            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--accent-light)', color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}><UserCheck size={24} /></div>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: '0 0 6px' }}>No clients yet</h2>
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 auto 20px', maxWidth: 380 }}>Win a deal, then use <strong>Move to Clients</strong> on the lead to keep your pipeline clean without losing the relationship.</p>
-            <button onClick={() => router.push('/leads-list')} style={btnPrimary}>Go to Leads <ArrowRight size={15} /></button>
-          </div>
+          <EmptyState
+            icon={UserCheck}
+            title="No clients yet"
+            description="Win a deal, then use Move to Clients on the lead to keep your pipeline clean without losing the relationship."
+            action={{ label: 'Go to Leads', onClick: () => router.push('/leads-list') }}
+            style={{ border: '1px dashed var(--border)', borderRadius: 16 }}
+          />
         ) : shown.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: 14, padding: '30px 0' }}>No clients match “{query}”.</p>
+          <EmptyState
+            filtered
+            icon={Search}
+            title={`No clients match “${query}”`}
+            description="Try a different spelling, or clear the search to see everyone."
+            action={{ label: 'Clear search', onClick: () => setQuery('') }}
+            compact
+          />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
             {shown.map(c => (

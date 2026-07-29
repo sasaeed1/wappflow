@@ -19,6 +19,9 @@ import AddLeadModal from '../../components/AddLeadModal';
 import { useConfirm } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
 import Badge from '@/components/ui/Badge';
+import Spinner from '@/components/ui/Spinner';
+import EmptyState from '@/components/ui/EmptyState';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { leadStatusMeta } from '@/lib/leadStatus';
 import { UpgradeCta } from '@/components/PlanLock';
@@ -234,7 +237,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
             border: 'none', borderRadius: 11, color: 'white', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontSize: 14,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
           }}>
-            {loading ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Assigning…</> : <><UserCheck size={15} /> Assign {leadIds.length} Lead{leadIds.length > 1 ? 's' : ''}</>}
+            {loading ? <><Spinner size="sm" label="Working" style={{ color: "#fff" }} /> Assigning…</> : <><UserCheck size={15} /> Assign {leadIds.length} Lead{leadIds.length > 1 ? 's' : ''}</>}
           </button>
         </div>
       </div>
@@ -262,7 +265,7 @@ function BulkTrashModal({ count, loading, onCancel, onConfirm }) {
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onCancel} disabled={loading} style={{ flex: 1, padding: '11px', border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
           <button onClick={onConfirm} disabled={loading} style={{ flex: 1, padding: '11px', border: 'none', borderRadius: 12, background: loading ? '#9ca3af' : '#ef4444', color: 'white', fontWeight: 700, cursor: loading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            {loading ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Moving…</> : <><Trash2 size={14} /> Move to Trash</>}
+            {loading ? <><Spinner size="sm" label="Working" style={{ color: "#fff" }} /> Moving…</> : <><Trash2 size={14} /> Move to Trash</>}
           </button>
         </div>
       </div>
@@ -534,7 +537,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 }}
               >
-                {creating ? <><div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /> Creating group…</> : <><UsersRound size={15} /> Create Group</>}
+                {creating ? <><Spinner size="sm" label="Working" style={{ color: "#fff" }} /> Creating group…</> : <><UsersRound size={15} /> Create Group</>}
               </button>
             </div>
           </>
@@ -1137,14 +1140,28 @@ export default function LeadsListPage() {
             ))}
           </div>
 
+          {/* Skeleton (not a spinner) so the table keeps its geometry while loading,
+              and the filtered-empty case is split from the true-empty one. */}
           {loading ? (
-            <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-dim)', fontSize: 14 }}>Loading leads...</div>
+            <SkeletonRow variant="leads" rows={8} />
           ) : leads.length === 0 ? (
-            <div style={{ padding: 60, textAlign: 'center' }}>
-              <Users style={{ width: 36, height: 36, color: 'var(--border)', margin: '0 auto 12px' }} />
-              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-dim)' }}>No leads found</p>
-              {(search || hasFilters) && <button onClick={() => { setSearch(''); setTagFilter(null); setAssignedFilter('all'); setDateFrom(''); setDateTo(''); setStatusFilter('All'); }} style={{ marginTop: 8, fontSize: 12, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Clear all filters</button>}
-            </div>
+            (search || hasFilters) ? (
+              <EmptyState
+                filtered
+                icon={Search}
+                title="No leads match those filters"
+                description="Try a different search, or clear the filters to see your whole pipeline."
+                action={{ label: 'Clear all filters', onClick: () => { setSearch(''); setTagFilter(null); setAssignedFilter('all'); setDateFrom(''); setDateTo(''); setStatusFilter('All'); } }}
+                compact
+              />
+            ) : (
+              <EmptyState
+                icon={Users}
+                title="No leads yet"
+                description="Leads appear here as soon as someone messages you on a connected channel."
+                compact
+              />
+            )
           ) : leads.map((lead, i) => {
             const sc = STATUS_META[lead.status] || STATUS_META['New'];
             const value = lead.actual_sale || lead.estimated_value;
@@ -1327,7 +1344,6 @@ export default function LeadsListPage() {
         </div>
       )}
     </div>
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </NavBar>
   );
 }

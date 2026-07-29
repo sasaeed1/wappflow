@@ -283,6 +283,14 @@ select:-webkit-autofill {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Batch E: the ONE spin declaration (17 page-level duplicates deleted). Never rename it —
+   31 inline call sites reference the literal name and would silently become no-ops. */
+@media (prefers-reduced-motion: reduce) {
+  /* Loading UI must not pulse/spin for users who ask for stillness; the indicators
+     stay visible (and still announce via role="status"), they just hold still. */
+  .wf-skeleton { animation: none !important; }
+  .spin { animation-duration: 2.4s !important; }
+}
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
