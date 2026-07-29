@@ -1083,3 +1083,67 @@ swallow sites; `dashboard`/`leads/[id]`/`profile`/`reports`/`accept-invite` full
 primitives if that file ever imports them — must be deleted in the same edit); `bookings`/`studio
 store`, which hang on "Loading…" forever when their fetch fails; and the spinner colour drift
 (`#ef4444` in trash, `#8b5cf6` in knowledge) that resolves whenever those surfaces adopt.
+
+### Batch F — Public brand chrome — IMPLEMENTED · **PROP-002 COMPLETE**
+
+Branch `design-system/batch-f-public-brand`. Exact inventory first
+(`proposals/PROP-002-batch-f-inventory.md`, 85 findings across pages/data/collision lenses).
+Per ratified **D6**, the brand-data backend is deferred to a follow-up proposal — this batch ships
+the frontend ready to consume it, with graceful fallback that never asserts a false identity.
+
+- **`components/PublicBrandHeader.js`** — the studio's identity slot on client-facing pages. With no
+  `brand` it renders the page title alone and **no mark at all** — never a placeholder "W", because a
+  placeholder asserts an identity that isn't the studio's. `logoUrl`/`brandColor` are the D6 seam
+  (accepted, unused, falling back to `var(--accent)`); `tone="dark"` serves the gallery/executive
+  surfaces.
+- **`components/PublicFooter.js`** — one sign-off: the studio primary, "Powered by WappFlow" as a
+  separable second line (a future white-label entitlement can suppress it without touching the studio
+  line). Replaces three divergent hand-rolled footers and adds the missing ones (shop, pay, /d).
+- **`components/PublicScope.js` + `.wf-public` (globals.css)** — the fixed-light scope, applied to
+  **documentElement** because confirm/Toast/Modal render through `createPortal(document.body)`: a
+  wrapper class reaches none of them, nor `<body>`'s background, nor the scrollbar chrome. The three
+  **derived tokens** (`--focus-ring`, `--accent-bg`, `--warning-fg`) are restated literally — `var()`
+  inside a custom property resolves where declared, so they would otherwise keep dark values silently;
+  the ring's alpha is raised to 28% (15% indigo on white is invisible keyboard focus). Class removed on
+  unmount so navigating back into the app doesn't stick the dashboard light.
+- **The collision, killed.** All six `linear-gradient(135deg,#0ea5e9,#6366f1)` WappFlow marks replaced
+  with `var(--accent)` — ONE fallback, ONE seam for the deferred brand accent. The dead `|| 'W'`
+  fallbacks removed (the backend always sends `brand` on those routes). `/d`'s hand-rolled bar — a
+  hardcoded "W" above a legally-binding signature page, with the literal string "WappFlow" as its name
+  fallback — replaced by the primitive.
+- **A live defect self-healed:** the legacy `input:not([data-ui]) {…!important}` override was
+  repainting public form inputs **dark** for any client without a theme preference (the app defaults
+  to dark). Because that rule is all tokens, `.wf-public` fixes every affected page with zero edits to
+  them — verified live: a bare public input computes `#f8fafc`/`#0f172a` under a dark-defaulted
+  viewer.
+- **Deliberately dark surfaces respected:** `/g` (the gallery, `#0b0b0f` + champagne gold) and `/d`'s
+  themed documents are *not* wrapped in the light scope — `/g` takes the footer (tone dark), `/d`
+  takes header + footer. `folio`'s 10-theme dialect and `contracts.css`'s document themes are
+  untouched (dialects per D8).
+
+**Verification:** verify-batchF **13/13** · `next build` ✓ · live lab under a dark-defaulted viewer:
+`html.wf-public` wins the cascade; **the acceptance test passed — the portaled `requireTyped` confirm
+on a public page renders white-card/dark-text/light-scrim/light-input** (it shipped dark-on-white
+before this batch; `booking/manage` calls it in production); toast light; body + scrollbar light;
+brand header initial derived from the brand (accent mark), no-brand → no mark; both footer variants;
+`--focus-ring` computes with the raised alpha.
+
+**Known/accepted:** the four hero pages keep their centred hero marks (already brand-initial-driven —
+unifying them onto the left-bar header would be a redesign, not a migration); `/g`'s hero header waits
+for real brand data; `folio`'s "Made with WappFlow Studio" footer stays inside its dialect. **The
+follow-up proposal D6 defers to:** public endpoints returning `{brand, logo_url, accent}` (columns do
+not exist yet — `company_settings` has name+logo for invoices only; `/g`'s endpoint returns no brand
+at all), then wiring `logoUrl`/`brandColor` through the seam shipped here.
+
+---
+
+## PROP-002 — CLOSED
+
+All six batches implemented, verified, and owner-approved: **A** tokens + focus (6f85376), **B**
+Button/Badge/registries (4b76b34), **C** overlay infrastructure (2402a6a), **D** Field system +
+`!important` scope-down (2754369), **E** state family (e53afb0), **F** public brand chrome (this
+branch). Each batch: exact inventory → primitives → approved adopters only → boot-free harness
+(12+12+19+19+22+15+13 checks across verify-batchA..F) → real-browser interaction verification →
+owner review gate. The recorded on-touch backlog (overlays, toggles, swallowed fetches, public brand
+data) lives in the three inventory docs + the per-batch Known/accepted notes above; the next proposal
+in the maturity roadmap picks up from PRODUCT-AUDIT.md.

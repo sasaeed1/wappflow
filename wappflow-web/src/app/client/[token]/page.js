@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchClientPortal } from '../../../lib/api';
 
+import PublicScope from '@/components/PublicScope';
+import PublicFooter from '@/components/PublicFooter';
+
 const money = (s, n) => `${s || '$'}${(Number(n) || 0).toLocaleString()}`;
 // Robust to both SQLite naive timestamps ("2026-06-16 19:11:31", treated as UTC)
 // and ISO strings that already carry a timezone — never renders "Invalid Date".
@@ -51,10 +54,11 @@ export default function ClientPortalPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#f6f7f9,#eceef2)' }}>
+    <div className="wf-public" style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#f6f7f9,#eceef2)' }}>
+      <PublicScope />
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '0 16px 60px' }}>
         <header style={{ textAlign: 'center', padding: '48px 0 36px' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 16 }}>{(data.brand || 'W')[0].toUpperCase()}</div>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 16 }}>{(data.brand || '')[0]?.toUpperCase()}</div>
           <div style={{ fontSize: 12.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8a8a93' }}>{data.brand}</div>
           <h1 style={{ fontSize: 'clamp(26px,5vw,34px)', fontWeight: 800, color: '#16161a', margin: '6px 0 0', letterSpacing: '-0.02em' }}>Welcome, {data.client_name}</h1>
           <p style={{ fontSize: 14.5, color: '#70707a', margin: '8px 0 0' }}>Everything for your project, in one place.</p>
@@ -98,7 +102,7 @@ export default function ClientPortalPage() {
           </Section>
         )}
 
-        <p style={{ textAlign: 'center', fontSize: 12, color: '#a8aeb8', marginTop: 40 }}>Powered by {data.brand}</p>
+        <PublicFooter brand={data.brand} style={{ padding: '30px 0 0' }} />
       </div>
     </div>
   );

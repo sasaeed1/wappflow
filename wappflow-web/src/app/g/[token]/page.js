@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Heart, Download, Lock, MessageSquare, X, Loader, Check, ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
+import PublicFooter from '@/components/PublicFooter';
 import { BASE_URL } from '../../../lib/api';
 
 const imgUrl = (p) => (!p ? '' : /^https?:\/\//.test(p) ? p : `${BASE_URL}${p}`);
@@ -266,7 +267,7 @@ export default function ClientGalleryPage() {
         ))}
       </main>
 
-      <footer style={{ textAlign: 'center', padding: '30px 20px 50px', color: '#52525b', fontSize: 12 }}>Delivered with WappFlow Media Studio</footer>
+      <PublicFooter tone="dark" brand={data?.brand} />
 
       {/* floating slideshow launcher */}
       {shown.length > 1 && lightbox == null && (
