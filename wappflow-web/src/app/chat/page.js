@@ -1172,7 +1172,6 @@ export default function ChatPage() {
       {showCreateChannel && <ChannelModal onSave={handleCreateChannel} onClose={() => setShowCreateChannel(false)} />}
 
       <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
         /* contentEditable empty state placeholder */
         .wf-chat-input:empty:before {
           content: attr(data-placeholder);

@@ -52,7 +52,6 @@ function AcceptInviteContent() {
         <div style={{ textAlign: 'center', color: '#9ca3af' }}>
           <div style={{ width: 36, height: 36, border: '3px solid #c7d2fe', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
           <p style={{ fontWeight: 600 }}>Loading invite...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       </div>
     );
@@ -182,7 +181,6 @@ function AcceptInviteContent() {
           )}
         </div>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

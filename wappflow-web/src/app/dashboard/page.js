@@ -879,7 +879,6 @@ export default function DashboardPage() {
         <div style={{ width: 44, height: 44, border: '3px solid var(--border)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
         <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: 14 }}>Loading WappFlow...</p>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 
@@ -1333,7 +1332,6 @@ export default function DashboardPage() {
       <BulkUploadModal isOpen={showBulkUpload} onClose={() => setShowBulkUpload(false)} onDone={fetchAll} />
 
       <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         @keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes fadeSlideIn { from { transform: translateY(-8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }

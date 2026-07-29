@@ -370,7 +370,6 @@ export default function AICommandCenter({ enabled = true }) {
 
       <style>{`
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        @keyframes spin { to { transform: rotate(360deg); } }
         .ai-tooltip { opacity: 0; }
         button:hover .ai-tooltip { opacity: 1; }
       `}</style>

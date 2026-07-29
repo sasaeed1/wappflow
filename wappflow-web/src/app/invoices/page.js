@@ -15,6 +15,9 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import { Field, Input, Textarea } from '@/components/ui/Field';
+import EmptyState from '@/components/ui/EmptyState';
+import ErrorState from '@/components/ui/ErrorState';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { invoiceStatusMeta } from '@/lib/invoiceStatus';
 
@@ -324,20 +327,32 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState([]);
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [viewInvoice, setViewInvoice] = useState(null);
   const [emailInvoice, setEmailInvoice] = useState(null);
 
-  useEffect(() => {
-    if (!localStorage.getItem('token')) { router.push('/login'); return; }
+  // The invoice fetch used to swallow its failure into `{invoices: []}`, so an outage
+  // rendered as "No invoices found". Company settings are cosmetic, so that one still
+  // degrades quietly — only the data fetch decides whether we can show the page.
+  const load = () => {
+    setLoading(true);
+    setError(null);
     Promise.all([
-      invoicesAPI.getAll().catch(() => ({ data: { invoices: [] } })),
+      invoicesAPI.getAll(),
       settingsAPI.getCompany().catch(() => ({ data: { company: {} } })),
     ]).then(([invRes, compRes]) => {
       setInvoices(invRes.data.invoices || []);
       setCompany(compRes.data.company || {});
+    }).catch((e) => {
+      setError(e?.response?.data?.error || e?.message || 'Request failed');
     }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!localStorage.getItem('token')) { router.push('/login'); return; }
+    load();
   }, []);
 
   const handleMarkPaid = async (id) => {
@@ -463,17 +478,35 @@ export default function InvoicesPage() {
             ))}
           </div>
 
-          {loading ? (
-            <div style={{ padding: '60px 0', textAlign: 'center' }}>
-              <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Loading invoices...</p>
-            </div>
+          {/* error → loading → empty → filtered-empty → rows. The filtered branch is
+              separate on purpose: telling someone with 300 invoices to "create invoices
+              from a lead profile" because they mistyped a search is simply false. */}
+          {error ? (
+            <ErrorState
+              title="Could not load your invoices"
+              description="Your invoices are safe — we just couldn’t fetch them right now."
+              detail={error}
+              onRetry={load}
+              compact
+            />
+          ) : loading ? (
+            <SkeletonRow variant="invoice" rows={6} />
+          ) : invoices.length === 0 ? (
+            <EmptyState
+              icon={FileText}
+              title="No invoices yet"
+              description="Create invoices from any lead profile."
+              compact
+            />
           ) : filtered.length === 0 ? (
-            <div style={{ padding: '60px 0', textAlign: 'center' }}>
-              <FileText size={40} color="var(--border)" style={{ margin: '0 auto 12px' }} />
-              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 6px' }}>No invoices found</p>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Create invoices from any lead profile.</p>
-            </div>
+            <EmptyState
+              filtered
+              icon={Search}
+              title="No invoices match those filters"
+              description="Try a different search, or clear the filters to see everything."
+              action={{ label: 'Clear filters', onClick: () => { setSearch(''); setFilterStatus('all'); } }}
+              compact
+            />
           ) : filtered.map((inv, idx) => {
             return (
               <div key={inv.id}
@@ -505,7 +538,6 @@ export default function InvoicesPage() {
           })}
         </div>
 
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     </NavBar>
   );

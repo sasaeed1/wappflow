@@ -1035,3 +1035,51 @@ box-shadow suppresses the Batch A focus ring on an autofilled field (affects leg
 alike, predates this batch); and the contracts builder's title input has never rendered borderless as
 its author intended, because the global override always painted it — deleting its dead handlers
 changes nothing, but the underlying defect stays open.
+
+### Batch E — State family (Spinner / EmptyState / ErrorState / Skeleton) — IMPLEMENTED
+
+Branch `design-system/batch-e-states`. Exact inventory first
+(`proposals/PROP-002-batch-e-inventory.md`, **442 sites**: 101 spinner/keyframe, 137 empty states,
+126 swallowed-error sites, 78 loading states — §11 had estimated "35 spinners, 14 keyframes, ~30
+empties"). Migrated ONLY the approved adopters; the rest is the recorded on-touch backlog.
+
+- **`components/ui/Spinner.js`** — `role="status"` + accessible name (the ring itself is
+  `aria-hidden` decoration), sm/md/lg, `var(--accent)`/`var(--border)`, riding the ONE shared
+  `@keyframes spin`.
+- **`components/ui/EmptyState.js`** — enforces the distinction the codebase kept losing: an empty
+  *list* and an empty *filter result* are different situations. `filtered` swaps the copy and offers
+  "Clear filters" instead of a create CTA. CTAs reuse the Button primitive.
+- **`components/ui/ErrorState.js`** — `role="alert"`, a retry action, a de-emphasised technical
+  `detail` slot, and copy that says the data is safe.
+- **`components/ui/Skeleton.js`** — `Skeleton` is the dumb bar; `SkeletonRow` composes it into the
+  **three real row shapes** the inventory measured (leads 9-col grid + 34px squircle avatar;
+  invoices 6-col grid, no avatar; vault flex card + 40px circle). One generic row would have fitted
+  none of them and reintroduced the layout shift skeletons exist to prevent.
+- **The behavioural fix.** `clients` swallowed its fetch failure in a bare `catch {}`, so a backend
+  outage rendered **"No clients yet"** — telling the user their data was gone and inviting them to
+  re-create it. `invoices` did the same via `.catch(() => ({data:{invoices:[]}}))`. Both now capture
+  the failure and render an ErrorState with retry. Both adopters branch **error → loading → empty →
+  filtered-empty → content**, the ordering `contracts/analytics/page.js:42` already used — this
+  restores an in-house convention rather than importing one.
+- **`invoices` had no filtered-empty variant** — a user with 300 invoices who mistyped a search was
+  told to "create invoices from any lead profile". Fixed.
+- **17 duplicate `@keyframes spin` deleted** (§11 estimated 14); `globals.css:285` is the sole
+  survivor. The 14 *aliased* spin keyframes (`fcSpin`, `sm-spin`, `hd-rot`, `csp` ×6, `ms-spin`, …)
+  are deliberately untouched. Also added a `prefers-reduced-motion` block so skeletons stop pulsing.
+
+**Verification:** verify-batchE **15/15** · `next build` ✓ · live lab: all three Spinner sizes expose
+`role="status"` with accessible names and `aria-hidden` rings; ErrorState announces via `role="alert"`
+and its retry fires; true-empty vs filtered-empty render different copy and CTAs; every skeleton bar
+is hidden from assistive tech; and the three skeleton shapes measure **59 / 62 / 73px** against real
+rows of ~58 / ~62 / ~72px (the invoice variant was 4px short on first measure and was corrected so
+the table shrinks rather than grows on load).
+
+**Known/accepted (recorded, NOT migrated — approved-adopter discipline):** `contracts/vault` gets the
+Skeleton only; its `.catch(() => setClients([]))` swallow is the top deferred item (the fix is three
+lines and the primitive already exists — deliberately not slipped in). Also deferred: ~124 further
+swallow sites; `dashboard`/`leads/[id]`/`profile`/`reports`/`accept-invite` full-page spinners;
+`settings`' 7 loading branches across 3 treatments; the ~12 control/* and ~15 studio/* loaders;
+`components/SidePanel.js`'s local `Spinner()`/`Empty()` (which would silently **shadow** the
+primitives if that file ever imports them — must be deleted in the same edit); `bookings`/`studio
+store`, which hang on "Loading…" forever when their fetch fails; and the spinner colour drift
+(`#ef4444` in trash, `#8b5cf6` in knowledge) that resolves whenever those surfaces adopt.

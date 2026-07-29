@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Search, FileText, ChevronRight, Phone, Mail, Link2, Check } from 'lucide-react';
 import { csAPI, clientPortalAPI } from '../../../lib/api';
 import ContractsStudioShell from '../../../components/ContractsStudioShell';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 
 const STATUS = {
   draft: ['#64748b', 'Draft'], pending_approval: ['#f59e0b', 'Needs approval'], sent: ['#6366f1', 'Sent'],
@@ -41,7 +42,10 @@ export default function VaultPage() {
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients…" style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
         </div>
 
-        {!clients && <p style={{ color: 'var(--text-muted)' }}>Loading…</p>}
+        {/* Batch E: Skeleton only — this page's `.catch(() => setClients([]))` also turns a
+            failed fetch into the empty state, but fixing that is outside the approved scope
+            (vault is a skeleton target, not a full adopter). Recorded in the inventory. */}
+        {!clients && <SkeletonRow variant="vaultCard" rows={4} />}
         {clients && filtered.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No clients yet — documents you create will be filed here.</p>}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
