@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { fetchPayment } from '../../../lib/api';
+import PublicScope from '@/components/PublicScope';
+import PublicFooter from '@/components/PublicFooter';
 
 export default function PayPage() {
   const { token } = useParams();
@@ -18,7 +20,8 @@ export default function PayPage() {
 
   const paid = p.status === 'paid' || status === 'success';
   return (
-    <div style={c}>
+    <div className="wf-public" style={{ ...c, flexDirection: 'column' }}>
+      <PublicScope />
       <div style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 18, padding: 28, boxShadow: '0 30px 80px rgba(0,0,0,0.12)', textAlign: 'center' }}>
         {paid ? (
           <>
@@ -41,8 +44,10 @@ export default function PayPage() {
           </>
         )}
       </div>
+      <PublicFooter style={{ padding: '18px 0 0' }} />
     </div>
   );
 }
+
 const c = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg,#f6f7f9,#eceef2)', padding: 16 };
 const sp = { width: 26, height: 26, border: '2px solid rgba(0,0,0,0.15)', borderTopColor: '#16161a', borderRadius: '50%', animation: 'csp .9s linear infinite' };

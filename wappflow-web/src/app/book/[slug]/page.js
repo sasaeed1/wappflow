@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchBookingPublic, createBooking } from '../../../lib/api';
 
+import PublicScope from '@/components/PublicScope';
+import PublicFooter from '@/components/PublicFooter';
+
 const fmtDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const fmtTime = (iso) => new Date(iso.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
@@ -47,10 +50,11 @@ export default function BookingPage() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#f6f7f9,#eceef2)' }}>
+    <div className="wf-public" style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#f6f7f9,#eceef2)' }}>
+      <PublicScope />
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '0 16px 60px' }}>
         <header style={{ textAlign: 'center', padding: '44px 0 28px' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 14 }}>{(data.brand || 'W')[0].toUpperCase()}</div>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 14 }}>{(data.brand || '')[0]?.toUpperCase()}</div>
           <h1 style={{ fontSize: 'clamp(24px,5vw,30px)', fontWeight: 800, color: '#16161a', margin: 0, letterSpacing: '-0.02em' }}>Book with {data.brand}</h1>
           <p style={{ fontSize: 14.5, color: '#70707a', margin: '6px 0 0' }}>Choose a service and a time that works for you.</p>
         </header>
@@ -98,7 +102,7 @@ export default function BookingPage() {
             </Card>
           </>
         )}
-        <p style={{ textAlign: 'center', fontSize: 12, color: '#a8aeb8', marginTop: 24 }}>Powered by {data.brand}</p>
+        <PublicFooter brand={data.brand} style={{ padding: '14px 0 0' }} />
       </div>
     </div>
   );

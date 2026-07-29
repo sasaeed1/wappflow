@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchShop, createOrder } from '../../../lib/api';
 
+import PublicScope from '@/components/PublicScope';
+import PublicFooter from '@/components/PublicFooter';
+
 export default function ShopPage() {
   const { token } = useParams();
   const [data, setData] = useState(null);
@@ -46,10 +49,11 @@ export default function ShopPage() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#f6f7f9,#eceef2)' }}>
+    <div className="wf-public" style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#f6f7f9,#eceef2)' }}>
+      <PublicScope />
       <div style={{ maxWidth: 620, margin: '0 auto', padding: '0 16px 140px' }}>
         <header style={{ textAlign: 'center', padding: '44px 0 26px' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 14 }}>{(data.brand || 'W')[0].toUpperCase()}</div>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 14 }}>{(data.brand || '')[0]?.toUpperCase()}</div>
           <h1 style={{ fontSize: 'clamp(24px,5vw,30px)', fontWeight: 800, color: '#16161a', margin: 0, letterSpacing: '-0.02em' }}>{data.brand} Print Shop</h1>
           {data.gallery_title && <p style={{ fontSize: 14.5, color: '#70707a', margin: '6px 0 0' }}>From “{data.gallery_title}”</p>}
         </header>
@@ -74,6 +78,7 @@ export default function ShopPage() {
             ))}
           </div>
         )}
+        <PublicFooter brand={data.brand} />
       </div>
 
       {cart.length > 0 && (

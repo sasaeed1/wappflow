@@ -450,3 +450,67 @@ select option {
   .cs-spacer   { display: none !important; }
   .cs-nav      { flex: 1 1 0 !important; min-width: 0 !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   .wf-public — the fixed-LIGHT public scope (PROP-002 Batch F)
+   ────────────────────────────────────────────────────────────────────────────
+   Public token pages (booking, shop, pay, client portal, contract) are seen by the
+   STUDIO'S CLIENTS, who have no app theme preference. app/layout.js defaults such a
+   visitor to `dark`, so every token-driven thing on those pages renders in the app's
+   dark palette on a white card. This scope pins the light values absolutely — correct
+   whether the viewer's theme is dark, light, or absent.
+
+   WHY IT IS APPLIED TO <html> AND NOT A PAGE WRAPPER: confirm/Toast/Modal render via
+   createPortal(children, document.body) (components/ui/overlay.js), so a wrapper class
+   contains none of them; nor does it reach <body>'s background or the scrollbar chrome.
+   components/PublicScope.js sets the class on documentElement and removes it on unmount.
+   Selector is `html.wf-public` (0,1,1) so it beats `html.light` (0,1,1) on source order,
+   and `.wf-public` so a server-rendered wrapper is already light on first paint.
+
+   DERIVED TOKENS MUST BE RESTATED, NOT INHERITED: var() inside a custom property is
+   substituted where the DECLARATION applies, so --focus-ring, --accent-bg and
+   --warning-fg would keep their :root (dark) resolutions here even though --accent
+   changes. They are redeclared literally below. This failure is silent — nothing errors,
+   the colours are just quietly wrong (a 15%-alpha ring on white is invisible focus).
+
+   NOT applied to /g (client gallery, deliberately #0b0b0f) or /d under the `executive`
+   document theme — those are dark by design and take the header/footer only. */
+.wf-public,
+html.wf-public {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface2: #f8fafc;
+  --border: #e2e8f0;
+  --glass: rgba(255,255,255,0.95);
+  --glass-2: rgba(248,250,252,0.92);
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-light: rgba(99,102,241,0.1);
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --shadow: 0 4px 24px rgba(0,0,0,0.08);
+  --overlay-bg: rgba(15,23,42,0.4);
+  --elev-1: 0 1px 2px rgba(0,0,0,0.04);
+  --elev-2: 0 4px 24px rgba(0,0,0,0.08);
+  --elev-3: 0 30px 80px rgba(0,0,0,0.18);
+  --accent-fg: #4f46e5;
+  --success-bg: #ecfdf5; --success-fg: #047857;
+  --danger-bg: #fff5f5; --danger-border: #fecaca; --danger-fg: #dc2626;
+  --info-bg: #ecfeff; --info-fg: #0e7490;
+  --warning-bg: #fffbeb; --warning-border: #fde68a; --warning-text: #92400e;
+
+  /* Derived — restated because var() does not re-resolve in a nested scope (see above). */
+  --warning-fg: #92400e;
+  --accent-bg: rgba(99,102,241,0.1);
+  /* Alpha raised from the dark ring's 15%: on white, 15% indigo is effectively invisible,
+     and these are the studio's client-facing booking/checkout/signature forms. */
+  --focus-ring: 0 0 0 1px var(--accent), 0 0 0 4px rgba(99,102,241,0.28);
+}
+/* The global :focus-visible ring is INHERITED here on purpose — this scope redeclares
+   --focus-ring rather than suppressing box-shadow the way .ms-root does. */
+html.wf-public body { background: var(--bg); color: var(--text); transition: none; }
+.wf-public select option { background: var(--surface); color: var(--text); }

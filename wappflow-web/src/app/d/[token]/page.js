@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import { fetchPublicDoc, signPublicDoc, declinePublicDoc, askPublicDoc, trackPublicDoc, mediaUrl } from '../../../lib/api';
 import { BlockView, DocFrame } from '../../contracts/blocks';
 import '../../contracts/contracts.css';
+import PublicBrandHeader from '@/components/PublicBrandHeader';
+import PublicFooter from '@/components/PublicFooter';
 
 const money = (c, n) => `${c || '$'}${(Number(n) || 0).toLocaleString()}`;
 const outerBg = (t) => (t === 'executive' ? '#080b12' : t === 'editorial' ? '#efe9dd' : '#eceef2');
@@ -68,13 +70,18 @@ export default function PublicDocPage() {
     return () => obs.disconnect();
   }, [state, blocks.length]);
 
-  // shells
+  // Batch F: was a hand-rolled bar with a hardcoded WappFlow "W" mark (sky→indigo
+  // gradient) and the literal string 'WappFlow' as the name fallback — above a client's
+  // legally-binding signature page. The primitive renders the studio's brand when the
+  // deferred endpoints serve it; until then, the document title alone and NO mark.
   const Brand = () => (
-    <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', gap: 9, padding: '12px 18px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-      <div style={{ width: 26, height: 26, borderRadius: 7, background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 13 }}>W</div>
-      <strong style={{ fontSize: 14, color: '#16161a' }}>{data?.title || 'WappFlow'}</strong>
-      <span style={{ marginLeft: 'auto', fontSize: 11, color: '#8a8a93', textTransform: 'capitalize' }}>{data?.type}</span>
-    </div>
+    <PublicBrandHeader
+      brand={data?.brand}
+      title={data?.title}
+      meta={data?.type}
+      sticky
+      style={{ background: 'rgba(255,255,255,0.7)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}
+    />
   );
 
   if (state === 'loading') return <div style={center}><div style={spinner} /><style>{`@keyframes csp{to{transform:rotate(360deg)}}`}</style></div>;
@@ -129,6 +136,8 @@ export default function PublicDocPage() {
         onDeclined={() => { setSigning(false); setState('declined'); }} />}
 
       <AskWidget token={token} stickyOffset={!done && hasPricing} />
+      {/* inside the padded wrapper's flow, so it scrolls above the fixed action bar */}
+      <PublicFooter brand={data?.brand} />
     </div>
   );
 }
@@ -148,11 +157,11 @@ function AskWidget({ token, stickyOffset }) {
   return (
     <>
       {!open && (
-        <button onClick={() => setOpen(true)} style={{ position: 'fixed', right: 16, bottom: stickyOffset ? 86 : 20, zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff', fontWeight: 700, fontSize: 13.5, boxShadow: '0 10px 30px rgba(14,165,233,0.4)' }}>✦ Ask a question</button>
+        <button onClick={() => setOpen(true)} style={{ position: 'fixed', right: 16, bottom: stickyOffset ? 86 : 20, zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 13.5, boxShadow: '0 10px 30px rgba(99,102,241,0.35)' }}>✦ Ask a question</button>
       )}
       {open && (
         <div style={{ position: 'fixed', right: 16, bottom: 20, width: 'min(360px, calc(100vw - 32px))', zIndex: 45, background: '#fff', borderRadius: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', border: '1px solid rgba(0,0,0,0.06)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '70vh' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 16px', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 16px', background: 'var(--accent)', color: '#fff' }}>
             <span style={{ fontSize: 15, fontWeight: 800 }}>✦ Ask about this document</span>
             <button onClick={() => setOpen(false)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
           </div>
