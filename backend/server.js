@@ -603,6 +603,12 @@ function safeAlter(sql) {
 
 safeAlter('ALTER TABLE leads ADD COLUMN is_deleted INTEGER DEFAULT 0');
 safeAlter('ALTER TABLE leads ADD COLUMN deleted_at TIMESTAMP');
+
+// Phase 3 — one recycle bin for every module. Adds is_deleted/deleted_at/deleted_by
+// to invoices, contracts, bookings and members so they stop being hard-deleted.
+// Additive + idempotent, so it is safe on every boot against the live DB.
+const softDeleteLib = require('./soft-delete');
+softDeleteLib.installSchema(db, safeAlter);
 // Won leads can be promoted to "clients": hidden from the Leads list (but kept
 // in chat + analytics). Additive flag — never deletes, fully reversible.
 safeAlter('ALTER TABLE leads ADD COLUMN is_client INTEGER DEFAULT 0');
@@ -1792,7 +1798,7 @@ app.get('/api/leads/:leadId/history', auth, (req, res) => {
 app.get('/api/leads/:leadId/invoices', auth, (req, res) => {
   try {
     if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
-    const invoices = db.prepare(`SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC`).all(req.params.leadId, req.workspaceId, req.workspaceOwnerId);
+    const invoices = db.prepare(`SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC`).all(req.params.leadId, req.workspaceId, req.workspaceOwnerId);
     res.json({ invoices });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1862,7 +1868,7 @@ app.get('/api/leads/:id', auth, (req, res) => {
     try { history = db.prepare('SELECT * FROM contact_history WHERE lead_id = ? ORDER BY created_at DESC LIMIT 50').all(req.params.id); } catch {}
 
     let invoices = [];
-    try { invoices = db.prepare('SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.params.id, req.workspaceId, req.workspaceOwnerId).map(parseInvoice); } catch {}
+    try { invoices = db.prepare('SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC').all(req.params.id, req.workspaceId, req.workspaceOwnerId).map(parseInvoice); } catch {}
 
     let emailWorkflows = [];
     try { emailWorkflows = db.prepare('SELECT * FROM email_workflows WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.params.id, req.workspaceId, req.workspaceOwnerId); } catch {}
@@ -1992,18 +1998,33 @@ app.delete('/api/leads/trash', auth, (req, res) => {
       let q = 'SELECT id FROM leads WHERE workspace_id = ? AND is_deleted = 1';
       const params = [req.workspaceId];
       if (!req.canViewAllLeads) { q += ' AND assigned_to = ?'; params.push(req.userId); }
-      const ids = db.prepare(q).all(...params).map(r => r.id);
-      if (!ids.length) return 0;
+      const all = db.prepare(q).all(...params).map(r => r.id);
+      if (!all.length) return { deleted: 0, skipped: [] };
+
+      // Phase 3: the same GUARD as the single permanent-delete. This loop used to
+      // include 'invoices', so emptying the trash destroyed financial records in bulk
+      // — the exact thing the single-delete guard now refuses to do. Leads with live
+      // attachments are SKIPPED and reported rather than silently purged.
+      const ids = [], skipped = [];
+      for (const id of all) {
+        const att = softDeleteLib.attachmentsForLead(db, id, req.workspaceId);
+        if (att.blocked) skipped.push({ id, attachments: att.items });
+        else ids.push(id);
+      }
+      if (!ids.length) return { deleted: 0, skipped };
+
       const ph = ids.map(() => '?').join(',');
-      for (const table of ['notes', 'reminders', 'messages', 'contact_history', 'invoices']) {
+      for (const table of ['notes', 'reminders', 'messages', 'contact_history']) {
         db.prepare(`DELETE FROM ${table} WHERE lead_id IN (${ph})`).run(...ids);
       }
       db.prepare(`DELETE FROM leads WHERE id IN (${ph}) AND workspace_id = ?`).run(...ids, req.workspaceId);
-      return ids.length;
+      return { deleted: ids.length, skipped };
     });
-    const deleted = emptyTrash();
-    logAudit(req.workspaceId, req.userId, 'leads_empty_trash', 'workspace', req.workspaceId, { deleted });
-    res.json({ deleted });
+    const { deleted, skipped } = emptyTrash();
+    logAudit(req.workspaceId, req.userId, 'leads_empty_trash', 'workspace', req.workspaceId, { deleted, skipped: skipped.length });
+    // `skipped` lets the UI say WHY the bin is not empty afterwards, instead of the
+    // user clicking "empty" and silently still seeing rows.
+    res.json({ deleted, skipped });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2028,12 +2049,24 @@ app.delete('/api/leads/:id/permanent', auth, (req, res) => {
   try {
     // Guard the lead BEFORE the cascade so child rows are never deleted cross-tenant.
     if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
+
+    // Phase 3 GUARD (owner decision): refuse rather than cascade. This endpoint used
+    // to run `DELETE FROM invoices WHERE lead_id` — destroying financial records as a
+    // side effect of tidying a pipeline, with no undo. Now we say what is attached and
+    // let the user decide.
+    const attached = softDeleteLib.attachmentsForLead(db, req.params.id, req.workspaceId);
+    if (attached.blocked) {
+      return res.status(409).json({ error: attached.message, attachments: attached.items });
+    }
+
+    // Only conversation-scoped children cascade — they have no meaning without the
+    // lead and no independent value to restore.
     db.prepare('DELETE FROM notes WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM reminders WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM messages WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM contact_history WHERE lead_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM invoices WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM leads WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
+    logAudit(req.workspaceId, req.userId, 'permanent_delete', 'leads', req.params.id, {});
     res.json({ message: 'Permanently deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2263,8 +2296,33 @@ function parseInvoice(inv) {
 
 app.get('/api/invoices', auth, (req, res) => {
   try {
-    const invoices = db.prepare('SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.workspaceId, req.workspaceOwnerId).map(parseInvoice);
+    const invoices = db.prepare('SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC').all(req.workspaceId, req.workspaceOwnerId).map(parseInvoice);
     res.json({ invoices });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// The invoice bin. Soft-deleted invoices are never swept (owner decision: a financial
+// record must not vanish on a timer), so this list is the only way back to them.
+app.get('/api/invoices/bin', auth, (req, res) => {
+  try {
+    const invoices = db.prepare(
+      `SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))
+       AND is_deleted = 1 ORDER BY deleted_at DESC`
+    ).all(req.workspaceId, req.workspaceOwnerId).map(parseInvoice);
+    res.json({ invoices });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/invoices/:id/restore', auth, (req, res) => {
+  try {
+    const r = db.prepare(
+      `UPDATE invoices SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL
+       WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`
+    ).run(req.params.id, req.workspaceId, req.workspaceOwnerId);
+    if (!r.changes) return res.status(404).json({ error: 'Invoice not found' });
+    logAudit(req.workspaceId, req.userId, 'restore', 'invoices', req.params.id, {});
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+    res.json({ invoice: parseInvoice(invoice) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2341,8 +2399,16 @@ app.put('/api/invoices/:id', auth, (req, res) => {
 
 app.delete('/api/invoices/:id', auth, (req, res) => {
   try {
-    db.prepare('DELETE FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').run(req.params.id, req.workspaceId, req.workspaceOwnerId);
-    res.json({ message: 'Deleted' });
+    // Phase 3: soft-delete. An invoice is a financial record — it goes to the bin and
+    // stays restorable indefinitely (the retention sweep skips invoices by design).
+    // Keeps the legacy dual-scope predicate so pre-workspace rows still match.
+    const r = db.prepare(
+      `UPDATE invoices SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, deleted_by = ?
+       WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`
+    ).run(req.userId, req.params.id, req.workspaceId, req.workspaceOwnerId);
+    if (!r.changes) return res.status(404).json({ error: 'Invoice not found' });
+    logAudit(req.workspaceId, req.userId, 'soft_delete', 'invoices', req.params.id, {});
+    res.json({ message: 'Moved to bin' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3640,13 +3706,17 @@ AND r.reminder_date >= datetime(?, '-2 minutes')
   }
 });
 
-// Runs every day at midnight — cleans up 90-day old trash
+// Runs every day at midnight — sweeps every registered bin past its window.
+// One job for every module now, rather than per-table cleanups that drifted apart.
+// Invoices are registered with no retention window, so this never touches them.
 cron.schedule('0 0 * * *', () => {
   try {
-    const result = db.prepare(`
-      DELETE FROM leads WHERE is_deleted = 1 AND deleted_at < datetime('now', '-90 days')
-    `).run();
-    if (result.changes > 0) console.log(`🗑️ Auto-cleanup: removed ${result.changes} expired trash leads`);
+    const purged = softDeleteLib.purgeExpired(db);
+    const total = Object.values(purged).reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      console.log(`🗑️ Auto-cleanup: purged ${total} expired rows —`,
+        Object.entries(purged).map(([t, n]) => `${t}:${n}`).join(' '));
+    }
   } catch (e) {
     console.error('Cron cleanup error:', e.message);
   }

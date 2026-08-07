@@ -59,13 +59,13 @@ export default function StudioTrashPage() {
           </div>
         </div>
         <p className="ms-note" style={{ marginBottom: 24 }}>
-          <AlertTriangle size={13} /> Deleted media is kept here for 30 days, then permanently removed. Restore anything before it expires.
+          <AlertTriangle size={13} /> Deleted media is kept here for 90 days, then permanently removed. Restore anything before it expires.
         </p>
 
         {items === null ? (
           <p className="ms-loading">Loading trash…</p>
         ) : items.length === 0 ? (
-          <div className="ms-empty-soft">Trash is empty. Deleted photos &amp; videos will appear here for 30 days.</div>
+          <div className="ms-empty-soft">Trash is empty. Deleted photos &amp; videos will appear here for 90 days.</div>
         ) : (
           <div className="ms-photo-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
             {items.map(a => {

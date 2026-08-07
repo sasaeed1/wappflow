@@ -159,7 +159,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   }
   safeAlter('ALTER TABLE ms_jobs ADD COLUMN lease_until TIMESTAMP'); // worker lease → stale-job reaper (multi-worker scale)
   safeAlter('ALTER TABLE ms_assets ADD COLUMN edits TEXT'); // non-destructive edit params (JSON)
-  safeAlter('ALTER TABLE ms_assets ADD COLUMN deleted_at TIMESTAMP'); // soft-delete → Trash (30-day restore)
+  safeAlter('ALTER TABLE ms_assets ADD COLUMN deleted_at TIMESTAMP'); // soft-delete → Trash (restorable; window from soft-delete.js)
   // Video metadata (filled by the worker's ffprobe pass) + proxy/poster for the editor.
   for (const col of ['v_duration_ms INTEGER', 'v_width INTEGER', 'v_height INTEGER', 'v_fps REAL',
     'v_codec TEXT', 'v_has_audio INTEGER', 'proxy_url TEXT', 'poster_url TEXT']) {
@@ -900,17 +900,22 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (storage.isRemote) Promise.resolve(storage.deleteFile(k)).catch(() => {});
     }
   }
-  // Drop anything in Trash past the 30-day window. Cheap; safe to call often.
+  // Drop anything in Trash past the retention window. Cheap; safe to call often.
+  // Phase 3: was 30 days here vs 90 for leads — two bins with different promises.
+  // The window now comes from the shared registry so it cannot drift again. The purge
+  // itself stays local because assets must also be removed from storage, not just the
+  // row (see purgeAsset above).
+  const { RETENTION_DAYS } = require('./soft-delete');
   function purgeExpiredTrash(workspaceId) {
     try {
-      const stale = db.prepare("SELECT * FROM ms_assets WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-30 days')" + (workspaceId ? ' AND workspace_id = ?' : '')).all(...(workspaceId ? [workspaceId] : []));
+      const stale = db.prepare(`SELECT * FROM ms_assets WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-${RETENTION_DAYS} days')` + (workspaceId ? ' AND workspace_id = ?' : '')).all(...(workspaceId ? [workspaceId] : []));
       for (const a of stale) purgeAsset(a);
       return stale.length;
     } catch { return 0; }
   }
   purgeExpiredTrash(); // sweep once on boot
 
-  // DELETE = soft-delete → Trash (restorable for 30 days).
+  // DELETE = soft-delete → Trash (restorable; window from soft-delete.js).
   app.delete('/api/media/assets/:id', auth, (req, res) => {
     try {
       if (!canManage(req)) return res.status(403).json({ error: 'Not allowed' });
