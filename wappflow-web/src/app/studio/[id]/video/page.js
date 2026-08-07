@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X, LayoutTemplate, Loader, RefreshCw, Wand2 } from 'lucide-react';
 import { mediaAPI, reelAPI } from '../../../../lib/api';
-import NavBar from '../../../../components/StudioShell';
 import { ASPECTS, ASPECT_LABELS } from '../../video-constants';
 
 const fmtDur = (ms) => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -63,10 +62,10 @@ export default function ReelListPage() {
     setBuilding(false);
   };
 
-  if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
+  if (loading) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page" style={{ paddingTop: 'clamp(16px, 2.4vw, 30px)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22, flexWrap: 'wrap' }}>
           <button onClick={() => router.push(`/studio/${id}`)} className="ms-back" style={{ margin: 0 }}><ArrowLeft size={15} /> Back</button>
@@ -144,7 +143,7 @@ export default function ReelListPage() {
       {showNew && <NewReelModal onClose={() => setShowNew(false)} onPick={create} />}
       {showTemplates && <TemplateGalleryModal projectId={id} hasMedia={assets.length > 0} onClose={() => setShowTemplates(false)} />}
       {showAi && <AiDraftModal projectId={id} hasMedia={assets.length > 0} onClose={() => setShowAi(false)} />}
-    </NavBar>
+    </>
   );
 }
 

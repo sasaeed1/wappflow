@@ -5,7 +5,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Check, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { mediaAPI, videoAiAPI, mediaUrl } from '../../../../../lib/api';
-import NavBar from '../../../../../components/StudioShell';
 
 const TRANSITIONS = ['cut', 'fade', 'whip'];
 const MOTIONS = ['kenburns', 'pan', 'static'];
@@ -39,10 +38,10 @@ export default function ReelEditorPage() {
 
   const save = async () => { setSaving(true); try { await videoAiAPI.updateReel(reelId, { plan: { ...plan, length_s: Math.round(totalMs / 1000) } }); setSaved(true); } catch {} finally { setSaving(false); } };
 
-  if (!plan) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
+  if (!plan) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page" style={{ maxWidth: 880 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
           <button onClick={() => router.push(`/studio/${id}`)} className="ms-btn-ghost" style={{ padding: '7px 12px' }}><ArrowLeft size={14} /> Shoot</button>
@@ -86,7 +85,7 @@ export default function ReelEditorPage() {
           {timeline.length === 0 && <p style={{ fontSize: 13, color: 'var(--ms-ink-3)' }}>This reel has no clips. Generate a reel from the Studio AI panel first.</p>}
         </div>
       </div>
-    </NavBar>
+    </>
   );
 }
 const lbl = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--ms-ink-3)' };

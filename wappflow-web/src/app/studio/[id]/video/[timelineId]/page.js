@@ -9,7 +9,6 @@ import {
   Music, Upload, Volume2,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
-import NavBar from '../../../../../components/StudioShell';
 import {
   ASPECTS, ASPECT_LABELS, EXPORT_PRESETS, QUALITIES, SAFE_AREAS, TRANSITIONS, VIDEO_EFFECTS,
   TEXT_TYPES, TEXT_ANIM, FONT_FAMILIES, DEFAULT_PHOTO_MS, DEFAULT_VIDEO_MS, PX_PER_MS, aspectBox, uid, colorPreviewFilter,
@@ -305,7 +304,7 @@ export default function VideoEditor() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selId, activeClip, duration, playhead]); // eslint-disable-line
 
-  if (loading || !doc) return <NavBar><div className="ms-page"><p className="ms-loading">Opening editor…</p></div></NavBar>;
+  if (loading || !doc) return <><div className="ms-page"><p className="ms-loading">Opening editor…</p></div></>;
 
   const safe = SAFE_AREAS[EXPORT_PRESETS.find(p => p.aspect === doc.aspect && p.safe)?.safe] || null;
 
@@ -326,7 +325,7 @@ export default function VideoEditor() {
   }
 
   return (
-    <NavBar>
+    <>
       <div className="ms-ve">
         {/* top bar */}
         <div className="ms-ve-top">
@@ -486,7 +485,7 @@ export default function VideoEditor() {
           onClose={() => setShowMusic(false)} onPick={setMusic}
           onUploaded={(list) => setAudioAssets(list)} />
       )}
-    </NavBar>
+    </>
   );
 }
 

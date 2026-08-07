@@ -13,7 +13,6 @@ import {
 const kindOf = (a) => (a?.type === 'video' ? 'video' : 'photo');
 const fmtDur = (ms) => { if (!ms) return null; const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 import { mediaAPI, mediaUrl, studioAiAPI, videoAiAPI } from '../../../lib/api';
-import NavBar from '../../../components/StudioShell';
 import RoomPanel from '@/components/RoomPanel';
 
 function FocusChip({ sharpness }) {
@@ -338,10 +337,10 @@ export default function ProjectPage() {
   const approveProof = async (setId) => { await mediaAPI.proofingApprove(setId); await refreshGalleries(); setBanner({ type: 'ok', msg: 'Selection approved — client notified' }); };
   const requestChangesProof = async (setId) => { await mediaAPI.proofingRequestChanges(setId, ''); await refreshGalleries(); setBanner({ type: 'ok', msg: 'Change request sent to the client' }); };
 
-  if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
+  if (loading) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page">
         <button onClick={() => router.push('/studio')} className="ms-back"><ArrowLeft size={15} /> All shoots</button>
 
@@ -560,7 +559,7 @@ export default function ProjectPage() {
         </div>
       )}
       {aiPanel && <StudioAIModal projectId={id} onClose={() => setAiPanel(false)} onGallery={refreshGalleries} setBanner={setBanner} />}
-    </NavBar>
+    </>
   );
 }
 

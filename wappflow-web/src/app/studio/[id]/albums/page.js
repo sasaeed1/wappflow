@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, BookOpen, X, FileText } from 'lucide-react';
 import { mediaAPI } from '../../../../lib/api';
-import NavBar from '../../../../components/StudioShell';
 
 const SIZES = [
   { label: '30×30 cm square', spec: { w_mm: 300, h_mm: 300, margin_mm: 12 } },
@@ -60,7 +59,7 @@ export default function AlbumsPage() {
   }, [id]);
 
   return (
-    <NavBar>
+    <>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 20px 60px' }}>
         <button onClick={() => router.push(`/studio/${id}`)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>
           <ArrowLeft size={15} /> Back to shoot
@@ -94,7 +93,7 @@ export default function AlbumsPage() {
         )}
       </div>
       {showNew && <NewAlbumModal projectId={id} onClose={() => setShowNew(false)} onCreated={(a) => router.push(`/studio/${id}/albums/${a.id}`)} />}
-    </NavBar>
+    </>
   );
 }
 

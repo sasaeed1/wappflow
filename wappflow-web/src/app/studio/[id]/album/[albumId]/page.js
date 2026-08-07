@@ -5,7 +5,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Check, ChevronUp, ChevronDown, Plus, X } from 'lucide-react';
 import { mediaAPI, studioAiAPI, mediaUrl } from '../../../../../lib/api';
-import NavBar from '../../../../../components/StudioShell';
 
 export default function AlbumEditorPage() {
   const router = useRouter();
@@ -44,10 +43,10 @@ export default function AlbumEditorPage() {
     try { await studioAiAPI.updateAlbum(albumId, { title, spec: { ...(album.spec || {}), spreads } }); setSaved(true); } catch {} finally { setSaving(false); }
   };
 
-  if (!album) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
+  if (!album) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page" style={{ maxWidth: 1000 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <button onClick={() => router.push(`/studio/${id}`)} className="ms-btn-ghost" style={{ padding: '7px 12px' }}><ArrowLeft size={14} /> Shoot</button>
@@ -95,6 +94,6 @@ export default function AlbumEditorPage() {
           </div>
         </div>
       </div>
-    </NavBar>
+    </>
   );
 }

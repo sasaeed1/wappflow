@@ -6,7 +6,6 @@ import {
   Search, Rocket, Images, ListChecks, SlidersHorizontal, Share2, CheckSquare,
   BookOpen, Film, Globe, Palette, Keyboard, HelpCircle, LifeBuoy, ChevronRight,
 } from 'lucide-react';
-import NavBar from '../../../components/StudioShell';
 
 function Kbd({ children }) {
   return <kbd style={{ display: 'inline-block', minWidth: 20, textAlign: 'center', padding: '2px 7px', borderRadius: 6, border: '1px solid var(--ms-line)', background: 'var(--ms-surface-2)', fontFamily: 'var(--ms-font-label)', fontSize: 11, fontWeight: 600, color: 'var(--ms-ink)' }}>{children}</kbd>;
@@ -194,7 +193,7 @@ export default function StudioHelpPage() {
   };
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page" style={{ maxWidth: 1180 }}>
         {/* hero */}
         <div style={{ textAlign: 'center', padding: 'clamp(10px,3vw,30px) 0 clamp(20px,3vw,34px)' }}>
@@ -245,6 +244,6 @@ export default function StudioHelpPage() {
           </div>
         </div>
       </div>
-    </NavBar>
+    </>
   );
 }

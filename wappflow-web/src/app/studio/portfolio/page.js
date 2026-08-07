@@ -8,7 +8,6 @@ import {
   Loader, GripVertical, Search, Layout, Globe, Sparkles, Crown,
 } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../../lib/api';
-import NavBar from '../../../components/StudioShell';
 import PortfolioCanvas, { PORTFOLIO_THEME_META } from '../../folio/portfolio-view';
 
 const THEME_ORDER = ['atelier', 'noir', 'editorial', 'gallery', 'film', 'brut', 'luxe', 'vivid', 'mono', 'frame'];
@@ -100,13 +99,13 @@ export default function PortfolioEditorPage() {
     try { navigator.clipboard.writeText(pf.share_url); say('Link copied'); } catch { say('Copy failed'); }
   };
 
-  if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Opening your portfolio…</p></div></NavBar>;
-  if (!pf) return <NavBar><div className="ms-page"><p className="ms-loading">—</p></div></NavBar>;
+  if (loading) return <><div className="ms-page"><p className="ms-loading">Opening your portfolio…</p></div></>;
+  if (!pf) return <><div className="ms-page"><p className="ms-loading">—</p></div></>;
 
   const s = pf.settings || {};
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page" style={{ maxWidth: 1500 }}>
         {/* header */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -253,7 +252,7 @@ export default function PortfolioEditorPage() {
       {shareOpen && <ShareModal pf={pf} onClose={() => setShareOpen(false)} onCopy={copyLink} say={say} onPublic={() => save({ is_public: true })} />}
 
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 600, padding: '9px 18px', borderRadius: 999, background: 'var(--ms-ink)', color: 'var(--ms-paper)', fontSize: 13 }}>{toast}</div>}
-    </NavBar>
+    </>
   );
 }
 

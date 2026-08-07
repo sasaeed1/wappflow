@@ -54,10 +54,12 @@ check('plan gating survived the port (Analytics is still lockable)', () => {
   assert(/lockFeature: 'analytics'/.test(modules), 'analytics lock lost');
   assert(/featureLocked\(item\.lockFeature\)/.test(shell), 'shell does not apply feature locks');
 });
-check('the /studio/store shell teleport is untouched, pending the Studio batch', () => {
+// Superseded by Batch 3: the store's module identity was decided by its route
+// (it lives under /studio, so it is a Studio page) and NavBar is now deleted.
+check('the /studio/store shell teleport is resolved, not merely deferred', () => {
   const store = R('app/studio/store/page.js');
-  assert(/components\/NavBar/.test(store), 'store migrated early — its module identity is undecided');
-  assert(fs.existsSync(path.join(WEB, 'components/NavBar.js')), 'NavBar deleted while store still imports it');
+  assert(!/components\/NavBar/.test(store), 'store still renders CRM chrome inside Studio');
+  assert(!fs.existsSync(path.join(WEB, 'components/NavBar.js')), 'NavBar should be gone by now');
 });
 
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);

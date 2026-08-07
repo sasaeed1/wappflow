@@ -1,9 +1,11 @@
 'use client';
 
 import { Users, Camera, FileSignature, LayoutDashboard, UserCheck, Inbox, FileText, Calendar, BarChart2 } from 'lucide-react';
+import { Trash2, HelpCircle, Settings, BookOpen } from 'lucide-react';
 import AICommandCenter from '@/components/AICommandCenter';
 import FloatingChat from '@/components/FloatingChat';
 import StudioCopilot from '@/components/StudioCopilot';
+import StudioThemeSwitch from './StudioThemeSwitch';
 
 // Module registry — the one place that knows what modules exist and what each one's
 // navigation is (Phase 2). Four shells each hard-coded their own copy of this; the
@@ -24,6 +26,14 @@ export const MODULES = {
     mark: 'linear-gradient(135deg,#6366f1,#4f46e5)',
     notifications: true,
     fabs: [AICommandCenter, FloatingChat],
+    // CRM's secondary destinations are top-level routes, NOT children of /dashboard —
+    // they must be listed explicitly rather than derived from `home`.
+    menu: [
+      { href: '/settings', label: 'Settings', icon: Settings },
+      { href: '/team', label: 'Team', icon: Users },
+      { href: '/knowledge', label: 'Knowledge', icon: BookOpen },
+      { href: '/help', label: 'Help', icon: HelpCircle },
+    ],
     nav: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/leads-list', label: 'Leads', icon: Users, match: 'prefix' },
@@ -44,6 +54,15 @@ export const MODULES = {
     mark: 'linear-gradient(135deg,#0e0e11,#3a3a44)',
     dialectClass: 'ms-root',
     fabs: [StudioCopilot],
+    // Studio's theme switcher is a module action, not shell furniture — this is the
+    // seam that lets one shell host a dialect's own controls (D8).
+    actions: StudioThemeSwitch,
+    // Trash lived only in StudioShell's user menu; keep it reachable there.
+    menu: [
+      { href: '/studio/settings', label: 'Studio settings', icon: Settings },
+      { href: '/studio/help', label: 'Help center', icon: HelpCircle },
+      { href: '/studio/trash', label: 'Trash', icon: Trash2 },
+    ],
     nav: [
       { href: '/studio', label: 'Shoots' },
       { href: '/studio/portfolio', label: 'Portfolio' },
@@ -55,6 +74,10 @@ export const MODULES = {
     home: '/contracts',
     icon: FileSignature,
     mark: 'linear-gradient(135deg,#0ea5e9,#6366f1)',
+    menu: [
+      { href: '/contracts/settings', label: 'Studio settings', icon: Settings },
+      { href: '/contracts/help', label: 'Help & guide', icon: HelpCircle },
+    ],
     nav: [
       { href: '/contracts', label: 'Overview' },
       { href: '/contracts/vault', label: 'Client Vault' },

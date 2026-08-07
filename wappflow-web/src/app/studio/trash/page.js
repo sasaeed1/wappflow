@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2, RotateCcw, AlertTriangle, Undo2 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../lib/api';
-import NavBar from '../../../components/StudioShell';
 import { useConfirm } from '@/lib/confirm';
 
 const daysLeft = (deletedAt) => {
@@ -49,7 +48,7 @@ export default function StudioTrashPage() {
   };
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page" style={{ maxWidth: 1320 }}>
         <button onClick={() => router.push('/studio')} className="ms-back"><Undo2 size={15} /> Back to studio</button>
         <div className="ms-section-head" style={{ marginBottom: 8 }}>
@@ -94,6 +93,6 @@ export default function StudioTrashPage() {
         )}
       </div>
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 600, padding: '9px 18px', borderRadius: 999, background: 'var(--ms-ink)', color: 'var(--ms-paper)', fontSize: 13 }}>{toast}</div>}
-    </NavBar>
+    </>
   );
 }

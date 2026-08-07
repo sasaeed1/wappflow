@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, LogOut, Settings, User, HelpCircle, Lock } from 'lucide-react';
+import { Menu, LogOut, User, Lock } from 'lucide-react';
 import Dropdown, { MenuItem } from '@/components/ui/Dropdown';
 import Drawer from '@/components/ui/Drawer';
 import ModuleSwitcher from './ModuleSwitcher';
@@ -106,6 +106,9 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
 
         <div style={{ flex: 1 }} />
         {actions}
+        {/* Module-declared chrome (e.g. Studio's theme switcher) — the seam that lets
+            one shell host a dialect's own controls without flattening it (D8). */}
+        {mod.actions && <mod.actions />}
         {mod.notifications && <ShellNotifications />}
 
         <button
@@ -141,11 +144,12 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
                 <div style={{ fontSize: 13, fontWeight: 'var(--fw-semibold)', color: 'var(--text)' }}>{user?.full_name || user?.email || 'Account'}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{user?.email || ''}</div>
               </div>
+              {/* Destinations come from the module registry — they are NOT derivable
+                  from `home` (CRM's settings/help are top-level routes, not children
+                  of /dashboard). */}
               {mod.menu?.map((m) => (
                 <MenuItem key={m.href} icon={m.icon} onClick={() => { close(); router.push(m.href); }}>{m.label}</MenuItem>
               ))}
-              <MenuItem icon={Settings} onClick={() => { close(); router.push(`${mod.home}/settings`); }}>Settings</MenuItem>
-              <MenuItem icon={HelpCircle} onClick={() => { close(); router.push(`${mod.home}/help`); }}>Help &amp; guide</MenuItem>
               <MenuItem icon={User} onClick={() => { close(); router.push('/profile'); }}>My profile</MenuItem>
               <MenuItem icon={LogOut} tone="danger" onClick={signOut}>Sign out</MenuItem>
             </>

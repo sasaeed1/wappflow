@@ -96,11 +96,22 @@ check('auth guard is shell-level and always carries ?next=', () => {
   assert(/login\?next=\$\{encodeURIComponent\(next\)\}/.test(session), 'guard drops the return path');
   assert(/useAuthGuard\(\)/.test(shell), 'shell does not guard');
 });
-check('SCOPE GUARD: CRM and Studio shells untouched in this batch', () => {
-  assert(fs.existsSync(path.join(WEB, 'components/NavBar.js')), 'NavBar deleted too early');
-  assert(fs.existsSync(path.join(WEB, 'components/StudioShell.js')), 'StudioShell deleted too early');
-  // the old Contracts shell is now unused but is left in place until its batch closes
-  assert(fs.existsSync(path.join(WEB, 'components/ContractsStudioShell.js')), 'old shell removed before review');
+// Superseded by Batch 3, which migrated the last module and removed all four old
+// chrome components. The guard's original assertion (they must still exist) is now
+// inverted: nothing may reference them, and they must be gone.
+check('all four legacy shells are deleted and nothing references them', () => {
+  for (const f of ['NavBar.js', 'StudioShell.js', 'ContractsStudioShell.js', 'AppSwitcher.js'])
+    assert(!fs.existsSync(path.join(WEB, 'components', f)), f + ' still on disk');
+  const offenders = [];
+  (function walk(d) {
+    for (const f of fs.readdirSync(d)) {
+      const p = path.join(d, f);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else if (f.endsWith('.js') && /from ['"][^'"]*components\/(NavBar|StudioShell|ContractsStudioShell|AppSwitcher)['"]/.test(fs.readFileSync(p, 'utf8')))
+        offenders.push(path.relative(WEB, p));
+    }
+  })(WEB);
+  assert(offenders.length === 0, 'still importing a deleted shell: ' + offenders.join(', '));
 });
 
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);
