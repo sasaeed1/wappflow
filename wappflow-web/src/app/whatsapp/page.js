@@ -6,7 +6,6 @@ import {
   Phone, CheckCircle, XCircle, RefreshCw, LogOut,
   Wifi, WifiOff, Zap, Clock, Shield
 } from 'lucide-react';
-import NavBar from '../../components/NavBar';
 import { BASE_URL } from '../../lib/api';
 
 export default function WhatsAppPage() {
@@ -82,7 +81,7 @@ export default function WhatsAppPage() {
   const isError = ['disconnected', 'not_initialized', 'error', 'auth_failed'].includes(status?.status);
 
   return (
-    <NavBar>
+    <>
       <div className="r-pad" style={{ maxWidth: 760, margin: '0 auto', padding: '32px 24px' }}>
 
         {/* Header */}
@@ -311,6 +310,6 @@ export default function WhatsAppPage() {
         <style>{`
         `}</style>
       </div>
-    </NavBar>
+    </>
   );
 }

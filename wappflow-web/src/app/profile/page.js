@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import NavBar from '../../components/NavBar';
 import { profileAPI, BASE_URL } from '../../lib/api';
 import { Field, Input, Textarea } from '@/components/ui/Field';
 import {
@@ -111,19 +110,19 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <NavBar>
+      <>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ width: 40, height: 40, border: '3px solid #e5e7eb', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
             <p style={{ color: 'var(--text-dim)', fontSize: 14 }}>Loading profile…</p>
           </div>
         </div>
-      </NavBar>
+      </>
     );
   }
 
   return (
-    <NavBar>
+    <>
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
         {/* Toast */}
@@ -324,6 +323,6 @@ export default function ProfilePage() {
         </div>
       </div>
       <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
-    </NavBar>
+    </>
   );
 }

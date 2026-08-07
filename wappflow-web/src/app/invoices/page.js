@@ -8,7 +8,6 @@ import {
   ArrowLeft, Download, Send, Trash2,
 } from 'lucide-react';
 import { invoicesAPI, settingsAPI, displayPhone, BASE_URL, paymentsAPI } from '../../lib/api';
-import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { formatDate } from '../../lib/datetime';
 import Button from '@/components/ui/Button';
@@ -399,7 +398,7 @@ export default function InvoicesPage() {
   const totalPending = invoices.filter(i => i.status === 'pending').reduce((s, i) => s + parseFloat(i.total || 0), 0);
 
   return (
-    <NavBar>
+    <>
       <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '28px 28px 40px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
         {viewInvoice && (
@@ -539,6 +538,6 @@ export default function InvoicesPage() {
         </div>
 
       </div>
-    </NavBar>
+    </>
   );
 }

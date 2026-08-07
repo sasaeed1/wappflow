@@ -25,7 +25,6 @@ import { markLeadSeen } from '../../../lib/unread';
 import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
-import NavBar from '../../../components/NavBar';
 import RoomPanel from '@/components/RoomPanel';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
@@ -1228,7 +1227,7 @@ useEffect(() => {
   const HISTORY_COLORS = { message: '#06b6d4', note: '#f59e0b', status_change: '#6366f1', reminder: '#8b5cf6', invoice: '#10b981', email: '#f59e0b', assignment: '#06b6d4', created: '#10b981' };
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* Modals */}
@@ -2793,7 +2792,7 @@ useEffect(() => {
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
       `}</style>
     </div>
-    </NavBar>
+    </>
   );
 }
 

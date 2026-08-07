@@ -1,6 +1,9 @@
 'use client';
 
 import { Users, Camera, FileSignature, LayoutDashboard, UserCheck, Inbox, FileText, Calendar, BarChart2 } from 'lucide-react';
+import AICommandCenter from '@/components/AICommandCenter';
+import FloatingChat from '@/components/FloatingChat';
+import StudioCopilot from '@/components/StudioCopilot';
 
 // Module registry — the one place that knows what modules exist and what each one's
 // navigation is (Phase 2). Four shells each hard-coded their own copy of this; the
@@ -19,6 +22,8 @@ export const MODULES = {
     home: '/dashboard',
     icon: Users,
     mark: 'linear-gradient(135deg,#6366f1,#4f46e5)',
+    notifications: true,
+    fabs: [AICommandCenter, FloatingChat],
     nav: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/leads-list', label: 'Leads', icon: Users, match: 'prefix' },
@@ -38,6 +43,7 @@ export const MODULES = {
     icon: Camera,
     mark: 'linear-gradient(135deg,#0e0e11,#3a3a44)',
     dialectClass: 'ms-root',
+    fabs: [StudioCopilot],
     nav: [
       { href: '/studio', label: 'Shoots' },
       { href: '/studio/portfolio', label: 'Portfolio' },

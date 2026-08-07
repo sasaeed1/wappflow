@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { chatAPI, commsAPI, workspaceAPI, BASE_URL } from '../../lib/api';
 import { formatTime, formatDate } from '../../lib/datetime';
-import NavBar from '../../components/NavBar';
 import HuddleModal from '@/components/HuddleModal';
 import { useConfirm } from '@/lib/confirm';
 import { useSound } from '@/lib/sounds';
@@ -777,7 +776,7 @@ export default function ChatPage() {
   }, {});
 
   return (
-    <NavBar>
+    <>
     <div className="r-col" style={{ height: 'calc(100vh - 60px)', background: 'var(--surface2)', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* ── SIDEBAR ── */}
@@ -1240,6 +1239,6 @@ export default function ChatPage() {
         startWithVideo={!!huddle?.video}
       />
     </div>
-    </NavBar>
+    </>
   );
 }

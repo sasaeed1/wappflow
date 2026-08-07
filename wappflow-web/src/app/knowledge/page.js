@@ -7,7 +7,6 @@ import {
   ChevronDown, ChevronUp, RefreshCw, CheckCircle, AlertCircle,
   BookOpen, Sparkles, Database, File, MessageSquare, Tag, Globe
 } from 'lucide-react';
-import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
 import { LockedOverlay } from '@/components/PlanLock';
@@ -236,7 +235,7 @@ export default function KnowledgePage() {
   const knowledgeLocked = !plan.loading && !plan.hasFeature('team_collaboration');
   if (knowledgeLocked) {
     return (
-      <NavBar>
+      <>
         <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px' }}>
           <LockedOverlay
             feature="Knowledge base"
@@ -251,12 +250,12 @@ export default function KnowledgePage() {
             ]}
           />
         </div>
-      </NavBar>
+      </>
     );
   }
 
   return (
-    <NavBar>
+    <>
       <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
         <style>{`
           @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -554,6 +553,6 @@ export default function KnowledgePage() {
           )}
         </div>
       </div>
-    </NavBar>
+    </>
   );
 }

@@ -2,12 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, LogOut, Settings, User, HelpCircle } from 'lucide-react';
+import { Menu, LogOut, Settings, User, HelpCircle, Lock } from 'lucide-react';
 import Dropdown, { MenuItem } from '@/components/ui/Dropdown';
 import Drawer from '@/components/ui/Drawer';
 import ModuleSwitcher from './ModuleSwitcher';
+import ShellNotifications from './ShellNotifications';
 import { MODULES, isNavActive } from './modules';
 import { useSession, useSignOut, useAuthGuard } from './session';
+import { usePlan } from '@/lib/plan';
 
 // AppShell — ONE shell for every authenticated module (Phase 2).
 //
@@ -33,10 +35,15 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
   const pathname = usePathname();
   const { user } = useSession();
   const signOut = useSignOut();
+  const plan = usePlan();
   const [drawer, setDrawer] = useState(false);
   useAuthGuard();
 
   if (!mod) throw new Error(`AppShell: unknown module "${moduleKey}"`);
+
+  // Defensive, matching the previous behaviour: while plan info is still loading we
+  // show items unlocked rather than flashing a lock and snapping open.
+  const featureLocked = (key) => (key && !plan.loading ? !plan.hasFeature(key) : false);
   const Mark = mod.icon;
   const initial = (user?.full_name || user?.email || 'U')[0]?.toUpperCase();
 
@@ -44,11 +51,13 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
 
   const navButton = (item, inDrawer = false) => {
     const active = isNavActive(pathname, item);
-    const Icon = item.icon;
+    const locked = featureLocked(item.lockFeature);
+    const Icon = locked ? Lock : item.icon;
     return (
       <button
         key={item.href}
         onClick={() => go(item.href)}
+        title={locked ? `${item.label} — available on ${item.requiredPlan}` : undefined}
         aria-current={active ? 'page' : undefined}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -97,6 +106,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
 
         <div style={{ flex: 1 }} />
         {actions}
+        {mod.notifications && <ShellNotifications />}
 
         <button
           className="wf-shell-burger"
@@ -147,6 +157,10 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
 
       {/* .wf-page is load-bearing: the mobile rules in globals.css key off it. */}
       <div className={mod.dialectClass ? `wf-page ${mod.dialectClass}` : 'wf-page'}>{children}</div>
+
+      {/* Module-scoped floating assistants. These used to be mounted by NavBar, which
+          meant they existed only on CRM pages by accident of which shell a page picked. */}
+      {mod.fabs?.map((Fab, i) => <Fab key={i} />)}
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} title={mod.label}>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }} aria-label={`${mod.label} navigation`}>

@@ -7,7 +7,6 @@ import {
   TrendingUp, Users, Award,
 } from 'lucide-react';
 import { leadsAPI, displayPhone, settingsAPI } from '../../lib/api';
-import NavBar from '../../components/NavBar';
 import Spinner from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
@@ -70,7 +69,7 @@ export default function ClientsPage() {
   }, [clients, query]);
 
   return (
-    <NavBar>
+    <>
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: 'clamp(20px, 4vw, 40px)' }}>
         {/* header */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap', marginBottom: 22 }}>
@@ -167,7 +166,7 @@ export default function ClientsPage() {
       </div>
 
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 600, padding: '10px 18px', borderRadius: 999, background: 'var(--text)', color: 'var(--surface)', fontSize: 13, boxShadow: '0 10px 30px rgba(0,0,0,0.25)' }}>{toast}</div>}
-    </NavBar>
+    </>
   );
 }
 

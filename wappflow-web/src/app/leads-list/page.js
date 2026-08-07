@@ -13,7 +13,6 @@ import {
 import { leadsAPI, tagsAPI, workspaceAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI } from '../../lib/api';
 import { isLeadUnread } from '../../lib/unread';
 import { formatDate } from '../../lib/datetime';
-import NavBar from '../../components/NavBar';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import AddLeadModal from '../../components/AddLeadModal';
 import { useConfirm } from '@/lib/confirm';
@@ -860,7 +859,7 @@ export default function LeadsListPage() {
   const hasFilters = tagFilter || assignedFilter !== 'all' || dateFrom || dateTo || statusFilter !== 'All';
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* Platform filter banner */}
@@ -1344,6 +1343,6 @@ export default function LeadsListPage() {
         </div>
       )}
     </div>
-    </NavBar>
+    </>
   );
 }

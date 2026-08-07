@@ -20,7 +20,6 @@ import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_UR
 import { isLeadUnread } from '../../lib/unread';
 import AddLeadModal from '../../components/AddLeadModal';
 import { TagChip, TagPicker } from '../../components/TagPicker';
-import NavBar from '../../components/NavBar';
 import { useSound } from '@/lib/sounds';
 
 const COLUMNS = [
@@ -883,7 +882,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* ── TOAST ── */}
@@ -1338,6 +1337,6 @@ export default function DashboardPage() {
         @keyframes notifPop { 0% { transform: scale(1); } 50% { transform: scale(1.4); } 100% { transform: scale(1); } }
       `}</style>
     </div>
-    </NavBar>
+    </>
   );
 }
