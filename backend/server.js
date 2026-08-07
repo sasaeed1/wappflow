@@ -40,6 +40,19 @@ const db = new Database(require('path').join(DATA_DIR, 'wappflow.db'));
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
 
+// Phase 4 — concurrency pragmas. WAL alone was set, which is why a busy write could
+// still surface as an outright SQLITE_BUSY error to the user: without busy_timeout,
+// SQLite gives up on a locked database IMMEDIATELY rather than waiting. This app runs
+// a WhatsApp worker writing messages while HTTP requests read and write, so contention
+// is normal, not exceptional.
+//   busy_timeout — wait up to 5s for a lock instead of failing instantly.
+//   synchronous=NORMAL — the standard companion to WAL: durable across app crashes,
+//     and only at risk in an OS-level crash/power loss, in exchange for far fewer fsyncs.
+//   foreign_keys — enforce the relationships we now depend on for cascade/guard logic.
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
+db.pragma('foreign_keys = ON');
+
 // Upload directories
 // Persistent data directories (Railway volume: /data, local: __dirname)
 const DATA_ROOT = process.env.NODE_ENV === 'production' ? '/data' : __dirname;
@@ -812,6 +825,20 @@ for (const ix of [
   'CREATE INDEX IF NOT EXISTS idx_platform_accounts_ws ON platform_accounts(workspace_id)',
   'CREATE INDEX IF NOT EXISTS idx_workspace_members_ws ON workspace_members(workspace_id)',
   'CREATE INDEX IF NOT EXISTS idx_chat_messages_channel ON chat_messages(channel_id)',
+
+  // ── Phase 4: hot-path indexes ────────────────────────────────────────────
+  // wa_message_id is looked up on EVERY inbound WhatsApp message to dedupe it
+  // (SELECT id FROM messages WHERE wa_message_id = ?). With no index that is a
+  // full scan of the largest table in the product, on the busiest code path there
+  // is — and it gets slower with every message ever received.
+  'CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON messages(wa_message_id)',
+  // Message history is always read per-lead, newest first.
+  'CREATE INDEX IF NOT EXISTS idx_messages_lead_ts ON messages(lead_id, timestamp DESC)',
+  // The bin sweep and every trash list filter on these.
+  'CREATE INDEX IF NOT EXISTS idx_leads_ws_deleted ON leads(workspace_id, is_deleted)',
+  'CREATE INDEX IF NOT EXISTS idx_invoices_ws_deleted ON invoices(workspace_id, is_deleted)',
+  // The guard counts live children by lead on every permanent-delete.
+  'CREATE INDEX IF NOT EXISTS idx_bookings_lead ON bookings(lead_id)',
 ]) { try { db.exec(ix); } catch (e) { console.error('Index skipped:', e.message); } }
 
 // ── Migrate password_hash → password for databases created with old schema ──
@@ -2996,6 +3023,35 @@ app.get('/api/notifications', auth, (req, res) => {
     const rows = db.prepare(`SELECT * FROM notifications WHERE workspace_id = ? AND (user_id IS NULL OR user_id = ?) ORDER BY created_at DESC LIMIT 60`).all(req.workspaceId, req.userId);
     const unread = rows.filter(r => !r.is_read).length;
     res.json({ notifications: rows, unread });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/notifications/summary — COUNTS ONLY, for the shell badge (Phase 4).
+//
+// The badge previously called leadsAPI.getAll(null) every 60 seconds on every page,
+// pulling the entire leads table across the wire — for every user, forever — purely to
+// count how many arrived today. This returns three integers instead, and each one is
+// an indexed COUNT rather than a table transfer.
+app.get('/api/notifications/summary', auth, (req, res) => {
+  try {
+    const scope = req.canViewAllLeads ? '' : ' AND assigned_to = ?';
+    const args = req.canViewAllLeads ? [req.workspaceId] : [req.workspaceId, req.userId];
+    const todayLeads = db.prepare(
+      `SELECT COUNT(*) c FROM leads
+       WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+       AND date(created_at) = date('now')${scope}`
+    ).get(...args).c;
+    const unread = db.prepare(
+      `SELECT COUNT(*) c FROM notifications WHERE workspace_id = ? AND (user_id IS NULL OR user_id = ?) AND (is_read = 0 OR is_read IS NULL)`
+    ).get(req.workspaceId, req.userId).c;
+    let reminders = 0;
+    try {
+      reminders = db.prepare(
+        `SELECT COUNT(*) c FROM reminders WHERE user_id = ? AND (is_done = 0 OR is_done IS NULL)
+         AND datetime(COALESCE(due_date, reminder_date)) <= datetime('now', '+24 hours')`
+      ).get(req.userId).c;
+    } catch { /* reminders schema varies across older DBs */ }
+    res.json({ todayLeads, reminders, unread, total: todayLeads + reminders + unread });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

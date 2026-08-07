@@ -147,6 +147,10 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_ms_assets_project ON ms_assets(project_id);
+    -- Phase 4: workspace + trash scans had no index, so every library load and every
+    -- retention sweep full-scanned the largest media table.
+    CREATE INDEX IF NOT EXISTS idx_ms_assets_ws ON ms_assets(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_ms_assets_deleted ON ms_assets(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_ms_projects_ws ON ms_projects(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_ms_scores_asset ON ms_asset_scores(asset_id);
   `);

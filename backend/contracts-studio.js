@@ -201,6 +201,10 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     );
     CREATE INDEX IF NOT EXISTS idx_cs_docs_ws ON cs_documents(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_cs_docs_token ON cs_documents(token);
+    -- Phase 4: the list is always workspace + bin filtered, and the guard counts
+    -- live contracts per lead on every lead permanent-delete.
+    CREATE INDEX IF NOT EXISTS idx_cs_docs_ws_deleted ON cs_documents(workspace_id, is_deleted);
+    CREATE INDEX IF NOT EXISTS idx_cs_docs_lead ON cs_documents(lead_id);
     CREATE INDEX IF NOT EXISTS idx_cs_signers_doc ON cs_signers(document_id);
     CREATE INDEX IF NOT EXISTS idx_cs_events_doc ON cs_events(document_id);
   `);
