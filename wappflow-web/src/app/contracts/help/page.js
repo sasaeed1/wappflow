@@ -6,7 +6,6 @@ import {
   ChevronDown, FileText, Package, Upload, Palette, Image as ImageIcon, Send, Eye,
   PenLine, Users, Bell, ShieldCheck, Zap, CreditCard, Sparkles, BarChart3, FolderOpen,
 } from 'lucide-react';
-import ContractsStudioShell from '../../../components/ContractsStudioShell';
 
 const SECTIONS = [
   { icon: FileText, title: 'What is Contracts Studio?', body: [
@@ -79,7 +78,7 @@ export default function ContractsHelpPage() {
   const router = useRouter();
   const [open, setOpen] = useState(0);
   return (
-    <ContractsStudioShell>
+    <>
       <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 20px 60px' }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.5px' }}>Help &amp; guide</h1>
         <p style={{ fontSize: 14.5, color: 'var(--text-muted)', margin: '0 0 24px' }}>Everything Contracts Studio can do — from your first proposal to a signed deal that runs itself.</p>
@@ -109,6 +108,6 @@ export default function ContractsHelpPage() {
           <button onClick={() => router.push('/contracts')} style={{ padding: '11px 22px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 14 }}>Go to Overview</button>
         </div>
       </div>
-    </ContractsStudioShell>
+    </>
   );
 }

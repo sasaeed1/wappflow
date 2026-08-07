@@ -71,6 +71,12 @@ html.light {
   /* Z-index ladder — replaces the ad-hoc 1..99999 sprawl */
   --z-base: 1; --z-dropdown: 1000; --z-sticky: 1100; --z-overlay: 1200;
   --z-modal: 1300; --z-toast: 1400; --z-banner: 1500;
+
+  /* Shell height — published as a token because pages depend on it: chat sizes its
+     thread with calc(100vh - var(--shell-h)) and the Studio full-bleed canvases pin
+     themselves below it. Three shells used to hardcode 60/58/58 independently, so
+     the number silently disagreed across modules. (Phase 2) */
+  --shell-h: 58px;
   /* Text on an --accent fill (accent is indigo in both modes) */
   --on-accent: #ffffff;
   /* Focus ring — one indicator, token-only; resolves per-mode via --accent/--accent-light */

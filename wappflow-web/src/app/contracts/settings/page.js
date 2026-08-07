@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Image as ImageIcon, Upload, Trash2, Check, FileText, Clock, Palette } from 'lucide-react';
 import { csAPI, mediaUrl } from '../../../lib/api';
-import ContractsStudioShell from '../../../components/ContractsStudioShell';
 
 const THEMES = [['monochrome', 'Monochrome'], ['editorial', 'Editorial'], ['executive', 'Executive']];
 
@@ -50,7 +49,7 @@ export default function ContractsSettingsPage() {
   );
 
   return (
-    <ContractsStudioShell>
+    <>
       <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 20px 60px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: 0, letterSpacing: '-0.5px' }}>Settings</h1>
@@ -108,7 +107,7 @@ export default function ContractsSettingsPage() {
           <button onClick={addClause} style={{ ...btn, marginTop: 12 }}>+ Add clause</button>
         </Card>
       </div>
-    </ContractsStudioShell>
+    </>
   );
 }
 

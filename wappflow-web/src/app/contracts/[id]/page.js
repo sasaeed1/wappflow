@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Eye, X, Check, Cloud, Send, Copy, MessageCircle, Mail, Settings, Zap, CreditCard, ShieldCheck, FolderPlus, Sparkles, Wand2, AlertTriangle, FileText, Clock, Users, UserPlus, Bell, Paperclip, Image as ImageIcon, BookMarked, History, RotateCcw } from 'lucide-react';
 import { csAPI, mediaUrl } from '../../../lib/api';
 import RoomPanel from '@/components/RoomPanel';
-import ContractsStudioShell from '../../../components/ContractsStudioShell';
 import { BLOCK_TYPES, defaultData, BlockView, DocFrame, computeTotals } from '../blocks';
 import '../contracts.css';
 
@@ -60,7 +59,7 @@ export default function BuilderPage() {
   const del = (bid) => { setBlocks(bs => bs.filter(b => b.id !== bid)); setSelected(null); };
   const saveAsTemplate = async () => { try { await csAPI.createTemplate({ title: title || 'Untitled', type: doc.type, blocks }); setTplSaved(true); setTimeout(() => setTplSaved(false), 2200); } catch {} };
 
-  if (!doc) return <ContractsStudioShell><p style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</p></ContractsStudioShell>;
+  if (!doc) return <><p style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</p></>;
   const outerBg = theme === 'executive' ? '#080b12' : theme === 'editorial' ? '#efe9dd' : '#eceef2';
   const docLetterhead = (settings.letterhead !== false && wsLetterhead) ? wsLetterhead : null;
 
@@ -71,7 +70,7 @@ export default function BuilderPage() {
   );
 
   return (
-    <ContractsStudioShell>
+    <>
       {/* builder toolbar */}
       <div style={{ position: 'sticky', top: 58, zIndex: 50, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
         <button onClick={() => router.push('/contracts')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}><ArrowLeft size={15} /> Back</button>
@@ -174,7 +173,7 @@ export default function BuilderPage() {
       )}
       {showVersions && <VersionsModal id={id} onClose={() => setShowVersions(false)} />}
       {showClauses && <ClausePickerModal onClose={() => setShowClauses(false)} onInsert={(c) => { setBlocks(bs => [...bs, { id: uid(), type: 'heading', data: { text: c.title, level: 2 } }, { id: uid(), type: 'text', data: { text: c.body } }]); setShowClauses(false); }} />}
-    </ContractsStudioShell>
+    </>
   );
 }
 

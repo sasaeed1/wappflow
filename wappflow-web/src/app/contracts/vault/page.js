@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, FileText, ChevronRight, Phone, Mail, Link2, Check } from 'lucide-react';
 import { csAPI, clientPortalAPI } from '../../../lib/api';
-import ContractsStudioShell from '../../../components/ContractsStudioShell';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 
 const STATUS = {
@@ -32,7 +31,7 @@ export default function VaultPage() {
   const filtered = useMemo(() => (clients || []).filter(c => !q.trim() || (c.client_name || '').toLowerCase().includes(q.toLowerCase())), [clients, q]);
 
   return (
-    <ContractsStudioShell>
+    <>
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '28px 20px 60px' }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.5px' }}>Client Vault</h1>
         <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 22px' }}>Every client’s documents, filed together.</p>
@@ -88,6 +87,6 @@ export default function VaultPage() {
           })}
         </div>
       </div>
-    </ContractsStudioShell>
+    </>
   );
 }

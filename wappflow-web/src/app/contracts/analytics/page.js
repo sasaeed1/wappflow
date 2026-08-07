@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { TrendingUp, Eye, Clock, CheckCircle2, DollarSign, Timer } from 'lucide-react';
 import { csAPI } from '../../../lib/api';
-import ContractsStudioShell from '../../../components/ContractsStudioShell';
 
 const fmtSecs = (s) => (s >= 60 ? `${Math.round(s / 60)}m ${s % 60}s` : `${s}s`);
 
@@ -33,7 +32,7 @@ export default function AnalyticsPage() {
   const stages = [['Sent', funnel.sent, '#6366f1'], ['Viewed', funnel.viewed, '#0ea5e9'], ['Signed', funnel.completed, '#10b981']];
 
   return (
-    <ContractsStudioShell>
+    <>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 20px 60px' }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.5px' }}>Analytics</h1>
         <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 24px' }}>How your documents perform — from sent to signed.</p>
@@ -83,6 +82,6 @@ export default function AnalyticsPage() {
           </>
         )}
       </div>
-    </ContractsStudioShell>
+    </>
   );
 }

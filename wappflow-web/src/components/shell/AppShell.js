@@ -1,0 +1,165 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { Menu, LogOut, Settings, User, HelpCircle } from 'lucide-react';
+import Dropdown, { MenuItem } from '@/components/ui/Dropdown';
+import Drawer from '@/components/ui/Drawer';
+import ModuleSwitcher from './ModuleSwitcher';
+import { MODULES, isNavActive } from './modules';
+import { useSession, useSignOut, useAuthGuard } from './session';
+
+// AppShell — ONE shell for every authenticated module (Phase 2).
+//
+// Replaces three per-page shells (NavBar, StudioShell, ContractsStudioShell) that were
+// imported and wrapped by 36 pages across 45 JSX call sites — pages re-wrapped
+// themselves on every return path, so a loading state and its loaded state each
+// mounted the chrome separately. Mounted from a route layout instead, the chrome
+// simply persists across navigation.
+//
+//   // app/contracts/layout.js
+//   export default function Layout({ children }) {
+//     return <AppShell module="contracts">{children}</AppShell>;
+//   }
+//
+// Dialects survive (D8): `module.dialectClass` wraps content in .ms-root so Studio's
+// token remap — and its focus-ring neutralizer, which is keyed to that class — keep
+// working exactly as ratified. Height is published as --shell-h because pages depend
+// on it (chat computes calc(100vh - 60px); the Studio canvases pin top:58).
+
+export default function AppShell({ module: moduleKey, children, actions, subHeader }) {
+  const mod = MODULES[moduleKey];
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user } = useSession();
+  const signOut = useSignOut();
+  const [drawer, setDrawer] = useState(false);
+  useAuthGuard();
+
+  if (!mod) throw new Error(`AppShell: unknown module "${moduleKey}"`);
+  const Mark = mod.icon;
+  const initial = (user?.full_name || user?.email || 'U')[0]?.toUpperCase();
+
+  const go = (href) => { setDrawer(false); router.push(href); };
+
+  const navButton = (item, inDrawer = false) => {
+    const active = isNavActive(pathname, item);
+    const Icon = item.icon;
+    return (
+      <button
+        key={item.href}
+        onClick={() => go(item.href)}
+        aria-current={active ? 'page' : undefined}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          width: inDrawer ? '100%' : undefined,
+          padding: inDrawer ? '11px 12px' : '7px 14px',
+          borderRadius: 'var(--radius)', border: 'none', cursor: 'pointer',
+          background: active ? 'var(--accent-bg)' : 'transparent',
+          color: active ? 'var(--accent-fg)' : 'var(--text-muted)',
+          fontSize: 'var(--fs-body-sm)', fontFamily: 'inherit',
+          fontWeight: active ? 'var(--fw-bold)' : 'var(--fw-normal)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {Icon && <Icon size={15} aria-hidden="true" />}
+        {item.label}
+      </button>
+    );
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      <header
+        className="wf-shell"
+        style={{
+          position: 'sticky', top: 0, zIndex: 'var(--z-sticky)',
+          height: 'var(--shell-h)', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '0 18px', background: 'var(--surface)',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        <ModuleSwitcher current={mod.key} />
+
+        <div
+          onClick={() => router.push(mod.home)}
+          style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', marginRight: 6 }}
+        >
+          <span style={{ width: 28, height: 28, borderRadius: 8, background: mod.mark, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Mark size={15} color="#fff" />
+          </span>
+          <b className="wf-shell-wordmark" style={{ fontSize: 15.5, color: 'var(--text)', letterSpacing: '-0.3px' }}>{mod.label}</b>
+        </div>
+
+        <nav className="wf-shell-nav" aria-label={`${mod.label} navigation`} style={{ display: 'flex', gap: 2, marginLeft: 6 }}>
+          {mod.nav.map((i) => navButton(i))}
+        </nav>
+
+        <div style={{ flex: 1 }} />
+        {actions}
+
+        <button
+          className="wf-shell-burger"
+          onClick={() => setDrawer(true)}
+          aria-label="Open menu"
+          style={{ display: 'none', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6 }}
+        >
+          <Menu size={20} />
+        </button>
+
+        <Dropdown
+          label="Account"
+          width={200}
+          trigger={(p) => (
+            <button
+              {...p}
+              aria-label="Account menu"
+              style={{
+                width: 34, height: 34, borderRadius: 'var(--radius-pill)',
+                border: '1px solid var(--border)', cursor: 'pointer',
+                background: 'var(--surface2)', color: 'var(--text)',
+                fontSize: 13, fontWeight: 'var(--fw-bold)', display: 'grid', placeItems: 'center',
+              }}
+            >
+              {initial}
+            </button>
+          )}
+        >
+          {(close) => (
+            <>
+              <div style={{ padding: '8px 11px 10px', borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 'var(--fw-semibold)', color: 'var(--text)' }}>{user?.full_name || user?.email || 'Account'}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{user?.email || ''}</div>
+              </div>
+              {mod.menu?.map((m) => (
+                <MenuItem key={m.href} icon={m.icon} onClick={() => { close(); router.push(m.href); }}>{m.label}</MenuItem>
+              ))}
+              <MenuItem icon={Settings} onClick={() => { close(); router.push(`${mod.home}/settings`); }}>Settings</MenuItem>
+              <MenuItem icon={HelpCircle} onClick={() => { close(); router.push(`${mod.home}/help`); }}>Help &amp; guide</MenuItem>
+              <MenuItem icon={User} onClick={() => { close(); router.push('/profile'); }}>My profile</MenuItem>
+              <MenuItem icon={LogOut} tone="danger" onClick={signOut}>Sign out</MenuItem>
+            </>
+          )}
+        </Dropdown>
+      </header>
+
+      {subHeader}
+
+      {/* .wf-page is load-bearing: the mobile rules in globals.css key off it. */}
+      <div className={mod.dialectClass ? `wf-page ${mod.dialectClass}` : 'wf-page'}>{children}</div>
+
+      <Drawer open={drawer} onClose={() => setDrawer(false)} title={mod.label}>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }} aria-label={`${mod.label} navigation`}>
+          {mod.nav.map((i) => navButton(i, true))}
+        </nav>
+      </Drawer>
+
+      <style>{`
+        @media (max-width: 860px) {
+          .wf-shell-nav, .wf-shell-wordmark { display: none !important; }
+          .wf-shell-burger { display: inline-flex !important; }
+        }
+      `}</style>
+    </div>
+  );
+}

@@ -7,7 +7,6 @@ import {
   Trash2, Activity, Send, FileEdit, Upload,
 } from 'lucide-react';
 import { csAPI, leadsAPI } from '../../lib/api';
-import ContractsStudioShell from '../../components/ContractsStudioShell';
 import { useConfirm } from '@/lib/confirm';
 
 const TYPES = ['contract', 'proposal', 'quote', 'nda', 'sow', 'retainer', 'agreement'];
@@ -61,7 +60,7 @@ export default function ContractsStudioPage() {
   }, [docs, filter, query]);
 
   return (
-    <ContractsStudioShell>
+    <>
       <div style={{ maxWidth: 1240, margin: '0 auto', padding: 'clamp(20px, 3.5vw, 38px)' }}>
         {/* header */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap', marginBottom: 22 }}>
@@ -147,7 +146,7 @@ export default function ContractsStudioPage() {
       {showNew && <NewDocModal onClose={() => setShowNew(false)} onCreated={(id) => { setShowNew(false); router.push(`/contracts/${id}`); }} say={say} />}
       {showBulk && <BulkSendModal onClose={() => setShowBulk(false)} say={say} />}
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 700, padding: '10px 18px', borderRadius: 999, background: 'var(--text)', color: 'var(--surface)', fontSize: 13 }}>{toast}</div>}
-    </ContractsStudioShell>
+    </>
   );
 }
 
