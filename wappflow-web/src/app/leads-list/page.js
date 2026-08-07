@@ -21,6 +21,7 @@ import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import VirtualList from '@/components/ui/VirtualList';
 import { toast } from '@/components/ui/Toast';
 import { leadStatusMeta } from '@/lib/leadStatus';
 import { UpgradeCta } from '@/components/PlanLock';
@@ -1161,7 +1162,11 @@ export default function LeadsListPage() {
                 compact
               />
             )
-          ) : leads.map((lead, i) => {
+          ) : (
+          /* Phase 4: windowed — only viewport rows render. The row JSX is untouched;
+             rowHeight matches the measured 59px row (see SkeletonRow 'leads'). Below
+             the threshold the list renders exactly as before. */
+          <VirtualList items={leads} rowHeight={59} renderRow={(lead, i) => {
             const sc = STATUS_META[lead.status] || STATUS_META['New'];
             const value = lead.actual_sale || lead.estimated_value;
             const isSelected = selected.has(lead.id);
@@ -1277,7 +1282,8 @@ export default function LeadsListPage() {
                 <ChevronRight size={15} color="#d1d5db" />
               </div>
             );
-          })}
+          }} />
+          )}
         </div>
 
       </main>

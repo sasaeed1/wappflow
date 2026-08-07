@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, X, Users, Clock, CheckCircle } from 'lucide-react';
 import Dropdown from '@/components/ui/Dropdown';
-import { leadsAPI, remindersAPI, notificationsAPI, displayPhone } from '@/lib/api';
+import api, { leadsAPI, remindersAPI, notificationsAPI, displayPhone } from '@/lib/api';
 
 // ShellNotifications — the notification bell, lifted out of NavBar (Phase 2).
 //
@@ -31,7 +31,28 @@ export default function ShellNotifications() {
     return () => clearInterval(poll);
   }, []);
 
+  // Phase 4: the 60s poll used to call leadsAPI.getAll(null) — the ENTIRE leads table
+  // across the wire, on every page, forever — purely to count today's arrivals. The
+  // counts-only endpoint replaces that; the heavy panel data now loads lazily, only
+  // when the dropdown is actually opened. Falls back to the old path if the endpoint
+  // is not deployed yet (it ships on the phase-3 branch), so merge order cannot break
+  // the badge.
+  const loadSummary = async () => {
+    try {
+      const r = await api.get('/notifications/summary');
+      if (typeof r.data?.total === 'number') { setBadge(r.data.total); return true; }
+    } catch {}
+    return false;
+  };
+
   const load = async () => {
+    // Cheap path first; the full fetch runs only as a fallback or when the panel needs
+    // its item lists (loadPanelData below).
+    if (await loadSummary()) return;
+    await loadPanelData();
+  };
+
+  const loadPanelData = async () => {
     try {
       const now = new Date();
       const [leadsRes, remindersRes] = await Promise.all([
@@ -121,6 +142,7 @@ export default function ShellNotifications() {
       trigger={(p) => (
         <button
           {...p}
+          onClick={(e) => { loadPanelData(); p.onClick(e); }}
           aria-label={badge > 0 ? `Notifications, ${badge} unread` : 'Notifications'}
           style={{
             position: 'relative', width: 36, height: 36, borderRadius: 'var(--radius)',
