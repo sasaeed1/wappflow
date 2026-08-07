@@ -10,6 +10,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 const crypto = require('crypto');
+const pagination = require('./pagination');
 let ai = null; try { ai = require('./ai-engine'); } catch { /* AI optional */ }
 let cron = null; try { cron = require('node-cron'); } catch { /* scheduler optional */ }
 let pricing = null; try { pricing = require('./pricing'); } catch { /* pricing optional */ }
@@ -461,8 +462,18 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       if (req.query.status) { where += ' AND d.status = ?'; params.push(req.query.status); }
       if (req.query.type) { where += ' AND d.type = ?'; params.push(req.query.type); }
       if (req.query.lead_id) { where += ' AND d.lead_id = ?'; params.push(req.query.lead_id); }
-      const rows = db.prepare(`SELECT d.*, l.customer_name AS client_name FROM cs_documents d LEFT JOIN leads l ON l.id = d.lead_id WHERE ${where} ORDER BY d.updated_at DESC`).all(...params);
-      res.json({ documents: rows.map(d => ({ ...shapeDoc(d), client_name: d.client_name })) });
+      const sql = `SELECT d.*, l.customer_name AS client_name FROM cs_documents d LEFT JOIN leads l ON l.id = d.lead_id WHERE ${where} ORDER BY d.updated_at DESC`;
+      // Phase 4: opt-in paging — omitting ?limit keeps the previous unbounded response.
+      const page = pagination.pageParams(req);
+      if (!page) {
+        const rows = db.prepare(sql).all(...params);
+        return res.json({ documents: rows.map(d => ({ ...shapeDoc(d), client_name: d.client_name })) });
+      }
+      const p = pagination.paginate(db, { sql, countSql: pagination.toCountSql(sql), params, page });
+      res.json({
+        documents: p.items.map(d => ({ ...shapeDoc(d), client_name: d.client_name })),
+        total: p.total, limit: p.limit, offset: p.offset, hasMore: p.hasMore,
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

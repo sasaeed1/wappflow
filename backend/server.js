@@ -622,6 +622,9 @@ safeAlter('ALTER TABLE leads ADD COLUMN deleted_at TIMESTAMP');
 // Additive + idempotent, so it is safe on every boot against the live DB.
 const softDeleteLib = require('./soft-delete');
 softDeleteLib.installSchema(db, safeAlter);
+
+// Phase 4 — opt-in server-side paging for the core list endpoints.
+const pagination = require('./pagination');
 // Won leads can be promoted to "clients": hidden from the Leads list (but kept
 // in chat + analytics). Additive flag — never deletes, fully reversible.
 safeAlter('ALTER TABLE leads ADD COLUMN is_client INTEGER DEFAULT 0');
@@ -1584,6 +1587,17 @@ app.get('/api/leads', auth, (req, res) => {
     if (platform && platform !== 'all') { query += ' AND platform_source = ?'; params.push(platform); }
     if (account_id) { query += ' AND platform_account_id = ?'; params.push(account_id); }
     query += ' ORDER BY last_message_at DESC';
+
+    // Phase 4: opt-in paging. Without ?limit the response shape and contents are
+    // byte-for-byte what they were, because the current UI filters client-side and a
+    // silent cap would make it filter within a subset and show confident wrong answers.
+    const page = pagination.pageParams(req);
+    let total = null;
+    if (page) {
+      total = db.prepare(pagination.toCountSql(query)).get(...params)?.c ?? 0;
+      query += ' LIMIT ? OFFSET ?';
+      params.push(page.limit, page.offset);
+    }
     const leads = attachTags(db.prepare(query).all(...params), req.workspaceId);
 
     // Attach assignee name from workspace_members
@@ -1605,7 +1619,11 @@ app.get('/api/leads', auth, (req, res) => {
         account_display_name: acc?.nickname || acc?.account_name || null,
       };
     });
-    res.json({ leads: enriched });
+    // `leads` stays the same key so every existing caller is untouched; paging
+    // metadata is additive and only present when it was asked for.
+    res.json(page
+      ? { leads: enriched, total, limit: page.limit, offset: page.offset, hasMore: page.offset + enriched.length < total }
+      : { leads: enriched });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2326,8 +2344,12 @@ function parseInvoice(inv) {
 
 app.get('/api/invoices', auth, (req, res) => {
   try {
-    const invoices = db.prepare('SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC').all(req.workspaceId, req.workspaceOwnerId).map(parseInvoice);
-    res.json({ invoices });
+    const sql = 'SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC';
+    const params = [req.workspaceId, req.workspaceOwnerId];
+    const page = pagination.pageParams(req);
+    if (!page) return res.json({ invoices: db.prepare(sql).all(...params).map(parseInvoice) });
+    const p = pagination.paginate(db, { sql, countSql: pagination.toCountSql(sql), params, page });
+    res.json({ invoices: p.items.map(parseInvoice), total: p.total, limit: p.limit, offset: p.offset, hasMore: p.hasMore });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
