@@ -144,9 +144,14 @@ export default function ProfilePage() {
 
         {/* Back button + header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+          {/* router.back() is defensible here — /profile is reachable from the account
+              menu in every module, so its parent genuinely is "wherever you were". But
+              an icon-only control needs an accessible name. */}
           <button
             onClick={() => router.back()}
-            style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}
+            aria-label="Go back"
+            title="Go back"
+            style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}
           >
             <ChevronLeft size={18} />
           </button>

@@ -424,10 +424,9 @@ export default function InvoicesPage() {
             <h1 style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: 0, letterSpacing: '-0.5px' }}>Invoices</h1>
             <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '4px 0 0' }}>Track, send and manage all your invoices</p>
           </div>
-          <button onClick={() => router.push('/dashboard')}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', border: '1.5px solid var(--border)', borderRadius: 10, background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-            <ArrowLeft size={14} /> Back
-          </button>
+          {/* Removed: /invoices is a top-level nav item, a SIBLING of /dashboard, so a
+              "Back" here promised up and delivered sideways — and the shell nav two rows
+              above already offers both destinations. */}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 28 }}>
