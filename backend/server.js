@@ -1503,6 +1503,9 @@ app.post('/api/leads/bulk-assign', auth, (req, res) => {
     const stmt = db.prepare('UPDATE leads SET assigned_to = ? WHERE id = ? AND workspace_id = ?');
     const updateMany = db.transaction((ids) => ids.forEach(id => stmt.run(assigned_to, id, req.workspaceId)));
     updateMany(lead_ids);
+    // Phase 3: reassignment changes who can see a lead, so it belongs in the audit
+    // trail as much as any single-record status change does.
+    logAudit(req.workspaceId, req.userId, 'bulk_assign', 'leads', null, { count: lead_ids.length, assigned_to, lead_ids });
     res.json({ updated: lead_ids.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3331,7 +3334,17 @@ app.delete('/api/workspace/members/:id', auth, (req, res) => {
     if (!member) return res.status(404).json({ error: 'Member not found' });
     if (member.role === 'super_admin') return res.status(403).json({ error: 'Cannot remove workspace owner' });
     if (member.user_id === req.userId) return res.status(400).json({ error: 'Cannot remove yourself' });
+    // Phase 3 DELIBERATELY LEAVES THIS A HARD DELETE. workspace_members is an AUTH
+    // table — the auth middleware resolves role and permissions from it on every
+    // request, and ~10 other paths read it for invites, ownership and scoping.
+    // Soft-deleting here would mean a removed member keeps authenticating and keeps
+    // their permissions unless every one of those reads filters is_deleted, and
+    // missing a single one is a security hole, not a cosmetic bug.
+    // "Removed" must mean removed immediately; recovery is a re-invite.
     db.prepare('DELETE FROM workspace_members WHERE id = ?').run(req.params.id);
+    logAudit(req.workspaceId, req.userId, 'member_removed', 'workspace_members', req.params.id, {
+      email: member.invite_email || null, role: member.role,
+    });
     // Reset user's workspace to null if they're removed
     if (member.user_id) {
       db.prepare('UPDATE users SET workspace_id = NULL WHERE id = ?').run(member.user_id);
@@ -5508,8 +5521,11 @@ app.post('/api/leads/bulk-trash', auth, (req, res) => {
       return res.status(400).json({ error: 'lead_ids array required' });
     }
     const placeholders = lead_ids.map(() => '?').join(',');
-    const result = db.prepare(`UPDATE leads SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND id IN (${placeholders})`)
-      .run(req.workspaceId, ...lead_ids);
+    const result = db.prepare(`UPDATE leads SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE workspace_id = ? AND id IN (${placeholders})`)
+      .run(req.userId, req.workspaceId, ...lead_ids);
+    // Phase 3: bulk actions used to skip the audit their single-record siblings write,
+    // so the highest-volume destructive action in the product left no trace.
+    logAudit(req.workspaceId, req.userId, 'bulk_trash', 'leads', null, { count: result.changes, lead_ids });
     // Notify SSE listeners so dashboards update
     try { for (const id of lead_ids) broadcastToWorkspace(req.workspaceId, 'lead_deleted', { id }); } catch {}
     res.json({ moved: result.changes, message: `Moved ${result.changes} lead${result.changes === 1 ? '' : 's'} to trash` });

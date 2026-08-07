@@ -143,5 +143,43 @@ check('Studio’s bin no longer promises a different window than the rest', () =
   assert(!/'-30 days'/.test(m), 'a hardcoded 30-day purge survives');
 });
 
+// ── Batch 2 ─────────────────────────────────────────────────────────────────
+const CONTRACTS = fs.readFileSync(path.join(__dirname, 'contracts-studio.js'), 'utf8');
+
+check('SECURITY: workspace_members stays a HARD delete — it is an auth table', () => {
+  // The auth middleware resolves role + permissions from workspace_members on every
+  // request. Soft-deleting a member without filtering all ~10 reads would leave a
+  // removed person authenticating with their old permissions.
+  assert(!/workspace_members:\s*\{/.test(strip(fs.readFileSync(path.join(__dirname, 'soft-delete.js'), 'utf8'))),
+    'workspace_members must NOT be in the soft-delete registry');
+  assert(/DELETE FROM workspace_members WHERE id = \?/.test(strip(SERVER)),
+    'member removal must stay immediate');
+  assert(/'member_removed'/.test(SERVER), 'member removal must still be audited');
+});
+
+check('contracts join the bin, with signers/events/approvals preserved for restore', () => {
+  const c = strip(CONTRACTS);
+  assert(!/DELETE FROM cs_documents WHERE id = \?/.test(c), 'contract hard-delete survives');
+  assert(/UPDATE cs_documents SET is_deleted = 1/.test(c), 'not soft-deleting');
+  // the children must NOT be destroyed, or a restore returns a hollow document
+  assert(!/DELETE FROM cs_signers WHERE document_id/.test(c), 'signers still destroyed — restore would be incomplete');
+  assert(!/DELETE FROM cs_approvals WHERE document_id/.test(c), 'approvals still destroyed');
+  assert(/app\.post\('\/api\/cs\/documents\/:id\/restore'/.test(c), 'no contract restore route');
+});
+
+check('contract reads exclude the bin, and ?bin=1 makes binned docs reachable', () => {
+  const c = strip(CONTRACTS);
+  assert((c.match(/is_deleted = 0 OR/g) || []).length >= 5, 'contract list/aggregate reads not filtered');
+  assert(/req\.query\.bin === '1'/.test(c), 'no way to list the bin — binned docs would be unreachable');
+});
+
+check('bulk lead actions now write the audit their single-record siblings do', () => {
+  const s = strip(SERVER);
+  assert(/'bulk_trash'/.test(s), 'bulk-trash still leaves no audit trace');
+  assert(/'bulk_assign'/.test(s), 'bulk-assign still leaves no audit trace');
+  assert(/deleted_by = \?.*WHERE workspace_id = \? AND id IN/s.test(s) || /deleted_by = \?/.test(s),
+    'bulk-trash does not record who binned the rows');
+});
+
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

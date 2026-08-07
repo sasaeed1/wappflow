@@ -30,7 +30,11 @@ const ENTITIES = {
   invoices:          { label: 'Invoice',     retentionDays: null,           flag: 'is_deleted' },
   cs_documents:      { label: 'Contract',    retentionDays: RETENTION_DAYS, flag: 'is_deleted' },
   bookings:          { label: 'Booking',     retentionDays: RETENTION_DAYS, flag: 'is_deleted' },
-  workspace_members: { label: 'Team member', retentionDays: RETENTION_DAYS, flag: 'is_deleted' },
+  // NOT workspace_members. It is an AUTH table: the auth middleware resolves role and
+  // permissions from it on every request. Soft-deleting a member would leave them
+  // authenticating with their old permissions unless all ~10 read sites filter the
+  // flag — and missing one is a privilege-escalation hole, not a cosmetic bug.
+  // Removing a member stays immediate; recovery is a re-invite. (Phase 3 decision.)
   // ms_assets predates this module and carries its own file-cleanup logic in
   // media-studio.js (blobs must be removed from storage, not just rows). It is listed
   // so the retention window is declared in ONE place; the purge itself stays there.
