@@ -134,6 +134,9 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       doc_hash TEXT,
       created_by TEXT,
       sent_at TIMESTAMP, viewed_at TIMESTAMP, completed_at TIMESTAMP, expires_at TIMESTAMP,
+      is_deleted INTEGER DEFAULT 0,      -- Phase 3 recycle bin; older DBs get these via soft-delete.js
+      deleted_at TIMESTAMP,
+      deleted_by TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );

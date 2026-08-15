@@ -41,10 +41,20 @@ const ENTITIES = {
   ms_assets:         { label: 'Media asset', retentionDays: RETENTION_DAYS, flag: null, externalPurge: true },
 };
 
-/** Adds the soft-delete columns to every registered table. Idempotent. */
+/**
+ * Adds the soft-delete columns to every registered table. Idempotent.
+ *
+ * Tables that do not exist yet are SKIPPED, not an error: cs_documents and
+ * bookings are created by their own modules, which mount after this runs. On a
+ * fresh install those CREATE TABLEs already include the soft-delete columns —
+ * this migration exists for databases that predate the bin. (Without the skip,
+ * a brand-new install could not boot: safeAlter rethrows "no such table".)
+ */
 function installSchema(db, safeAlter) {
+  const exists = db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`);
   for (const [table, cfg] of Object.entries(ENTITIES)) {
     if (cfg.externalPurge) continue; // owns its own schema
+    if (!exists.get(table)) continue; // created later, with the columns built in
     if (cfg.flag) safeAlter(`ALTER TABLE ${table} ADD COLUMN ${cfg.flag} INTEGER DEFAULT 0`);
     safeAlter(`ALTER TABLE ${table} ADD COLUMN deleted_at TIMESTAMP`);
     safeAlter(`ALTER TABLE ${table} ADD COLUMN deleted_by TEXT`);

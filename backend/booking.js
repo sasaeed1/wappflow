@@ -35,9 +35,18 @@ module.exports = function mountBooking(app, db, deps = {}) {
       service TEXT, start_at TEXT, duration_min INTEGER,
       name TEXT, phone TEXT, email TEXT, notes TEXT,
       status TEXT DEFAULT 'confirmed',
+      is_deleted INTEGER DEFAULT 0,      -- Phase 3 recycle bin; older DBs get these via soft-delete.js
+      deleted_at TIMESTAMP,
+      deleted_by TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_bookings_ws ON bookings(workspace_id);
+    -- Phase 4: the guard counts live bookings per lead on every lead
+    -- permanent-delete, and every list is workspace + bin filtered. These live
+    -- HERE, not in server.js: the module that creates the table must create its
+    -- indexes, or a fresh install races the central index list against the mount.
+    CREATE INDEX IF NOT EXISTS idx_bookings_lead ON bookings(lead_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_ws_deleted ON bookings(workspace_id, is_deleted);
   `);
   // Booking 2.0 columns (idempotent for existing installs)
   for (const c of ['token TEXT', 'intake TEXT']) { try { db.exec(`ALTER TABLE bookings ADD COLUMN ${c}`); } catch { /* exists */ } }

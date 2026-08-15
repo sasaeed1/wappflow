@@ -37,6 +37,34 @@ check('installSchema is additive and idempotent (safe on every boot)', () => {
   assert(bcols.includes('is_deleted'), 'bookings missing is_deleted');
 });
 
+check('a FRESH install can boot: missing module tables are skipped, their CREATEs carry the columns', () => {
+  // Regression caught by a live fresh-DB boot: cs_documents/bookings are created
+  // by their modules AFTER installSchema runs, and safeAlter rethrows "no such
+  // table" — so a brand-new install crashed on boot. Existing DBs never hit it.
+  const fresh = new Database(':memory:');
+  const freshAlter = (sql) => { try { fresh.exec(sql); } catch (e) { if (!/duplicate column/.test(e.message)) throw e; } };
+  fresh.exec(`CREATE TABLE leads (id TEXT PRIMARY KEY, workspace_id TEXT);
+              CREATE TABLE invoices (id TEXT PRIMARY KEY, workspace_id TEXT);`);
+  sd.installSchema(fresh, freshAlter); // cs_documents/bookings absent — must not throw
+  // Assert against the FRESH db (the outer `db` already has the columns): the
+  // skip must not overreach and skip tables that DO exist.
+  for (const t of ['leads', 'invoices']) {
+    assert(fresh.prepare(`PRAGMA table_info(${t})`).all().some((c) => c.name === 'is_deleted'),
+      `fresh ${t} did not get is_deleted — installSchema skipped an existing table`);
+  }
+  // …and the fresh path only works if the owning modules create the columns themselves:
+  const contracts = fs.readFileSync(path.join(__dirname, 'contracts-studio.js'), 'utf8');
+  const booking = fs.readFileSync(path.join(__dirname, 'booking.js'), 'utf8');
+  for (const [name, src] of [['contracts-studio', contracts], ['booking', booking]]) {
+    const create = src.slice(src.indexOf('CREATE TABLE IF NOT EXISTS ' + (name === 'booking' ? 'bookings' : 'cs_documents')));
+    const body = create.slice(0, create.indexOf(');'));
+    for (const col of ['is_deleted', 'deleted_at', 'deleted_by']) {
+      assert(body.includes(col), `${name}: fresh CREATE TABLE lacks ${col} — new installs would fail on first is_deleted query`);
+    }
+  }
+  fresh.close();
+});
+
 check('softDelete hides a row and restore brings it back', () => {
   db.prepare(`INSERT INTO bookings (id, workspace_id) VALUES ('b1','ws1')`).run();
   assert.strictEqual(sd.softDelete(db, { table: 'bookings', id: 'b1', workspaceId: 'ws1', userId: 'u1' }), 1);

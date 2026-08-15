@@ -150,7 +150,6 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     -- Phase 4: workspace + trash scans had no index, so every library load and every
     -- retention sweep full-scanned the largest media table.
     CREATE INDEX IF NOT EXISTS idx_ms_assets_ws ON ms_assets(workspace_id);
-    CREATE INDEX IF NOT EXISTS idx_ms_assets_deleted ON ms_assets(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_ms_projects_ws ON ms_projects(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_ms_scores_asset ON ms_asset_scores(asset_id);
   `);
@@ -164,6 +163,10 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   safeAlter('ALTER TABLE ms_jobs ADD COLUMN lease_until TIMESTAMP'); // worker lease → stale-job reaper (multi-worker scale)
   safeAlter('ALTER TABLE ms_assets ADD COLUMN edits TEXT'); // non-destructive edit params (JSON)
   safeAlter('ALTER TABLE ms_assets ADD COLUMN deleted_at TIMESTAMP'); // soft-delete → Trash (restorable; window from soft-delete.js)
+  // The trash-scan index can only exist once the column does — on a fresh DB the
+  // column arrives via the safeAlter above, so this must run AFTER it, not in the
+  // schema exec (a fresh install crashed on boot when it lived there).
+  db.exec('CREATE INDEX IF NOT EXISTS idx_ms_assets_deleted ON ms_assets(deleted_at)');
   // Video metadata (filled by the worker's ffprobe pass) + proxy/poster for the editor.
   for (const col of ['v_duration_ms INTEGER', 'v_width INTEGER', 'v_height INTEGER', 'v_fps REAL',
     'v_codec TEXT', 'v_has_audio INTEGER', 'proxy_url TEXT', 'poster_url TEXT']) {

@@ -625,6 +625,9 @@ softDeleteLib.installSchema(db, safeAlter);
 
 // Phase 4 — opt-in server-side paging for the core list endpoints.
 const pagination = require('./pagination');
+// Phase 4 — saved views move out of per-browser localStorage into the DB.
+const savedViews = require('./saved-views');
+savedViews.installSchema(db);
 // Won leads can be promoted to "clients": hidden from the Leads list (but kept
 // in chat + analytics). Additive flag — never deletes, fully reversible.
 safeAlter('ALTER TABLE leads ADD COLUMN is_client INTEGER DEFAULT 0');
@@ -840,8 +843,8 @@ for (const ix of [
   // The bin sweep and every trash list filter on these.
   'CREATE INDEX IF NOT EXISTS idx_leads_ws_deleted ON leads(workspace_id, is_deleted)',
   'CREATE INDEX IF NOT EXISTS idx_invoices_ws_deleted ON invoices(workspace_id, is_deleted)',
-  // The guard counts live children by lead on every permanent-delete.
-  'CREATE INDEX IF NOT EXISTS idx_bookings_lead ON bookings(lead_id)',
+  // (bookings/cs_documents/ms_assets indexes live in their owning modules —
+  //  they mount after this list runs, so a fresh install has no table yet here.)
 ]) { try { db.exec(ix); } catch (e) { console.error('Index skipped:', e.message); } }
 
 // ── Migrate password_hash → password for databases created with old schema ──
@@ -5608,6 +5611,100 @@ app.post('/api/leads/bulk-trash', auth, (req, res) => {
     try { for (const id of lead_ids) broadcastToWorkspace(req.workspaceId, 'lead_deleted', { id }); } catch {}
     res.json({ moved: result.changes, message: `Moved ${result.changes} lead${result.changes === 1 ? '' : 's'} to trash` });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/leads/bulk-status — move many leads to a pipeline stage in ONE call.
+// The frontend used to fire one sequential PUT per selected lead, swallow every
+// error, and report success regardless (the audit's crm-leads-8). This endpoint
+// preserves the single-status route's side effects — stage timestamps, a
+// contact_history entry per lead, SSE, audit — inside one transaction.
+const BULK_STATUSES = new Set(['New', 'Contacted', 'Interested', 'Negotiating', 'Closed - Won', 'Closed - Lost']);
+app.post('/api/leads/bulk-status', auth, (req, res) => {
+  try {
+    const { lead_ids, status } = req.body || {};
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+    if (!BULK_STATUSES.has(status)) {
+      return res.status(400).json({ error: 'invalid status' });
+    }
+    // Same stamp rules as PUT /api/leads/:id/status — closing stamps closed_at,
+    // active stages stamp last_contacted_at. (Won/lost details like actual_sale
+    // are per-lead data the bulk UI does not collect; those stay single-record.)
+    let stamps = '';
+    if (status === 'Closed - Won' || status === 'Closed - Lost') stamps = ', closed_at = CURRENT_TIMESTAMP';
+    if (['Contacted', 'Interested', 'Negotiating'].includes(status)) stamps = ', last_contacted_at = CURRENT_TIMESTAMP';
+    // A member who cannot view all leads can only move their own — the same rule
+    // the leads list and bulk empty-trash enforce. (The single-status route
+    // predates the rule; new bulk code does not get to inherit its gap.)
+    const visible = req.canViewAllLeads ? '' : ' AND assigned_to = ?';
+    const visArgs = req.canViewAllLeads ? [] : [req.userId];
+    const move = db.transaction(() => {
+      // Chunked because SQLite caps bound variables (~32k): a select-all on a
+      // large workspace must degrade to more statements, not a 500 the client
+      // cannot retry out of. One transaction keeps the whole move atomic.
+      const owned = [];
+      let changes = 0;
+      for (let i = 0; i < lead_ids.length; i += 500) {
+        const chunk = lead_ids.slice(i, i + 500);
+        const ph = chunk.map(() => '?').join(',');
+        // The workspace clause is the authorization: ids from another tenant simply match nothing.
+        owned.push(...db.prepare(`SELECT id FROM leads WHERE workspace_id = ? AND id IN (${ph})${visible}`)
+          .all(req.workspaceId, ...chunk, ...visArgs).map((r) => r.id));
+        changes += db.prepare(`UPDATE leads SET status = ?${stamps} WHERE workspace_id = ? AND id IN (${ph})${visible}`)
+          .run(status, req.workspaceId, ...chunk, ...visArgs).changes;
+      }
+      for (const id of owned) addContactHistory(id, req.userId, 'status_change', `Status changed to ${status}`);
+      return { changes, owned };
+    });
+    const { changes, owned } = move();
+    logAudit(req.workspaceId, req.userId, 'bulk_status', 'leads', null, { count: changes, status, lead_ids });
+    try {
+      for (const id of owned) {
+        const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
+        broadcastToWorkspace(req.workspaceId, 'lead_updated', { lead });
+      }
+    } catch {}
+    res.json({ moved: changes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  SAVED VIEWS — shared list infrastructure (Phase 4)
+// ════════════════════════════════════════════════════════════
+
+// GET /api/views?entity=leads — this user's views for one list
+app.get('/api/views', auth, (req, res) => {
+  try {
+    const views = savedViews.listViews(db, {
+      workspaceId: req.workspaceId, userId: req.userId,
+      entity: String(req.query.entity || 'leads'),
+    });
+    res.json({ views });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// POST /api/views — create or replace (upsert on name, like localStorage did)
+app.post('/api/views', auth, (req, res) => {
+  try {
+    const { entity, name, filters } = req.body || {};
+    const view = savedViews.saveView(db, {
+      workspaceId: req.workspaceId, userId: req.userId,
+      entity: String(entity || 'leads'), name, filters,
+    });
+    logAudit(req.workspaceId, req.userId, 'view_saved', 'saved_view', String(view.id), { entity: view.entity, name: view.name });
+    res.json({ view: { ...view, filters: JSON.parse(view.filters) } });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// DELETE /api/views/:id — owner-scoped; the WHERE clause is the authorization
+app.delete('/api/views/:id', auth, (req, res) => {
+  try {
+    const removed = savedViews.deleteView(db, { workspaceId: req.workspaceId, userId: req.userId, id: req.params.id });
+    if (!removed) return res.status(404).json({ error: 'view not found' });
+    logAudit(req.workspaceId, req.userId, 'view_deleted', 'saved_view', String(req.params.id), {});
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // ════════════════════════════════════════════════════════════

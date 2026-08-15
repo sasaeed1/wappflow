@@ -81,8 +81,15 @@ check('the pragmas actually apply on a real connection', () => {
   assert.strictEqual(d2.pragma('synchronous', { simple: true }), 1); // 1 = NORMAL
 });
 check('every new index is declared in source, next to the module that owns it', () => {
-  for (const i of ['idx_messages_wa_id', 'idx_messages_lead_ts', 'idx_leads_ws_deleted', 'idx_invoices_ws_deleted', 'idx_bookings_lead'])
+  // idx_bookings_lead moved from server.js's central list into booking.js: the
+  // central list runs BEFORE the module mounts, so on a fresh install the table
+  // did not exist yet and the index was silently skipped. Module owns the table
+  // → module owns its indexes.
+  const BOOKING = fs.readFileSync(path.join(__dirname, 'booking.js'), 'utf8');
+  for (const i of ['idx_messages_wa_id', 'idx_messages_lead_ts', 'idx_leads_ws_deleted', 'idx_invoices_ws_deleted'])
     assert(SERVER.includes(i), 'server.js missing ' + i);
+  assert(!SERVER.includes('idx_bookings_lead'), 'idx_bookings_lead back in server.js — fresh installs skip it there');
+  for (const i of ['idx_bookings_lead', 'idx_bookings_ws_deleted']) assert(BOOKING.includes(i), 'booking.js missing ' + i);
   for (const i of ['idx_ms_assets_ws', 'idx_ms_assets_deleted']) assert(MEDIA.includes(i), 'media-studio.js missing ' + i);
   for (const i of ['idx_cs_docs_ws_deleted', 'idx_cs_docs_lead']) assert(CONTRACTS.includes(i), 'contracts-studio.js missing ' + i);
 });
