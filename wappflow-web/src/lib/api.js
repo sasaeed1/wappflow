@@ -58,6 +58,7 @@ export const leadsAPI = {
   bulkAssign: (lead_ids, assigned_to) => api.post('/leads/bulk-assign', { lead_ids, assigned_to }),
   roundRobin: (lead_ids, user_ids) => api.post('/leads/round-robin', { lead_ids, ...(user_ids ? { user_ids } : {}) }),
   bulkTrash: (lead_ids) => api.post('/leads/bulk-trash', { lead_ids }),
+  bulkStatus: (lead_ids, status) => api.post('/leads/bulk-status', { lead_ids, status }),
   getDuplicates: () => api.get('/leads/duplicates'),
   merge: (primary_id, duplicate_ids) => api.post('/leads/merge', { primary_id, duplicate_ids }),
 
@@ -703,5 +704,14 @@ export function formatCurrency(amount, symbol = '$', position = 'before') {
   const num = parseFloat(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return position === 'after' ? `${num}${symbol}` : `${symbol}${num}`;
 }
+
+// Saved views — server-side list filter combos (Phase 4). Scoped per user per
+// workspace per entity, so Clients/Galleries/Contracts can mount views later
+// with the same three calls.
+export const viewsAPI = {
+  list: (entity = 'leads') => api.get('/views', { params: { entity } }),
+  save: (entity, name, filters) => api.post('/views', { entity, name, filters }),
+  remove: (id) => api.delete(`/views/${id}`),
+};
 
 export default api;
