@@ -40,7 +40,7 @@ export const MODULES = {
       { href: '/clients', label: 'Clients', icon: UserCheck },
       // Renamed from "Inbox": that label described team chat, while the product calls
       // this module Communications everywhere else (audit item comms-4).
-      { href: '/chat', label: 'Communications', icon: Inbox },
+      { href: '/chat', label: 'Communications', icon: Inbox, badge: 'comms' },
       { href: '/invoices', label: 'Invoices', icon: FileText },
       { href: '/bookings', label: 'Bookings', icon: Calendar },
       { href: '/reports', label: 'Analytics', icon: BarChart2, lockFeature: 'analytics', requiredPlan: 'Studio' },
@@ -53,6 +53,10 @@ export const MODULES = {
     icon: Camera,
     mark: 'linear-gradient(135deg,#0e0e11,#3a3a44)',
     dialectClass: 'ms-root',
+    // Phase 5: the feed is platform-wide, so the bell belongs in every module.
+    // It was CRM-only, which is why a finished render or a signed contract had
+    // nowhere to appear for someone working inside Studio or Contracts.
+    notifications: true,
     fabs: [StudioCopilot],
     // Studio's theme switcher is a module action, not shell furniture — this is the
     // seam that lets one shell host a dialect's own controls (D8).
@@ -74,6 +78,7 @@ export const MODULES = {
     home: '/contracts',
     icon: FileSignature,
     mark: 'linear-gradient(135deg,#0ea5e9,#6366f1)',
+    notifications: true,
     menu: [
       { href: '/contracts/settings', label: 'Studio settings', icon: Settings },
       { href: '/contracts/help', label: 'Help & guide', icon: HelpCircle },

@@ -9,6 +9,7 @@ import ModuleSwitcher from './ModuleSwitcher';
 import ShellNotifications from './ShellNotifications';
 import { MODULES, isNavActive } from './modules';
 import { useSession, useSignOut, useAuthGuard } from './session';
+import { useSummary } from './summary';
 import { usePlan } from '@/lib/plan';
 
 // AppShell — ONE shell for every authenticated module (Phase 2).
@@ -36,6 +37,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
   const { user } = useSession();
   const signOut = useSignOut();
   const plan = usePlan();
+  const summary = useSummary();
   const [drawer, setDrawer] = useState(false);
   useAuthGuard();
 
@@ -53,6 +55,10 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
     const active = isNavActive(pathname, item);
     const locked = featureLocked(item.lockFeature);
     const Icon = locked ? Lock : item.icon;
+    // Unread team messages were only ever visible once you were already inside
+    // /chat, which is the one place you no longer need telling (audit comms-5).
+    // The count rides the summary the bell already fetches — no extra polling.
+    const badgeCount = item.badge === 'comms' && !locked ? (summary.comms || 0) : 0;
     return (
       <button
         key={item.href}
@@ -73,6 +79,19 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
       >
         {Icon && <Icon size={15} aria-hidden="true" />}
         {item.label}
+        {badgeCount > 0 && (
+          <span
+            aria-label={`${badgeCount} unread`}
+            style={{
+              minWidth: 17, height: 17, padding: '0 5px', marginLeft: 2,
+              borderRadius: 'var(--radius-pill)', background: 'var(--danger)',
+              color: 'var(--on-accent)', fontSize: 10, fontWeight: 'var(--fw-bold)',
+              display: 'grid', placeItems: 'center',
+            }}
+          >
+            {badgeCount > 9 ? '9+' : badgeCount}
+          </span>
+        )}
       </button>
     );
   };

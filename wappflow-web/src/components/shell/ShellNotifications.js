@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, X, Users, Clock, CheckCircle } from 'lucide-react';
 import Dropdown from '@/components/ui/Dropdown';
 import { useRealtime } from './realtime';
+import { publishSummary } from './summary';
 import api, { leadsAPI, remindersAPI, notificationsAPI, displayPhone } from '@/lib/api';
 
 // ShellNotifications — the notification bell, lifted out of NavBar (Phase 2).
@@ -39,6 +40,16 @@ export default function ShellNotifications() {
   // reminders); this just makes the badge immediate.
   useRealtime('notification', () => { setBadge((n) => n + 1); });
 
+  // Team messages move the Communications badge, which reads the same summary.
+  // Refetching the counts is cheap (three indexed COUNTs) but a busy channel
+  // would fire per message, so it is debounced into one call.
+  const commsTimer = useRef(null);
+  useRealtime(['chat_message', 'chat_mention', 'chat_thread_reply'], () => {
+    clearTimeout(commsTimer.current);
+    commsTimer.current = setTimeout(() => { loadSummary(); }, 1500);
+  });
+  useEffect(() => () => clearTimeout(commsTimer.current), []);
+
   // Phase 4: the 60s poll used to call leadsAPI.getAll(null) — the ENTIRE leads table
   // across the wire, on every page, forever — purely to count today's arrivals. The
   // counts-only endpoint replaces that; the heavy panel data now loads lazily, only
@@ -48,7 +59,13 @@ export default function ShellNotifications() {
   const loadSummary = async () => {
     try {
       const r = await api.get('/notifications/summary');
-      if (typeof r.data?.total === 'number') { setBadge(r.data.total); return true; }
+      if (typeof r.data?.total === 'number') {
+        setBadge(r.data.total);
+        // Publish for the rest of the shell (the Communications nav badge reads
+        // `comms` from here) so nothing else has to poll this endpoint again.
+        publishSummary(r.data);
+        return true;
+      }
     } catch {}
     return false;
   };

@@ -27,7 +27,7 @@ export default function BookingsPage() {
   // Phase 5: the backend has always broadcast booking_created on create,
   // reschedule and cancel; this page loaded once and never listened, so a
   // booking taken while it was open simply did not appear.
-  useRealtime('booking_created', () => { loadBookings(); });
+  useRealtime(['booking_created', 'booking_updated', 'booking_cancelled'], () => { loadBookings(); });
 
   const save = async () => {
     const r = await bookingAPI.updateSettings(settings);
