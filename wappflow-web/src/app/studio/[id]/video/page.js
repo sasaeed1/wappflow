@@ -111,7 +111,11 @@ export default function ReelListPage() {
                   <div className="ms-covercard-veil" />
                   <div className="ms-covercard-body">
                     <span className="ms-covercard-tag">
-                      {t.source === 'ai_draft' ? <><Sparkles size={9} style={{ verticalAlign: '-1px' }} /> AI draft · </> : ''}
+                      {/* Auto-reel writes source 'ai_reel'; only 'ai_draft' was matched
+                          here, so AI-built reels showed no badge and read as manual. */}
+                      {t.source === 'ai_draft' ? <><Sparkles size={9} style={{ verticalAlign: '-1px' }} /> AI draft · </>
+                        : t.source === 'ai_reel' ? <><Sparkles size={9} style={{ verticalAlign: '-1px' }} /> Auto-reel · </>
+                        : t.source === 'template' ? 'Template · ' : ''}
                       {t.aspect_ratio}{t.ai_stale ? ' · outdated' : ''}
                     </span>
                     <h3 className="ms-covercard-title" style={{ fontSize: 16 }}>{t.name}</h3>

@@ -6,7 +6,20 @@ import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Check, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { mediaAPI, videoAiAPI, mediaUrl } from '../../../../../lib/api';
 
-const TRANSITIONS = ['cut', 'fade', 'whip'];
+// Canonical names, matching the renderer (backend/video-engine.js). This editor
+// used to offer 'cut' and 'whip', which the renderer did not recognise — it
+// dropped anything unknown, so "whip" silently rendered as a hard cut and the
+// user was never told. 'cut' is kept as a label because a cut is a real editorial
+// choice; it maps to 'none', which is what a cut actually is.
+const TRANSITIONS = [
+  { id: 'none', label: 'cut' },
+  { id: 'fade', label: 'fade' },
+  { id: 'crossDissolve', label: 'dissolve' },
+  { id: 'slide', label: 'whip' },
+];
+// Plans saved before this change still hold the old spellings; show them as the
+// canonical option they resolve to rather than as a blank select.
+const LEGACY_TRANSITION = { cut: 'none', whip: 'slide', dissolve: 'crossDissolve' };
 const MOTIONS = ['kenburns', 'pan', 'static'];
 
 export default function ReelEditorPage() {
@@ -67,7 +80,7 @@ export default function ReelEditorPage() {
                       <input type="number" step="0.1" min="0.3" value={((c.duration_ms || 0) / 1000).toFixed(1)} onChange={e => { const ms = Math.max(300, Math.round(Number(e.target.value) * 1000)); set(i, { duration_ms: ms, out_ms: ms }); }} style={inp} />s
                     </label>
                     <label style={lbl}>In
-                      <select value={c.transition || 'cut'} onChange={e => set(i, { transition: e.target.value })} style={sel}>{TRANSITIONS.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                      <select value={LEGACY_TRANSITION[c.transition] || c.transition || 'none'} onChange={e => set(i, { transition: e.target.value })} style={sel}>{TRANSITIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select>
                     </label>
                     <label style={lbl}>Motion
                       <select value={c.motion || 'static'} onChange={e => set(i, { motion: e.target.value })} style={sel}>{MOTIONS.map(t => <option key={t} value={t}>{t}</option>)}</select>
