@@ -69,8 +69,22 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/uploads/'),
+  // JSON body (not the plain-text default) so clients can surface the reason
+  // instead of falling back to a generic "failed" message.
+  message: { error: 'Too many requests — please wait a few minutes and try again.' },
 });
 app.use(limiter);
+
+// Brute-force guard on password login. Counts only FAILED attempts per IP
+// (skipSuccessfulRequests), so normal sign-ins never trip it.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Too many failed sign-in attempts — please wait 15 minutes and try again.' },
+});
 
 // CORS
 app.use(cors({
@@ -1089,7 +1103,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);

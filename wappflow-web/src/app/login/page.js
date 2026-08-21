@@ -12,6 +12,15 @@ import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
+// Prefer the server's error; otherwise name the two failure modes a generic
+// fallback would hide (rate-limited 429, server unreachable).
+const loginErrorMessage = (err, fallback) => {
+  if (err.response?.data?.error) return err.response.data.error;
+  if (err.response?.status === 429) return 'Too many requests — please wait a few minutes and try again.';
+  if (!err.response) return "Can't reach the server — check your connection and try again.";
+  return fallback;
+};
+
 function LoginContent() {
   const router = useRouter();
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -47,7 +56,7 @@ function LoginContent() {
       const response = await authAPI.login(formData);
       saveAuthData(response.data, remember);
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      setError(loginErrorMessage(err, 'Login failed'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +69,7 @@ function LoginContent() {
       const response = await authAPI.google({ credential: credentialResponse.credential });
       saveAuthData(response.data, remember);
     } catch (err) {
-      setError(err.response?.data?.error || 'Google sign-in failed');
+      setError(loginErrorMessage(err, 'Google sign-in failed'));
     } finally {
       setLoading(false);
     }
