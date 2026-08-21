@@ -32,6 +32,30 @@ check('exactly ONE tenant EventSource exists, and it lives in the provider', () 
   assert(tenant[0].endsWith(path.join('shell', 'realtime.js')), 'the connection is not owned by the provider: ' + tenant[0]);
 });
 
+check('URLs that append /api are built from BASE_URL, never from API_URL', () => {
+  // Caught only when deploying: NEXT_PUBLIC_API_URL already ENDS IN /api behind
+  // nginx, so `${API_URL}/api/events` becomes /api/api/events and the stream
+  // 404s. Locally both env vars are unset and fall back to the same origin, so
+  // the bug is invisible until the two values actually differ — i.e. in
+  // production only. Any file that writes `${X}/api/...` must use BASE_URL.
+  const offenders = [];
+  const walk = (dir) => {
+    for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, f.name);
+      if (f.isDirectory()) { walk(p); continue; }
+      if (!/\.jsx?$/.test(f.name)) continue;
+      const s = strip(fs.readFileSync(p, 'utf8'));
+      if (!/\$\{[A-Z_]*BASE_URL\}\/api\//.test(s) && !/\$\{[A-Za-z_]+\}\/api\//.test(s)) continue;
+      // A local re-derivation from NEXT_PUBLIC_API_URL is the specific trap.
+      if (/(const|let)\s+BASE_URL\s*=\s*process\.env\.NEXT_PUBLIC_API_URL/.test(s)) offenders.push(p);
+    }
+  };
+  walk(SRC);
+  assert.deepStrictEqual(offenders, [], 'these build /api URLs from an API_URL that already contains /api:\n   ' + offenders.join('\n   '));
+  // And the provider specifically must use the shared constant.
+  assert(/import \{ BASE_URL \} from '@\/lib\/api'/.test(rt), 'realtime.js re-derives its own origin instead of importing BASE_URL');
+});
+
 check('the provider is mounted app-wide, above the per-route shell', () => {
   assert(/<RealtimeProvider>/.test(providers), 'RealtimeProvider is not mounted in providers.js');
   assert(/import \{ RealtimeProvider \} from '@\/components\/shell\/realtime'/.test(providers), 'import missing');

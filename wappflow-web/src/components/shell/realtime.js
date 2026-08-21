@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import { BASE_URL } from '@/lib/api';
 
 // Realtime — ONE SSE connection for the whole app (Phase 5).
 //
@@ -26,7 +27,12 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 
 const RealtimeContext = createContext(null);
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Import BASE_URL rather than re-deriving it. This file briefly read
+// NEXT_PUBLIC_API_URL, which already ENDS IN /api in any real deployment
+// (nginx routes /api/ to the backend), so appending '/api/events' produced
+// '/api/api/events' and the stream 404'd. It looked fine locally only because
+// with no env vars set both variables fall back to the same localhost origin —
+// the two values differ only in production, which is the one place it mattered.
 
 export function RealtimeProvider({ children }) {
   // handlers: Map<eventType, Set<fn>> — a plain ref, so subscribing never re-renders.
