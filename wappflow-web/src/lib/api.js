@@ -708,6 +708,11 @@ export function formatCurrency(amount, symbol = '$', position = 'before') {
 // Saved views — server-side list filter combos (Phase 4). Scoped per user per
 // workspace per entity, so Clients/Galleries/Contracts can mount views later
 // with the same three calls.
+// Universal search — one query across every module (Phase 5).
+export const searchAPI = {
+  global: (q) => api.get('/search', { params: { q } }),
+};
+
 export const viewsAPI = {
   list: (entity = 'leads') => api.get('/views', { params: { entity } }),
   save: (entity, name, filters) => api.post('/views', { entity, name, filters }),

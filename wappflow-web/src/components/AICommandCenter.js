@@ -38,18 +38,15 @@ export default function AICommandCenter({ enabled = true }) {
   const inputRef = useRef(null);
   const panelRef = useRef(null);
 
-  // Ctrl+K to open
+  // Phase 5: Ctrl+K now belongs to the shell's command palette, which searches
+  // records deterministically across every module. Two components binding the
+  // same chord would just fight, so this keeps its FAB and its Escape handling
+  // and gives up the shortcut.
   useEffect(() => {
-    const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        if (enabled) setOpen(v => !v);
-      }
-      if (e.key === 'Escape') setOpen(false);
-    };
+    const handler = (e) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [enabled]);
+  }, []);
 
   // Focus input when opened
   useEffect(() => {

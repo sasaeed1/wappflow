@@ -7,6 +7,7 @@ import Dropdown, { MenuItem } from '@/components/ui/Dropdown';
 import Drawer from '@/components/ui/Drawer';
 import ModuleSwitcher from './ModuleSwitcher';
 import ShellNotifications from './ShellNotifications';
+import CommandPalette from './CommandPalette';
 import { MODULES, isNavActive } from './modules';
 import { useSession, useSignOut, useAuthGuard } from './session';
 import { useSummary } from './summary';
@@ -129,6 +130,8 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
             one shell host a dialect's own controls without flattening it (D8). */}
         {mod.actions && <mod.actions />}
         {mod.notifications && <ShellNotifications />}
+        {/* Ctrl+K, in every module — the old binding lived in a CRM-only fab. */}
+        <CommandPalette />
 
         <button
           className="wf-shell-burger"
