@@ -6248,6 +6248,9 @@ try {
   }
 } catch (e) { console.error('Private-channel backfill skipped:', e.message); }
 
+// ── Universal search (Phase 5) — one query across every module ──
+require('./search')(app, db, { auth });
+
 // ── Workspace Sync (Phase 6 — offline-first delta endpoint) ──
 require('./sync')(app, db, { auth });
 
