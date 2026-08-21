@@ -8,7 +8,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, HardDrive, AlertTriangle } from 'lucide-react';
 import { storageAPI } from '@/lib/api';
-import NavBar from '@/components/NavBar';
 
 const GB = 1024 ** 3;
 const fmtBytes = (n) => {
@@ -39,9 +38,7 @@ export default function StorageSettings() {
   const lvl = LEVEL[data?.level] || LEVEL.ok;
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0f)', color: 'var(--text, #e8e8ea)' }}>
-      <NavBar />
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 20px 60px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0f)', color: 'var(--text, #e8e8ea)' }}>      <div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 20px 60px' }}>
         <button onClick={() => router.push('/settings')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--text-muted,#9a9aa5)', cursor: 'pointer', fontSize: 13, marginBottom: 14 }}>
           <ArrowLeft size={15} /> Settings
         </button>

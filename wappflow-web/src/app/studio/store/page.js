@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Store, Plus, Trash2, Check } from 'lucide-react';
 import { storeAPI } from '../../../lib/api';
-import NavBar from '../../../components/NavBar';
 
 const KINDS = ['print', 'album', 'digital', 'frame'];
 const ORDER_STATUS = ['new', 'in_production', 'fulfilled', 'cancelled'];
@@ -28,10 +27,10 @@ export default function StudioStorePage() {
   const addOpt = (pi) => patch(pi, { options: [...(products[pi].options || []), { label: 'Size', price: 0 }] });
   const delOpt = (pi, oi) => patch(pi, { options: products[pi].options.filter((_, j) => j !== oi) });
 
-  if (!products) return <NavBar><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></NavBar>;
+  if (!products) return <><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></>;
 
   return (
-    <NavBar>
+    <>
       <div style={{ maxWidth: 820, margin: '0 auto', padding: '24px 20px 60px' }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.5px', display: 'inline-flex', alignItems: 'center', gap: 9 }}><Store size={22} /> Print Store</h1>
         <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 22px' }}>Sell prints, albums &amp; digitals. Clients order from any published gallery’s shop link (<code style={{ fontSize: 12 }}>/shop/&lt;gallery-token&gt;</code>); orders land here and in the client’s CRM record.</p>
@@ -88,7 +87,7 @@ export default function StudioStorePage() {
           </div>
         )}
       </div>
-    </NavBar>
+    </>
   );
 }
 const fld = { padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, outline: 'none' };

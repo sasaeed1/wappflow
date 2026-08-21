@@ -9,7 +9,6 @@ import {
   ClipboardCopy, ClipboardPaste, Users,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl, brainsAPI } from '../../../../lib/api';
-import NavBar from '../../../../components/StudioShell';
 import { PRESETS, previewFilter, previewVignette, suggestEnhance } from '../../presets';
 
 const FILTERS = [
@@ -410,7 +409,7 @@ export default function CullPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [decide, rate, next, prev, zoomed, compare, editing, tool, compareSet.length, toggle100, copyEdits, pasteEdits, ba]);
 
-  if (loading) return <NavBar><div className="ms-page"><p className="ms-loading">Loading…</p></div></NavBar>;
+  if (loading) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   const sharp = current?.sharpness != null ? current.sharpness >= 120 : null;
   const expo = current?.exposure;
@@ -434,7 +433,7 @@ export default function CullPage() {
   );
 
   return (
-    <NavBar>
+    <>
       {recTip && (
         <div style={{ position: 'fixed', bottom: 18, left: 18, zIndex: 60, maxWidth: 330, background: 'rgba(17,19,29,0.96)', border: '1px solid rgba(99,102,241,0.45)', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 14px 44px rgba(0,0,0,0.5)' }}>
           <Sparkles size={14} style={{ color: '#a5b4fc', flexShrink: 0, marginTop: 1 }} />
@@ -793,7 +792,7 @@ export default function CullPage() {
         <GalleryFromKeepersModal projectId={id} keepers={counts.keep}
           onClose={() => setShowGallery(false)} onDone={() => router.push(`/studio/${id}`)} />
       )}
-    </NavBar>
+    </>
   );
 }
 

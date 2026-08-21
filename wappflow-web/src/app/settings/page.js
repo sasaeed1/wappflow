@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, auditAPI, BASE_URL } from '../../lib/api';
 import { Send as SendIcon } from 'lucide-react';
-import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { toast } from '@/components/ui/Toast';
 import { Field, Input as UIInput } from '@/components/ui/Field';
@@ -2344,7 +2343,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <style>{`
         @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -2441,7 +2440,7 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
-    </NavBar>
+    </>
   );
 }
 

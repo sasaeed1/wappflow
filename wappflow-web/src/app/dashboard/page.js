@@ -20,8 +20,8 @@ import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_UR
 import { isLeadUnread } from '../../lib/unread';
 import AddLeadModal from '../../components/AddLeadModal';
 import { TagChip, TagPicker } from '../../components/TagPicker';
-import NavBar from '../../components/NavBar';
 import { useSound } from '@/lib/sounds';
+import { useRealtime } from '@/components/shell/realtime';
 
 const COLUMNS = [
   { id: 'New',           label: 'New',        color: '#6366f1', light: 'rgba(99,102,241,0.2)' },
@@ -621,8 +621,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const { play: playSound } = useSound();
   const notifRef = useRef(null);
-  const sseRef = useRef(null);
-  const sseRetryRef = useRef(null);
   const soundEnabledRef = useRef(true);
 
   const [user, setUser] = useState(null);
@@ -642,7 +640,6 @@ export default function DashboardPage() {
   const [reminders, setReminders] = useState([]);
   const [notifBadge, setNotifBadge] = useState(0);
   const [allTags, setAllTags] = useState([]);
-  const [sseConnected, setSseConnected] = useState(false);
   const [liveEvents, setLiveEvents] = useState([]);
   const [newLeadIds, setNewLeadIds] = useState(new Set());
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -655,26 +652,15 @@ export default function DashboardPage() {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // ── SSE Connection ──────────────────────────────────────────────────────────
-  const connectSSE = useCallback(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    if (sseRef.current) sseRef.current.close();
-
-    const es = new EventSource(`${BASE_URL}/api/events?token=${token}`);
-    sseRef.current = es;
-
-    es.onopen = () => {
-      setSseConnected(true);
-      if (sseRetryRef.current) { clearTimeout(sseRetryRef.current); sseRetryRef.current = null; }
-    };
-
-    // The server emits UNNAMED SSE frames (`data: {type, ...}`) — so we route on
-    // data.type via onmessage. (Named addEventListener handlers never fired, since
-    // there's no `event:` line; this is the same pattern FloatingChat already uses.)
-    es.onmessage = (e) => {
-      let data; try { data = JSON.parse(e.data); } catch { return; }
+  // ── Real-time (Phase 5) ─────────────────────────────────────────────────────
+  // The connection, the reconnect backoff and the unnamed-frame routing all live
+  // in the shell's RealtimeProvider now; this page just says which events it
+  // wants. 'new_lead' stays in the list purely so the page behaves the same
+  // against a backend that has not been deployed yet — the two names were always
+  // the same mutation, and the backend now emits only 'lead_created'.
+  const sseConnected = useRealtime(
+    ['lead_created', 'new_lead', 'new_message', 'lead_updated', 'lead_deleted', 'lead_restored', 'missed_sync_complete'],
+    (data) => {
       switch (data.type) {
         case 'lead_created':
         case 'new_lead': {
@@ -705,6 +691,16 @@ export default function DashboardPage() {
           setAllLeads(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
           break;
         }
+        // Previously dropped by `default: break`, so a lead deleted or restored
+        // in another session sat on this board until a manual refresh.
+        case 'lead_deleted': {
+          if (data.id) setAllLeads(prev => prev.filter(l => l.id !== data.id));
+          break;
+        }
+        case 'lead_restored': {
+          if (data.lead) setAllLeads(prev => (prev.some(l => l.id === data.lead.id) ? prev : [data.lead, ...prev]));
+          break;
+        }
         case 'missed_sync_complete': {
           if (data.totalImported > 0 || data.leadsCreated > 0) {
             const parts = [];
@@ -715,17 +711,10 @@ export default function DashboardPage() {
           }
           break;
         }
-        default: break; // connected / notification / lead_deleted / etc.
+        default: break; // connected / notification / etc.
       }
-    };
-
-    es.onerror = () => {
-      setSseConnected(false);
-      es.close();
-      // Retry after 5 seconds
-      sseRetryRef.current = setTimeout(connectSSE, 5000);
-    };
-  }, []);
+    },
+  );
 
   // ── Fetch leads only (for SSE-triggered refresh) ──────────────────────────
   const fetchLeads = useCallback(async () => {
@@ -777,12 +766,6 @@ export default function DashboardPage() {
     setUser(JSON.parse(userData));
     fetchAll();
     settingsAPI.getCompany().then(r => setCompany(r.data.company || {})).catch(() => {});
-    connectSSE();
-
-    return () => {
-      if (sseRef.current) sseRef.current.close();
-      if (sseRetryRef.current) clearTimeout(sseRetryRef.current);
-    };
   }, []);
 
   // Keep soundEnabledRef in sync
@@ -851,7 +834,6 @@ export default function DashboardPage() {
   };
 
   const handleLogout = () => {
-    if (sseRef.current) sseRef.current.close();
     localStorage.clear();
     router.push('/login');
   };
@@ -883,7 +865,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* ── TOAST ── */}
@@ -1338,6 +1320,6 @@ export default function DashboardPage() {
         @keyframes notifPop { 0% { transform: scale(1); } 50% { transform: scale(1.4); } 100% { transform: scale(1); } }
       `}</style>
     </div>
-    </NavBar>
+    </>
   );
 }

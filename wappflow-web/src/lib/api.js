@@ -58,6 +58,7 @@ export const leadsAPI = {
   bulkAssign: (lead_ids, assigned_to) => api.post('/leads/bulk-assign', { lead_ids, assigned_to }),
   roundRobin: (lead_ids, user_ids) => api.post('/leads/round-robin', { lead_ids, ...(user_ids ? { user_ids } : {}) }),
   bulkTrash: (lead_ids) => api.post('/leads/bulk-trash', { lead_ids }),
+  bulkStatus: (lead_ids, status) => api.post('/leads/bulk-status', { lead_ids, status }),
   getDuplicates: () => api.get('/leads/duplicates'),
   merge: (primary_id, duplicate_ids) => api.post('/leads/merge', { primary_id, duplicate_ids }),
 
@@ -516,8 +517,6 @@ export const studioAiAPI = {
   galleryFromSelection: (id, body) => api.post(`/studio-ai/projects/${id}/gallery-from-selection`, body),
   album: (id, body) => api.post(`/studio-ai/projects/${id}/album`, body),
   albums: (id) => api.get(`/studio-ai/projects/${id}/albums`),
-  getAlbum: (albumId) => api.get(`/studio-ai/albums/${albumId}`),
-  updateAlbum: (albumId, body) => api.put(`/studio-ai/albums/${albumId}`, body),
   portfolioPicks: () => api.get('/studio-ai/portfolio-picks'),
   styles: () => api.get('/studio-ai/styles'),
   createStyle: (data) => api.post('/studio-ai/styles', data),
@@ -703,5 +702,19 @@ export function formatCurrency(amount, symbol = '$', position = 'before') {
   const num = parseFloat(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return position === 'after' ? `${num}${symbol}` : `${symbol}${num}`;
 }
+
+// Saved views — server-side list filter combos (Phase 4). Scoped per user per
+// workspace per entity, so Clients/Galleries/Contracts can mount views later
+// with the same three calls.
+// Universal search — one query across every module (Phase 5).
+export const searchAPI = {
+  global: (q) => api.get('/search', { params: { q } }),
+};
+
+export const viewsAPI = {
+  list: (entity = 'leads') => api.get('/views', { params: { entity } }),
+  save: (entity, name, filters) => api.post('/views', { entity, name, filters }),
+  remove: (id) => api.delete(`/views/${id}`),
+};
 
 export default api;

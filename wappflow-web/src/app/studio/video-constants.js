@@ -35,9 +35,20 @@ export const SAFE_AREAS = {
   feed:   { top: 0.06, bottom: 0.10, left: 0.05, right: 0.05 },
 };
 
+// The renderer's full vocabulary (backend/video-engine.js TRANSITIONS). This list
+// used to offer four of the nine, so transitions the engine could draw — and that
+// the AI planners actually emitted, crossDissolve among them — were unselectable
+// and un-editable once applied.
 export const TRANSITIONS = [
-  { id: 'none', label: 'None' }, { id: 'fade', label: 'Fade' },
-  { id: 'dipToBlack', label: 'Dip to black' }, { id: 'dipToWhite', label: 'Dip to white' },
+  { id: 'none', label: 'None' },
+  { id: 'fade', label: 'Fade' },
+  { id: 'crossDissolve', label: 'Cross dissolve' },
+  { id: 'slide', label: 'Slide' },
+  { id: 'push', label: 'Push' },
+  { id: 'zoom', label: 'Zoom' },
+  { id: 'blur', label: 'Blur' },
+  { id: 'dipToBlack', label: 'Dip to black' },
+  { id: 'dipToWhite', label: 'Dip to white' },
 ];
 
 export const TEXT_TYPES = [

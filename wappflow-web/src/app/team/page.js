@@ -8,7 +8,6 @@ import {
   Edit2, RefreshCw, Settings, Lock, Unlock, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { workspaceAPI, auditAPI } from '../../lib/api';
-import NavBar from '../../components/NavBar';
 import { useConfirm } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
 import { LockedOverlay } from '@/components/PlanLock';
@@ -508,7 +507,7 @@ export default function TeamPage() {
 
   if (teamLocked) {
     return (
-      <NavBar>
+      <>
         <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px' }}>
           <LockedOverlay
             feature="Team management"
@@ -523,12 +522,12 @@ export default function TeamPage() {
             ]}
           />
         </div>
-      </NavBar>
+      </>
     );
   }
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight:'100vh', background:'var(--bg)', fontFamily:'system-ui,-apple-system,sans-serif' }}>
       {showInvite && <InviteModal onSave={handleInvite} onClose={handleInviteClose} />}
       {roleModal && <RoleModal member={roleModal} onSave={handleRoleUpdate} onClose={()=>setRoleModal(null)} />}
@@ -718,6 +717,6 @@ export default function TeamPage() {
         )}
       </main>
     </div>
-    </NavBar>
+    </>
   );
 }

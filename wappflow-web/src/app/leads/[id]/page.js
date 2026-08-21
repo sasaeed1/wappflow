@@ -25,8 +25,8 @@ import { markLeadSeen } from '../../../lib/unread';
 import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
-import NavBar from '../../../components/NavBar';
 import RoomPanel from '@/components/RoomPanel';
+import { useRealtime } from '@/components/shell/realtime';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
 // click the value, it becomes an input/select, saves on blur/Enter, Esc cancels.
@@ -702,47 +702,32 @@ const [aiError, setAiError] = useState('');
       .finally(() => setSyncingHistory(false));
   }, [leadId]);
 
-  // ── SSE listener — new messages for THIS lead appear instantly (no refresh needed)
-  useEffect(() => {
-    if (!leadId) return;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token) return;
-    const es = new EventSource(`${BASE_URL}/api/events?token=${token}`);
-    const onNewMessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.lead_id !== leadId) return; // ignore other leads
-        const incomingPlatform = (data.message?.platform || 'whatsapp').toLowerCase();
-        const viewing = activePlatformRef.current;
-        // If the message arrived on the platform the user is currently viewing
-        // (or the platform isn't set yet), refresh inline. Otherwise bump the
-        // unread counter so the tab shows a "(1)" badge.
-        if (!viewing || incomingPlatform === viewing) {
-          fetchMessages(viewing || undefined);
-        } else {
-          setUnreadByPlatform(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
-          // Also bump the total count so the tab number stays accurate
-          setPlatformCounts(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
-        }
-      } catch {}
-    };
-    const onLeadUpdated = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        const updated = data.lead || data;
-        if (!updated?.id || updated.id !== leadId) return;
-        setLead(prev => ({ ...prev, ...updated }));
-      } catch {}
-    };
-    // Server emits unnamed `data: {type,...}` frames — route via onmessage
-    // (named addEventListener never fired; the polling fallback below masked it).
-    es.onmessage = (e) => {
-      let data; try { data = JSON.parse(e.data); } catch { return; }
-      if (data.type === 'new_message') onNewMessage(e);
-      else if (data.type === 'lead_updated') onLeadUpdated(e);
-    };
-    return () => { es.close(); };
-  }, [leadId]);
+  // ── Real-time for THIS lead, over the shell's single connection (Phase 5) ────
+  // Also picks up email_received, which the backend has always broadcast with
+  // this lead's id and which this page used to ignore — an inbound email only
+  // surfaced when the 8s poll below happened to catch it.
+  useRealtime(['new_message', 'lead_updated', 'email_received'], (data) => {
+    if (data.type === 'lead_updated') {
+      const updated = data.lead || data;
+      if (!updated?.id || updated.id !== leadId) return;
+      setLead(prev => ({ ...prev, ...updated }));
+      return;
+    }
+    if (data.lead_id !== leadId) return; // ignore other leads
+    if (data.type === 'email_received') { fetchMessages(activePlatformRef.current || undefined); return; }
+    const incomingPlatform = (data.message?.platform || 'whatsapp').toLowerCase();
+    const viewing = activePlatformRef.current;
+    // If the message arrived on the platform the user is currently viewing
+    // (or the platform isn't set yet), refresh inline. Otherwise bump the
+    // unread counter so the tab shows a "(1)" badge.
+    if (!viewing || incomingPlatform === viewing) {
+      fetchMessages(viewing || undefined);
+    } else {
+      setUnreadByPlatform(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
+      // Also bump the total count so the tab number stays accurate
+      setPlatformCounts(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
+    }
+  });
 
   // ── Polling fallback — guarantees the thread auto-refreshes even if the SSE
   // stream drops or is buffered by a proxy. Only polls while the tab is visible.
@@ -902,7 +887,10 @@ const [aiError, setAiError] = useState('');
   };
 
   const handleDelete = async () => {
-    try { setActionLoading(true); await leadsAPI.deleteLead(leadId); router.push('/dashboard'); }
+    // Return to the list this record lived in, not the dashboard — after deleting you
+    // are almost always working through a list, and landing on the Kanban board loses
+    // your place.
+    try { setActionLoading(true); await leadsAPI.deleteLead(leadId); router.push(lead?.is_client ? '/clients' : '/leads-list'); }
     catch (e) { console.error(e); setActionLoading(false); }
   };
 
@@ -1199,9 +1187,11 @@ useEffect(() => {
               Retry
             </button>
           )}
-          <button onClick={() => router.push('/dashboard')}
+          {/* On this branch `lead` is null, so is_client is unknown — fall back to the
+              list this record would have lived in, never /dashboard. */}
+          <button onClick={() => router.push('/leads-list')}
             style={{ padding: '10px 24px', background: 'var(--surface)', color: 'var(--text)', border: '1.5px solid var(--border)', borderRadius: 12, cursor: 'pointer', fontWeight: 700 }}>
-            Back to Dashboard
+            Back to Leads
           </button>
         </div>
       </div>
@@ -1228,7 +1218,7 @@ useEffect(() => {
   const HISTORY_COLORS = { message: '#06b6d4', note: '#f59e0b', status_change: '#6366f1', reminder: '#8b5cf6', invoice: '#10b981', email: '#f59e0b', assignment: '#06b6d4', created: '#10b981' };
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* Modals */}
@@ -1287,9 +1277,13 @@ useEffect(() => {
       {/* Nav */}
       <nav style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: 'var(--shadow)', position: 'sticky', top: 0, zIndex: 50 }}>
         <div className="lead-subnav" style={{ maxWidth: 1500, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 62 }}>
-          <button onClick={() => router.push('/dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 14, padding: '6px 12px', borderRadius: 10 }}
+          {/* The parent is derived from what this record IS, not from history: a lead
+              lives under Leads, a converted one under Clients. It used to say
+              "Dashboard" unconditionally — wrong for all eight entry points, and
+              /dashboard is not the parent of a lead under any of them. */}
+          <button onClick={() => router.push(lead.is_client ? '/clients' : '/leads-list')} style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 14, padding: '6px 12px', borderRadius: 10 }}
             onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-            <ArrowLeft size={16} /> Dashboard
+            <ArrowLeft size={16} /> {lead.is_client ? 'Clients' : 'Leads'}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${sc.dot}, ${sc.dot}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: 'white' }}>
@@ -2793,7 +2787,7 @@ useEffect(() => {
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
       `}</style>
     </div>
-    </NavBar>
+    </>
   );
 }
 

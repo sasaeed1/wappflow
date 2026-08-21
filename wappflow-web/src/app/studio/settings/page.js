@@ -8,7 +8,6 @@ import {
   Sliders, HelpCircle, LogOut, Check, Image as ImageIcon, Film, Shield, Camera,
 } from 'lucide-react';
 import { mediaAPI, leadsAPI, studioAiAPI } from '../../../lib/api';
-import NavBar from '../../../components/StudioShell';
 
 const THEMES = [
   ['monochrome', Aperture, 'Monochrome', 'Leica / museum — cool white, black serif display, gallery-flush grid.'],
@@ -56,7 +55,7 @@ export default function StudioSettingsPage() {
   const signOut = () => { try { localStorage.clear(); } catch {} router.push('/login'); };
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page" style={{ maxWidth: 920 }}>
         <p className="ms-eyebrow" style={{ marginBottom: 8 }}>Studio</p>
         <h1 className="ms-display" style={{ fontSize: 'clamp(30px, 4.6vw, 60px)', marginBottom: 6 }}>Settings</h1>
@@ -169,7 +168,7 @@ export default function StudioSettingsPage() {
       </div>
 
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 600, padding: '9px 18px', borderRadius: 999, background: 'var(--ms-ink)', color: 'var(--ms-paper)', fontSize: 13 }}>{toast}</div>}
-    </NavBar>
+    </>
   );
 }
 

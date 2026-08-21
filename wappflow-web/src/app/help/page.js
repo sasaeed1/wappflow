@@ -9,7 +9,6 @@ import {
   FileText, Keyboard, Lightbulb, ArrowRight, Shield,
   RefreshCw, Volume2, Calendar, Layers
 } from 'lucide-react';
-import NavBar from '../../components/NavBar';
 
 const SECTIONS = [
   {
@@ -201,7 +200,7 @@ export default function HelpPage() {
   const displaySections = search ? filtered : [activeData].filter(Boolean);
 
   return (
-    <NavBar>
+    <>
       <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
         {/* Hero */}
@@ -334,6 +333,6 @@ export default function HelpPage() {
           </div>
         </div>
       </div>
-    </NavBar>
+    </>
   );
 }

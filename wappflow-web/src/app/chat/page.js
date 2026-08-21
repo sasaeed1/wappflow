@@ -13,10 +13,10 @@ import {
 } from 'lucide-react';
 import { chatAPI, commsAPI, workspaceAPI, BASE_URL } from '../../lib/api';
 import { formatTime, formatDate } from '../../lib/datetime';
-import NavBar from '../../components/NavBar';
 import HuddleModal from '@/components/HuddleModal';
 import { useConfirm } from '@/lib/confirm';
 import { useSound } from '@/lib/sounds';
+import { useRealtime } from '@/components/shell/realtime';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '✅', '👀', '🚀'];
 
@@ -413,15 +413,18 @@ export default function ChatPage() {
     }
   }, [activeChannel]);
 
-  // Real-time via SSE — replaces the old 3s poll. Consumes the unnamed frames the
-  // backend emits (es.onmessage + switch on data.type).
-  useEffect(() => {
-    if (!user) return;
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    const es = new EventSource(`${BASE_URL}/api/events?token=${token}`);
-    es.onmessage = (e) => {
-      let data; try { data = JSON.parse(e.data); } catch { return; }
+  // Real-time over the shell's single connection (Phase 5). This effect used to
+  // own an EventSource whose deps included `muted` and `playSound`, so toggling
+  // mute tore the stream down and opened a new one; now it is a subscription.
+  //
+  // chat_mention and chat_thread_reply are new here: the backend has always sent
+  // them (user-targeted), and nothing anywhere consumed them — a mention never
+  // reached the person mentioned unless they happened to be looking at the channel.
+  useRealtime(
+    ['chat_message', 'chat_edit', 'chat_delete', 'chat_reaction', 'chat_typing',
+     'chat_presence', 'chat_pin', 'chat_unpin', 'chat_mention', 'chat_thread_reply'],
+    (data) => {
+      if (!user) return;
       const ac = activeChannelRef.current;
       const inActive = ac && data.channel_id === ac.id;
       switch (data.type) {
@@ -460,11 +463,23 @@ export default function ChatPage() {
         case 'chat_unpin':
           if (inActive) loadPins();
           break;
+        case 'chat_mention':
+        case 'chat_thread_reply': {
+          // Targeted at this user by the server, so no filtering needed. Count it
+          // as unread when the channel is not open, and always refresh the
+          // mention count the sidebar shows.
+          if (!inActive && data.channel_id) {
+            setUnreadCounts(prev => ({ ...prev, [data.channel_id]: (prev[data.channel_id] || 0) + 1 }));
+            if (!muted) { try { playSound('team'); } catch {} }
+          }
+          // Reconcile the per-channel unread map with the server's own count.
+          commsAPI.unread().then(r => setUnreadCounts(prev => ({ ...prev, ...(r.data.unread || {}) }))).catch(() => {});
+          break;
+        }
         default: break;
       }
-    };
-    return () => es.close();
-  }, [user, muted, playSound]);
+    },
+  );
 
   // Members + presence + unread + DMs (once authed); presence refreshes periodically.
   useEffect(() => {
@@ -777,7 +792,7 @@ export default function ChatPage() {
   }, {});
 
   return (
-    <NavBar>
+    <>
     <div className="r-col" style={{ height: 'calc(100vh - 60px)', background: 'var(--surface2)', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* ── SIDEBAR ── */}
@@ -1240,6 +1255,6 @@ export default function ChatPage() {
         startWithVideo={!!huddle?.video}
       />
     </div>
-    </NavBar>
+    </>
   );
 }

@@ -5,7 +5,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X, Search, MapPin, Calendar, ArrowRight } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../lib/api';
-import NavBar from '../../components/StudioShell';
 
 const TYPES = ['wedding', 'event', 'portrait', 'real_estate', 'commercial', 'product', 'general'];
 
@@ -131,7 +130,7 @@ export default function StudioPage() {
   }, [projects, query]);
 
   return (
-    <NavBar>
+    <>
       {loading ? (
         <div className="ms-page"><p className="ms-loading">Opening the studio…</p></div>
       ) : projects.length === 0 ? (
@@ -212,6 +211,6 @@ export default function StudioPage() {
         </div>
       )}
       {showNew && <NewProjectModal onClose={() => setShowNew(false)} onCreated={(p) => router.push(`/studio/${p.id}`)} />}
-    </NavBar>
+    </>
   );
 }

@@ -14,7 +14,6 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area, FunnelChart, Funnel, LabelList
 } from 'recharts';
 import { analyticsAPI } from '../../lib/api';
-import NavBar from '../../components/NavBar';
 import { usePlan } from '@/lib/plan';
 import { LockedOverlay } from '@/components/PlanLock';
 
@@ -234,7 +233,7 @@ export default function ReportsPage() {
 
   if (reportsLocked) {
     return (
-      <NavBar>
+      <>
         <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 24px' }}>
           <div style={{ maxWidth: 720, margin: '40px auto' }}>
             <LockedOverlay
@@ -253,12 +252,12 @@ export default function ReportsPage() {
             />
           </div>
         </div>
-      </NavBar>
+      </>
     );
   }
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* Page sub-header */}
@@ -613,6 +612,6 @@ export default function ReportsPage() {
       <style>{`
       `}</style>
     </div>
-    </NavBar>
+    </>
   );
 }

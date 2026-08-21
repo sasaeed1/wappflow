@@ -10,10 +10,9 @@ import {
   MessageCircle, Camera, Globe, MonitorSmartphone, Layers,
   Trash2, UsersRound, Image as ImageIcon, AlertTriangle
 } from 'lucide-react';
-import { leadsAPI, tagsAPI, workspaceAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI } from '../../lib/api';
+import { leadsAPI, tagsAPI, workspaceAPI, viewsAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI } from '../../lib/api';
 import { isLeadUnread } from '../../lib/unread';
 import { formatDate } from '../../lib/datetime';
-import NavBar from '../../components/NavBar';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import AddLeadModal from '../../components/AddLeadModal';
 import { useConfirm } from '@/lib/confirm';
@@ -22,6 +21,7 @@ import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import VirtualList from '@/components/ui/VirtualList';
 import { toast } from '@/components/ui/Toast';
 import { leadStatusMeta } from '@/lib/leadStatus';
 import { UpgradeCta } from '@/components/PlanLock';
@@ -736,7 +736,7 @@ export default function LeadsListPage() {
     const ac = params.get('account');
     if (pf) setPlatformFilter(pf);
     if (ac) setAccountFilter(ac);
-    setViews(readViews());
+    loadViews();
     fetchAll(pf, ac);
     platformAccountsAPI.getAll().then(r => setPlatformAccounts(r.data.accounts || [])).catch(() => {});
   }, []);
@@ -804,7 +804,47 @@ export default function LeadsListPage() {
   };
 
   // ── Saved views ────────────────────────────────────────────────────────────
+  // Phase 4: views live server-side (per user, per workspace) so they survive a
+  // cleared cache and follow the user across machines. Legacy localStorage views
+  // migrate ENTRY BY ENTRY — a retained copy of an imported view would clobber
+  // later server-side edits and resurrect deleted views. Every path falls back
+  // to the old per-browser behaviour when the endpoint 404s (it ships on the
+  // phase-3 branch), so merge order cannot lose anyone's views.
+  //
+  // Known, accepted semantics: the key was account-agnostic, so on a shared
+  // machine the first account to load the page claims the browser's views. Some
+  // account has to — views are personal now, and the browser cannot know whose
+  // they were.
+  const VIEW_NAME_MAX = 60; // mirrors saved-views.js NAME_MAX server-side
+  const viewName = (raw) => String(raw || '').trim().slice(0, VIEW_NAME_MAX);
   const currentFilters = () => ({ statusFilter, tagFilter, assignedFilter, dateFrom, dateTo, sortBy, search });
+  const normalizeView = (v) => ({ id: v.id, name: v.name, f: v.filters || {} });
+  const loadViews = async () => {
+    try {
+      const server = (await viewsAPI.list('leads')).data.views || [];
+      const merged = server.map(normalizeView);
+      const legacy = readViews();
+      if (legacy.length) {
+        // Names compare TRIMMED — the server stores them trimmed, and a raw
+        // " Hot " sneaking past would upsert over the server's "Hot" with a
+        // stale copy of its filters.
+        const have = new Set(merged.map(v => v.name));
+        const remaining = [];
+        for (const lv of legacy) {
+          const name = viewName(lv.name);
+          if (!name || have.has(name)) continue; // unusable, or the server copy wins — retire it
+          try {
+            merged.push(normalizeView((await viewsAPI.save('leads', name, lv.f || {})).data.view));
+            have.add(name);
+          } catch { remaining.push(lv); } // still local-only; retried next load
+        }
+        if (remaining.length) writeViews(remaining); else localStorage.removeItem(VIEWS_KEY);
+      }
+      setViews(merged);
+    } catch {
+      setViews(readViews()); // endpoint not deployed yet — per-browser behaviour unchanged
+    }
+  };
   const applyView = (v) => {
     const f = v.f || {};
     setStatusFilter(f.statusFilter ?? 'All'); setTagFilter(f.tagFilter ?? null);
@@ -812,15 +852,48 @@ export default function LeadsListPage() {
     setSortBy(f.sortBy ?? 'last_message_at_desc'); setSearch(f.search ?? '');
     setActiveView(v.name);
   };
-  const saveCurrentView = () => {
-    const name = window.prompt('Name this view (e.g. "Hot — needs follow-up")'); if (!name) return;
-    const next = [...views.filter(v => v.name !== name), { name, f: currentFilters() }];
-    setViews(next); writeViews(next); setActiveView(name);
-    showToast(`View "${name}" saved`, 'success');
+  const saveCurrentView = async () => {
+    const name = viewName(window.prompt('Name this view (e.g. "Hot — needs follow-up")'));
+    if (!name) return;
+    try {
+      const saved = normalizeView((await viewsAPI.save('leads', name, currentFilters())).data.view);
+      setViews(vs => [...vs.filter(v => v.name !== saved.name), saved]);
+      setActiveView(saved.name);
+      showToast(`View "${saved.name}" saved`, 'success');
+    } catch (err) {
+      // Only a 404 means "backend not deployed" — anything else is a real
+      // failure and pretending otherwise strands the view in localStorage,
+      // invisible once the server list becomes the source of truth.
+      if (err?.response?.status !== 404) { showToast('Could not save the view — please retry', 'error'); return; }
+      setViews(vs => {
+        const next = [...vs.filter(v => v.name !== name), { name, f: currentFilters() }];
+        writeViews(next);
+        return next;
+      });
+      setActiveView(name);
+      showToast(`View "${name}" saved`, 'success');
+    }
   };
-  const deleteView = (name) => {
-    const next = views.filter(v => v.name !== name);
-    setViews(next); writeViews(next); if (activeView === name) setActiveView(null);
+  const deleteView = async (v) => {
+    if (v.id) {
+      try { await viewsAPI.remove(v.id); }
+      catch (err) {
+        // 404 = already gone server-side, fine; anything else keeps the chip.
+        if (err?.response?.status !== 404) { showToast('Could not delete the view — please retry', 'error'); return; }
+      }
+      // Retire any legacy localStorage twin so the deleted view cannot
+      // resurrect through the migration on a later load.
+      try {
+        const legacy = readViews().filter(x => viewName(x.name) !== v.name);
+        if (legacy.length) writeViews(legacy); else localStorage.removeItem(VIEWS_KEY);
+      } catch {}
+    }
+    setViews(vs => {
+      const next = vs.filter(x => x.name !== v.name);
+      if (!v.id) writeViews(next); // still in per-browser fallback mode
+      return next;
+    });
+    if (activeView === v.name) setActiveView(null);
   };
 
   // ── Action queue (next-best-action) — memoised so typing/search doesn't re-sort ──
@@ -860,7 +933,7 @@ export default function LeadsListPage() {
   const hasFilters = tagFilter || assignedFilter !== 'all' || dateFrom || dateTo || statusFilter !== 'All';
 
   return (
-    <NavBar>
+    <>
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* Platform filter banner */}
@@ -982,9 +1055,20 @@ export default function LeadsListPage() {
             <select defaultValue="" onChange={async (e) => {
               const status = e.target.value; if (!status) return;
               const ids = [...selected];
-              for (const id of ids) { try { await leadsAPI.updateStatus(id, { status }); } catch {} }
+              e.target.value = '';
+              try {
+                // Phase 4: ONE transactional call (history/audit/SSE included server-side)
+                // instead of a sequential request per lead with every error swallowed.
+                await leadsAPI.bulkStatus(ids, status);
+              } catch (err) {
+                if (err?.response?.status !== 404) {
+                  showToast('Could not move leads — please retry', 'error'); return;
+                }
+                // endpoint not deployed yet (ships on the phase-3 branch) — legacy loop
+                for (const id of ids) { try { await leadsAPI.updateStatus(id, { status }); } catch {} }
+              }
               setAllLeads(prev => prev.map(l => (ids.includes(l.id) ? { ...l, status } : l)));
-              clearSelection(); showToast(`Moved ${ids.length} lead${ids.length > 1 ? 's' : ''} to ${status}`, 'success'); e.target.value = '';
+              clearSelection(); showToast(`Moved ${ids.length} lead${ids.length > 1 ? 's' : ''} to ${status}`, 'success');
             }} style={{ padding: '7px 12px', background: '#312e81', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }} title="Move selected to a pipeline stage">
               <option value="" disabled>Move to stage…</option>
               {['New', 'Contacted', 'Interested', 'Negotiating', 'Closed - Won', 'Closed - Lost'].map(s => <option key={s} value={s} style={{ color: '#111' }}>{s}</option>)}
@@ -1101,7 +1185,7 @@ export default function LeadsListPage() {
           {views.map(v => (
             <span key={v.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 6px 4px 12px', borderRadius: 20, border: `1.5px solid ${activeView === v.name ? '#6366f1' : 'var(--border)'}`, background: activeView === v.name ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: activeView === v.name ? '#4338ca' : 'var(--text-muted)', fontSize: 11.5, fontWeight: 700 }}>
               <span onClick={() => applyView(v)} style={{ cursor: 'pointer' }}>{v.name}</span>
-              <button onClick={() => deleteView(v.name)} title="Delete view" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', padding: 0 }}><X size={12} /></button>
+              <button onClick={() => deleteView(v)} title="Delete view" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', padding: 0 }}><X size={12} /></button>
             </span>
           ))}
           <button onClick={saveCurrentView} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20, border: '1.5px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
@@ -1162,7 +1246,11 @@ export default function LeadsListPage() {
                 compact
               />
             )
-          ) : leads.map((lead, i) => {
+          ) : (
+          /* Phase 4: windowed — only viewport rows render. The row JSX is untouched;
+             rowHeight matches the measured 59px row (see SkeletonRow 'leads'). Below
+             the threshold the list renders exactly as before. */
+          <VirtualList items={leads} rowHeight={59} renderRow={(lead, i) => {
             const sc = STATUS_META[lead.status] || STATUS_META['New'];
             const value = lead.actual_sale || lead.estimated_value;
             const isSelected = selected.has(lead.id);
@@ -1278,7 +1366,8 @@ export default function LeadsListPage() {
                 <ChevronRight size={15} color="#d1d5db" />
               </div>
             );
-          })}
+          }} />
+          )}
         </div>
 
       </main>
@@ -1344,6 +1433,6 @@ export default function LeadsListPage() {
         </div>
       )}
     </div>
-    </NavBar>
+    </>
   );
 }

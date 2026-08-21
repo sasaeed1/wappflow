@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2, RotateCcw, XCircle, AlertTriangle, Clock, Inbox } from 'lucide-react';
-import NavBar from '../../components/NavBar';
 import { leadsAPI, displayPhone } from '../../lib/api';
 import { useConfirm } from '@/lib/confirm';
 import { formatRelative } from '../../lib/datetime';
@@ -75,7 +74,7 @@ export default function TrashPage() {
   };
 
   return (
-    <NavBar>
+    <>
       <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
         <div style={{ maxWidth: 980, margin: '0 auto', padding: '24px 20px 48px' }}>
 
@@ -159,6 +158,6 @@ export default function TrashPage() {
           )}
         </div>
       </div>
-    </NavBar>
+    </>
   );
 }

@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, FileText, Download, Loader, Sparkles, X } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
-import NavBar from '../../../../../components/StudioShell';
 
 const SLOTS = { single: 1, 'two-h': 2, 'two-v': 2, three: 3, grid4: 4 };
 const LAYOUT_OPTIONS = [['single', 'Single'], ['two-h', '2 across'], ['two-v', '2 stacked'], ['three', '3 across'], ['grid4', 'Grid of 4']];
@@ -109,10 +108,10 @@ export default function AlbumEditor() {
     } catch { setPdf({ status: 'failed' }); }
   };
 
-  if (loading) return <NavBar><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></NavBar>;
+  if (loading) return <><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></>;
 
   return (
-    <NavBar>
+    <>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '18px 16px 60px' }}>
         <button onClick={() => router.push(`/studio/${id}/albums`)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer', marginBottom: 12 }}>
           <ArrowLeft size={15} /> Albums
@@ -185,7 +184,7 @@ export default function AlbumEditor() {
           </aside>
         </div>
       </div>
-    </NavBar>
+    </>
   );
 }
 

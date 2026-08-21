@@ -38,18 +38,15 @@ export default function AICommandCenter({ enabled = true }) {
   const inputRef = useRef(null);
   const panelRef = useRef(null);
 
-  // Ctrl+K to open
+  // Phase 5: Ctrl+K now belongs to the shell's command palette, which searches
+  // records deterministically across every module. Two components binding the
+  // same chord would just fight, so this keeps its FAB and its Escape handling
+  // and gives up the shortcut.
   useEffect(() => {
-    const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        if (enabled) setOpen(v => !v);
-      }
-      if (e.key === 'Escape') setOpen(false);
-    };
+    const handler = (e) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [enabled]);
+  }, []);
 
   // Focus input when opened
   useEffect(() => {
@@ -95,7 +92,7 @@ export default function AICommandCenter({ enabled = true }) {
       <div className="wf-fab wf-fab-ai" style={{ position: 'fixed', bottom: 90, right: 24, zIndex: 998 }}>
         <button
           onClick={() => setOpen(v => !v)}
-          title="AI Command Center (Ctrl+K)"
+          title="AI Assistant — ask about your CRM"
           style={{
             width: 52, height: 52, borderRadius: 16,
             background: open ? 'rgba(99,102,241,0.95)' : 'rgba(99,102,241,0.75)',
@@ -122,7 +119,7 @@ export default function AICommandCenter({ enabled = true }) {
             borderRadius: 8, whiteSpace: 'nowrap', pointerEvents: 'none',
             opacity: 0, transition: 'opacity 0.2s',
           }} className="ai-tooltip">
-            AI Assistant · Ctrl+K
+            AI Assistant
           </div>
         )}
       </div>
@@ -153,7 +150,7 @@ export default function AICommandCenter({ enabled = true }) {
               </div>
               <div>
                 <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>AI Command Center</p>
-                <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Ask anything about your CRM · Ctrl+K</p>
+                <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Ask anything about your CRM</p>
               </div>
               <button onClick={() => setOpen(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}>
                 <X size={16} />

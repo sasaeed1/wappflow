@@ -6,7 +6,6 @@ import {
   Search, Rocket, Images, ListChecks, SlidersHorizontal, Share2, CheckSquare,
   BookOpen, Film, Globe, Palette, Keyboard, HelpCircle, LifeBuoy, ChevronRight,
 } from 'lucide-react';
-import NavBar from '../../../components/StudioShell';
 
 function Kbd({ children }) {
   return <kbd style={{ display: 'inline-block', minWidth: 20, textAlign: 'center', padding: '2px 7px', borderRadius: 6, border: '1px solid var(--ms-line)', background: 'var(--ms-surface-2)', fontFamily: 'var(--ms-font-label)', fontSize: 11, fontWeight: 600, color: 'var(--ms-ink)' }}>{children}</kbd>;
@@ -194,7 +193,7 @@ export default function StudioHelpPage() {
   };
 
   return (
-    <NavBar>
+    <>
       <div className="ms-page" style={{ maxWidth: 1180 }}>
         {/* hero */}
         <div style={{ textAlign: 'center', padding: 'clamp(10px,3vw,30px) 0 clamp(20px,3vw,34px)' }}>
@@ -240,11 +239,14 @@ export default function StudioHelpPage() {
 
             <div style={{ borderTop: '1px solid var(--ms-line)', paddingTop: 22, marginTop: 6, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13.5, color: 'var(--ms-ink-2)', flex: 1 }}>Still stuck? The Studio Copilot (bottom-right) can answer in context and take actions for you.</span>
-              <button onClick={() => router.push('/studio/settings')} className="ms-btn-ghost">Back to settings</button>
+              {/* Relabelled: Help and Settings are SIBLINGS in the Studio account menu,
+                  so "Back to settings" was a return path the user may never have taken.
+                  It is a related link, not a back control. */}
+              <button onClick={() => router.push('/studio/settings')} className="ms-btn-ghost">Studio settings</button>
             </div>
           </div>
         </div>
       </div>
-    </NavBar>
+    </>
   );
 }

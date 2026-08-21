@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, X, Minus, Maximize2, Send, Paperclip, Phone, ChevronDown, Smile, Search } from 'lucide-react';
 import { leadsAPI, BASE_URL, displayPhone } from '../lib/api';
+import { useRealtime } from '@/components/shell/realtime';
 import { useConfirm } from '@/lib/confirm';
 import { formatTime } from '../lib/datetime';
 
@@ -58,21 +59,16 @@ export default function FloatingChat() {
     if (open && !minimized) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, open, minimized]);
 
-  // SSE — subscribe to real-time messages
-  useEffect(() => {
-    if (!token || !activeLead) return;
-    const url = `${BASE_URL}/api/events?token=${token}`;
-    const evtSource = new EventSource(url);
-    evtSource.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if ((data.type === 'new_message' || data.type === 'message_update') && data.leadId === activeLead.id) {
-          fetchMessages(activeLead.id);
-        }
-      } catch {}
-    };
-    return () => evtSource.close();
-  }, [token, activeLead?.id]);
+  // Real-time messages, over the shell's single connection (Phase 5).
+  //
+  // This used to open a SECOND EventSource on top of whatever the page already
+  // had, and it could never fire: it compared data.leadId while the backend
+  // sends lead_id, and also listened for 'message_update', which no backend code
+  // emits. So the panel only ever refreshed after the user's own send — an
+  // incoming reply just sat there. Both bugs die with the shared bus.
+  useRealtime('new_message', (data) => {
+    if (activeLead && data.lead_id === activeLead.id) fetchMessages(activeLead.id);
+  });
 
   const fetchMessages = async (leadId) => {
     setLoadingMsgs(true);

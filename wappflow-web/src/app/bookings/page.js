@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, Plus, Trash2, Copy, Check, Clock, ExternalLink } from 'lucide-react';
 import { bookingAPI } from '../../lib/api';
-import NavBar from '../../components/NavBar';
+import { useRealtime } from '@/components/shell/realtime';
 
 const DOW = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
 
@@ -16,11 +16,18 @@ export default function BookingsPage() {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const loadBookings = () => bookingAPI.list().then(r => setBookings(r.data.bookings || [])).catch(() => {});
+
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/bookings'); return; }
     bookingAPI.settings().then(r => { setSettings(r.data.settings); setUrl(r.data.public_url); }).catch(() => setSettings({ services: [], availability: {} }));
-    bookingAPI.list().then(r => setBookings(r.data.bookings || [])).catch(() => {});
+    loadBookings();
   }, []); // eslint-disable-line
+
+  // Phase 5: the backend has always broadcast booking_created on create,
+  // reschedule and cancel; this page loaded once and never listened, so a
+  // booking taken while it was open simply did not appear.
+  useRealtime(['booking_created', 'booking_updated', 'booking_cancelled'], () => { loadBookings(); });
 
   const save = async () => {
     const r = await bookingAPI.updateSettings(settings);
@@ -34,10 +41,10 @@ export default function BookingsPage() {
   const toggleDay = (dow) => setSettings(s => { const a = { ...(s.availability || {}) }; if (a[dow]) delete a[dow]; else a[dow] = [9, 17]; return { ...s, availability: a }; });
   const setHours = (dow, idx, val) => setSettings(s => { const a = { ...(s.availability || {}) }; const h = [...(a[dow] || [9, 17])]; h[idx] = Math.max(0, Math.min(23, Number(val) || 0)); a[dow] = h; return { ...s, availability: a }; });
 
-  if (!settings) return <NavBar><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></NavBar>;
+  if (!settings) return <><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></>;
 
   return (
-    <NavBar>
+    <>
       <div style={{ maxWidth: 820, margin: '0 auto', padding: '24px 20px 60px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: 0, letterSpacing: '-0.5px', display: 'inline-flex', alignItems: 'center', gap: 9 }}><Calendar size={22} /> Bookings</h1>
@@ -132,7 +139,7 @@ export default function BookingsPage() {
           </div>
         )}
       </div>
-    </NavBar>
+    </>
   );
 }
 const fld = { padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, outline: 'none' };

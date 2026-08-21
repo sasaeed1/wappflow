@@ -64,8 +64,22 @@ check('confirm tone icons read status tokens', () => {
     assert(confirm.includes(t), `confirm missing ${t}`);
 });
 check('confirm BEHAVIOR intact (role=dialog, aria-modal, Escape, Enter, autoFocus, provider)', () => {
-  for (const marker of ['role="dialog"', 'aria-modal="true"', "e.key === 'Escape'", "e.key === 'Enter'", 'autoFocus', 'ConfirmProvider', 'useConfirm', 'alertOnly'])
+  for (const marker of ['role="dialog"', 'aria-modal="true"', 'ConfirmProvider', 'useConfirm', 'alertOnly'])
     assert(confirm.includes(marker), `confirm lost ${marker}`);
+  // Enter-to-confirm is now written as an early-return guard rather than an
+  // equality branch, so match either shape.
+  assert(/e\.key (===|!==) 'Enter'/.test(confirm), 'confirm no longer submits on Enter');
+  // Focus was an autoFocus attribute; Batch C replaced it with the shared focus
+  // trap, which also RESTORES focus on close — strictly better, and the reason
+  // the literal attribute is gone. Assert focus is managed, not how.
+  assert(/useFocusTrap\(/.test(confirm) || confirm.includes('autoFocus'),
+    'confirm no longer manages focus by any mechanism');
+  // Escape used to be a hand-rolled `e.key === 'Escape'` check here. Batch C moved
+  // it onto the shared overlay primitive, which is stack-aware: Escape peels only
+  // the TOP overlay instead of every listening dialog at once. Assert the
+  // capability, not the old implementation of it.
+  assert(/useEscape\(true, isTop, onCancel\)/.test(confirm) || confirm.includes("e.key === 'Escape'"),
+    'confirm no longer closes on Escape by any mechanism');
 });
 check('confirm still animates (cm-fade + cm-pop keyframes preserved)', () =>
   assert(/@keyframes cm-fade/.test(confirm) && /@keyframes cm-pop/.test(confirm)));
