@@ -26,6 +26,7 @@ import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
 import RoomPanel from '@/components/RoomPanel';
+import { useRealtime } from '@/components/shell/realtime';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
 // click the value, it becomes an input/select, saves on blur/Enter, Esc cancels.
@@ -701,47 +702,32 @@ const [aiError, setAiError] = useState('');
       .finally(() => setSyncingHistory(false));
   }, [leadId]);
 
-  // ── SSE listener — new messages for THIS lead appear instantly (no refresh needed)
-  useEffect(() => {
-    if (!leadId) return;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token) return;
-    const es = new EventSource(`${BASE_URL}/api/events?token=${token}`);
-    const onNewMessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.lead_id !== leadId) return; // ignore other leads
-        const incomingPlatform = (data.message?.platform || 'whatsapp').toLowerCase();
-        const viewing = activePlatformRef.current;
-        // If the message arrived on the platform the user is currently viewing
-        // (or the platform isn't set yet), refresh inline. Otherwise bump the
-        // unread counter so the tab shows a "(1)" badge.
-        if (!viewing || incomingPlatform === viewing) {
-          fetchMessages(viewing || undefined);
-        } else {
-          setUnreadByPlatform(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
-          // Also bump the total count so the tab number stays accurate
-          setPlatformCounts(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
-        }
-      } catch {}
-    };
-    const onLeadUpdated = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        const updated = data.lead || data;
-        if (!updated?.id || updated.id !== leadId) return;
-        setLead(prev => ({ ...prev, ...updated }));
-      } catch {}
-    };
-    // Server emits unnamed `data: {type,...}` frames — route via onmessage
-    // (named addEventListener never fired; the polling fallback below masked it).
-    es.onmessage = (e) => {
-      let data; try { data = JSON.parse(e.data); } catch { return; }
-      if (data.type === 'new_message') onNewMessage(e);
-      else if (data.type === 'lead_updated') onLeadUpdated(e);
-    };
-    return () => { es.close(); };
-  }, [leadId]);
+  // ── Real-time for THIS lead, over the shell's single connection (Phase 5) ────
+  // Also picks up email_received, which the backend has always broadcast with
+  // this lead's id and which this page used to ignore — an inbound email only
+  // surfaced when the 8s poll below happened to catch it.
+  useRealtime(['new_message', 'lead_updated', 'email_received'], (data) => {
+    if (data.type === 'lead_updated') {
+      const updated = data.lead || data;
+      if (!updated?.id || updated.id !== leadId) return;
+      setLead(prev => ({ ...prev, ...updated }));
+      return;
+    }
+    if (data.lead_id !== leadId) return; // ignore other leads
+    if (data.type === 'email_received') { fetchMessages(activePlatformRef.current || undefined); return; }
+    const incomingPlatform = (data.message?.platform || 'whatsapp').toLowerCase();
+    const viewing = activePlatformRef.current;
+    // If the message arrived on the platform the user is currently viewing
+    // (or the platform isn't set yet), refresh inline. Otherwise bump the
+    // unread counter so the tab shows a "(1)" badge.
+    if (!viewing || incomingPlatform === viewing) {
+      fetchMessages(viewing || undefined);
+    } else {
+      setUnreadByPlatform(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
+      // Also bump the total count so the tab number stays accurate
+      setPlatformCounts(prev => ({ ...prev, [incomingPlatform]: (prev[incomingPlatform] || 0) + 1 }));
+    }
+  });
 
   // ── Polling fallback — guarantees the thread auto-refreshes even if the SSE
   // stream drops or is buffered by a proxy. Only polls while the tab is visible.

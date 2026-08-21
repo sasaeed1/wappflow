@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, Plus, Trash2, Copy, Check, Clock, ExternalLink } from 'lucide-react';
 import { bookingAPI } from '../../lib/api';
+import { useRealtime } from '@/components/shell/realtime';
 
 const DOW = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
 
@@ -15,11 +16,18 @@ export default function BookingsPage() {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const loadBookings = () => bookingAPI.list().then(r => setBookings(r.data.bookings || [])).catch(() => {});
+
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/bookings'); return; }
     bookingAPI.settings().then(r => { setSettings(r.data.settings); setUrl(r.data.public_url); }).catch(() => setSettings({ services: [], availability: {} }));
-    bookingAPI.list().then(r => setBookings(r.data.bookings || [])).catch(() => {});
+    loadBookings();
   }, []); // eslint-disable-line
+
+  // Phase 5: the backend has always broadcast booking_created on create,
+  // reschedule and cancel; this page loaded once and never listened, so a
+  // booking taken while it was open simply did not appear.
+  useRealtime('booking_created', () => { loadBookings(); });
 
   const save = async () => {
     const r = await bookingAPI.updateSettings(settings);

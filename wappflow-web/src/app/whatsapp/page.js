@@ -7,6 +7,7 @@ import {
   Wifi, WifiOff, Zap, Clock, Shield
 } from 'lucide-react';
 import { BASE_URL } from '../../lib/api';
+import { useRealtime } from '@/components/shell/realtime';
 
 export default function WhatsAppPage() {
   const router = useRouter();
@@ -18,9 +19,16 @@ export default function WhatsAppPage() {
     const userData = localStorage.getItem('user');
     if (!userData) { router.push('/login'); return; }
     fetchStatus();
-    const interval = setInterval(fetchStatus, 2000);
+    // Phase 5: connection state now arrives over SSE (whatsapp_status), so this
+    // dropped from every 2 seconds to a slow safety net. It stays because the QR
+    // code rotates on its own timer and a missed frame should still self-heal.
+    const interval = setInterval(fetchStatus, 20000);
     return () => clearInterval(interval);
   }, []);
+
+  // A real transition (qr_ready → connected → disconnected …) refetches at once,
+  // so the screen reacts the instant the phone does instead of up to 2s later.
+  useRealtime('whatsapp_status', () => { fetchStatus(); });
 
   const fetchStatus = async () => {
     try {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, X, Users, Clock, CheckCircle } from 'lucide-react';
 import Dropdown from '@/components/ui/Dropdown';
+import { useRealtime } from './realtime';
 import api, { leadsAPI, remindersAPI, notificationsAPI, displayPhone } from '@/lib/api';
 
 // ShellNotifications — the notification bell, lifted out of NavBar (Phase 2).
@@ -30,6 +31,13 @@ export default function ShellNotifications() {
     const poll = setInterval(load, 60000);
     return () => clearInterval(poll);
   }, []);
+
+  // Phase 5: notify() has always broadcast a 'notification' frame the moment a
+  // row is written — and nothing listened, so the bell was a 60s poll and could
+  // be a full minute behind an incoming call or a signed contract. The poll
+  // stays as the reconcile path (it also counts today's leads and due
+  // reminders); this just makes the badge immediate.
+  useRealtime('notification', () => { setBadge((n) => n + 1); });
 
   // Phase 4: the 60s poll used to call leadsAPI.getAll(null) — the ENTIRE leads table
   // across the wire, on every page, forever — purely to count today's arrivals. The
