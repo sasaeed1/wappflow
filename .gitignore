@@ -89,3 +89,6 @@ backend/_audit_setup.js
 # Backup files
 *.flux-bak
 *~.bak
+
+# Local dev tooling (editor/preview config) — not part of the app
+.claude/
