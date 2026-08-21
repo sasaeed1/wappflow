@@ -3134,7 +3134,24 @@ app.get('/api/notifications/summary', auth, (req, res) => {
          AND datetime(COALESCE(due_date, reminder_date)) <= datetime('now', '+24 hours')`
       ).get(req.userId).c;
     } catch { /* reminders schema varies across older DBs */ }
-    res.json({ todayLeads, reminders, unread, total: todayLeads + reminders + unread });
+    // Unread team messages in channels this user belongs to. The count existed
+    // (GET /api/comms/unread) but only the chat page itself ever asked for it, so
+    // team messages were invisible from anywhere else in the product (comms-5).
+    //
+    // DELIBERATE: this keys off chat_members, so a DM or private channel counts
+    // from the moment it is created (the row is written then — exactly the case
+    // where a badge matters), while a PUBLIC channel starts counting only after
+    // you have opened it once. Otherwise every new hire would land on a badge
+    // showing the entire history of #general.
+    let comms = 0;
+    try {
+      comms = db.prepare(
+        `SELECT COUNT(*) c FROM chat_messages m
+         JOIN chat_members mem ON mem.channel_id = m.channel_id AND mem.user_id = ?
+         WHERE m.user_id != ? AND (mem.last_read_at IS NULL OR m.created_at > mem.last_read_at)`
+      ).get(req.userId, req.userId).c;
+    } catch { /* comms tables absent on older DBs */ }
+    res.json({ todayLeads, reminders, unread, comms, total: todayLeads + reminders + unread + comms });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -6168,13 +6185,13 @@ require('./booking')(app, db, {
   sendClientMessage: bookingSend,
 });
 require('./print-store')(app, db, {
-  auth, generateId, broadcastToWorkspace, addContactHistory,
+  auth, generateId, broadcastToWorkspace, addContactHistory, notify,
   sendClientMessage: bookingSend,
 });
 require('./studio-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./video-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./studio-experience')(app, db, { auth, generateId, broadcastToWorkspace });
-paymentsApi = require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, logAudit, clientBaseUrl: process.env.FRONTEND_URL || '' });
+paymentsApi = require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, logAudit, notify, clientBaseUrl: process.env.FRONTEND_URL || '' });
 
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,

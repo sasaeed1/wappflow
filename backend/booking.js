@@ -201,7 +201,10 @@ module.exports = function mountBooking(app, db, deps = {}) {
       try { addContactHistory(b.lead_id, ownerId, 'booking', `Rescheduled ${b.service} → ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`); } catch {}
       // Notify the client of the new time (was previously silent — Appendix A fix).
       try { const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(b.lead_id); if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `🗓️ Your ${b.service} booking is rescheduled to ${new Date(start_at.replace(' ', 'T')).toLocaleString()}.` }); } catch {}
-      broadcastToWorkspace(b.workspace_id, 'booking_created', { id: b.id });
+      // The client was messaged, but the studio's own feed said nothing — and the
+      // frame was still called 'booking_created' for a reschedule.
+      broadcastToWorkspace(b.workspace_id, 'booking_updated', { id: b.id });
+      try { notify(b.workspace_id, { type: 'booking', title: 'Booking rescheduled', body: `${b.service} → ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`, url: '/bookings', icon: '🗓️' }); } catch {}
       res.json({ ok: true, start_at });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -214,7 +217,8 @@ module.exports = function mountBooking(app, db, deps = {}) {
       try { addContactHistory(b.lead_id, ownerId, 'booking', `Client cancelled ${b.service}`); } catch {}
       // Notify the client their cancellation went through (Appendix A fix).
       try { const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(b.lead_id); if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `Your ${b.service} booking has been cancelled. Reply if you'd like to rebook.` }); } catch {}
-      broadcastToWorkspace(b.workspace_id, 'booking_created', { id: b.id });
+      broadcastToWorkspace(b.workspace_id, 'booking_cancelled', { id: b.id });
+      try { notify(b.workspace_id, { type: 'booking', title: 'Booking cancelled', body: `${b.service} — cancelled by the client`, url: '/bookings', icon: '❌' }); } catch {}
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

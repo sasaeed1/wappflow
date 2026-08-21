@@ -219,6 +219,93 @@ check('legacy private channels are backfilled from creator + actual participants
   d.close();
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+//  Notification bus reach (Batch 3). Events users care about that wrote no row.
+// ════════════════════════════════════════════════════════════════════════════
+const modSrc = (f) => strip(read(f));
+
+check('every module that raises user-visible events receives the notify seam', () => {
+  // Four modules were mounted without it, so their events could only ever be
+  // live frames — invisible to anyone not staring at the right screen.
+  for (const [mod, marker] of [
+    ['payments', /require\('\.\/payments'\)\(app, db, \{[^}]*notify/],
+    ['print-store', /require\('\.\/print-store'\)\(app, db, \{[\s\S]{0,120}?notify/],
+    ['media-studio', /require\('\.\/media-studio'\)\(app, db, \{[\s\S]{0,120}?notify/],
+    ['booking', /require\('\.\/booking'\)\(app, db, \{[\s\S]{0,120}?notify/],
+  ]) assert(marker.test(S), `${mod} is mounted without notify`);
+  assert(/createMediaWorker\(db, \{[^}]*notify \}\)/.test(modSrc('media-studio.js')),
+    'the media WORKER — where jobs actually finish — still has no notify');
+});
+
+check('money landing writes a feed row', () => {
+  const pay = modSrc('payments.js');
+  assert(/notify\(p\.workspace_id, \{/.test(pay), 'markPaid still only broadcasts a live frame');
+  assert(/type: 'payment'/.test(pay), 'payment notifications have no category');
+  assert(/notify = \(\) => \{\},/.test(pay), 'notify is not destructured with a safe default');
+});
+
+check('mentions and thread replies survive being offline', () => {
+  const c = modSrc('comms.js');
+  assert(/type: 'mention', userId: uid/.test(c), 'a mention still leaves no record (audit comms-2)');
+  assert(/type: 'reply', userId: rootAuthor/.test(c), 'a thread reply still leaves no record at all');
+  // Both must stay user-targeted: a mention is not workspace news.
+  assert(!/notify\(workspaceId, \{\s*type: 'mention',\s*title/.test(c), 'mention notification is not user-scoped');
+});
+
+check('contract viewed/declined and booking reschedule/cancel notify', () => {
+  const cs = modSrc('contracts-studio.js');
+  assert(/title: 'Contract viewed'/.test(cs), 'only signing notified — "did they open it?" was unanswerable');
+  assert(/title: 'Contract declined'/.test(cs), 'a declined contract still says nothing');
+  const bk = modSrc('booking.js');
+  assert(/title: 'Booking rescheduled'/.test(bk) && /title: 'Booking cancelled'/.test(bk),
+    'the client was messaged but the studio feed stayed silent');
+  assert(/'booking_updated'/.test(bk) && /'booking_cancelled'/.test(bk),
+    "reschedule and cancel both still emit 'booking_created'");
+});
+
+check('media jobs report completion AND failure', () => {
+  const w = modSrc('media-worker.js');
+  for (const t of ['Gallery ZIP ready', 'Album PDF ready', 'Video export finished', 'Video export failed']) {
+    assert(w.includes(t), `media worker does not notify: ${t}`);
+  }
+});
+
+check('the badge summary counts unread team messages', () => {
+  const route = S.slice(S.indexOf("app.get('/api/notifications/summary'"), S.indexOf("app.get('/api/notifications/summary'") + 1800);
+  assert(/JOIN chat_members mem ON mem\.channel_id = m\.channel_id AND mem\.user_id = \?/.test(route),
+    'comms unread is not counted — team messages invisible outside /chat');
+  assert(/m\.user_id != \?/.test(route), 'your own messages would count as unread');
+  assert(/total: todayLeads \+ reminders \+ unread \+ comms/.test(route), 'comms is counted but not totalled');
+});
+
+// The comms-unread SQL decides a number users will trust — run it for real.
+check('the comms unread count is correct per member and ignores your own messages', () => {
+  const d = new Database(':memory:');
+  d.exec(`
+    CREATE TABLE chat_members (channel_id TEXT, user_id TEXT, last_read_at TIMESTAMP, PRIMARY KEY (channel_id, user_id));
+    CREATE TABLE chat_messages (id TEXT PRIMARY KEY, channel_id TEXT, user_id TEXT, created_at TIMESTAMP);
+    INSERT INTO chat_members VALUES ('c1','alice','2026-01-01 00:00:00'), ('c1','bob',NULL), ('c2','bob','2026-01-01 00:00:00');
+    INSERT INTO chat_messages VALUES
+      ('m1','c1','bob','2026-01-02 10:00:00'),
+      ('m2','c1','bob','2026-01-02 11:00:00'),
+      ('m3','c1','alice','2026-01-02 12:00:00'),
+      ('m4','c2','carol','2025-12-01 09:00:00'),
+      ('m5','c3','carol','2026-01-03 09:00:00');
+  `);
+  const q = d.prepare(`SELECT COUNT(*) c FROM chat_messages m
+    JOIN chat_members mem ON mem.channel_id = m.channel_id AND mem.user_id = ?
+    WHERE m.user_id != ? AND (mem.last_read_at IS NULL OR m.created_at > mem.last_read_at)`);
+  assert.strictEqual(q.get('alice', 'alice').c, 2, "alice should see bob's 2 messages, not her own");
+  assert.strictEqual(q.get('bob', 'bob').c, 1, 'a NULL last_read_at means everything is unread; c2 is already read');
+  assert.strictEqual(q.get('carol', 'carol').c, 0, 'a non-member must count nothing (c3 has no membership row)');
+  // The stated trade-off, pinned so it cannot drift into a bug report: a DM
+  // counts immediately (its membership row is written at creation), a public
+  // channel only after you have opened it once.
+  d.exec("INSERT INTO chat_members VALUES ('dm_x','dave',NULL); INSERT INTO chat_messages VALUES ('m6','dm_x','erin','2026-01-04 09:00:00');");
+  assert.strictEqual(q.get('dave', 'dave').c, 1, 'a DM must badge from the first message');
+  d.close();
+});
+
 // ── the accessor's real behaviour, not just its shape ──
 check('the status accessor emits once per real transition and reads back correctly', () => {
   const src = read('whatsapp-service.js');

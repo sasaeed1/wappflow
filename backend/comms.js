@@ -185,7 +185,19 @@ module.exports = function mountComms(app, db, deps = {}) {
         db.prepare('INSERT INTO chat_mentions (id, message_id, channel_id, user_id, author_id) VALUES (?,?,?,?,?)')
           .run(generateId(), message.id, message.channel_id, uid, message.user_id);
         broadcastToUser(uid, 'chat_mention', { channel_id: message.channel_id, message });
-        if (!isDnd(workspaceId, uid)) sendPushToUser(uid, `${message.sender_name} mentioned you`, (message.body || '').slice(0, 140), { channel_id: message.channel_id, kind: 'mention' }).catch(() => {});
+        if (!isDnd(workspaceId, uid)) {
+          sendPushToUser(uid, `${message.sender_name} mentioned you`, (message.body || '').slice(0, 140), { channel_id: message.channel_id, kind: 'mention' }).catch(() => {});
+          // Persist it too. A mention used to exist only as a live frame and a
+          // push, so being offline meant never learning you were mentioned —
+          // the bell had no record of it at all (audit comms-2).
+          notify(workspaceId, {
+            type: 'mention', userId: uid,
+            title: `${message.sender_name} mentioned you`,
+            body: (message.body || '').slice(0, 140),
+            url: `/chat?channel=${encodeURIComponent(message.channel_id)}`,
+            icon: '@',
+          });
+        }
       } catch { /* mention is best-effort */ }
     }
     // Thread reply → notify the root author (if not self and not already mentioned).
@@ -195,7 +207,17 @@ module.exports = function mountComms(app, db, deps = {}) {
         const rootAuthor = root && root.user_id;
         if (rootAuthor && rootAuthor !== message.user_id && !ids.includes(rootAuthor)) {
           broadcastToUser(rootAuthor, 'chat_thread_reply', { channel_id: message.channel_id, message, root_id: message.reply_to });
-          if (!isDnd(workspaceId, rootAuthor)) sendPushToUser(rootAuthor, `${message.sender_name} replied in a thread`, (message.body || '').slice(0, 140), { channel_id: message.channel_id, kind: 'thread' }).catch(() => {});
+          if (!isDnd(workspaceId, rootAuthor)) {
+            sendPushToUser(rootAuthor, `${message.sender_name} replied in a thread`, (message.body || '').slice(0, 140), { channel_id: message.channel_id, kind: 'thread' }).catch(() => {});
+            // A missed reply previously vanished entirely — not even a mention row.
+            notify(workspaceId, {
+              type: 'reply', userId: rootAuthor,
+              title: `${message.sender_name} replied in a thread`,
+              body: (message.body || '').slice(0, 140),
+              url: `/chat?channel=${encodeURIComponent(message.channel_id)}`,
+              icon: '💬',
+            });
+          }
         }
       } catch { /* best-effort */ }
     }

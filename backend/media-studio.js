@@ -2796,7 +2796,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
 
   // ── Worker: drains ms_jobs → variants + EXIF + advisory CV scores ────────────
   // Pass startWorker:false in tests to drive worker.processOnce() deterministically.
-  const worker = createMediaWorker(db, { uploadsDir, path, fs, generateId, broadcastToWorkspace });
+  const worker = createMediaWorker(db, { uploadsDir, path, fs, generateId, broadcastToWorkspace, notify });
   if (deps.startWorker !== false) worker.start();
 
   console.log('📸 Media Studio module mounted at /api/media');

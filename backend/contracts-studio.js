@@ -968,6 +968,10 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
         db.prepare("UPDATE cs_documents SET status = 'viewed', viewed_at = COALESCE(viewed_at, CURRENT_TIMESTAMP) WHERE id = ?").run(d.id);
         recordEvent(d, 'viewed', { actor: 'client', ip: clientIp(req), ua: req.headers['user-agent'] });
         broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
+        // Only signing used to notify, so "has the client even opened it?" — the
+        // question every sender actually has — was answerable only by opening the
+        // document's event log (audit contracts-3).
+        notify(d.workspace_id, { type: 'contract', title: 'Contract viewed', body: `${d.title} was opened by the client`, url: '/contracts', icon: '👀' });
       }
       const fresh = db.prepare('SELECT * FROM cs_documents WHERE id = ?').get(d.id);
       const signers = db.prepare('SELECT role, name, status, sign_order FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
@@ -1026,6 +1030,7 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       db.prepare("UPDATE cs_documents SET status = 'declined' WHERE id = ?").run(d.id);
       recordEvent(d, 'declined', { actor: 'client', ip: clientIp(req), ua: req.headers['user-agent'], meta: { reason: req.body.reason || '' } });
       broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
+      notify(d.workspace_id, { type: 'contract', title: 'Contract declined', body: `${d.title}${req.body.reason ? ` — ${String(req.body.reason).slice(0, 120)}` : ''}`, url: '/contracts', icon: '🚫' });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
