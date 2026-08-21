@@ -15,6 +15,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 const crypto = require('crypto');
+const albumModel = require('./album-model');   // canonical album page model (shared with media-studio)
 
 module.exports = function mountStudioAI(app, db, deps = {}) {
   const {
@@ -177,40 +178,29 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
       const spec = { pages, spreads, source_selection: gen.id };
       // page_count is ACTUAL built pages (derived live from ms_album_pages everywhere);
       // the intended page target lives in spec.pages — not written as a column.
-      db.prepare('INSERT INTO ms_albums (id, workspace_id, project_id, title, spec) VALUES (?,?,?,?,?)')
-        .run(albumId, project.workspace_id, project.id, req.body.title || `${project.title} Album`, JSON.stringify(spec));
-      res.json({ ok: true, album_id: albumId, pages, spreads: spreads.length, images: seq.length });
+      //
+      // Phase 6: ALSO materialise real ms_album_pages rows. Writing only spec.spreads
+      // meant the generated album showed "0 pages" in the album list, opened empty in
+      // the editor, and exported a blank PDF — every reader downstream looks at page
+      // rows, not at this blob. spec is still written so nothing that reads it breaks,
+      // and so the AI's intent (target page count, source selection) is preserved.
+      const built = albumModel.pagesFromSpreads(spreads);
+      const insertAlbum = db.transaction(() => {
+        db.prepare('INSERT INTO ms_albums (id, workspace_id, project_id, title, spec) VALUES (?,?,?,?,?)')
+          .run(albumId, project.workspace_id, project.id, req.body.title || `${project.title} Album`, JSON.stringify(spec));
+        const ins = db.prepare('INSERT INTO ms_album_pages (id, album_id, page_no, layout_template, slots) VALUES (?,?,?,?,?)');
+        built.forEach((p, i) => ins.run(generateId(), albumId, i, p.layout_template, JSON.stringify(p.slots)));
+      });
+      insertAlbum();
+      res.json({ ok: true, album_id: albumId, pages: built.length, target_pages: pages, spreads: spreads.length, images: seq.length });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  app.get('/api/studio-ai/albums/:id', auth, (req, res) => {
-    try {
-      const a = db.prepare(`SELECT a.*, (SELECT COUNT(*) FROM ms_album_pages p WHERE p.album_id = a.id) AS page_count
-        FROM ms_albums a WHERE a.id = ? AND a.workspace_id = ?`).get(req.params.id, req.workspaceId);
-      if (!a) return res.status(404).json({ error: 'Album not found' });
-      res.json({ album: { ...a, spec: J(a.spec, {}) } });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
-  app.put('/api/studio-ai/albums/:id', auth, (req, res) => {
-    try {
-      const a = db.prepare('SELECT * FROM ms_albums WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
-      if (!a) return res.status(404).json({ error: 'Album not found' });
-      const set = {};
-      if (req.body.title !== undefined) set.title = req.body.title;
-      if (req.body.status !== undefined) set.status = req.body.status;
-      if (req.body.spec !== undefined) set.spec = JSON.stringify(req.body.spec); // intended pages stay inside spec.pages
-      const keys = Object.keys(set);
-      if (keys.length) db.prepare(`UPDATE ms_albums SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: a.id });
-      res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
-  app.get('/api/studio-ai/projects/:id/albums', auth, (req, res) => {
-    try {
-      const project = getProject(req.workspaceId, req.params.id);
-      if (!project) return res.status(404).json({ error: 'Project not found' });
-      res.json({ albums: db.prepare(`SELECT id, title, (SELECT COUNT(*) FROM ms_album_pages p WHERE p.album_id = ms_albums.id) AS page_count, spec, status, created_at
-        FROM ms_albums WHERE project_id = ? ORDER BY created_at DESC`).all(project.id).map(a => ({ ...a, spec: J(a.spec, {}) })) });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
+  // Album READ/UPDATE/LIST routes removed in Phase 6. They existed only to serve a
+  // second album editor whose page model (spec.spreads) nothing downstream could
+  // read — no PDF, no page rows. Albums are now read and edited through
+  // media-studio's /api/media/albums/* , which is the model that can actually
+  // produce a book. Generation (POST .../album above) stays here; it now writes
+  // canonical pages.
 
   // ── P13: portfolio recommendations (top portfolio-scored across the workspace) ─
   app.get('/api/studio-ai/portfolio-picks', auth, (req, res) => {

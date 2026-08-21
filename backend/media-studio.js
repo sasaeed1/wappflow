@@ -23,6 +23,7 @@
  */
 
 const createMediaWorker = require('./media-worker');
+const albumModel = require('./album-model');   // canonical album page model (shared with studio-ai)
 const videoEngine = require('./video-engine');
 const videoLuts = require('./video-luts');
 const videoTemplates = require('./video-templates');
@@ -1468,6 +1469,35 @@ Only suggest actions that make sense for the question. If none make sense, retur
     safeAlter(`ALTER TABLE ms_albums ADD COLUMN ${col}`);
   }
 
+  // Phase 6 backfill: AI-generated albums that only ever got `spec.spreads`.
+  //
+  // studio-ai's generator wrote its layout into the spec blob and created no page
+  // rows, so those albums listed as "0 pages", opened empty, and exported a blank
+  // PDF. The generator now writes real pages; this materialises the ones already
+  // stranded. Additive and idempotent — it only touches albums that have spreads
+  // AND no pages, so re-running it, or running it after a user has edited an
+  // album by hand, changes nothing.
+  try {
+    const stranded = db.prepare(`
+      SELECT a.id, a.spec FROM ms_albums a
+      WHERE NOT EXISTS (SELECT 1 FROM ms_album_pages p WHERE p.album_id = a.id)
+        AND a.spec IS NOT NULL AND a.spec != '' AND a.spec LIKE '%spreads%'
+    `).all();
+    let repaired = 0;
+    const ins = db.prepare('INSERT INTO ms_album_pages (id, album_id, page_no, layout_template, slots) VALUES (?,?,?,?,?)');
+    const fix = db.transaction(() => {
+      for (const a of stranded) {
+        let spec = {}; try { spec = JSON.parse(a.spec); } catch { continue; }
+        const pages = albumModel.pagesFromSpreads(spec.spreads);
+        if (!pages.length) continue;
+        pages.forEach((pg, i) => ins.run(generateId(), a.id, i, pg.layout_template, JSON.stringify(pg.slots)));
+        repaired++;
+      }
+    });
+    fix();
+    if (repaired) console.log(`✅ Rebuilt pages for ${repaired} AI-generated album(s) that had none`);
+  } catch (e) { console.error('Album page backfill skipped:', e.message); }
+
   function getGallery(workspaceId, id) {
     return db.prepare('SELECT * FROM ms_galleries WHERE id = ? AND workspace_id = ?').get(id, workspaceId);
   }
@@ -1834,7 +1864,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
   });
 
   // ── Album builder (manual layout → print-ready PDF) ─────────────────────────
-  const ALBUM_LAYOUTS = { single: 1, 'two-h': 2, 'two-v': 2, three: 3, grid4: 4 };
+  const { ALBUM_LAYOUTS } = albumModel;   // one definition, shared with studio-ai
   function getAlbum(workspaceId, id) { return db.prepare('SELECT * FROM ms_albums WHERE id = ? AND workspace_id = ?').get(id, workspaceId); }
   function shapeAlbum(a) {
     let spec = {}; try { spec = JSON.parse(a.spec || '{}'); } catch {}
