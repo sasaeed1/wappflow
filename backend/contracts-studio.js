@@ -10,6 +10,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 const crypto = require('crypto');
+const pagination = require('./pagination');
 let ai = null; try { ai = require('./ai-engine'); } catch { /* AI optional */ }
 let cron = null; try { cron = require('node-cron'); } catch { /* scheduler optional */ }
 let pricing = null; try { pricing = require('./pricing'); } catch { /* pricing optional */ }
@@ -133,6 +134,9 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       doc_hash TEXT,
       created_by TEXT,
       sent_at TIMESTAMP, viewed_at TIMESTAMP, completed_at TIMESTAMP, expires_at TIMESTAMP,
+      is_deleted INTEGER DEFAULT 0,      -- Phase 3 recycle bin; older DBs get these via soft-delete.js
+      deleted_at TIMESTAMP,
+      deleted_by TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -201,6 +205,10 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     );
     CREATE INDEX IF NOT EXISTS idx_cs_docs_ws ON cs_documents(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_cs_docs_token ON cs_documents(token);
+    -- Phase 4: the list is always workspace + bin filtered, and the guard counts
+    -- live contracts per lead on every lead permanent-delete.
+    CREATE INDEX IF NOT EXISTS idx_cs_docs_ws_deleted ON cs_documents(workspace_id, is_deleted);
+    CREATE INDEX IF NOT EXISTS idx_cs_docs_lead ON cs_documents(lead_id);
     CREATE INDEX IF NOT EXISTS idx_cs_signers_doc ON cs_signers(document_id);
     CREATE INDEX IF NOT EXISTS idx_cs_events_doc ON cs_events(document_id);
   `);
@@ -405,7 +413,7 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
 
   // Daily auto-reminder cadence — opt-in per document (settings.auto_remind).
   async function autoReminderSweep() {
-    const rows = db.prepare("SELECT * FROM cs_documents WHERE token IS NOT NULL AND status IN ('sent','viewed')").all();
+    const rows = db.prepare("SELECT * FROM cs_documents WHERE token IS NOT NULL AND status IN ('sent','viewed') AND (is_deleted = 0 OR is_deleted IS NULL)").all();
     for (const d of rows) {
       try {
         const ar = J(d.settings, {}).auto_remind;
@@ -433,14 +441,14 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     try {
       const ws = req.workspaceId;
       const byStatus = {};
-      db.prepare('SELECT status, COUNT(*) c FROM cs_documents WHERE workspace_id = ? GROUP BY status').all(ws).forEach(r => { byStatus[r.status] = r.c; });
-      const total = db.prepare('SELECT COUNT(*) c FROM cs_documents WHERE workspace_id = ?').get(ws).c;
-      const recent = db.prepare(`SELECT d.*, l.customer_name AS client_name FROM cs_documents d LEFT JOIN leads l ON l.id = d.lead_id WHERE d.workspace_id = ? ORDER BY d.updated_at DESC LIMIT 8`).all(ws)
+      db.prepare('SELECT status, COUNT(*) c FROM cs_documents WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) GROUP BY status').all(ws).forEach(r => { byStatus[r.status] = r.c; });
+      const total = db.prepare('SELECT COUNT(*) c FROM cs_documents WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)').get(ws).c;
+      const recent = db.prepare(`SELECT d.*, l.customer_name AS client_name FROM cs_documents d LEFT JOIN leads l ON l.id = d.lead_id WHERE d.workspace_id = ? AND (d.is_deleted = 0 OR d.is_deleted IS NULL) ORDER BY d.updated_at DESC LIMIT 8`).all(ws)
         .map(d => ({ ...shapeDoc(d), client_name: d.client_name }));
       const activity = db.prepare(`SELECT e.type, e.created_at, e.actor, d.title FROM cs_events e JOIN cs_documents d ON d.id = e.document_id WHERE e.workspace_id = ? ORDER BY e.created_at DESC LIMIT 12`).all(ws);
       // revenue impact = sum of signed/completed document totals
       let revenue = 0;
-      db.prepare("SELECT totals FROM cs_documents WHERE workspace_id = ? AND status IN ('signed','completed')").all(ws).forEach(r => { const t = J(r.totals, {}); revenue += Number(t.total || 0); });
+      db.prepare("SELECT totals FROM cs_documents WHERE workspace_id = ? AND status IN ('signed','completed') AND (is_deleted = 0 OR is_deleted IS NULL)").all(ws).forEach(r => { const t = J(r.totals, {}); revenue += Number(t.total || 0); });
       res.json({ total, byStatus, recent, activity, revenue });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -448,12 +456,27 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
   // ── Documents ───────────────────────────────────────────────────────────────
   app.get('/api/cs/documents', auth, (req, res) => {
     try {
-      const params = [req.workspaceId]; let where = 'd.workspace_id = ?';
+      // Phase 3: the bin is excluded by default; ?bin=1 lists it so a binned contract
+      // is reachable for restore rather than merely invisible.
+      const params = [req.workspaceId];
+      let where = req.query.bin === '1'
+        ? 'd.workspace_id = ? AND d.is_deleted = 1'
+        : 'd.workspace_id = ? AND (d.is_deleted = 0 OR d.is_deleted IS NULL)';
       if (req.query.status) { where += ' AND d.status = ?'; params.push(req.query.status); }
       if (req.query.type) { where += ' AND d.type = ?'; params.push(req.query.type); }
       if (req.query.lead_id) { where += ' AND d.lead_id = ?'; params.push(req.query.lead_id); }
-      const rows = db.prepare(`SELECT d.*, l.customer_name AS client_name FROM cs_documents d LEFT JOIN leads l ON l.id = d.lead_id WHERE ${where} ORDER BY d.updated_at DESC`).all(...params);
-      res.json({ documents: rows.map(d => ({ ...shapeDoc(d), client_name: d.client_name })) });
+      const sql = `SELECT d.*, l.customer_name AS client_name FROM cs_documents d LEFT JOIN leads l ON l.id = d.lead_id WHERE ${where} ORDER BY d.updated_at DESC`;
+      // Phase 4: opt-in paging — omitting ?limit keeps the previous unbounded response.
+      const page = pagination.pageParams(req);
+      if (!page) {
+        const rows = db.prepare(sql).all(...params);
+        return res.json({ documents: rows.map(d => ({ ...shapeDoc(d), client_name: d.client_name })) });
+      }
+      const p = pagination.paginate(db, { sql, countSql: pagination.toCountSql(sql), params, page });
+      res.json({
+        documents: p.items.map(d => ({ ...shapeDoc(d), client_name: d.client_name })),
+        total: p.total, limit: p.limit, offset: p.offset, hasMore: p.hasMore,
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -514,14 +537,27 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Restore a binned contract. Signers/events/approvals were never removed, so the
+  // document comes back complete and signable.
+  app.post('/api/cs/documents/:id/restore', auth, (req, res) => {
+    try {
+      const r = db.prepare('UPDATE cs_documents SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ? AND workspace_id = ?')
+        .run(req.params.id, req.workspaceId);
+      if (!r.changes) return res.status(404).json({ error: 'Document not found' });
+      logAudit(req.workspaceId, req.userId, 'restore', 'cs_documents', req.params.id, {});
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.delete('/api/cs/documents/:id', auth, (req, res) => {
     try {
       const d = getDoc(req.workspaceId, req.params.id);
       if (!d) return res.status(404).json({ error: 'Document not found' });
-      db.prepare('DELETE FROM cs_documents WHERE id = ?').run(d.id);
-      db.prepare('DELETE FROM cs_signers WHERE document_id = ?').run(d.id);
-      db.prepare('DELETE FROM cs_events WHERE document_id = ?').run(d.id);
-      db.prepare('DELETE FROM cs_approvals WHERE document_id = ?').run(d.id);
+      // Phase 3: bin the document instead of destroying it. Signers/events/approvals
+      // are deliberately left intact so a restore brings back a complete, signable
+      // record rather than a hollow shell.
+      db.prepare('UPDATE cs_documents SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE id = ?').run(req.userId, d.id);
+      logAudit(req.workspaceId, req.userId, 'soft_delete', 'cs_documents', d.id, { title: d.title });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -932,6 +968,10 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
         db.prepare("UPDATE cs_documents SET status = 'viewed', viewed_at = COALESCE(viewed_at, CURRENT_TIMESTAMP) WHERE id = ?").run(d.id);
         recordEvent(d, 'viewed', { actor: 'client', ip: clientIp(req), ua: req.headers['user-agent'] });
         broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
+        // Only signing used to notify, so "has the client even opened it?" — the
+        // question every sender actually has — was answerable only by opening the
+        // document's event log (audit contracts-3).
+        notify(d.workspace_id, { type: 'contract', title: 'Contract viewed', body: `${d.title} was opened by the client`, url: '/contracts', icon: '👀' });
       }
       const fresh = db.prepare('SELECT * FROM cs_documents WHERE id = ?').get(d.id);
       const signers = db.prepare('SELECT role, name, status, sign_order FROM cs_signers WHERE document_id = ? ORDER BY sign_order').all(d.id);
@@ -990,6 +1030,7 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       db.prepare("UPDATE cs_documents SET status = 'declined' WHERE id = ?").run(d.id);
       recordEvent(d, 'declined', { actor: 'client', ip: clientIp(req), ua: req.headers['user-agent'], meta: { reason: req.body.reason || '' } });
       broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
+      notify(d.workspace_id, { type: 'contract', title: 'Contract declined', body: `${d.title}${req.body.reason ? ` — ${String(req.body.reason).slice(0, 120)}` : ''}`, url: '/contracts', icon: '🚫' });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

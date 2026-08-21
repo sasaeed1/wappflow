@@ -45,6 +45,10 @@ module.exports = function createMediaWorker(db, deps = {}) {
     fs = require('fs'),
     generateId = () => require('crypto').randomUUID(),
     broadcastToWorkspace = () => {},
+    // Phase 5: the worker was built without this seam, so a finished render or a
+    // delivered gallery pushed a live frame and then vanished — nothing in the
+    // feed, so closing the tab meant never learning the job had completed.
+    notify = () => {},
   } = deps;
 
   const variantsDir = path.join(uploadsDir, 'media', 'variants');
@@ -542,7 +546,10 @@ module.exports = function createMediaWorker(db, deps = {}) {
       }
       db.prepare(`UPDATE ms_exports SET status = 'ready', storage_key = ?, size_bytes = ?, file_count = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
         .run(outRel, size, count, exp.id);
-      if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_export_ready', { export_id: exp.id, gallery_id: exp.gallery_id });
+      if (exp.workspace_id) {
+        broadcastToWorkspace(exp.workspace_id, 'ms_export_ready', { export_id: exp.id, gallery_id: exp.gallery_id });
+        try { notify(exp.workspace_id, { type: 'studio', title: 'Gallery ZIP ready', body: 'Your gallery download has finished building.', url: '/studio', icon: '📦' }); } catch {}
+      }
       return { note: 'ok', files: count, size };
     } catch (e) {
       db.prepare("UPDATE ms_exports SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?").run(e.message, exp.id);
@@ -606,7 +613,10 @@ module.exports = function createMediaWorker(db, deps = {}) {
       const size = fs.statSync(outAbs).size;
       db.prepare("UPDATE ms_albums SET pdf_status = 'ready', pdf_storage_key = ?, pdf_size = ?, pdf_pages = ?, pdf_built_at = CURRENT_TIMESTAMP WHERE id = ?")
         .run(outRel, size, pages.length, album.id);
-      if (album.workspace_id) broadcastToWorkspace(album.workspace_id, 'ms_album_pdf_ready', { album_id: album.id });
+      if (album.workspace_id) {
+        broadcastToWorkspace(album.workspace_id, 'ms_album_pdf_ready', { album_id: album.id });
+        try { notify(album.workspace_id, { type: 'studio', title: 'Album PDF ready', body: `${album.title || 'Your album'} has finished exporting.`, url: '/studio', icon: '📕' }); } catch {}
+      }
       return { note: 'ok', pages: pages.length, size };
     } catch (e) {
       db.prepare("UPDATE ms_albums SET pdf_status = 'failed' WHERE id = ?").run(album.id);
@@ -745,7 +755,12 @@ module.exports = function createMediaWorker(db, deps = {}) {
     if (!exp) return { note: 'export-gone' };
     const fail = (msg) => {
       db.prepare("UPDATE ms_video_exports SET status='failed', error_message=?, finished_at=CURRENT_TIMESTAMP WHERE id=?").run(msg, exp.id);
-      if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'failed' });
+      if (exp.workspace_id) {
+        broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'failed' });
+        // A failed render is the case that MOST needs a record: the user is not
+        // watching a progress bar that never completes.
+        try { notify(exp.workspace_id, { type: 'studio', title: 'Video export failed', body: 'The render did not complete. Open the timeline to retry.', url: '/studio', icon: '⚠️' }); } catch {}
+      }
       return { note: 'export-failed: ' + msg };
     };
     const cleanups = [];
@@ -805,7 +820,10 @@ module.exports = function createMediaWorker(db, deps = {}) {
       if (storage.isRemote && size) { try { await storage.uploadFile(outRel, fs.readFileSync(outAbs), 'video/mp4'); } catch {} }
       db.prepare("UPDATE ms_video_exports SET status='done', progress=100, storage_key=?, size_bytes=?, finished_at=CURRENT_TIMESTAMP WHERE id=?")
         .run(outRel, size, exp.id);
-      if (exp.workspace_id) broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'done', progress: 100, url: publicUrl(outRel) });
+      if (exp.workspace_id) {
+        broadcastToWorkspace(exp.workspace_id, 'ms_video_export', { export_id: exp.id, status: 'done', progress: 100, url: publicUrl(outRel) });
+        try { notify(exp.workspace_id, { type: 'studio', title: 'Video export finished', body: 'Your render is ready to download.', url: '/studio', icon: '🎬' }); } catch {}
+      }
       return { note: 'ok', size, segments: built.segments };
     } catch (e) { return fail(e.message); }
     finally { for (const c of cleanups) { try { c(); } catch {} } }

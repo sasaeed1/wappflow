@@ -18,6 +18,18 @@ const styleApply = require('./style-apply');
 module.exports = function mountReelEngine(app, db, deps = {}) {
   const { auth = (req, res, next) => next(), generateId = () => require('crypto').randomUUID(), logAudit = () => {} } = deps;
 
+  // This module WRITES ms_timelines, ms_video_exports and ms_jobs, all of which
+  // are owned (DDL and semantics) by media-studio.js. That only works because
+  // media-studio happens to mount first in server.js — an ordering dependency
+  // nothing declared. Make it explicit, the same way studio-ai.js guards
+  // ms_albums, so a reordering fails loudly at boot instead of at the first
+  // render request.
+  for (const t of ['ms_timelines', 'ms_video_exports', 'ms_jobs']) {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t)) {
+      throw new Error(`${t} must be created by media-studio before reel-engine mounts`);
+    }
+  }
+
   // Per-role clip lengths + crossfade overlap (ms). Tuned for a punchy social reel.
   const ROLE_DUR = { hook: 2800, build: 2200, climax: 3000, outro: 3400 };
   const OVERLAP = 350;

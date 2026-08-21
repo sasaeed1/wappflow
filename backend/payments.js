@@ -43,6 +43,7 @@ module.exports = function mountPayments(app, db, deps = {}) {
     broadcastToWorkspace = () => {},
     addContactHistory = () => {},
     logAudit = () => {},
+    notify = () => {},
     clientBaseUrl = process.env.FRONTEND_URL || '',
   } = deps;
 
@@ -138,6 +139,20 @@ module.exports = function mountPayments(app, db, deps = {}) {
     db.prepare("UPDATE payments SET status = 'paid', provider_ref = COALESCE(?, provider_ref), paid_at = CURRENT_TIMESTAMP WHERE id = ?").run(providerRef || null, p.id);
     settle(p);
     broadcastToWorkspace(p.workspace_id, 'payment_paid', { id: p.id, kind: p.kind, ref_id: p.ref_id });
+    // Money arriving is the single event a studio owner most wants in the feed,
+    // and it was the loudest silence in it: this module was mounted without the
+    // notify seam at all, so manual mark-as-paid, Stripe settlement and print
+    // orders alike wrote nothing anyone could see later.
+    try {
+      const who = p.customer_name || p.payer_name || '';
+      notify(p.workspace_id, {
+        type: 'payment',
+        title: `Payment received — ${p.currency_symbol || '$'}${p.amount}`,
+        body: who ? `${who} paid for ${p.kind === 'print_order' ? 'a print order' : 'an invoice'}` : `Paid: ${p.kind}`,
+        url: p.kind === 'invoice' ? '/invoices' : '/studio/store',
+        icon: '💰',
+      });
+    } catch { /* never block settlement */ }
   }
 
   // THE one way an invoice becomes paid manually: writes a ledger row (who/when/how), then

@@ -23,6 +23,7 @@
  */
 
 const createMediaWorker = require('./media-worker');
+const albumModel = require('./album-model');   // canonical album page model (shared with studio-ai)
 const videoEngine = require('./video-engine');
 const videoLuts = require('./video-luts');
 const videoTemplates = require('./video-templates');
@@ -147,6 +148,9 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_ms_assets_project ON ms_assets(project_id);
+    -- Phase 4: workspace + trash scans had no index, so every library load and every
+    -- retention sweep full-scanned the largest media table.
+    CREATE INDEX IF NOT EXISTS idx_ms_assets_ws ON ms_assets(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_ms_projects_ws ON ms_projects(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_ms_scores_asset ON ms_asset_scores(asset_id);
   `);
@@ -159,7 +163,11 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   }
   safeAlter('ALTER TABLE ms_jobs ADD COLUMN lease_until TIMESTAMP'); // worker lease → stale-job reaper (multi-worker scale)
   safeAlter('ALTER TABLE ms_assets ADD COLUMN edits TEXT'); // non-destructive edit params (JSON)
-  safeAlter('ALTER TABLE ms_assets ADD COLUMN deleted_at TIMESTAMP'); // soft-delete → Trash (30-day restore)
+  safeAlter('ALTER TABLE ms_assets ADD COLUMN deleted_at TIMESTAMP'); // soft-delete → Trash (restorable; window from soft-delete.js)
+  // The trash-scan index can only exist once the column does — on a fresh DB the
+  // column arrives via the safeAlter above, so this must run AFTER it, not in the
+  // schema exec (a fresh install crashed on boot when it lived there).
+  db.exec('CREATE INDEX IF NOT EXISTS idx_ms_assets_deleted ON ms_assets(deleted_at)');
   // Video metadata (filled by the worker's ffprobe pass) + proxy/poster for the editor.
   for (const col of ['v_duration_ms INTEGER', 'v_width INTEGER', 'v_height INTEGER', 'v_fps REAL',
     'v_codec TEXT', 'v_has_audio INTEGER', 'proxy_url TEXT', 'poster_url TEXT']) {
@@ -900,17 +908,22 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (storage.isRemote) Promise.resolve(storage.deleteFile(k)).catch(() => {});
     }
   }
-  // Drop anything in Trash past the 30-day window. Cheap; safe to call often.
+  // Drop anything in Trash past the retention window. Cheap; safe to call often.
+  // Phase 3: was 30 days here vs 90 for leads — two bins with different promises.
+  // The window now comes from the shared registry so it cannot drift again. The purge
+  // itself stays local because assets must also be removed from storage, not just the
+  // row (see purgeAsset above).
+  const { RETENTION_DAYS } = require('./soft-delete');
   function purgeExpiredTrash(workspaceId) {
     try {
-      const stale = db.prepare("SELECT * FROM ms_assets WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-30 days')" + (workspaceId ? ' AND workspace_id = ?' : '')).all(...(workspaceId ? [workspaceId] : []));
+      const stale = db.prepare(`SELECT * FROM ms_assets WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-${RETENTION_DAYS} days')` + (workspaceId ? ' AND workspace_id = ?' : '')).all(...(workspaceId ? [workspaceId] : []));
       for (const a of stale) purgeAsset(a);
       return stale.length;
     } catch { return 0; }
   }
   purgeExpiredTrash(); // sweep once on boot
 
-  // DELETE = soft-delete → Trash (restorable for 30 days).
+  // DELETE = soft-delete → Trash (restorable; window from soft-delete.js).
   app.delete('/api/media/assets/:id', auth, (req, res) => {
     try {
       if (!canManage(req)) return res.status(403).json({ error: 'Not allowed' });
@@ -1391,7 +1404,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       workspace_id TEXT NOT NULL,
       project_id TEXT NOT NULL,
       name TEXT DEFAULT 'Untitled reel',
-      source TEXT DEFAULT 'manual',          -- manual | template | ai_draft
+      source TEXT DEFAULT 'manual',          -- manual | template | ai_draft | ai_reel (reel-engine.js)
       template_id TEXT,
       aspect_ratio TEXT DEFAULT '9:16',
       width INTEGER DEFAULT 1080,
@@ -1455,6 +1468,35 @@ Only suggest actions that make sense for the question. If none make sense, retur
     'created_by TEXT', 'updated_at TIMESTAMP']) {
     safeAlter(`ALTER TABLE ms_albums ADD COLUMN ${col}`);
   }
+
+  // Phase 6 backfill: AI-generated albums that only ever got `spec.spreads`.
+  //
+  // studio-ai's generator wrote its layout into the spec blob and created no page
+  // rows, so those albums listed as "0 pages", opened empty, and exported a blank
+  // PDF. The generator now writes real pages; this materialises the ones already
+  // stranded. Additive and idempotent — it only touches albums that have spreads
+  // AND no pages, so re-running it, or running it after a user has edited an
+  // album by hand, changes nothing.
+  try {
+    const stranded = db.prepare(`
+      SELECT a.id, a.spec FROM ms_albums a
+      WHERE NOT EXISTS (SELECT 1 FROM ms_album_pages p WHERE p.album_id = a.id)
+        AND a.spec IS NOT NULL AND a.spec != '' AND a.spec LIKE '%spreads%'
+    `).all();
+    let repaired = 0;
+    const ins = db.prepare('INSERT INTO ms_album_pages (id, album_id, page_no, layout_template, slots) VALUES (?,?,?,?,?)');
+    const fix = db.transaction(() => {
+      for (const a of stranded) {
+        let spec = {}; try { spec = JSON.parse(a.spec); } catch { continue; }
+        const pages = albumModel.pagesFromSpreads(spec.spreads);
+        if (!pages.length) continue;
+        pages.forEach((pg, i) => ins.run(generateId(), a.id, i, pg.layout_template, JSON.stringify(pg.slots)));
+        repaired++;
+      }
+    });
+    fix();
+    if (repaired) console.log(`✅ Rebuilt pages for ${repaired} AI-generated album(s) that had none`);
+  } catch (e) { console.error('Album page backfill skipped:', e.message); }
 
   function getGallery(workspaceId, id) {
     return db.prepare('SELECT * FROM ms_galleries WHERE id = ? AND workspace_id = ?').get(id, workspaceId);
@@ -1822,7 +1864,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
   });
 
   // ── Album builder (manual layout → print-ready PDF) ─────────────────────────
-  const ALBUM_LAYOUTS = { single: 1, 'two-h': 2, 'two-v': 2, three: 3, grid4: 4 };
+  const { ALBUM_LAYOUTS } = albumModel;   // one definition, shared with studio-ai
   function getAlbum(workspaceId, id) { return db.prepare('SELECT * FROM ms_albums WHERE id = ? AND workspace_id = ?').get(id, workspaceId); }
   function shapeAlbum(a) {
     let spec = {}; try { spec = JSON.parse(a.spec || '{}'); } catch {}
@@ -2784,7 +2826,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
 
   // ── Worker: drains ms_jobs → variants + EXIF + advisory CV scores ────────────
   // Pass startWorker:false in tests to drive worker.processOnce() deterministically.
-  const worker = createMediaWorker(db, { uploadsDir, path, fs, generateId, broadcastToWorkspace });
+  const worker = createMediaWorker(db, { uploadsDir, path, fs, generateId, broadcastToWorkspace, notify });
   if (deps.startWorker !== false) worker.start();
 
   console.log('📸 Media Studio module mounted at /api/media');

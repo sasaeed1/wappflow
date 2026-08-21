@@ -123,8 +123,17 @@ check('studio-ai never writes page_count (INSERT + UPDATE clean)', () => {
   assert(!/INSERT INTO ms_albums[^)]*page_count/.test(sai), 'INSERT still writes page_count');
   assert(!/set\.page_count/.test(sai), 'PUT still sets page_count');
 });
-check('studio-ai reads derive page_count live (list + detail)', () =>
-  assert((sai.match(/SELECT COUNT\(\*\) FROM ms_album_pages/g) || []).length >= 2));
+check('page_count is derived live wherever albums are read', () => {
+  // Originally this required studio-ai to derive page_count in two places. Phase 6
+  // removed studio-ai's album read/list routes entirely (they served a second editor
+  // whose page model nothing downstream could read), so the invariant now belongs to
+  // media-studio, the sole reader. What must never come back is a stored page_count
+  // column that can disagree with the actual pages.
+  assert((msd.match(/SELECT COUNT\(\*\) FROM ms_album_pages/g) || []).length >= 1,
+    'album reads no longer derive page_count from the page rows');
+  assert(!/page_count (INTEGER|TEXT)/.test(msd + sai), 'page_count came back as a stored column');
+  assert(!/app\.(get|put)\('\/api\/studio-ai\/albums/.test(sai), 'studio-ai album read/write routes returned');
+});
 check('studio-ai boot assertion guards DDL ownership', () =>
   assert(/ms_albums must be created by media-studio/.test(sai)));
 check('media-studio healing ALTERs for canonical columns present', () =>
@@ -157,8 +166,17 @@ check('server: PUT /api/invoices/:id delegates paid (no direct paid write)', () 
   assert(/wantsPaid/.test(put) && /writeStatus/.test(put), 'delegation logic missing');
   assert(/paymentsApi\.markPaidByInvoice/.test(put), 'no delegate call');
 });
-check('server: paymentsApi captured at mount with logAudit dep', () =>
-  assert(/paymentsApi = require\('\.\/payments'\)/.test(srv) && /logAudit, clientBaseUrl/.test(srv)));
+check('server: paymentsApi captured at mount with its required deps', () => {
+  const mount = srv.slice(srv.indexOf("paymentsApi = require('./payments')"));
+  assert(mount.startsWith("paymentsApi = require('./payments')"), 'payments mount not found');
+  const deps = mount.slice(0, mount.indexOf('});'));
+  // Assert the deps are PRESENT, not that they sit next to each other: the original
+  // check required `logAudit, clientBaseUrl` to be adjacent, so adding `notify`
+  // between them (Phase 5) failed a test about something else entirely.
+  for (const d of ['logAudit', 'clientBaseUrl', 'notify']) {
+    assert(new RegExp(`\\b${d}\\b`).test(deps), `payments mounted without ${d}`);
+  }
+});
 check('web: paymentsAPI.markInvoicePaid exists and invoices page uses it', () => {
   assert(/markInvoicePaid: \(invoiceId, note\)/.test(webApi));
   assert(/paymentsAPI\.markInvoicePaid\(id\)/.test(invPage));

@@ -5,15 +5,19 @@ const { execSync, execFile } = require('child_process');
 const qrcode = require('qrcode');
 
 class WhatsAppService {
-  constructor(db, broadcastToUser, accountId = null, sessionName = undefined) {
+  constructor(db, broadcastToUser, accountId = null, sessionName = undefined, broadcastToWorkspace = null) {
     this.db = db;
     this.broadcastToUser = broadcastToUser || (() => {});
+    // Phase 5: inbound WhatsApp activity used to reach the workspace OWNER only,
+    // so a teammate's dashboard never moved when a message arrived. Everything
+    // here is workspace-visible data, so it fans out to the workspace.
+    this.broadcastToWorkspace = broadcastToWorkspace || null;
     this.accountId = accountId;  // platform_accounts.id for this session
     this.sessionName = sessionName; // LocalAuth clientId (undefined = legacy session)
     this.client = null;
     this.qrCode = null;
     this.qrTimestamp = null; // ms epoch when QR was last refreshed
-    this.status = 'disconnected';
+    this._status = 'disconnected';  // backing field for the status accessor below
     this.isReady = false;
     this.phoneNumber = null;
     this.processedMessages = new Set();
@@ -41,6 +45,36 @@ class WhatsAppService {
   // Multi-tenant correctness: an inbound message must create its lead in the
   // workspace whose connected account received it — NOT "the oldest user".
   // Returns { id, workspace_id } (a user row), or null.
+  // Connection status is an ACCESSOR so that every transition pushes a frame.
+  // Nothing ever broadcast these, which is the only reason the WhatsApp page
+  // polled /status every 2 seconds and settings every 5 — forever, on every
+  // open tab. Assignments elsewhere in this file are unchanged; they now emit.
+  get status() { return this._status; }
+  set status(next) {
+    const prev = this._status;
+    this._status = next;
+    if (prev === undefined || prev === next || !this.broadcastToWorkspace) return;
+    try {
+      const user = this._resolveOwner();
+      if (user && user.workspace_id) {
+        this.broadcastToWorkspace(user.workspace_id, 'whatsapp_status', {
+          account_id: this.accountId || null,
+          status: next,
+          phone: this.phoneNumber || null,
+          has_qr: !!this.qrCode,
+        });
+      }
+    } catch { /* status push is best-effort; never break the session */ }
+  }
+
+  // Fan an inbound-WhatsApp event to the whole workspace when we can, falling
+  // back to the resolved owner if no workspace broadcaster was injected.
+  _emit(user, type, data) {
+    if (!user) return;
+    if (this.broadcastToWorkspace && user.workspace_id) return this.broadcastToWorkspace(user.workspace_id, type, data);
+    this.broadcastToUser(user.id, type, data);
+  }
+
   _resolveOwner() {
     if (this.accountId) {
       try {
@@ -293,7 +327,7 @@ class WhatsAppService {
 
         if (leadCreated) {
           console.log(`🆕 Created new lead: ${customerName}`);
-          this.broadcastToUser(user.id, 'lead_created', { lead });
+          this._emit(user, 'lead_created', { lead });
           this._maybeAutoAnalyze(lead, workspaceId);
         }
 
@@ -380,7 +414,7 @@ class WhatsAppService {
         // Retrieve the saved message to include correct media_type/media_url in broadcast
         let savedMsg;
         try { savedMsg = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId); } catch {}
-        this.broadcastToUser(user.id, 'new_message', {
+        this._emit(user, 'new_message', {
           lead_id: lead.id,
           message: savedMsg || { id: msgId, body: message.body || '[Media]', from_me: 0, lead_id: lead.id }
         });
@@ -560,7 +594,7 @@ class WhatsAppService {
         // Push updated lead so UI shows intelligence badges without manual refresh
         const updated = this.db.prepare('SELECT * FROM leads WHERE id = ?').get(lead.id);
         const user = this.db.prepare(`SELECT u.id FROM users u WHERE u.workspace_id = ? LIMIT 1`).get(workspaceId);
-        if (user && updated) this.broadcastToUser(user.id, 'lead_updated', { lead: updated });
+        if (user && updated) this._emit(user, 'lead_updated', { lead: updated });
       } catch (e) {
         console.log('⚠️ Auto-analyze skipped:', e.message);
       }
@@ -878,7 +912,7 @@ class WhatsAppService {
             ).run(leadId, user.id, user.workspace_id, name, customerPhone, newMsgs[0].body || '[Media]', newMsgs.length);
             lead = this.db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
             leadsCreated++;
-            this.broadcastToUser(user.id, 'lead_created', { lead });
+            this._emit(user, 'lead_created', { lead });
             console.log(`🆕 Missed lead created: ${name}`);
           }
 
@@ -920,7 +954,7 @@ class WhatsAppService {
 
       if (totalImported > 0 || leadsCreated > 0) {
         console.log(`✅ Missed-message sync complete: ${totalImported} messages + ${leadsCreated} new leads imported`);
-        this.broadcastToUser(user.id, 'missed_sync_complete', { totalImported, leadsCreated });
+        this._emit(user, 'missed_sync_complete', { totalImported, leadsCreated });
       } else {
         console.log('✅ Missed-message sync: nothing new to import');
       }
@@ -958,9 +992,10 @@ class WhatsAppService {
 
 // ── Multi-account WhatsApp manager ─────────────────────────────────────────────
 class WhatsAppManager {
-  constructor(db, broadcastToUser) {
+  constructor(db, broadcastToUser, broadcastToWorkspace = null) {
     this.db = db;
     this.broadcastToUser = broadcastToUser;
+    this.broadcastToWorkspace = broadcastToWorkspace;
     this.instances = new Map(); // accountId -> WhatsAppService
   }
 
@@ -993,7 +1028,7 @@ class WhatsAppManager {
 
   _startLegacy() {
     if (this.instances.has('__legacy__')) return this.instances.get('__legacy__');
-    const service = new WhatsAppService(this.db, this.broadcastToUser, null, undefined);
+    const service = new WhatsAppService(this.db, this.broadcastToUser, null, undefined, this.broadcastToWorkspace);
     this.instances.set('__legacy__', service);
     service.initialize();
     return service;
@@ -1007,7 +1042,7 @@ class WhatsAppManager {
     // collide on Chromium ("browser is already running for .../session").
     // Each account now gets its own isolated `session-acct-<id>` profile.
     const sessionName = `acct-${accountId}`;
-    const service = new WhatsAppService(this.db, this.broadcastToUser, accountId, sessionName);
+    const service = new WhatsAppService(this.db, this.broadcastToUser, accountId, sessionName, this.broadcastToWorkspace);
     this.instances.set(accountId, service);
     service.initialize();
     return service;

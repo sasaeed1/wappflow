@@ -40,6 +40,19 @@ const db = new Database(require('path').join(DATA_DIR, 'wappflow.db'));
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
 
+// Phase 4 — concurrency pragmas. WAL alone was set, which is why a busy write could
+// still surface as an outright SQLITE_BUSY error to the user: without busy_timeout,
+// SQLite gives up on a locked database IMMEDIATELY rather than waiting. This app runs
+// a WhatsApp worker writing messages while HTTP requests read and write, so contention
+// is normal, not exceptional.
+//   busy_timeout — wait up to 5s for a lock instead of failing instantly.
+//   synchronous=NORMAL — the standard companion to WAL: durable across app crashes,
+//     and only at risk in an OS-level crash/power loss, in exchange for far fewer fsyncs.
+//   foreign_keys — enforce the relationships we now depend on for cascade/guard logic.
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
+db.pragma('foreign_keys = ON');
+
 // Upload directories
 // Persistent data directories (Railway volume: /data, local: __dirname)
 const DATA_ROOT = process.env.NODE_ENV === 'production' ? '/data' : __dirname;
@@ -617,6 +630,21 @@ function safeAlter(sql) {
 
 safeAlter('ALTER TABLE leads ADD COLUMN is_deleted INTEGER DEFAULT 0');
 safeAlter('ALTER TABLE leads ADD COLUMN deleted_at TIMESTAMP');
+
+// Phase 3 — one recycle bin for every module. Adds is_deleted/deleted_at/deleted_by
+// to invoices, contracts, bookings and members so they stop being hard-deleted.
+// Additive + idempotent, so it is safe on every boot against the live DB.
+const softDeleteLib = require('./soft-delete');
+softDeleteLib.installSchema(db, safeAlter);
+
+// Phase 6 — one busy-calendar shared by public booking and internal meetings.
+const availability = require('./availability');
+
+// Phase 4 — opt-in server-side paging for the core list endpoints.
+const pagination = require('./pagination');
+// Phase 4 — saved views move out of per-browser localStorage into the DB.
+const savedViews = require('./saved-views');
+savedViews.installSchema(db);
 // Won leads can be promoted to "clients": hidden from the Leads list (but kept
 // in chat + analytics). Additive flag — never deletes, fully reversible.
 safeAlter('ALTER TABLE leads ADD COLUMN is_client INTEGER DEFAULT 0');
@@ -820,6 +848,20 @@ for (const ix of [
   'CREATE INDEX IF NOT EXISTS idx_platform_accounts_ws ON platform_accounts(workspace_id)',
   'CREATE INDEX IF NOT EXISTS idx_workspace_members_ws ON workspace_members(workspace_id)',
   'CREATE INDEX IF NOT EXISTS idx_chat_messages_channel ON chat_messages(channel_id)',
+
+  // ── Phase 4: hot-path indexes ────────────────────────────────────────────
+  // wa_message_id is looked up on EVERY inbound WhatsApp message to dedupe it
+  // (SELECT id FROM messages WHERE wa_message_id = ?). With no index that is a
+  // full scan of the largest table in the product, on the busiest code path there
+  // is — and it gets slower with every message ever received.
+  'CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON messages(wa_message_id)',
+  // Message history is always read per-lead, newest first.
+  'CREATE INDEX IF NOT EXISTS idx_messages_lead_ts ON messages(lead_id, timestamp DESC)',
+  // The bin sweep and every trash list filter on these.
+  'CREATE INDEX IF NOT EXISTS idx_leads_ws_deleted ON leads(workspace_id, is_deleted)',
+  'CREATE INDEX IF NOT EXISTS idx_invoices_ws_deleted ON invoices(workspace_id, is_deleted)',
+  // (bookings/cs_documents/ms_assets indexes live in their owning modules —
+  //  they mount after this list runs, so a fresh install has no table yet here.)
 ]) { try { db.exec(ix); } catch (e) { console.error('Index skipped:', e.message); } }
 
 // ── Migrate password_hash → password for databases created with old schema ──
@@ -895,14 +937,59 @@ app.get('/api/events', auth, (req, res) => {
 
 function broadcastToUser(userId, type, data) {
   const clients = sseClients.get(userId) || [];
-  const payload = `data: ${JSON.stringify({ type, ...data })}\n\n`;
+  // `type` LAST: it is the event name consumers switch on, and a payload that
+  // happens to carry its own `type` key must not be able to rename the event.
+  // notify() did exactly that — its rows carry a category (`lead`, `booking`,
+  // `call`…) under `type`, so every notification frame went out named after the
+  // category and the 'notification' event nobody could subscribe to never
+  // existed on the wire.
+  const payload = `data: ${JSON.stringify({ ...data, type })}\n\n`;
   clients.forEach(r => { try { r.write(payload); } catch {} });
 }
 
+// Member ids per workspace, cached briefly. broadcastToWorkspace ran this SELECT
+// on EVERY frame — including once per ffmpeg progress tick during a video export
+// (backend-perf-6). Membership changes are rare and a few seconds of staleness
+// only delays a live update for a brand-new member, so a short TTL is the whole
+// fix; invalidateWorkspaceMembers() makes even that exact on member mutations.
+const memberCache = new Map(); // workspaceId -> { ids, at }
+const MEMBER_TTL_MS = 15000;
+function workspaceMemberIds(workspaceId) {
+  const hit = memberCache.get(workspaceId);
+  const now = Date.now();
+  if (hit && now - hit.at < MEMBER_TTL_MS) return hit.ids;
+  const ids = db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL')
+    .all(workspaceId).map(m => m.user_id);
+  memberCache.set(workspaceId, { ids, at: now });
+  return ids;
+}
+function invalidateWorkspaceMembers(workspaceId) {
+  if (workspaceId) memberCache.delete(workspaceId); else memberCache.clear();
+}
+
 function broadcastToWorkspace(workspaceId, type, data) {
-  // Get all user_ids in this workspace
-  const members = db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL').all(workspaceId);
-  members.forEach(m => broadcastToUser(m.user_id, type, data));
+  for (const userId of workspaceMemberIds(workspaceId)) broadcastToUser(userId, type, data);
+}
+
+// Channel-scoped fan-out. comms.js owns channel membership, so this delegates
+// there once comms mounts; until then it is a no-op rather than a workspace-wide
+// send, because the events routed through it are the private ones.
+function broadcastToChannel(channelId, workspaceId, type, data) {
+  if (commsApi && commsApi.broadcastToChannel) return commsApi.broadcastToChannel(channelId, workspaceId, type, data);
+}
+
+// Can this user see this channel at all?
+//
+// The legacy chat routes below (list/read/send/react) predate comms.js and
+// carried NO authorization: /api/chat/channels/:channelId/messages read and
+// wrote by channel id alone, with no workspace clause — so any authenticated
+// user could read or post into ANY workspace's channel. comms.js already had
+// the correct predicate; these routes simply never called it.
+function canSeeChannel(channelId, userId, workspaceId) {
+  if (commsApi && commsApi.canSee) return commsApi.canSee(channelId, userId, workspaceId);
+  // comms always mounts; if it somehow has not, still refuse cross-tenant access.
+  const c = db.prepare('SELECT workspace_id FROM chat_channels WHERE id = ?').get(channelId);
+  return !!c && c.workspace_id === workspaceId;
 }
 
 // Presence source for Communications 2.0 — user ids with a live SSE connection.
@@ -947,7 +1034,13 @@ function notify(workspaceId, { type, title, body, url, icon, userId } = {}) {
     const id = generateId();
     db.prepare('INSERT INTO notifications (id, workspace_id, user_id, type, title, body, url, icon) VALUES (?,?,?,?,?,?,?,?)')
       .run(id, workspaceId, userId || null, type || 'info', title, body || '', url || '', icon || '');
-    broadcastToWorkspace(workspaceId, 'notification', { id, type: type || 'info', title, body: body || '', url: url || '', icon: icon || '', created_at: new Date().toISOString() });
+    // The category travels as `kind`, not `type`: `type` is the SSE event name.
+    const frame = { id, kind: type || 'info', title, body: body || '', url: url || '', icon: icon || '', created_at: new Date().toISOString() };
+    // A user-targeted row goes to THAT user only. userId used to scope the DB
+    // insert while the live frame still went workspace-wide, so an incoming-call
+    // ring or a private alert was pushed to everyone's stream (Phase 5 security).
+    if (userId) broadcastToUser(userId, 'notification', frame);
+    else broadcastToWorkspace(workspaceId, 'notification', frame);
   } catch (e) { /* notifications are best-effort, never block the action */ }
 }
 
@@ -1056,7 +1149,7 @@ function addContactHistory(leadId, userId, type, description, metadata = null) {
 // ════════════════════════════════════════════════════════════
 
 const { WhatsAppService, WhatsAppManager } = require('./whatsapp-service');
-const whatsappService = new WhatsAppManager(db, broadcastToUser);
+const whatsappService = new WhatsAppManager(db, broadcastToUser, broadcastToWorkspace);
 
 // Rate-limit map for lead message sync — prevents flooding Puppeteer with
 // repeated fetchHistory calls when a user opens the same lead multiple times.
@@ -1186,6 +1279,7 @@ app.post('/api/auth/accept-invite', async (req, res) => {
     // Activate workspace member
     db.prepare('UPDATE workspace_members SET user_id = ?, full_name = ?, invite_status = ?, invite_token = NULL WHERE id = ?')
       .run(userId, full_name || member.invite_email, 'active', member.id);
+    invalidateWorkspaceMembers(member.workspace_id);
     db.prepare('UPDATE users SET workspace_id = ? WHERE id = ?').run(member.workspace_id, userId);
 
     const token2 = jwt.sign({ userId }, JWT_SECRET);
@@ -1511,6 +1605,9 @@ app.post('/api/leads/bulk-assign', auth, (req, res) => {
     const stmt = db.prepare('UPDATE leads SET assigned_to = ? WHERE id = ? AND workspace_id = ?');
     const updateMany = db.transaction((ids) => ids.forEach(id => stmt.run(assigned_to, id, req.workspaceId)));
     updateMany(lead_ids);
+    // Phase 3: reassignment changes who can see a lead, so it belongs in the audit
+    // trail as much as any single-record status change does.
+    logAudit(req.workspaceId, req.userId, 'bulk_assign', 'leads', null, { count: lead_ids.length, assigned_to, lead_ids });
     res.json({ updated: lead_ids.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1562,6 +1659,17 @@ app.get('/api/leads', auth, (req, res) => {
     if (platform && platform !== 'all') { query += ' AND platform_source = ?'; params.push(platform); }
     if (account_id) { query += ' AND platform_account_id = ?'; params.push(account_id); }
     query += ' ORDER BY last_message_at DESC';
+
+    // Phase 4: opt-in paging. Without ?limit the response shape and contents are
+    // byte-for-byte what they were, because the current UI filters client-side and a
+    // silent cap would make it filter within a subset and show confident wrong answers.
+    const page = pagination.pageParams(req);
+    let total = null;
+    if (page) {
+      total = db.prepare(pagination.toCountSql(query)).get(...params)?.c ?? 0;
+      query += ' LIMIT ? OFFSET ?';
+      params.push(page.limit, page.offset);
+    }
     const leads = attachTags(db.prepare(query).all(...params), req.workspaceId);
 
     // Attach assignee name from workspace_members
@@ -1583,7 +1691,11 @@ app.get('/api/leads', auth, (req, res) => {
         account_display_name: acc?.nickname || acc?.account_name || null,
       };
     });
-    res.json({ leads: enriched });
+    // `leads` stays the same key so every existing caller is untouched; paging
+    // metadata is additive and only present when it was asked for.
+    res.json(page
+      ? { leads: enriched, total, limit: page.limit, offset: page.offset, hasMore: page.offset + enriched.length < total }
+      : { leads: enriched });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1806,7 +1918,7 @@ app.get('/api/leads/:leadId/history', auth, (req, res) => {
 app.get('/api/leads/:leadId/invoices', auth, (req, res) => {
   try {
     if (!getScopedLead(req, req.params.leadId)) return res.status(404).json({ error: 'Lead not found' });
-    const invoices = db.prepare(`SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC`).all(req.params.leadId, req.workspaceId, req.workspaceOwnerId);
+    const invoices = db.prepare(`SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC`).all(req.params.leadId, req.workspaceId, req.workspaceOwnerId);
     res.json({ invoices });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1876,7 +1988,7 @@ app.get('/api/leads/:id', auth, (req, res) => {
     try { history = db.prepare('SELECT * FROM contact_history WHERE lead_id = ? ORDER BY created_at DESC LIMIT 50').all(req.params.id); } catch {}
 
     let invoices = [];
-    try { invoices = db.prepare('SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.params.id, req.workspaceId, req.workspaceOwnerId).map(parseInvoice); } catch {}
+    try { invoices = db.prepare('SELECT * FROM invoices WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC').all(req.params.id, req.workspaceId, req.workspaceOwnerId).map(parseInvoice); } catch {}
 
     let emailWorkflows = [];
     try { emailWorkflows = db.prepare('SELECT * FROM email_workflows WHERE lead_id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.params.id, req.workspaceId, req.workspaceOwnerId); } catch {}
@@ -2006,18 +2118,33 @@ app.delete('/api/leads/trash', auth, (req, res) => {
       let q = 'SELECT id FROM leads WHERE workspace_id = ? AND is_deleted = 1';
       const params = [req.workspaceId];
       if (!req.canViewAllLeads) { q += ' AND assigned_to = ?'; params.push(req.userId); }
-      const ids = db.prepare(q).all(...params).map(r => r.id);
-      if (!ids.length) return 0;
+      const all = db.prepare(q).all(...params).map(r => r.id);
+      if (!all.length) return { deleted: 0, skipped: [] };
+
+      // Phase 3: the same GUARD as the single permanent-delete. This loop used to
+      // include 'invoices', so emptying the trash destroyed financial records in bulk
+      // — the exact thing the single-delete guard now refuses to do. Leads with live
+      // attachments are SKIPPED and reported rather than silently purged.
+      const ids = [], skipped = [];
+      for (const id of all) {
+        const att = softDeleteLib.attachmentsForLead(db, id, req.workspaceId);
+        if (att.blocked) skipped.push({ id, attachments: att.items });
+        else ids.push(id);
+      }
+      if (!ids.length) return { deleted: 0, skipped };
+
       const ph = ids.map(() => '?').join(',');
-      for (const table of ['notes', 'reminders', 'messages', 'contact_history', 'invoices']) {
+      for (const table of ['notes', 'reminders', 'messages', 'contact_history']) {
         db.prepare(`DELETE FROM ${table} WHERE lead_id IN (${ph})`).run(...ids);
       }
       db.prepare(`DELETE FROM leads WHERE id IN (${ph}) AND workspace_id = ?`).run(...ids, req.workspaceId);
-      return ids.length;
+      return { deleted: ids.length, skipped };
     });
-    const deleted = emptyTrash();
-    logAudit(req.workspaceId, req.userId, 'leads_empty_trash', 'workspace', req.workspaceId, { deleted });
-    res.json({ deleted });
+    const { deleted, skipped } = emptyTrash();
+    logAudit(req.workspaceId, req.userId, 'leads_empty_trash', 'workspace', req.workspaceId, { deleted, skipped: skipped.length });
+    // `skipped` lets the UI say WHY the bin is not empty afterwards, instead of the
+    // user clicking "empty" and silently still seeing rows.
+    res.json({ deleted, skipped });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2034,6 +2161,9 @@ app.post('/api/leads/:id/restore', auth, (req, res) => {
   try {
     db.prepare(`UPDATE leads SET is_deleted = 0, deleted_at = NULL WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+    // Delete broadcast lead_deleted; restore said nothing, so a restored lead
+    // stayed invisible on every other open session until a manual refetch.
+    if (lead) broadcastToWorkspace(req.workspaceId, 'lead_restored', { lead });
     res.json(lead);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2042,12 +2172,24 @@ app.delete('/api/leads/:id/permanent', auth, (req, res) => {
   try {
     // Guard the lead BEFORE the cascade so child rows are never deleted cross-tenant.
     if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
+
+    // Phase 3 GUARD (owner decision): refuse rather than cascade. This endpoint used
+    // to run `DELETE FROM invoices WHERE lead_id` — destroying financial records as a
+    // side effect of tidying a pipeline, with no undo. Now we say what is attached and
+    // let the user decide.
+    const attached = softDeleteLib.attachmentsForLead(db, req.params.id, req.workspaceId);
+    if (attached.blocked) {
+      return res.status(409).json({ error: attached.message, attachments: attached.items });
+    }
+
+    // Only conversation-scoped children cascade — they have no meaning without the
+    // lead and no independent value to restore.
     db.prepare('DELETE FROM notes WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM reminders WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM messages WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM contact_history WHERE lead_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM invoices WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM leads WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
+    logAudit(req.workspaceId, req.userId, 'permanent_delete', 'leads', req.params.id, {});
     res.json({ message: 'Permanently deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2131,7 +2273,10 @@ app.post('/api/leads/merge', auth, (req, res) => {
     try { addContactHistory(primary_id, req.userId, 'merge', `Merged ${dups.length} duplicate lead${dups.length > 1 ? 's' : ''} (${dups.map(d => d.customer_name || 'Unknown').join(', ')}) into this contact`); } catch {}
     logAudit(req.workspaceId, req.userId, 'merge', 'lead', primary_id, { merged: dups.map(d => d.id) });
     dups.forEach(d => broadcastToWorkspace(req.workspaceId, 'lead_deleted', { id: d.id }));
-    broadcastToWorkspace(req.workspaceId, 'lead_updated', { id: primary_id });
+    // Every other lead_updated site sends the full row; this one sent { id }
+    // alone, so any consumer reading data.lead silently skipped merges.
+    const mergedLead = db.prepare('SELECT * FROM leads WHERE id = ?').get(primary_id);
+    broadcastToWorkspace(req.workspaceId, 'lead_updated', { lead: mergedLead, id: primary_id });
 
     const updated = db.prepare('SELECT * FROM leads WHERE id = ?').get(primary_id);
     res.json({ message: `Merged ${dups.length} lead${dups.length > 1 ? 's' : ''}`, lead: updated, merged: dups.length });
@@ -2277,8 +2422,37 @@ function parseInvoice(inv) {
 
 app.get('/api/invoices', auth, (req, res) => {
   try {
-    const invoices = db.prepare('SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) ORDER BY created_at DESC').all(req.workspaceId, req.workspaceOwnerId).map(parseInvoice);
+    const sql = 'SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC';
+    const params = [req.workspaceId, req.workspaceOwnerId];
+    const page = pagination.pageParams(req);
+    if (!page) return res.json({ invoices: db.prepare(sql).all(...params).map(parseInvoice) });
+    const p = pagination.paginate(db, { sql, countSql: pagination.toCountSql(sql), params, page });
+    res.json({ invoices: p.items.map(parseInvoice), total: p.total, limit: p.limit, offset: p.offset, hasMore: p.hasMore });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// The invoice bin. Soft-deleted invoices are never swept (owner decision: a financial
+// record must not vanish on a timer), so this list is the only way back to them.
+app.get('/api/invoices/bin', auth, (req, res) => {
+  try {
+    const invoices = db.prepare(
+      `SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))
+       AND is_deleted = 1 ORDER BY deleted_at DESC`
+    ).all(req.workspaceId, req.workspaceOwnerId).map(parseInvoice);
     res.json({ invoices });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/invoices/:id/restore', auth, (req, res) => {
+  try {
+    const r = db.prepare(
+      `UPDATE invoices SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL
+       WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`
+    ).run(req.params.id, req.workspaceId, req.workspaceOwnerId);
+    if (!r.changes) return res.status(404).json({ error: 'Invoice not found' });
+    logAudit(req.workspaceId, req.userId, 'restore', 'invoices', req.params.id, {});
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+    res.json({ invoice: parseInvoice(invoice) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2355,8 +2529,16 @@ app.put('/api/invoices/:id', auth, (req, res) => {
 
 app.delete('/api/invoices/:id', auth, (req, res) => {
   try {
-    db.prepare('DELETE FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').run(req.params.id, req.workspaceId, req.workspaceOwnerId);
-    res.json({ message: 'Deleted' });
+    // Phase 3: soft-delete. An invoice is a financial record — it goes to the bin and
+    // stays restorable indefinitely (the retention sweep skips invoices by design).
+    // Keeps the legacy dual-scope predicate so pre-workspace rows still match.
+    const r = db.prepare(
+      `UPDATE invoices SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, deleted_by = ?
+       WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`
+    ).run(req.userId, req.params.id, req.workspaceId, req.workspaceOwnerId);
+    if (!r.changes) return res.status(404).json({ error: 'Invoice not found' });
+    logAudit(req.workspaceId, req.userId, 'soft_delete', 'invoices', req.params.id, {});
+    res.json({ message: 'Moved to bin' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2944,6 +3126,52 @@ app.get('/api/notifications', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/notifications/summary — COUNTS ONLY, for the shell badge (Phase 4).
+//
+// The badge previously called leadsAPI.getAll(null) every 60 seconds on every page,
+// pulling the entire leads table across the wire — for every user, forever — purely to
+// count how many arrived today. This returns three integers instead, and each one is
+// an indexed COUNT rather than a table transfer.
+app.get('/api/notifications/summary', auth, (req, res) => {
+  try {
+    const scope = req.canViewAllLeads ? '' : ' AND assigned_to = ?';
+    const args = req.canViewAllLeads ? [req.workspaceId] : [req.workspaceId, req.userId];
+    const todayLeads = db.prepare(
+      `SELECT COUNT(*) c FROM leads
+       WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+       AND date(created_at) = date('now')${scope}`
+    ).get(...args).c;
+    const unread = db.prepare(
+      `SELECT COUNT(*) c FROM notifications WHERE workspace_id = ? AND (user_id IS NULL OR user_id = ?) AND (is_read = 0 OR is_read IS NULL)`
+    ).get(req.workspaceId, req.userId).c;
+    let reminders = 0;
+    try {
+      reminders = db.prepare(
+        `SELECT COUNT(*) c FROM reminders WHERE user_id = ? AND (is_done = 0 OR is_done IS NULL)
+         AND datetime(COALESCE(due_date, reminder_date)) <= datetime('now', '+24 hours')`
+      ).get(req.userId).c;
+    } catch { /* reminders schema varies across older DBs */ }
+    // Unread team messages in channels this user belongs to. The count existed
+    // (GET /api/comms/unread) but only the chat page itself ever asked for it, so
+    // team messages were invisible from anywhere else in the product (comms-5).
+    //
+    // DELIBERATE: this keys off chat_members, so a DM or private channel counts
+    // from the moment it is created (the row is written then — exactly the case
+    // where a badge matters), while a PUBLIC channel starts counting only after
+    // you have opened it once. Otherwise every new hire would land on a badge
+    // showing the entire history of #general.
+    let comms = 0;
+    try {
+      comms = db.prepare(
+        `SELECT COUNT(*) c FROM chat_messages m
+         JOIN chat_members mem ON mem.channel_id = m.channel_id AND mem.user_id = ?
+         WHERE m.user_id != ? AND (mem.last_read_at IS NULL OR m.created_at > mem.last_read_at)`
+      ).get(req.userId, req.userId).c;
+    } catch { /* comms tables absent on older DBs */ }
+    res.json({ todayLeads, reminders, unread, comms, total: todayLeads + reminders + unread + comms });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/notifications/read-all — clear the unread badge
 app.post('/api/notifications/read-all', auth, (req, res) => {
   try {
@@ -2994,8 +3222,11 @@ app.get('/api/chat/channels', auth, (req, res) => {
         (SELECT COUNT(*) FROM chat_messages WHERE channel_id = c.id) as message_count,
         (SELECT body FROM chat_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
         (SELECT created_at FROM chat_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_at
-      FROM chat_channels c WHERE c.workspace_id = ? ORDER BY c.name
-    `).all(workspaceId);
+      FROM chat_channels c
+      WHERE c.workspace_id = ?
+        AND (c.is_private = 0 OR EXISTS (SELECT 1 FROM chat_members m WHERE m.channel_id = c.id AND m.user_id = ?))
+      ORDER BY c.name
+    `).all(workspaceId, req.userId);
     res.json({ channels });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3009,6 +3240,9 @@ app.post('/api/chat/channels', auth, (req, res) => {
     const id = require('crypto').randomUUID();
     db.prepare('INSERT INTO chat_channels (id, workspace_id, name, description, is_private, created_by) VALUES (?, ?, ?, ?, ?, ?)')
       .run(id, workspaceId, name.toLowerCase().replace(/\s+/g, '-'), description || '', is_private ? 1 : 0, req.userId);
+    // A private channel needs explicit membership to be visible or to receive
+    // real-time frames; without this its own creator could not see it.
+    try { db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id) VALUES (?, ?)').run(id, req.userId); } catch {}
     const channel = db.prepare('SELECT * FROM chat_channels WHERE id = ?').get(id);
     res.json({ channel });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3026,6 +3260,8 @@ app.delete('/api/chat/channels/:id', auth, (req, res) => {
 // GET /api/chat/channels/:id/messages
 app.get('/api/chat/channels/:channelId/messages', auth, (req, res) => {
   try {
+    // 404 (not 403) so a probe cannot distinguish "exists elsewhere" from "no such channel".
+    if (!canSeeChannel(req.params.channelId, req.userId, req.workspaceId)) return res.status(404).json({ error: 'Channel not found' });
     const { limit = 50, before } = req.query;
     let query = 'SELECT m.*, (SELECT json_group_array(json_object(\'emoji\', r.emoji, \'user_id\', r.user_id)) FROM chat_reactions r WHERE r.message_id = m.id) as reactions FROM chat_messages m WHERE m.channel_id = ?';
     const params = [req.params.channelId];
@@ -3044,6 +3280,7 @@ app.get('/api/chat/channels/:channelId/messages', auth, (req, res) => {
 // POST /api/chat/channels/:channelId/messages
 app.post('/api/chat/channels/:channelId/messages', auth, (req, res) => {
   try {
+    if (!canSeeChannel(req.params.channelId, req.userId, req.workspaceId)) return res.status(404).json({ error: 'Channel not found' });
     const { body, reply_to } = req.body;
     if (!body?.trim()) return res.status(400).json({ error: 'Message body required' });
     const user = db.prepare('SELECT business_name, email FROM users WHERE id = ?').get(req.userId);
@@ -3085,7 +3322,10 @@ app.delete('/api/chat/messages/:id', auth, (req, res) => {
     const m = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
     db.prepare('DELETE FROM chat_messages WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
     try { db.prepare('DELETE FROM chat_pins WHERE message_id = ?').run(req.params.id); } catch {}
-    if (m) broadcastToWorkspace(req.workspaceId, 'chat_delete', { channel_id: m.channel_id, message_id: req.params.id });
+    // Channel-scoped: see comms.broadcastToChannel — private/DM events must not
+    // reach the whole workspace. Falls back to workspace-wide only if comms is
+    // somehow unmounted (it always mounts in practice).
+    if (m) broadcastToChannel(m.channel_id, req.workspaceId, 'chat_delete', { channel_id: m.channel_id, message_id: req.params.id });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3095,6 +3335,8 @@ app.post('/api/chat/messages/:id/react', auth, (req, res) => {
   try {
     const { emoji } = req.body;
     if (!emoji) return res.status(400).json({ error: 'Emoji required' });
+    const target = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ?').get(req.params.id);
+    if (!target || !canSeeChannel(target.channel_id, req.userId, req.workspaceId)) return res.status(404).json({ error: 'Message not found' });
     const id = require('crypto').randomUUID();
     // Toggle: if exists, delete; else insert
     const existing = db.prepare('SELECT id FROM chat_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').get(req.params.id, req.userId, emoji);
@@ -3105,7 +3347,7 @@ app.post('/api/chat/messages/:id/react', auth, (req, res) => {
     }
     const reactions = db.prepare('SELECT emoji, user_id FROM chat_reactions WHERE message_id = ?').all(req.params.id);
     const mc = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ?').get(req.params.id);
-    if (mc) broadcastToWorkspace(req.workspaceId, 'chat_reaction', { channel_id: mc.channel_id, message_id: req.params.id, reactions });
+    if (mc) broadcastToChannel(mc.channel_id, req.workspaceId, 'chat_reaction', { channel_id: mc.channel_id, message_id: req.params.id, reactions });
     res.json({ reactions });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3171,6 +3413,7 @@ app.post('/api/workspace/invite', auth, async (req, res) => {
       // Add existing user to workspace
       db.prepare(`INSERT INTO workspace_members (id, workspace_id, user_id, role, full_name, invite_email, invite_status) VALUES (?, ?, ?, ?, ?, ?, 'active')`)
         .run(memberId, req.workspaceId, existingUser.id, role, full_name || email, email);
+      invalidateWorkspaceMembers(req.workspaceId);
       db.prepare('UPDATE users SET workspace_id = ? WHERE id = ?').run(req.workspaceId, existingUser.id);
     } else {
       // Create pending invite
@@ -3279,7 +3522,18 @@ app.delete('/api/workspace/members/:id', auth, (req, res) => {
     if (!member) return res.status(404).json({ error: 'Member not found' });
     if (member.role === 'super_admin') return res.status(403).json({ error: 'Cannot remove workspace owner' });
     if (member.user_id === req.userId) return res.status(400).json({ error: 'Cannot remove yourself' });
+    // Phase 3 DELIBERATELY LEAVES THIS A HARD DELETE. workspace_members is an AUTH
+    // table — the auth middleware resolves role and permissions from it on every
+    // request, and ~10 other paths read it for invites, ownership and scoping.
+    // Soft-deleting here would mean a removed member keeps authenticating and keeps
+    // their permissions unless every one of those reads filters is_deleted, and
+    // missing a single one is a security hole, not a cosmetic bug.
+    // "Removed" must mean removed immediately; recovery is a re-invite.
     db.prepare('DELETE FROM workspace_members WHERE id = ?').run(req.params.id);
+    invalidateWorkspaceMembers(req.workspaceId);
+    logAudit(req.workspaceId, req.userId, 'member_removed', 'workspace_members', req.params.id, {
+      email: member.invite_email || null, role: member.role,
+    });
     // Reset user's workspace to null if they're removed
     if (member.user_id) {
       db.prepare('UPDATE users SET workspace_id = NULL WHERE id = ?').run(member.user_id);
@@ -3654,13 +3908,17 @@ AND r.reminder_date >= datetime(?, '-2 minutes')
   }
 });
 
-// Runs every day at midnight — cleans up 90-day old trash
+// Runs every day at midnight — sweeps every registered bin past its window.
+// One job for every module now, rather than per-table cleanups that drifted apart.
+// Invoices are registered with no retention window, so this never touches them.
 cron.schedule('0 0 * * *', () => {
   try {
-    const result = db.prepare(`
-      DELETE FROM leads WHERE is_deleted = 1 AND deleted_at < datetime('now', '-90 days')
-    `).run();
-    if (result.changes > 0) console.log(`🗑️ Auto-cleanup: removed ${result.changes} expired trash leads`);
+    const purged = softDeleteLib.purgeExpired(db);
+    const total = Object.values(purged).reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      console.log(`🗑️ Auto-cleanup: purged ${total} expired rows —`,
+        Object.entries(purged).map(([t, n]) => `${t}:${n}`).join(' '));
+    }
   } catch (e) {
     console.error('Cron cleanup error:', e.message);
   }
@@ -4836,8 +5094,12 @@ app.post('/api/webhooks/instagram', (req, res) => {
           `).run(leadId, account.workspace_id, account.workspace_id, `Instagram User`, senderId, text.slice(0, 200), account.id, ts.toISOString(), ts.toISOString());
           lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
 
-          const wsClients = sseClients.get(account.workspace_id) || [];
-          wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+          // sseClients is keyed by USER id, so this raw write to
+          // sseClients.get(workspace_id) reached nobody except on legacy installs
+          // where the two ids happened to coincide — social/website leads never
+          // appeared live. One canonical name too: 'lead_created' (the dashboard
+          // already handles it; 'new_lead' was the same mutation under a second name).
+          broadcastToWorkspace(account.workspace_id, 'lead_created', { lead });
           notify(account.workspace_id, { type: 'lead', title: 'New Instagram lead', body: `${lead.customer_name || 'Instagram User'} messaged you`, url: `/leads/${lead.id}`, icon: '📸' });
         }
 
@@ -4894,8 +5156,12 @@ app.post('/api/webhooks/facebook', (req, res) => {
           `).run(leadId, account.workspace_id, account.workspace_id, `Facebook User`, senderId, text.slice(0, 200), account.id, ts.toISOString(), ts.toISOString());
           lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
 
-          const wsClients = sseClients.get(account.workspace_id) || [];
-          wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+          // sseClients is keyed by USER id, so this raw write to
+          // sseClients.get(workspace_id) reached nobody except on legacy installs
+          // where the two ids happened to coincide — social/website leads never
+          // appeared live. One canonical name too: 'lead_created' (the dashboard
+          // already handles it; 'new_lead' was the same mutation under a second name).
+          broadcastToWorkspace(account.workspace_id, 'lead_created', { lead });
           notify(account.workspace_id, { type: 'lead', title: 'New Facebook lead', body: `${lead.customer_name || 'Facebook User'} messaged you`, url: `/leads/${lead.id}`, icon: '💬' });
         }
 
@@ -4944,8 +5210,12 @@ app.post('/api/website-form/:formToken/submit', (req, res) => {
     }
 
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
-    const wsClients = sseClients.get(account.workspace_id) || [];
-    wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+    // sseClients is keyed by USER id, so this raw write to
+    // sseClients.get(workspace_id) reached nobody except on legacy installs
+    // where the two ids happened to coincide — social/website leads never
+    // appeared live. One canonical name too: 'lead_created' (the dashboard
+    // already handles it; 'new_lead' was the same mutation under a second name).
+    broadcastToWorkspace(account.workspace_id, 'lead_created', { lead });
 
     res.json({ ok: true, lead_id: leadId });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -5452,12 +5722,109 @@ app.post('/api/leads/bulk-trash', auth, (req, res) => {
       return res.status(400).json({ error: 'lead_ids array required' });
     }
     const placeholders = lead_ids.map(() => '?').join(',');
-    const result = db.prepare(`UPDATE leads SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND id IN (${placeholders})`)
-      .run(req.workspaceId, ...lead_ids);
+    const result = db.prepare(`UPDATE leads SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE workspace_id = ? AND id IN (${placeholders})`)
+      .run(req.userId, req.workspaceId, ...lead_ids);
+    // Phase 3: bulk actions used to skip the audit their single-record siblings write,
+    // so the highest-volume destructive action in the product left no trace.
+    logAudit(req.workspaceId, req.userId, 'bulk_trash', 'leads', null, { count: result.changes, lead_ids });
     // Notify SSE listeners so dashboards update
     try { for (const id of lead_ids) broadcastToWorkspace(req.workspaceId, 'lead_deleted', { id }); } catch {}
     res.json({ moved: result.changes, message: `Moved ${result.changes} lead${result.changes === 1 ? '' : 's'} to trash` });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/leads/bulk-status — move many leads to a pipeline stage in ONE call.
+// The frontend used to fire one sequential PUT per selected lead, swallow every
+// error, and report success regardless (the audit's crm-leads-8). This endpoint
+// preserves the single-status route's side effects — stage timestamps, a
+// contact_history entry per lead, SSE, audit — inside one transaction.
+const BULK_STATUSES = new Set(['New', 'Contacted', 'Interested', 'Negotiating', 'Closed - Won', 'Closed - Lost']);
+app.post('/api/leads/bulk-status', auth, (req, res) => {
+  try {
+    const { lead_ids, status } = req.body || {};
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+    if (!BULK_STATUSES.has(status)) {
+      return res.status(400).json({ error: 'invalid status' });
+    }
+    // Same stamp rules as PUT /api/leads/:id/status — closing stamps closed_at,
+    // active stages stamp last_contacted_at. (Won/lost details like actual_sale
+    // are per-lead data the bulk UI does not collect; those stay single-record.)
+    let stamps = '';
+    if (status === 'Closed - Won' || status === 'Closed - Lost') stamps = ', closed_at = CURRENT_TIMESTAMP';
+    if (['Contacted', 'Interested', 'Negotiating'].includes(status)) stamps = ', last_contacted_at = CURRENT_TIMESTAMP';
+    // A member who cannot view all leads can only move their own — the same rule
+    // the leads list and bulk empty-trash enforce. (The single-status route
+    // predates the rule; new bulk code does not get to inherit its gap.)
+    const visible = req.canViewAllLeads ? '' : ' AND assigned_to = ?';
+    const visArgs = req.canViewAllLeads ? [] : [req.userId];
+    const move = db.transaction(() => {
+      // Chunked because SQLite caps bound variables (~32k): a select-all on a
+      // large workspace must degrade to more statements, not a 500 the client
+      // cannot retry out of. One transaction keeps the whole move atomic.
+      const owned = [];
+      let changes = 0;
+      for (let i = 0; i < lead_ids.length; i += 500) {
+        const chunk = lead_ids.slice(i, i + 500);
+        const ph = chunk.map(() => '?').join(',');
+        // The workspace clause is the authorization: ids from another tenant simply match nothing.
+        owned.push(...db.prepare(`SELECT id FROM leads WHERE workspace_id = ? AND id IN (${ph})${visible}`)
+          .all(req.workspaceId, ...chunk, ...visArgs).map((r) => r.id));
+        changes += db.prepare(`UPDATE leads SET status = ?${stamps} WHERE workspace_id = ? AND id IN (${ph})${visible}`)
+          .run(status, req.workspaceId, ...chunk, ...visArgs).changes;
+      }
+      for (const id of owned) addContactHistory(id, req.userId, 'status_change', `Status changed to ${status}`);
+      return { changes, owned };
+    });
+    const { changes, owned } = move();
+    logAudit(req.workspaceId, req.userId, 'bulk_status', 'leads', null, { count: changes, status, lead_ids });
+    try {
+      for (const id of owned) {
+        const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
+        broadcastToWorkspace(req.workspaceId, 'lead_updated', { lead });
+      }
+    } catch {}
+    res.json({ moved: changes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  SAVED VIEWS — shared list infrastructure (Phase 4)
+// ════════════════════════════════════════════════════════════
+
+// GET /api/views?entity=leads — this user's views for one list
+app.get('/api/views', auth, (req, res) => {
+  try {
+    const views = savedViews.listViews(db, {
+      workspaceId: req.workspaceId, userId: req.userId,
+      entity: String(req.query.entity || 'leads'),
+    });
+    res.json({ views });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// POST /api/views — create or replace (upsert on name, like localStorage did)
+app.post('/api/views', auth, (req, res) => {
+  try {
+    const { entity, name, filters } = req.body || {};
+    const view = savedViews.saveView(db, {
+      workspaceId: req.workspaceId, userId: req.userId,
+      entity: String(entity || 'leads'), name, filters,
+    });
+    logAudit(req.workspaceId, req.userId, 'view_saved', 'saved_view', String(view.id), { entity: view.entity, name: view.name });
+    res.json({ view: { ...view, filters: JSON.parse(view.filters) } });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// DELETE /api/views/:id — owner-scoped; the WHERE clause is the authorization
+app.delete('/api/views/:id', auth, (req, res) => {
+  try {
+    const removed = savedViews.deleteView(db, { workspaceId: req.workspaceId, userId: req.userId, id: req.params.id });
+    if (!removed) return res.status(404).json({ error: 'view not found' });
+    logAudit(req.workspaceId, req.userId, 'view_deleted', 'saved_view', String(req.params.id), {});
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -5655,6 +6022,19 @@ app.post('/api/leads/:leadId/meetings', auth, async (req, res) => {
       return res.status(400).json({ error: 'Only Google Meet provider is implemented' });
     }
 
+    // Refuse a time the studio has already committed — to a public booking or to
+    // another meeting. The public booker checks this too (booking.js computeSlots);
+    // both now read the same calendar, so the two systems can no longer sell the
+    // same hour twice.
+    const startMs = availability.toMs(starts_at);
+    const endMs = availability.toMs(ends_at);
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+      const busy = availability.busyIntervals(db, req.workspaceId, { defaultDurationMin: 30 });
+      if (availability.clashes(busy, startMs, endMs)) {
+        return res.status(409).json({ error: 'That time is already booked. Pick another slot.' });
+      }
+    }
+
     const intg = readIntegrations(req.workspaceId);
     if (!intg?.google_calendar_refresh_token) {
       return res.status(400).json({ error: 'Google Calendar not connected. Connect it in Settings → Integrations.' });
@@ -5835,13 +6215,13 @@ require('./booking')(app, db, {
   sendClientMessage: bookingSend,
 });
 require('./print-store')(app, db, {
-  auth, generateId, broadcastToWorkspace, addContactHistory,
+  auth, generateId, broadcastToWorkspace, addContactHistory, notify,
   sendClientMessage: bookingSend,
 });
 require('./studio-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./video-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./studio-experience')(app, db, { auth, generateId, broadcastToWorkspace });
-paymentsApi = require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, logAudit, clientBaseUrl: process.env.FRONTEND_URL || '' });
+paymentsApi = require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, logAudit, notify, clientBaseUrl: process.env.FRONTEND_URL || '' });
 
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,
@@ -5869,6 +6249,37 @@ require('./contracts-studio')(app, db, {
 commsApi = require('./comms')(app, db, {
   auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser, notify,
 });
+
+// One-time backfill: give legacy private channels a real membership.
+//
+// Private channels were listed to everyone and their messages broadcast to
+// everyone, so "private" never meant anything and no chat_members rows were
+// ever written for them. Now that visibility and fan-out both key off
+// membership, a channel with no members would silently vanish for the very
+// people using it. So membership is reconstructed from evidence: whoever
+// created it, plus everyone who actually posted in it. Nobody loses a channel
+// they were using, and nobody keeps one they never touched.
+try {
+  const legacy = db.prepare(`
+    SELECT c.id, c.created_by FROM chat_channels c
+    WHERE c.is_private = 1 AND NOT EXISTS (SELECT 1 FROM chat_members m WHERE m.channel_id = c.id)
+  `).all();
+  if (legacy.length) {
+    const addMember = db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id) VALUES (?, ?)');
+    const participants = db.prepare('SELECT DISTINCT user_id FROM chat_messages WHERE channel_id = ? AND user_id IS NOT NULL');
+    const backfill = db.transaction(() => {
+      for (const ch of legacy) {
+        if (ch.created_by) addMember.run(ch.id, ch.created_by);
+        for (const p of participants.all(ch.id)) addMember.run(ch.id, p.user_id);
+      }
+    });
+    backfill();
+    console.log(`✅ Backfilled membership for ${legacy.length} legacy private channel(s)`);
+  }
+} catch (e) { console.error('Private-channel backfill skipped:', e.message); }
+
+// ── Universal search (Phase 5) — one query across every module ──
+require('./search')(app, db, { auth });
 
 // ── Workspace Sync (Phase 6 — offline-first delta endpoint) ──
 require('./sync')(app, db, { auth });

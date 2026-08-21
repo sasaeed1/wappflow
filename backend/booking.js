@@ -9,6 +9,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 const crypto = require('crypto');
+const availability = require('./availability');   // shared busy-calendar (bookings + meetings)
 
 module.exports = function mountBooking(app, db, deps = {}) {
   const {
@@ -35,9 +36,18 @@ module.exports = function mountBooking(app, db, deps = {}) {
       service TEXT, start_at TEXT, duration_min INTEGER,
       name TEXT, phone TEXT, email TEXT, notes TEXT,
       status TEXT DEFAULT 'confirmed',
+      is_deleted INTEGER DEFAULT 0,      -- Phase 3 recycle bin; older DBs get these via soft-delete.js
+      deleted_at TIMESTAMP,
+      deleted_by TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_bookings_ws ON bookings(workspace_id);
+    -- Phase 4: the guard counts live bookings per lead on every lead
+    -- permanent-delete, and every list is workspace + bin filtered. These live
+    -- HERE, not in server.js: the module that creates the table must create its
+    -- indexes, or a fresh install races the central index list against the mount.
+    CREATE INDEX IF NOT EXISTS idx_bookings_lead ON bookings(lead_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_ws_deleted ON bookings(workspace_id, is_deleted);
   `);
   // Booking 2.0 columns (idempotent for existing installs)
   for (const c of ['token TEXT', 'intake TEXT']) { try { db.exec(`ALTER TABLE bookings ADD COLUMN ${c}`); } catch { /* exists */ } }
@@ -65,10 +75,11 @@ module.exports = function mountBooking(app, db, deps = {}) {
     const step = Math.max(10, Number(cfg.slot_min) || 30);
     const buffer = Math.max(0, Number(cfg.buffer_min) || 0);
     const blackout = new Set(cfg.blackout || []);
-    // existing bookings as [startMs, endMs+buffer] intervals to avoid overlaps
-    const booked = db.prepare("SELECT start_at, duration_min FROM bookings WHERE workspace_id = ? AND status != 'cancelled' AND start_at >= datetime('now')").all(ws)
-      .map(r => { const s = new Date(String(r.start_at).replace(' ', 'T')).getTime(); return [s, s + ((Number(r.duration_min) || dur) + buffer) * 60000]; });
-    const free = (sMs) => { const eMs = sMs + (dur + buffer) * 60000; return !booked.some(([bs, be]) => sMs < be && eMs > bs); };
+    // Busy time from BOTH systems. This used to read the bookings table alone, so a
+    // client could self-book the exact hour the studio had blocked for an internal
+    // Google Meet and nothing objected (audit booking-7).
+    const booked = availability.busyIntervals(db, ws, { bufferMin: buffer, defaultDurationMin: dur });
+    const free = (sMs) => !availability.clashes(booked, sMs, sMs + (dur + buffer) * 60000);
     const out = []; const now = Date.now();
     for (let dayOffset = 0; dayOffset <= (cfg.days_ahead || 21); dayOffset++) {
       const d = new Date(); d.setDate(d.getDate() + dayOffset); d.setHours(0, 0, 0, 0);
@@ -192,7 +203,10 @@ module.exports = function mountBooking(app, db, deps = {}) {
       try { addContactHistory(b.lead_id, ownerId, 'booking', `Rescheduled ${b.service} → ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`); } catch {}
       // Notify the client of the new time (was previously silent — Appendix A fix).
       try { const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(b.lead_id); if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `🗓️ Your ${b.service} booking is rescheduled to ${new Date(start_at.replace(' ', 'T')).toLocaleString()}.` }); } catch {}
-      broadcastToWorkspace(b.workspace_id, 'booking_created', { id: b.id });
+      // The client was messaged, but the studio's own feed said nothing — and the
+      // frame was still called 'booking_created' for a reschedule.
+      broadcastToWorkspace(b.workspace_id, 'booking_updated', { id: b.id });
+      try { notify(b.workspace_id, { type: 'booking', title: 'Booking rescheduled', body: `${b.service} → ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`, url: '/bookings', icon: '🗓️' }); } catch {}
       res.json({ ok: true, start_at });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -205,7 +219,8 @@ module.exports = function mountBooking(app, db, deps = {}) {
       try { addContactHistory(b.lead_id, ownerId, 'booking', `Client cancelled ${b.service}`); } catch {}
       // Notify the client their cancellation went through (Appendix A fix).
       try { const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(b.lead_id); if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `Your ${b.service} booking has been cancelled. Reply if you'd like to rebook.` }); } catch {}
-      broadcastToWorkspace(b.workspace_id, 'booking_created', { id: b.id });
+      broadcastToWorkspace(b.workspace_id, 'booking_cancelled', { id: b.id });
+      try { notify(b.workspace_id, { type: 'booking', title: 'Booking cancelled', body: `${b.service} — cancelled by the client`, url: '/bookings', icon: '❌' }); } catch {}
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
