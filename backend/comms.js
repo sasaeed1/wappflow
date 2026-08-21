@@ -103,6 +103,25 @@ module.exports = function mountComms(app, db, deps = {}) {
     if (c && !c.is_private) return db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL').all(workspaceId).map(r => r.user_id);
     return db.prepare('SELECT user_id FROM chat_members WHERE channel_id = ?').all(channelId).map(r => r.user_id);
   }
+  // Fan a channel event out to THAT CHANNEL'S members only.
+  //
+  // Phase 5 (security): every chat event used to go to the whole workspace —
+  // message bodies of private channels and 1:1 DMs were written to every
+  // member's SSE stream, and only hidden by client-side filtering. The data was
+  // on the wire regardless of who was allowed to read it. Membership already
+  // had an authoritative answer (channelMemberIds); nothing was consulting it
+  // for fan-out. Public channels resolve to the whole workspace, so their
+  // behaviour is unchanged.
+  function broadcastToChannel(channelId, workspaceId, type, data) {
+    try {
+      for (const uid of channelMemberIds(channelId, workspaceId)) broadcastToUser(uid, type, data);
+    } catch {
+      // Membership unresolvable (deleted channel mid-flight): drop the frame
+      // rather than falling back to a workspace-wide send. Losing a live update
+      // is recoverable; leaking a private message is not.
+    }
+  }
+
   // Resolve a project-room channel id to the lead it belongs to (for timeline mirroring).
   function resolveRoomLead(channelId) {
     const rm = String(channelId || '').match(/^room_([a-z]+)_(.+)$/);
@@ -133,7 +152,7 @@ module.exports = function mountComms(app, db, deps = {}) {
     const workspaceId = wsOf(message.channel_id);
     if (!workspaceId) return;
     // Real-time fan-out (replaces the 3s poll on the client).
-    broadcastToWorkspace(workspaceId, 'chat_message', { channel_id: message.channel_id, message });
+    broadcastToChannel(message.channel_id, workspaceId, 'chat_message', { channel_id: message.channel_id, message });
     // Project room → mirror onto the linked lead's timeline. Any entity type resolves
     // to its lead (project/contract/booking carry lead_id; gallery → project → lead).
     const rm = message.channel_id.match(/^room_([a-z]+)_(.+)$/);
@@ -269,7 +288,7 @@ module.exports = function mountComms(app, db, deps = {}) {
       const m = db.prepare('SELECT id, channel_id FROM chat_messages WHERE id = ?').get(req.params.id);
       if (!m || !canSee(m.channel_id, req.userId, req.workspaceId)) return res.status(404).json({ error: 'message not found' });
       db.prepare('INSERT OR IGNORE INTO chat_pins (id, channel_id, message_id, pinned_by) VALUES (?,?,?,?)').run(generateId(), m.channel_id, m.id, req.userId);
-      broadcastToWorkspace(req.workspaceId, 'chat_pin', { channel_id: m.channel_id, message_id: m.id });
+      broadcastToChannel(m.channel_id, req.workspaceId, 'chat_pin', { channel_id: m.channel_id, message_id: m.id });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -277,7 +296,7 @@ module.exports = function mountComms(app, db, deps = {}) {
     try {
       const m = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ?').get(req.params.id);
       db.prepare('DELETE FROM chat_pins WHERE message_id = ?').run(req.params.id);
-      if (m) broadcastToWorkspace(req.workspaceId, 'chat_unpin', { channel_id: m.channel_id, message_id: req.params.id });
+      if (m) broadcastToChannel(m.channel_id, req.workspaceId, 'chat_unpin', { channel_id: m.channel_id, message_id: req.params.id });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -313,7 +332,7 @@ module.exports = function mountComms(app, db, deps = {}) {
       if (!body.trim()) return res.status(400).json({ error: 'empty' });
       db.prepare('UPDATE chat_messages SET body = ?, is_edited = 1 WHERE id = ?').run(body, m.id);
       const updated = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(m.id);
-      broadcastToWorkspace(req.workspaceId, 'chat_edit', { channel_id: m.channel_id, message: updated });
+      broadcastToChannel(m.channel_id, req.workspaceId, 'chat_edit', { channel_id: m.channel_id, message: updated });
       res.json({ message: updated });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -373,7 +392,7 @@ module.exports = function mountComms(app, db, deps = {}) {
   app.post('/api/comms/typing', auth, (req, res) => {
     try {
       const { channel_id } = req.body || {};
-      if (channel_id) broadcastToWorkspace(req.workspaceId, 'chat_typing', { channel_id, user_id: req.userId, name: req.senderName });
+      if (channel_id) broadcastToChannel(channel_id, req.workspaceId, 'chat_typing', { channel_id, user_id: req.userId, name: req.senderName });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -433,7 +452,7 @@ module.exports = function mountComms(app, db, deps = {}) {
       }
       // The starter is the first participant.
       recordCallEvent(session.id, req.userId, req.senderName, 'joined');
-      broadcastToWorkspace(req.workspaceId, 'call_event', { call_id: session.id, channel_id: channelId, type: fresh ? 'started' : 'joined', user_id: req.userId, name: req.senderName });
+      broadcastToChannel(channelId, req.workspaceId, 'call_event', { call_id: session.id, channel_id: channelId, type: fresh ? 'started' : 'joined', user_id: req.userId, name: req.senderName });
       if (fresh) {
         const ch = db.prepare('SELECT name FROM chat_channels WHERE id = ?').get(channelId) || {};
         const chName = ch.name || 'a channel';
@@ -461,7 +480,7 @@ module.exports = function mountComms(app, db, deps = {}) {
       const ALLOWED = ['joined', 'left', 'screenshare', 'screenshare_stop', 'raise_hand', 'lower_hand'];
       if (!ALLOWED.includes(type)) return res.status(400).json({ error: 'bad event type' });
       recordCallEvent(session.id, req.userId, req.senderName, type);
-      broadcastToWorkspace(req.workspaceId, 'call_event', { call_id: session.id, channel_id: session.channel_id, type, user_id: req.userId, name: req.senderName });
+      broadcastToChannel(session.channel_id, req.workspaceId, 'call_event', { call_id: session.id, channel_id: session.channel_id, type, user_id: req.userId, name: req.senderName });
       if (type === 'screenshare') logCallTimeline(session, 'Screen shared', `${req.senderName} shared their screen`);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -477,7 +496,7 @@ module.exports = function mountComms(app, db, deps = {}) {
       const dur = started ? Math.max(0, Math.round((Date.now() - started) / 1000)) : null;
       db.prepare('UPDATE call_sessions SET ended_at = CURRENT_TIMESTAMP, duration_s = ? WHERE id = ?').run(dur, session.id);
       recordCallEvent(session.id, req.userId, req.senderName, 'ended');
-      broadcastToWorkspace(req.workspaceId, 'call_event', { call_id: session.id, channel_id: session.channel_id, type: 'ended', user_id: req.userId, duration_s: dur });
+      broadcastToChannel(session.channel_id, req.workspaceId, 'call_event', { call_id: session.id, channel_id: session.channel_id, type: 'ended', user_id: req.userId, duration_s: dur });
       const mins = dur != null ? `${Math.floor(dur / 60)}m ${dur % 60}s` : '';
       logCallTimeline(session, 'Call ended', `Duration ${mins}`);
       // Missed call: members who were invited but produced no 'joined' event.
@@ -569,7 +588,7 @@ module.exports = function mountComms(app, db, deps = {}) {
   });
 
   console.log('💬 Communications 2.0 mounted at /api/comms/* (LiveKit ' + (LIVEKIT_URL ? 'configured' : 'NOT configured') + ')');
-  return { afterMessage, mintLivekitToken };
+  return { afterMessage, mintLivekitToken, broadcastToChannel, canSee, channelMemberIds };
 };
 
 // Exposed for tests.

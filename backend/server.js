@@ -924,10 +924,49 @@ function broadcastToUser(userId, type, data) {
   clients.forEach(r => { try { r.write(payload); } catch {} });
 }
 
+// Member ids per workspace, cached briefly. broadcastToWorkspace ran this SELECT
+// on EVERY frame — including once per ffmpeg progress tick during a video export
+// (backend-perf-6). Membership changes are rare and a few seconds of staleness
+// only delays a live update for a brand-new member, so a short TTL is the whole
+// fix; invalidateWorkspaceMembers() makes even that exact on member mutations.
+const memberCache = new Map(); // workspaceId -> { ids, at }
+const MEMBER_TTL_MS = 15000;
+function workspaceMemberIds(workspaceId) {
+  const hit = memberCache.get(workspaceId);
+  const now = Date.now();
+  if (hit && now - hit.at < MEMBER_TTL_MS) return hit.ids;
+  const ids = db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL')
+    .all(workspaceId).map(m => m.user_id);
+  memberCache.set(workspaceId, { ids, at: now });
+  return ids;
+}
+function invalidateWorkspaceMembers(workspaceId) {
+  if (workspaceId) memberCache.delete(workspaceId); else memberCache.clear();
+}
+
 function broadcastToWorkspace(workspaceId, type, data) {
-  // Get all user_ids in this workspace
-  const members = db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND user_id IS NOT NULL').all(workspaceId);
-  members.forEach(m => broadcastToUser(m.user_id, type, data));
+  for (const userId of workspaceMemberIds(workspaceId)) broadcastToUser(userId, type, data);
+}
+
+// Channel-scoped fan-out. comms.js owns channel membership, so this delegates
+// there once comms mounts; until then it is a no-op rather than a workspace-wide
+// send, because the events routed through it are the private ones.
+function broadcastToChannel(channelId, workspaceId, type, data) {
+  if (commsApi && commsApi.broadcastToChannel) return commsApi.broadcastToChannel(channelId, workspaceId, type, data);
+}
+
+// Can this user see this channel at all?
+//
+// The legacy chat routes below (list/read/send/react) predate comms.js and
+// carried NO authorization: /api/chat/channels/:channelId/messages read and
+// wrote by channel id alone, with no workspace clause — so any authenticated
+// user could read or post into ANY workspace's channel. comms.js already had
+// the correct predicate; these routes simply never called it.
+function canSeeChannel(channelId, userId, workspaceId) {
+  if (commsApi && commsApi.canSee) return commsApi.canSee(channelId, userId, workspaceId);
+  // comms always mounts; if it somehow has not, still refuse cross-tenant access.
+  const c = db.prepare('SELECT workspace_id FROM chat_channels WHERE id = ?').get(channelId);
+  return !!c && c.workspace_id === workspaceId;
 }
 
 // Presence source for Communications 2.0 — user ids with a live SSE connection.
@@ -972,7 +1011,12 @@ function notify(workspaceId, { type, title, body, url, icon, userId } = {}) {
     const id = generateId();
     db.prepare('INSERT INTO notifications (id, workspace_id, user_id, type, title, body, url, icon) VALUES (?,?,?,?,?,?,?,?)')
       .run(id, workspaceId, userId || null, type || 'info', title, body || '', url || '', icon || '');
-    broadcastToWorkspace(workspaceId, 'notification', { id, type: type || 'info', title, body: body || '', url: url || '', icon: icon || '', created_at: new Date().toISOString() });
+    const frame = { id, type: type || 'info', title, body: body || '', url: url || '', icon: icon || '', created_at: new Date().toISOString() };
+    // A user-targeted row goes to THAT user only. userId used to scope the DB
+    // insert while the live frame still went workspace-wide, so an incoming-call
+    // ring or a private alert was pushed to everyone's stream (Phase 5 security).
+    if (userId) broadcastToUser(userId, 'notification', frame);
+    else broadcastToWorkspace(workspaceId, 'notification', frame);
   } catch (e) { /* notifications are best-effort, never block the action */ }
 }
 
@@ -1081,7 +1125,7 @@ function addContactHistory(leadId, userId, type, description, metadata = null) {
 // ════════════════════════════════════════════════════════════
 
 const { WhatsAppService, WhatsAppManager } = require('./whatsapp-service');
-const whatsappService = new WhatsAppManager(db, broadcastToUser);
+const whatsappService = new WhatsAppManager(db, broadcastToUser, broadcastToWorkspace);
 
 // Rate-limit map for lead message sync — prevents flooding Puppeteer with
 // repeated fetchHistory calls when a user opens the same lead multiple times.
@@ -1211,6 +1255,7 @@ app.post('/api/auth/accept-invite', async (req, res) => {
     // Activate workspace member
     db.prepare('UPDATE workspace_members SET user_id = ?, full_name = ?, invite_status = ?, invite_token = NULL WHERE id = ?')
       .run(userId, full_name || member.invite_email, 'active', member.id);
+    invalidateWorkspaceMembers(member.workspace_id);
     db.prepare('UPDATE users SET workspace_id = ? WHERE id = ?').run(member.workspace_id, userId);
 
     const token2 = jwt.sign({ userId }, JWT_SECRET);
@@ -2092,6 +2137,9 @@ app.post('/api/leads/:id/restore', auth, (req, res) => {
   try {
     db.prepare(`UPDATE leads SET is_deleted = 0, deleted_at = NULL WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+    // Delete broadcast lead_deleted; restore said nothing, so a restored lead
+    // stayed invisible on every other open session until a manual refetch.
+    if (lead) broadcastToWorkspace(req.workspaceId, 'lead_restored', { lead });
     res.json(lead);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2201,7 +2249,10 @@ app.post('/api/leads/merge', auth, (req, res) => {
     try { addContactHistory(primary_id, req.userId, 'merge', `Merged ${dups.length} duplicate lead${dups.length > 1 ? 's' : ''} (${dups.map(d => d.customer_name || 'Unknown').join(', ')}) into this contact`); } catch {}
     logAudit(req.workspaceId, req.userId, 'merge', 'lead', primary_id, { merged: dups.map(d => d.id) });
     dups.forEach(d => broadcastToWorkspace(req.workspaceId, 'lead_deleted', { id: d.id }));
-    broadcastToWorkspace(req.workspaceId, 'lead_updated', { id: primary_id });
+    // Every other lead_updated site sends the full row; this one sent { id }
+    // alone, so any consumer reading data.lead silently skipped merges.
+    const mergedLead = db.prepare('SELECT * FROM leads WHERE id = ?').get(primary_id);
+    broadcastToWorkspace(req.workspaceId, 'lead_updated', { lead: mergedLead, id: primary_id });
 
     const updated = db.prepare('SELECT * FROM leads WHERE id = ?').get(primary_id);
     res.json({ message: `Merged ${dups.length} lead${dups.length > 1 ? 's' : ''}`, lead: updated, merged: dups.length });
@@ -3130,8 +3181,11 @@ app.get('/api/chat/channels', auth, (req, res) => {
         (SELECT COUNT(*) FROM chat_messages WHERE channel_id = c.id) as message_count,
         (SELECT body FROM chat_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
         (SELECT created_at FROM chat_messages WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_at
-      FROM chat_channels c WHERE c.workspace_id = ? ORDER BY c.name
-    `).all(workspaceId);
+      FROM chat_channels c
+      WHERE c.workspace_id = ?
+        AND (c.is_private = 0 OR EXISTS (SELECT 1 FROM chat_members m WHERE m.channel_id = c.id AND m.user_id = ?))
+      ORDER BY c.name
+    `).all(workspaceId, req.userId);
     res.json({ channels });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3145,6 +3199,9 @@ app.post('/api/chat/channels', auth, (req, res) => {
     const id = require('crypto').randomUUID();
     db.prepare('INSERT INTO chat_channels (id, workspace_id, name, description, is_private, created_by) VALUES (?, ?, ?, ?, ?, ?)')
       .run(id, workspaceId, name.toLowerCase().replace(/\s+/g, '-'), description || '', is_private ? 1 : 0, req.userId);
+    // A private channel needs explicit membership to be visible or to receive
+    // real-time frames; without this its own creator could not see it.
+    try { db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id) VALUES (?, ?)').run(id, req.userId); } catch {}
     const channel = db.prepare('SELECT * FROM chat_channels WHERE id = ?').get(id);
     res.json({ channel });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3162,6 +3219,8 @@ app.delete('/api/chat/channels/:id', auth, (req, res) => {
 // GET /api/chat/channels/:id/messages
 app.get('/api/chat/channels/:channelId/messages', auth, (req, res) => {
   try {
+    // 404 (not 403) so a probe cannot distinguish "exists elsewhere" from "no such channel".
+    if (!canSeeChannel(req.params.channelId, req.userId, req.workspaceId)) return res.status(404).json({ error: 'Channel not found' });
     const { limit = 50, before } = req.query;
     let query = 'SELECT m.*, (SELECT json_group_array(json_object(\'emoji\', r.emoji, \'user_id\', r.user_id)) FROM chat_reactions r WHERE r.message_id = m.id) as reactions FROM chat_messages m WHERE m.channel_id = ?';
     const params = [req.params.channelId];
@@ -3180,6 +3239,7 @@ app.get('/api/chat/channels/:channelId/messages', auth, (req, res) => {
 // POST /api/chat/channels/:channelId/messages
 app.post('/api/chat/channels/:channelId/messages', auth, (req, res) => {
   try {
+    if (!canSeeChannel(req.params.channelId, req.userId, req.workspaceId)) return res.status(404).json({ error: 'Channel not found' });
     const { body, reply_to } = req.body;
     if (!body?.trim()) return res.status(400).json({ error: 'Message body required' });
     const user = db.prepare('SELECT business_name, email FROM users WHERE id = ?').get(req.userId);
@@ -3221,7 +3281,10 @@ app.delete('/api/chat/messages/:id', auth, (req, res) => {
     const m = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
     db.prepare('DELETE FROM chat_messages WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
     try { db.prepare('DELETE FROM chat_pins WHERE message_id = ?').run(req.params.id); } catch {}
-    if (m) broadcastToWorkspace(req.workspaceId, 'chat_delete', { channel_id: m.channel_id, message_id: req.params.id });
+    // Channel-scoped: see comms.broadcastToChannel — private/DM events must not
+    // reach the whole workspace. Falls back to workspace-wide only if comms is
+    // somehow unmounted (it always mounts in practice).
+    if (m) broadcastToChannel(m.channel_id, req.workspaceId, 'chat_delete', { channel_id: m.channel_id, message_id: req.params.id });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3231,6 +3294,8 @@ app.post('/api/chat/messages/:id/react', auth, (req, res) => {
   try {
     const { emoji } = req.body;
     if (!emoji) return res.status(400).json({ error: 'Emoji required' });
+    const target = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ?').get(req.params.id);
+    if (!target || !canSeeChannel(target.channel_id, req.userId, req.workspaceId)) return res.status(404).json({ error: 'Message not found' });
     const id = require('crypto').randomUUID();
     // Toggle: if exists, delete; else insert
     const existing = db.prepare('SELECT id FROM chat_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').get(req.params.id, req.userId, emoji);
@@ -3241,7 +3306,7 @@ app.post('/api/chat/messages/:id/react', auth, (req, res) => {
     }
     const reactions = db.prepare('SELECT emoji, user_id FROM chat_reactions WHERE message_id = ?').all(req.params.id);
     const mc = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ?').get(req.params.id);
-    if (mc) broadcastToWorkspace(req.workspaceId, 'chat_reaction', { channel_id: mc.channel_id, message_id: req.params.id, reactions });
+    if (mc) broadcastToChannel(mc.channel_id, req.workspaceId, 'chat_reaction', { channel_id: mc.channel_id, message_id: req.params.id, reactions });
     res.json({ reactions });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3307,6 +3372,7 @@ app.post('/api/workspace/invite', auth, async (req, res) => {
       // Add existing user to workspace
       db.prepare(`INSERT INTO workspace_members (id, workspace_id, user_id, role, full_name, invite_email, invite_status) VALUES (?, ?, ?, ?, ?, ?, 'active')`)
         .run(memberId, req.workspaceId, existingUser.id, role, full_name || email, email);
+      invalidateWorkspaceMembers(req.workspaceId);
       db.prepare('UPDATE users SET workspace_id = ? WHERE id = ?').run(req.workspaceId, existingUser.id);
     } else {
       // Create pending invite
@@ -3423,6 +3489,7 @@ app.delete('/api/workspace/members/:id', auth, (req, res) => {
     // missing a single one is a security hole, not a cosmetic bug.
     // "Removed" must mean removed immediately; recovery is a re-invite.
     db.prepare('DELETE FROM workspace_members WHERE id = ?').run(req.params.id);
+    invalidateWorkspaceMembers(req.workspaceId);
     logAudit(req.workspaceId, req.userId, 'member_removed', 'workspace_members', req.params.id, {
       email: member.invite_email || null, role: member.role,
     });
@@ -4986,8 +5053,12 @@ app.post('/api/webhooks/instagram', (req, res) => {
           `).run(leadId, account.workspace_id, account.workspace_id, `Instagram User`, senderId, text.slice(0, 200), account.id, ts.toISOString(), ts.toISOString());
           lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
 
-          const wsClients = sseClients.get(account.workspace_id) || [];
-          wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+          // sseClients is keyed by USER id, so this raw write to
+          // sseClients.get(workspace_id) reached nobody except on legacy installs
+          // where the two ids happened to coincide — social/website leads never
+          // appeared live. One canonical name too: 'lead_created' (the dashboard
+          // already handles it; 'new_lead' was the same mutation under a second name).
+          broadcastToWorkspace(account.workspace_id, 'lead_created', { lead });
           notify(account.workspace_id, { type: 'lead', title: 'New Instagram lead', body: `${lead.customer_name || 'Instagram User'} messaged you`, url: `/leads/${lead.id}`, icon: '📸' });
         }
 
@@ -5044,8 +5115,12 @@ app.post('/api/webhooks/facebook', (req, res) => {
           `).run(leadId, account.workspace_id, account.workspace_id, `Facebook User`, senderId, text.slice(0, 200), account.id, ts.toISOString(), ts.toISOString());
           lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
 
-          const wsClients = sseClients.get(account.workspace_id) || [];
-          wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+          // sseClients is keyed by USER id, so this raw write to
+          // sseClients.get(workspace_id) reached nobody except on legacy installs
+          // where the two ids happened to coincide — social/website leads never
+          // appeared live. One canonical name too: 'lead_created' (the dashboard
+          // already handles it; 'new_lead' was the same mutation under a second name).
+          broadcastToWorkspace(account.workspace_id, 'lead_created', { lead });
           notify(account.workspace_id, { type: 'lead', title: 'New Facebook lead', body: `${lead.customer_name || 'Facebook User'} messaged you`, url: `/leads/${lead.id}`, icon: '💬' });
         }
 
@@ -5094,8 +5169,12 @@ app.post('/api/website-form/:formToken/submit', (req, res) => {
     }
 
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
-    const wsClients = sseClients.get(account.workspace_id) || [];
-    wsClients.forEach(c => { try { c.write(`data: ${JSON.stringify({ type: 'new_lead', lead })}\n\n`); } catch {} });
+    // sseClients is keyed by USER id, so this raw write to
+    // sseClients.get(workspace_id) reached nobody except on legacy installs
+    // where the two ids happened to coincide — social/website leads never
+    // appeared live. One canonical name too: 'lead_created' (the dashboard
+    // already handles it; 'new_lead' was the same mutation under a second name).
+    broadcastToWorkspace(account.workspace_id, 'lead_created', { lead });
 
     res.json({ ok: true, lead_id: leadId });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -6116,6 +6195,34 @@ require('./contracts-studio')(app, db, {
 commsApi = require('./comms')(app, db, {
   auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser, notify,
 });
+
+// One-time backfill: give legacy private channels a real membership.
+//
+// Private channels were listed to everyone and their messages broadcast to
+// everyone, so "private" never meant anything and no chat_members rows were
+// ever written for them. Now that visibility and fan-out both key off
+// membership, a channel with no members would silently vanish for the very
+// people using it. So membership is reconstructed from evidence: whoever
+// created it, plus everyone who actually posted in it. Nobody loses a channel
+// they were using, and nobody keeps one they never touched.
+try {
+  const legacy = db.prepare(`
+    SELECT c.id, c.created_by FROM chat_channels c
+    WHERE c.is_private = 1 AND NOT EXISTS (SELECT 1 FROM chat_members m WHERE m.channel_id = c.id)
+  `).all();
+  if (legacy.length) {
+    const addMember = db.prepare('INSERT OR IGNORE INTO chat_members (channel_id, user_id) VALUES (?, ?)');
+    const participants = db.prepare('SELECT DISTINCT user_id FROM chat_messages WHERE channel_id = ? AND user_id IS NOT NULL');
+    const backfill = db.transaction(() => {
+      for (const ch of legacy) {
+        if (ch.created_by) addMember.run(ch.id, ch.created_by);
+        for (const p of participants.all(ch.id)) addMember.run(ch.id, p.user_id);
+      }
+    });
+    backfill();
+    console.log(`✅ Backfilled membership for ${legacy.length} legacy private channel(s)`);
+  }
+} catch (e) { console.error('Private-channel backfill skipped:', e.message); }
 
 // ── Workspace Sync (Phase 6 — offline-first delta endpoint) ──
 require('./sync')(app, db, { auth });
