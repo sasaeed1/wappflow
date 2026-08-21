@@ -9,6 +9,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 const crypto = require('crypto');
+const availability = require('./availability');   // shared busy-calendar (bookings + meetings)
 
 module.exports = function mountBooking(app, db, deps = {}) {
   const {
@@ -74,10 +75,11 @@ module.exports = function mountBooking(app, db, deps = {}) {
     const step = Math.max(10, Number(cfg.slot_min) || 30);
     const buffer = Math.max(0, Number(cfg.buffer_min) || 0);
     const blackout = new Set(cfg.blackout || []);
-    // existing bookings as [startMs, endMs+buffer] intervals to avoid overlaps
-    const booked = db.prepare("SELECT start_at, duration_min FROM bookings WHERE workspace_id = ? AND status != 'cancelled' AND start_at >= datetime('now')").all(ws)
-      .map(r => { const s = new Date(String(r.start_at).replace(' ', 'T')).getTime(); return [s, s + ((Number(r.duration_min) || dur) + buffer) * 60000]; });
-    const free = (sMs) => { const eMs = sMs + (dur + buffer) * 60000; return !booked.some(([bs, be]) => sMs < be && eMs > bs); };
+    // Busy time from BOTH systems. This used to read the bookings table alone, so a
+    // client could self-book the exact hour the studio had blocked for an internal
+    // Google Meet and nothing objected (audit booking-7).
+    const booked = availability.busyIntervals(db, ws, { bufferMin: buffer, defaultDurationMin: dur });
+    const free = (sMs) => !availability.clashes(booked, sMs, sMs + (dur + buffer) * 60000);
     const out = []; const now = Date.now();
     for (let dayOffset = 0; dayOffset <= (cfg.days_ahead || 21); dayOffset++) {
       const d = new Date(); d.setDate(d.getDate() + dayOffset); d.setHours(0, 0, 0, 0);

@@ -623,6 +623,9 @@ safeAlter('ALTER TABLE leads ADD COLUMN deleted_at TIMESTAMP');
 const softDeleteLib = require('./soft-delete');
 softDeleteLib.installSchema(db, safeAlter);
 
+// Phase 6 — one busy-calendar shared by public booking and internal meetings.
+const availability = require('./availability');
+
 // Phase 4 — opt-in server-side paging for the core list endpoints.
 const pagination = require('./pagination');
 // Phase 4 — saved views move out of per-browser localStorage into the DB.
@@ -6003,6 +6006,19 @@ app.post('/api/leads/:leadId/meetings', auth, async (req, res) => {
 
     if (provider !== 'google') {
       return res.status(400).json({ error: 'Only Google Meet provider is implemented' });
+    }
+
+    // Refuse a time the studio has already committed — to a public booking or to
+    // another meeting. The public booker checks this too (booking.js computeSlots);
+    // both now read the same calendar, so the two systems can no longer sell the
+    // same hour twice.
+    const startMs = availability.toMs(starts_at);
+    const endMs = availability.toMs(ends_at);
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+      const busy = availability.busyIntervals(db, req.workspaceId, { defaultDurationMin: 30 });
+      if (availability.clashes(busy, startMs, endMs)) {
+        return res.status(409).json({ error: 'That time is already booked. Pick another slot.' });
+      }
     }
 
     const intg = readIntegrations(req.workspaceId);
