@@ -26,6 +26,7 @@ import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
 import RoomPanel from '@/components/RoomPanel';
+import { buildInvoiceHTML } from '@/lib/invoiceDoc';
 import { useRealtime } from '@/components/shell/realtime';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
@@ -322,27 +323,34 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
     } catch (e) { await confirm({ title: 'Could not create invoice', message: e.message, alertOnly: true, tone: 'danger' }); } finally { setSaving(false); }
   };
 
+  // Phase 6: this used to hand-roll its own invoice HTML and interpolate the
+  // customer name, every line-item description and the notes field RAW into a
+  // same-origin document.write — and a lead's name comes from whatever a stranger
+  // types into the public booking form. It now renders the one shared, escaped
+  // document, which also means a printed draft finally looks like the real
+  // invoice instead of a stripped-down table with no branding or invoice number.
   const handlePrint = () => {
+    const draft = {
+      invoice_number: '',                       // unsaved: the template falls back gracefully
+      customer_name: lead.customer_name,
+      customer_phone: lead.customer_phone,
+      customer_email: lead.email,
+      items: items.map((it) => ({
+        description: it.description,
+        qty: it.qty,
+        rate: it.rate,
+        amount: (parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0),
+      })),
+      subtotal, tax_rate: taxRate, tax_amount: taxAmount, total,
+      currency_symbol: sym,
+      due_date: dueDate || null,
+      notes,
+      status: 'draft',
+      created_at: null,                         // renders as an em dash, not a wrong date
+    };
     const win = window.open('', '_blank');
-    win.document.write(`
-      <html><head><title>Invoice</title>
-      <style>body{font-family:system-ui;max-width:680px;margin:40px auto;color:#111}
-      table{width:100%;border-collapse:collapse}th,td{padding:10px;text-align:left;border-bottom:1px solid #e5e7eb}
-      th{background:#f9fafb;font-weight:700}.total-row{font-weight:900;font-size:18px}</style></head>
-      <body>
-      <h1 style="color:#6366f1">INVOICE</h1>
-      <div style="display:flex;justify-content:space-between;margin-bottom:24px">
-        <div><strong>Bill To:</strong><br>${lead.customer_name}<br>${displayPhone(lead.customer_phone, lead.platform_source)}</div>
-        <div style="text-align:right"><strong>${company?.company_name || ''}</strong><br>${company?.company_email || ''}</div>
-      </div>
-      <table><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>
-      ${items.map(it => `<tr><td>${it.description}</td><td>${it.qty}</td><td>${sym}${parseFloat(it.rate).toFixed(2)}</td><td>${sym}${((parseFloat(it.qty)||0)*(parseFloat(it.rate)||0)).toFixed(2)}</td></tr>`).join('')}
-      <tr><td colspan="3">Subtotal</td><td>${sym}${subtotal.toFixed(2)}</td></tr>
-      <tr><td colspan="3">${company?.tax_name||'Tax'} (${taxRate}%)</td><td>${sym}${taxAmount.toFixed(2)}</td></tr>
-      <tr class="total-row"><td colspan="3">Total</td><td>${sym}${total.toFixed(2)}</td></tr></table>
-      ${notes ? `<p style="margin-top:20px"><strong>Notes:</strong> ${notes}</p>` : ''}
-      </body></html>
-    `);
+    if (!win) return;
+    win.document.write(buildInvoiceHTML(draft, company, BASE_URL));
     win.document.close();
     win.print();
   };
