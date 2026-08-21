@@ -87,6 +87,21 @@ check('scoped fan-out never silently degrades to workspace-wide', () => {
   assert(!/broadcastToWorkspace/.test(seam), 'the server-side seam falls back to a workspace send');
 });
 
+check('a payload cannot rename the event it travels in', () => {
+  // Found live: notify()'s rows carry a category under `type` ('lead', 'call'…),
+  // and the frame was built as { type, ...data } — so the spread renamed every
+  // notification frame after its category and the 'notification' event that
+  // consumers were told to subscribe to never appeared on the wire at all.
+  const fn = S.slice(S.indexOf('function broadcastToUser('), S.indexOf('function broadcastToUser(') + 400);
+  assert(/JSON\.stringify\(\{ \.\.\.data, type \}\)/.test(fn),
+    'event name is still spread-over by payload data');
+  // Exercise the exact construction with a colliding payload.
+  const build = (type, data) => JSON.parse(JSON.stringify({ ...data, type }));
+  assert.strictEqual(build('notification', { kind: 'lead', title: 'New lead' }).type, 'notification');
+  assert.strictEqual(build('notification', { type: 'lead' }).type, 'notification', 'a rogue type key still wins');
+  assert(/kind: type \|\| 'info'/.test(S), 'notify still puts its category under `type`, re-creating the collision');
+});
+
 check('a user-targeted notification pushes to that user only', () => {
   const notifyBody = S.slice(S.indexOf('function notify('), S.indexOf('function notify(') + 1200);
   assert(/if \(userId\) broadcastToUser\(userId, 'notification', frame\)/.test(notifyBody),

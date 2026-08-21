@@ -920,7 +920,13 @@ app.get('/api/events', auth, (req, res) => {
 
 function broadcastToUser(userId, type, data) {
   const clients = sseClients.get(userId) || [];
-  const payload = `data: ${JSON.stringify({ type, ...data })}\n\n`;
+  // `type` LAST: it is the event name consumers switch on, and a payload that
+  // happens to carry its own `type` key must not be able to rename the event.
+  // notify() did exactly that — its rows carry a category (`lead`, `booking`,
+  // `call`…) under `type`, so every notification frame went out named after the
+  // category and the 'notification' event nobody could subscribe to never
+  // existed on the wire.
+  const payload = `data: ${JSON.stringify({ ...data, type })}\n\n`;
   clients.forEach(r => { try { r.write(payload); } catch {} });
 }
 
@@ -1011,7 +1017,8 @@ function notify(workspaceId, { type, title, body, url, icon, userId } = {}) {
     const id = generateId();
     db.prepare('INSERT INTO notifications (id, workspace_id, user_id, type, title, body, url, icon) VALUES (?,?,?,?,?,?,?,?)')
       .run(id, workspaceId, userId || null, type || 'info', title, body || '', url || '', icon || '');
-    const frame = { id, type: type || 'info', title, body: body || '', url: url || '', icon: icon || '', created_at: new Date().toISOString() };
+    // The category travels as `kind`, not `type`: `type` is the SSE event name.
+    const frame = { id, kind: type || 'info', title, body: body || '', url: url || '', icon: icon || '', created_at: new Date().toISOString() };
     // A user-targeted row goes to THAT user only. userId used to scope the DB
     // insert while the live frame still went workspace-wide, so an incoming-call
     // ring or a private alert was pushed to everyone's stream (Phase 5 security).
