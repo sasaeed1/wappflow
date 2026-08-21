@@ -157,8 +157,17 @@ check('server: PUT /api/invoices/:id delegates paid (no direct paid write)', () 
   assert(/wantsPaid/.test(put) && /writeStatus/.test(put), 'delegation logic missing');
   assert(/paymentsApi\.markPaidByInvoice/.test(put), 'no delegate call');
 });
-check('server: paymentsApi captured at mount with logAudit dep', () =>
-  assert(/paymentsApi = require\('\.\/payments'\)/.test(srv) && /logAudit, clientBaseUrl/.test(srv)));
+check('server: paymentsApi captured at mount with its required deps', () => {
+  const mount = srv.slice(srv.indexOf("paymentsApi = require('./payments')"));
+  assert(mount.startsWith("paymentsApi = require('./payments')"), 'payments mount not found');
+  const deps = mount.slice(0, mount.indexOf('});'));
+  // Assert the deps are PRESENT, not that they sit next to each other: the original
+  // check required `logAudit, clientBaseUrl` to be adjacent, so adding `notify`
+  // between them (Phase 5) failed a test about something else entirely.
+  for (const d of ['logAudit', 'clientBaseUrl', 'notify']) {
+    assert(new RegExp(`\\b${d}\\b`).test(deps), `payments mounted without ${d}`);
+  }
+});
 check('web: paymentsAPI.markInvoicePaid exists and invoices page uses it', () => {
   assert(/markInvoicePaid: \(invoiceId, note\)/.test(webApi));
   assert(/paymentsAPI\.markInvoicePaid\(id\)/.test(invPage));

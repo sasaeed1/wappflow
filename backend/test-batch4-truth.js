@@ -50,7 +50,15 @@ const tableList = trashBlock.match(/for \(const table of \[([^\]]+)\]\)/)[1]
 check('cascade list matches the permanent-delete route tables', () => {
   const perm = srv.slice(srv.indexOf("app.delete('/api/leads/:id/permanent'"));
   for (const t of tableList) assert(perm.includes(`DELETE FROM ${t} WHERE lead_id`), `permanent route missing ${t}`);
-  assert.strictEqual(tableList.length, 5);
+  // Phase 3 removed `invoices` from this cascade: emptying the lead trash used to
+  // run DELETE FROM invoices WHERE lead_id, destroying financial records as a side
+  // effect of tidying a pipeline. Invoices now soft-delete and the lead delete is
+  // GUARDED instead. Asserting the exact set (not a count) so neither a new table
+  // nor the return of invoices can slip in unnoticed.
+  assert.deepStrictEqual(tableList, ['notes', 'reminders', 'messages', 'contact_history']);
+  for (const guarded of ['invoices', 'cs_documents', 'bookings']) {
+    assert(!tableList.includes(guarded), `${guarded} is back in the destructive cascade — it must be guarded, not deleted`);
+  }
 });
 const db = new Database(':memory:');
 db.exec(`CREATE TABLE leads (id TEXT PRIMARY KEY, workspace_id TEXT, is_deleted INTEGER DEFAULT 0);
