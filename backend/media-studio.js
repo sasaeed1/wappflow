@@ -1403,7 +1403,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       workspace_id TEXT NOT NULL,
       project_id TEXT NOT NULL,
       name TEXT DEFAULT 'Untitled reel',
-      source TEXT DEFAULT 'manual',          -- manual | template | ai_draft
+      source TEXT DEFAULT 'manual',          -- manual | template | ai_draft | ai_reel (reel-engine.js)
       template_id TEXT,
       aspect_ratio TEXT DEFAULT '9:16',
       width INTEGER DEFAULT 1080,

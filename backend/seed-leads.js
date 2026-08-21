@@ -53,21 +53,15 @@ safeAlter(`ALTER TABLE leads ADD COLUMN urgency TEXT`);
 safeAlter(`ALTER TABLE leads ADD COLUMN intent_category TEXT`);
 safeAlter(`ALTER TABLE leads ADD COLUMN ai_last_analyzed_at TIMESTAMP`);
 safeAlter(`ALTER TABLE leads ADD COLUMN is_deleted INTEGER DEFAULT 0`);
-// lead_channels needed for the multi-platform tab unlock logic to demo
-try {
-  db.exec(`CREATE TABLE IF NOT EXISTS lead_channels (
-    id TEXT PRIMARY KEY,
-    lead_id TEXT NOT NULL,
-    workspace_id TEXT,
-    platform TEXT NOT NULL,
-    identifier TEXT NOT NULL,
-    platform_account_id TEXT,
-    display_name TEXT,
-    added_by TEXT DEFAULT 'manual',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(lead_id, platform, identifier)
-  )`);
-} catch {}
+// lead_channels is owned by server.js (single canonical DDL). This script used
+// to re-CREATE it so it could run standalone, which meant a second copy of the
+// schema that would silently drift the moment the real one changed — the same
+// defect class as the old ms_albums clash. Seeding demo leads into a database
+// the server has never booted against is meaningless anyway, so assert instead.
+if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='lead_channels'").get()) {
+  console.error('lead_channels is missing — boot the server once so it creates the schema, then re-run this seeder.');
+  process.exit(1);
+}
 
 // ── Optional cleanup of previous dummy data ────────────────────
 if (cleanFirst) {

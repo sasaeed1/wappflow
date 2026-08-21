@@ -147,9 +147,31 @@ function sanitizeClip(c, kind) {
   }
   return out;
 }
+// Legacy transition names, mapped rather than dropped.
+//
+// The Story-Engine planner and its editor speak a different vocabulary from the
+// renderer ('cut'/'whip' vs the nine names above). sanitizeTransition rejected
+// anything it did not recognise by returning null, which reads as "no transition"
+// — so a user who picked "whip" got a hard cut and was never told. A cut really
+// IS the absence of a transition, so that one is faithful; 'whip' is not.
+const TRANSITION_ALIASES = {
+  cut: 'none',      // a cut is an instant change — genuinely no transition
+  whip: 'slide',    // the closest thing the renderer can actually draw
+  dissolve: 'crossDissolve',
+};
+
+/** Resolve any known spelling to a renderer transition, or null if truly unknown. */
+function resolveTransitionType(type) {
+  if (!type) return null;
+  const t = TRANSITION_ALIASES[type] || type;
+  return TRANSITIONS.includes(t) ? t : null;
+}
+
 function sanitizeTransition(t) {
-  if (!t || !TRANSITIONS.includes(t.type) || t.type === 'none') return null;
-  return { type: t.type, duration: clamp(t.duration, 100, 2000, 400) };
+  if (!t) return null;
+  const type = resolveTransitionType(t.type);
+  if (!type || type === 'none') return null;
+  return { type, duration: clamp(t.duration, 100, 2000, 400) };
 }
 
 const TRACK_KIND = { video: 'video', photo: 'video', audio: 'audio', text: 'text', overlay: 'overlay' };
@@ -458,7 +480,7 @@ function detectFonts() {
 function _resetFontsCache() { _fonts = null; }
 
 module.exports = {
-  ASPECTS, EXPORT_PRESETS, QUALITIES, TRANSITIONS, EFFECTS, TEXT_TYPES, TEXT_ANIM,
+  ASPECTS, EXPORT_PRESETS, QUALITIES, TRANSITIONS, TRANSITION_ALIASES, resolveTransitionType, EFFECTS, TEXT_TYPES, TEXT_ANIM,
   dimsFor, sanitizeTimeline, sanitizeClip, detectFfmpeg, _resetFfmpegCache, parseFfprobe, buildExportCommand,
   detectFonts, _resetFontsCache, drawtextAtom, pwl,
 };
