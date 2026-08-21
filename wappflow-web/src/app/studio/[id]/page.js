@@ -674,18 +674,21 @@ function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply
 function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
   const [busy, setBusy] = useState('');
   const [sels, setSels] = useState([]);
-  const [note, setNote] = useState('');
+  // Phase 6: note carries a TONE. Success and failure used to render in the same
+  // neutral grey box, so "Scored 45/50 photos." and "Analyze failed." were
+  // typographically identical — the one moment the user most needs to tell them apart.
+  const [note, setNote] = useState(null);
   const [pages, setPages] = useState(30);
   const [reelLen, setReelLen] = useState(30);
   const [reel, setReel] = useState(null);
   const [albumId, setAlbumId] = useState(null);
   const KINDS = [['best_of', 'Best Of'], ['highlights', 'Highlights'], ['portfolio', 'Portfolio'], ['album', 'Album'], ['delivery', 'Delivery']];
 
-  const analyze = async () => { setBusy('analyze'); try { const r = await mediaAPI.analyzeProject(projectId); setNote(`Scored ${r.data.scored}/${r.data.total} photos.`); } catch { setNote('Analyze failed.'); } finally { setBusy(''); } };
-  const gen = async (kind) => { setBusy(kind); try { const r = await studioAiAPI.generateSelection(projectId, kind); setSels(s => [{ ...r.data, kind }, ...s.filter(x => x.kind !== kind)]); setNote(`${r.data.label}: ${r.data.count} photos selected.`); } catch (e) { setNote(e?.response?.data?.error || 'Failed.'); } finally { setBusy(''); } };
-  const buildGallery = async (sel) => { setBusy('gal-' + sel.kind); try { await studioAiAPI.galleryFromSelection(projectId, { selection_id: sel.id }); setBanner && setBanner({ type: 'ok', msg: `Gallery built from ${sel.label} (${sel.count}).` }); onGallery && onGallery(); } catch { setNote('Gallery build failed.'); } finally { setBusy(''); } };
-  const album = async () => { setBusy('album'); try { const r = await studioAiAPI.album(projectId, { pages }); setAlbumId(r.data.album_id); setNote(`Album draft: ${r.data.spreads} spreads, ${r.data.images} images.`); } catch { setNote('Album failed.'); } finally { setBusy(''); } };
-  const makeReel = async () => { setBusy('reel'); try { const r = await videoAiAPI.reel(projectId, { length_s: reelLen }); setReel(r.data); setNote(`Reel plan: ${r.data.plan.timeline.length} clips${r.data.template ? ' · ' + r.data.template : ''}.`); } catch (e) { setNote(e?.response?.data?.error || 'Reel failed.'); } finally { setBusy(''); } };
+  const analyze = async () => { setBusy('analyze'); try { const r = await mediaAPI.analyzeProject(projectId); setNote({ ok: true, msg: `Scored ${r.data.scored}/${r.data.total} photos.` }); } catch { setNote({ ok: false, msg: 'Analyze failed.' }); } finally { setBusy(''); } };
+  const gen = async (kind) => { setBusy(kind); try { const r = await studioAiAPI.generateSelection(projectId, kind); setSels(s => [{ ...r.data, kind }, ...s.filter(x => x.kind !== kind)]); setNote({ ok: true, msg: `${r.data.label}: ${r.data.count} photos selected.` }); } catch (e) { setNote({ ok: false, msg: e?.response?.data?.error || 'Failed.' }); } finally { setBusy(''); } };
+  const buildGallery = async (sel) => { setBusy('gal-' + sel.kind); try { await studioAiAPI.galleryFromSelection(projectId, { selection_id: sel.id }); setBanner && setBanner({ type: 'ok', msg: `Gallery built from ${sel.label} (${sel.count}).` }); onGallery && onGallery(); } catch { setNote({ ok: false, msg: 'Gallery build failed.' }); } finally { setBusy(''); } };
+  const album = async () => { setBusy('album'); try { const r = await studioAiAPI.album(projectId, { pages }); setAlbumId(r.data.album_id); setNote({ ok: true, msg: `Album draft: ${r.data.spreads} spreads, ${r.data.images} images.` }); } catch { setNote({ ok: false, msg: 'Album failed.' }); } finally { setBusy(''); } };
+  const makeReel = async () => { setBusy('reel'); try { const r = await videoAiAPI.reel(projectId, { length_s: reelLen }); setReel(r.data); setNote({ ok: true, msg: `Reel plan: ${r.data.plan.timeline.length} clips${r.data.template ? ' · ' + r.data.template : ''}.` }); } catch (e) { setNote({ ok: false, msg: e?.response?.data?.error || 'Reel failed.' }); } finally { setBusy(''); } };
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -727,7 +730,11 @@ function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
         </div>
         {reel && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 12.5, color: 'var(--ms-ink-3,#888)' }}>{reel.plan.timeline.length} clips · {reel.plan.aspect} · {reel.plan.length_s}s{reel.template ? ` · ${reel.template}` : ''}</span><a href={`/studio/${projectId}/reel/${reel.reel_id}`} style={{ ...chip, textDecoration: 'none', background: 'var(--ms-ink,#14120f)', color: '#fff', border: 'none', padding: '6px 12px' }}>Edit timeline →</a></div>}
 
-        {note && <p style={{ marginTop: 14, fontSize: 13, color: 'var(--ms-ink,#14120f)', background: 'var(--ms-line,#f2f2f4)', padding: '10px 12px', borderRadius: 9 }}>{note}</p>}
+        {note && (
+          <p role={note.ok ? 'status' : 'alert'} style={{ marginTop: 14, fontSize: 13, padding: '10px 12px', borderRadius: 9,
+            color: note.ok ? 'var(--ms-ink,#14120f)' : 'var(--danger-fg,#b91c1c)',
+            background: note.ok ? 'var(--ms-line,#f2f2f4)' : 'var(--danger-bg,#fee2e2)' }}>{note.msg}</p>
+        )}
       </div>
     </div>
   );

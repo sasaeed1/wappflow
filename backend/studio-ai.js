@@ -202,15 +202,6 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
   // produce a book. Generation (POST .../album above) stays here; it now writes
   // canonical pages.
 
-  // ── P13: portfolio recommendations (top portfolio-scored across the workspace) ─
-  app.get('/api/studio-ai/portfolio-picks', auth, (req, res) => {
-    try {
-      const rows = db.prepare(`SELECT s.asset_id, s.value, a.project_id FROM ms_asset_scores s
-        JOIN ms_assets a ON a.id = s.asset_id WHERE s.workspace_id = ? AND s.score_type = 'portfolio' AND a.deleted_at IS NULL
-        ORDER BY s.value DESC LIMIT 60`).all(req.workspaceId);
-      res.json({ picks: rows });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
 
   // ── P3: style profiles ──────────────────────────────────────────────────────
   app.get('/api/studio-ai/styles', auth, (req, res) => {
@@ -240,31 +231,4 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  // ── P4: auto-edit suggestion (non-destructive params; applied via the existing
-  // edit pipeline). Derives gentle corrections from technical scores + a style. ──
-  app.post('/api/studio-ai/assets/:id/auto-edit', auth, (req, res) => {
-    try {
-      const a = db.prepare('SELECT id, workspace_id FROM ms_assets WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
-      if (!a) return res.status(404).json({ error: 'Asset not found' });
-      const s = {}; db.prepare('SELECT score_type, value FROM ms_asset_scores WHERE asset_id = ?').all(a.id).forEach(r => { s[r.score_type] = r.value; });
-      const style = req.body.style_id ? db.prepare('SELECT params FROM ms_style_profiles WHERE id = ? AND workspace_id = ?').get(req.body.style_id, req.workspaceId) : null;
-      const sp = style ? J(style.params, {}) : {};
-      // gentle, explainable corrections (−1..1 normalized params the renderer maps to ops)
-      const expo = s.exposure != null ? Math.max(-0.5, Math.min(0.5, -s.exposure)) : 0; // pull toward neutral
-      const suggestion = {
-        exposure: Math.round((expo + (sp.exposure || 0)) * 100) / 100,
-        contrast: Math.round(((s.contrast != null && s.contrast < 0.3 ? 0.15 : 0) + (sp.contrast || 0)) * 100) / 100,
-        warmth: sp.warmth || 0, saturation: sp.saturation || 0,
-        shadows: (s.exposure != null && s.exposure < -0.2 ? 0.2 : 0) + (sp.shadows || 0),
-        highlights: (s.exposure != null && s.exposure > 0.2 ? -0.2 : 0) + (sp.highlights || 0),
-        denoise: s.noise != null && s.noise > 0.5 ? 0.4 : 0,
-        straighten: 0,
-      };
-      const reasons = [];
-      if (expo) reasons.push(`exposure ${expo > 0 ? 'lifted' : 'pulled'} to neutral`);
-      if (suggestion.denoise) reasons.push('noise reduction (high noise)');
-      if (style) reasons.push('style profile applied');
-      res.json({ ok: true, suggestion, reasons, note: 'Non-destructive — apply via the asset edit endpoint; original is never modified.' });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
 };

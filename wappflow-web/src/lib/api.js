@@ -250,7 +250,6 @@ export const messageQueueAPI = {
 
 export const aiAPI = {
   status: () => api.get('/ai/status'),
-  sentiment: (text) => api.post('/ai/sentiment', { text }),
   rewrite: (text, tone) => api.post('/ai/rewrite', { text, tone }),
   translate: (text, target_lang) => api.post('/ai/translate', { text, target_lang }),
   shorten: (text) => api.post('/ai/shorten', { text }),
@@ -517,12 +516,10 @@ export const studioAiAPI = {
   galleryFromSelection: (id, body) => api.post(`/studio-ai/projects/${id}/gallery-from-selection`, body),
   album: (id, body) => api.post(`/studio-ai/projects/${id}/album`, body),
   albums: (id) => api.get(`/studio-ai/projects/${id}/albums`),
-  portfolioPicks: () => api.get('/studio-ai/portfolio-picks'),
   styles: () => api.get('/studio-ai/styles'),
   createStyle: (data) => api.post('/studio-ai/styles', data),
   updateStyle: (sid, data) => api.put(`/studio-ai/styles/${sid}`, data),
   deleteStyle: (sid) => api.delete(`/studio-ai/styles/${sid}`),
-  autoEdit: (assetId, body) => api.post(`/studio-ai/assets/${assetId}/auto-edit`, body || {}),
 };
 // Reel engine (Phase 8) — Track-0-driven story plan + one-click render to video.
 export const reelAPI = {
@@ -532,10 +529,6 @@ export const reelAPI = {
 
 // Video AI — Story/Reel/templates (P7–P11)
 export const videoAiAPI = {
-  templates: () => api.get('/video-ai/templates'),
-  createTemplate: (data) => api.post('/video-ai/templates', data),
-  cull: (id, kind) => api.post(`/video-ai/projects/${id}/cull`, { kind }),
-  story: (id) => api.post(`/video-ai/projects/${id}/story`),
   reel: (id, body) => api.post(`/video-ai/projects/${id}/reel`, body),
   reels: (id) => api.get(`/video-ai/projects/${id}/reels`),
   getReel: (reelId) => api.get(`/video-ai/reels/${reelId}`),

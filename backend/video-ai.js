@@ -62,21 +62,6 @@ module.exports = function mountVideoAI(app, db, deps = {}) {
   }
   seedTemplates();
 
-  app.get('/api/video-ai/templates', auth, (req, res) => {
-    try {
-      const rows = db.prepare("SELECT id, workspace_id, kind, niche, name, def, is_system FROM ms_template_library WHERE is_system = 1 OR workspace_id = ? ORDER BY is_system DESC, created_at").all(req.workspaceId)
-        .map(t => ({ ...t, def: J(t.def, {}), is_system: !!t.is_system }));
-      res.json({ templates: rows });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
-  app.post('/api/video-ai/templates', auth, (req, res) => {
-    try {
-      const id = generateId();
-      db.prepare("INSERT INTO ms_template_library (id, workspace_id, kind, niche, name, def, is_system) VALUES (?,?,?,?,?,?,0)")
-        .run(id, req.workspaceId, req.body.kind || 'reel', req.body.niche || null, req.body.name || 'Custom template', JSON.stringify(req.body.def || {}));
-      res.json({ ok: true, id });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
 
   // ── P8: video culling — rank video assets / scenes by purpose ───────────────
   function videoScores(projectId) {
@@ -92,22 +77,6 @@ module.exports = function mountVideoAI(app, db, deps = {}) {
     best_interviews: { speech: 0.6, quality: 0.4 },
     best_drone:   { motion: 0.5, quality: 0.5 },
   };
-  app.post('/api/video-ai/projects/:id/cull', auth, (req, res) => {
-    try {
-      const project = getProject(req.workspaceId, req.params.id);
-      if (!project) return res.status(404).json({ error: 'Project not found' });
-      const kind = VKIND[req.body.kind] ? req.body.kind : 'best_moments';
-      const w = VKIND[kind]; const sc = videoScores(project.id);
-      const vids = db.prepare("SELECT id, filename, v_duration_ms FROM ms_assets WHERE project_id = ? AND type = 'video' AND deleted_at IS NULL").all(project.id);
-      const ranked = vids.map(v => {
-        const s = sc[v.id] || {}; let total = 0, wsum = 0;
-        for (const k in w) { if (s[k] != null) { total += w[k] * s[k]; wsum += w[k]; } }
-        const score = wsum ? total / wsum : (s.quality != null ? s.quality : 0.3);
-        return { asset_id: v.id, filename: v.filename, duration_ms: v.v_duration_ms, score: Math.round(score * 100) / 100 };
-      }).sort((a, b) => b.score - a.score);
-      res.json({ kind, clips: ranked });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
 
   // ── P10: Story Engine — assemble a narrative spec from project media ─────────
   function bestPhotoSelection(project) {
@@ -134,16 +103,6 @@ module.exports = function mountVideoAI(app, db, deps = {}) {
     if (closeAsset) beats.push({ role: 'resolve', asset_id: closeAsset, reason: 'warm close' });
     return { project_type: project.project_type, hook_asset_id: hookAsset, close_asset_id: closeAsset, pacing: 'medium', beats };
   }
-  app.post('/api/video-ai/projects/:id/story', auth, (req, res) => {
-    try {
-      const project = getProject(req.workspaceId, req.params.id);
-      if (!project) return res.status(404).json({ error: 'Project not found' });
-      const spec = generateStory(project);
-      const id = generateId();
-      db.prepare('INSERT INTO ms_story_specs (id, workspace_id, project_id, spec) VALUES (?,?,?,?)').run(id, req.workspaceId, project.id, JSON.stringify(spec));
-      res.json({ ok: true, story_id: id, spec });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
 
   // ── P11: Reel Studio — fill a template from a story to a target length ──────
   app.post('/api/video-ai/projects/:id/reel', auth, (req, res) => {

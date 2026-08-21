@@ -4057,14 +4057,6 @@ app.post('/api/leads/:id/ai/analyze', auth, async (req, res) => {
   }
 });
 
-// POST /api/ai/sentiment — quick single-message sentiment classification
-app.post('/api/ai/sentiment', auth, async (req, res) => {
-  try {
-    const { text } = req.body || {};
-    const result = await aiEngine.detectSentiment(text);
-    res.json(result);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 // POST /api/ai/rewrite — rewrite a message in a given tone (professional|friendly|casual|formal|empathetic)
 // Falls back to the workspace's preferred tone if no tone supplied.
@@ -4149,44 +4141,6 @@ app.put('/api/ai/profile', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/ai/industry-detect — workspace-level industry detection
-app.post('/api/ai/industry-detect', auth, async (req, res) => {
-  try {
-    // Get last 50 messages across all leads in workspace
-    const messages = db.prepare(`
-      SELECT m.body, m.from_me FROM messages m
-      JOIN leads l ON l.id = m.lead_id
-      WHERE l.workspace_id = ? AND m.body IS NOT NULL
-      ORDER BY m.timestamp DESC LIMIT 50
-    `).all(req.workspaceId);
-
-    if (messages.length < 3) return res.json({ industry: 'Unknown', confidence: 0, reason: 'Not enough data yet' });
-
-    const msgSample = messages.map(m => `${m.from_me ? 'Staff' : 'Customer'}: ${m.body}`).join('\n');
-
-    const prompt = `
-Analyze these WhatsApp business conversations and detect the industry.
-Return JSON only:
-{
-  "industry": "industry name",
-  "industry_key": "one of: training_institute, real_estate, clinic, agency, salon, logistics, ecommerce, general",
-  "confidence": <number 0-100>,
-  "reason": "one sentence explaining why",
-  "common_topics": ["topic1", "topic2", "topic3"]
-}
-
-Conversations:
-${msgSample}
-    `.trim();
-
-    const raw = await callGemini(prompt);
-    const result = extractJSON(raw, 'object') || { industry: 'General Business', confidence: 50, reason: 'Could not determine industry' };
-
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 // ════════════════════════════════════════════════════════════
 //  BUSINESS MEMORY & KNOWLEDGE BASE
 // ════════════════════════════════════════════════════════════
