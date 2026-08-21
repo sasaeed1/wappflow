@@ -717,7 +717,7 @@ function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <select value={pages} onChange={e => setPages(Number(e.target.value))} style={aiSel}>{[20, 30, 40, 60].map(n => <option key={n} value={n}>{n} pages</option>)}</select>
           <button onClick={album} disabled={!!busy} style={chip}>{busy === 'album' ? 'Generating…' : 'Generate album'}</button>
-          {albumId && <a href={`/studio/${projectId}/album/${albumId}`} style={{ ...chip, textDecoration: 'none', background: 'var(--ms-ink,#14120f)', color: '#fff', border: 'none' }}>Open editor →</a>}
+          {albumId && <a href={`/studio/${projectId}/albums/${albumId}`} style={{ ...chip, textDecoration: 'none', background: 'var(--ms-ink,#14120f)', color: '#fff', border: 'none' }}>Open editor →</a>}
         </div>
 
         <div style={aiLbl}>Reel (Story Engine)</div>

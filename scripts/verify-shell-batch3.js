@@ -31,10 +31,16 @@ check('Studio mounts the shell from its layout, keeping the pre-paint theme scri
   assert(/data-ms-theme/.test(studioLayout) && /dangerouslySetInnerHTML/.test(studioLayout), 'pre-paint theme script lost — would flash');
   assert(/import '\.\/studio\.css'/.test(studioLayout), 'studio.css import lost');
 });
-check('all 14 Studio pages unwrapped — including the alias trap', () => {
+check('every Studio page is unwrapped — including the alias trap', () => {
+  // The real invariant is that NO studio page imports a legacy shell (StudioShell
+  // was aliased as "NavBar" in several files, which is why this greps the import
+  // PATH rather than the local name). The page COUNT was incidental — it was 14
+  // when this was written and is lower now that Phase 6 retired the duplicate
+  // album editor, so the floor only guards against the glob silently matching
+  // nothing and making the check vacuous.
   const offenders = STUDIO_PAGES.filter(([, s]) => /from ['"][^'"]*components\/(StudioShell|NavBar)['"]/.test(s)).map(([n]) => n);
   assert(offenders.length === 0, 'still importing a shell: ' + offenders.join(', '));
-  assert(STUDIO_PAGES.length >= 14, 'expected >=14 studio pages, found ' + STUDIO_PAGES.length);
+  assert(STUDIO_PAGES.length >= 10, 'studio page glob matched too few files to be meaningful: ' + STUDIO_PAGES.length);
 });
 check('D8 preserved: content still renders inside the .ms-root token-remap scope', () => {
   assert(/dialectClass: 'ms-root'/.test(modules), 'Studio dialect class lost');
