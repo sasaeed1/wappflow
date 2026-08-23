@@ -2465,7 +2465,7 @@ useEffect(() => {
                     <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>✨</div>
                     <div>
                       <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', margin: 0 }}>AI Assistant</p>
-                      <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Powered by Gemini · Analyzes this lead's conversation</p>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Analyzes this lead's conversation</p>
                     </div>
                   </div>
 

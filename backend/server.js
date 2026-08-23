@@ -3857,7 +3857,7 @@ console.log('✅ Cron jobs started');
 //  AI ASSISTANT (GEMINI)
 // ════════════════════════════════════════════════════════════
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
+// (No provider key is read here any more — ai-engine.js owns every LLM call.)
 
 // ── AI metering (Command Center §1.5 / §18) ──────────────────────────────────
 // Rough cost rates in USD per 1M tokens. Unknown models fall back to a flat rate.
@@ -3867,6 +3867,13 @@ const AI_RATES = {
   'gpt-4o-mini':          { in: 0.15, out: 0.60 },
   'claude-haiku-4-5-20251001': { in: 1.00, out: 5.00 },
   'meta-llama/llama-3.3-70b-instruct:free': { in: 0, out: 0 },
+  // Current defaults. Retired ids are kept above so historical usage rows still
+  // price correctly rather than silently falling back to the flat rate.
+  'openai/gpt-oss-20b':   { in: 0.05, out: 0.08 },   // groq
+  'openai/gpt-oss-120b':  { in: 0.15, out: 0.60 },
+  'gemma-4-31b':          { in: 0.05, out: 0.08 },   // cerebras
+  'qwen/qwen3.6-27b':     { in: 0.05, out: 0.08 },
+  'z-ai/glm-5.2:free':    { in: 0, out: 0 },         // openrouter free tier
 };
 function recordAiUsage({ workspace_id = null, user_id = null, feature = null, provider, model, prompt_tokens = 0, completion_tokens = 0, latency_ms = 0, success = 1 }) {
   try {
@@ -3880,37 +3887,19 @@ function recordAiUsage({ workspace_id = null, user_id = null, feature = null, pr
 // callLLM provider-failover path; the inline callGemini below is metered directly).
 try { aiEngine.setMeter(recordAiUsage); } catch {}
 
-// callGemini(prompt, maxTokens, ctx?) — ctx {workspace_id, user_id, feature} is optional
-// so existing call sites need no changes; metering still records provider/model/tokens/latency.
-async function callGemini(prompt, maxTokens = 2048, ctx = {}) {
-  const model = 'llama-3.1-8b-instant';
-  const t0 = Date.now();
-  try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: maxTokens
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Groq API error ${res.status}`);
-    }
-    const data = await res.json();
-    const u = data.usage || {};
-    recordAiUsage({ ...ctx, provider: 'groq', model, prompt_tokens: u.prompt_tokens || 0, completion_tokens: u.completion_tokens || 0, latency_ms: Date.now() - t0, success: 1 });
-    return data.choices?.[0]?.message?.content || '';
-  } catch (e) {
-    recordAiUsage({ ...ctx, provider: 'groq', model, latency_ms: Date.now() - t0, success: 0 });
-    throw e;
-  }
+// callAI(prompt, maxTokens, ctx) — the ONE way this file talks to an LLM.
+//
+// This was `callGemini`: a name that did not call Gemini, a hardcoded
+// 'llama-3.1-8b-instant', a single API key, and no failover — a second AI path
+// living alongside ai-engine.js and quietly ignoring everything it provides.
+// When Groq retired that model id, nine features died with an error naming a
+// model nobody had configured, while the engine's own chain was healthy.
+//
+// It now delegates. Every call site inherits multi-key rotation, provider
+// failover, the configured model, and self-healing when a model id is retired.
+// Metering still happens once, inside the engine (setMeter above).
+async function callAI(prompt, maxTokens = 2048, ctx = {}) {
+  return aiEngine.callLLM(prompt, { maxTokens, ctx });
 }
 
 // Strip markdown code fences and extract a JSON array or object from raw AI output
@@ -3965,7 +3954,7 @@ Respond in plain text only, no formatting.
 ${context}
     `.trim();
 
-    const summary = await callGemini(prompt);
+    const summary = await callAI(prompt);
     
     // Save to contact history
     addContactHistory(req.params.id, req.userId, 'ai', 'AI Summary generated');
@@ -4005,7 +3994,7 @@ Format your response as JSON array only, no explanation:
 ${context}
     `.trim();
 
-    const raw = await callGemini(prompt);
+    const raw = await callAI(prompt);
     let suggestions = [];
     const parsed = extractJSON(raw, 'array');
     if (parsed && Array.isArray(parsed)) {
@@ -4207,7 +4196,7 @@ ${truncated}
   `.trim();
 
   try {
-    const raw = await callGemini(prompt, 2048);
+    const raw = await callAI(prompt, 2048);
     console.log('🧠 Raw AI response (first 300 chars):', raw.substring(0, 300));
     const memories = extractJSON(raw, 'array');
     if (!memories) {
@@ -4247,7 +4236,7 @@ ${truncated}
   `.trim();
 
   try {
-    const raw = await callGemini(prompt, 2048);
+    const raw = await callAI(prompt, 2048);
     console.log('💬 Raw chat-learn AI response (first 300 chars):', raw.substring(0, 300));
     const memories = extractJSON(raw, 'array');
     if (!memories) {
@@ -4515,7 +4504,7 @@ Return JSON only:
 User command: "${command}"
     `.trim();
 
-    const classifyRaw = await callGemini(classifyPrompt);
+    const classifyRaw = await callAI(classifyPrompt);
     let intent = {};
     try {
       const match = classifyRaw.match(/\{[\s\S]*\}/);
@@ -4576,7 +4565,7 @@ User command: "${command}"
 
     else if (intent.type === 'show_stats') {
       // Generate AI summary of stats
-      const aiSummary = await callGemini(`
+      const aiSummary = await callAI(`
         Summarize these CRM stats in 2 sentences, be friendly and insightful:
         Total leads: ${stats.total}, New: ${stats.new}, Hot leads: ${stats.hot}, Won deals: ${stats.won}
         ${memoryContext}
@@ -4602,7 +4591,7 @@ User command: "${command}"
         SELECT COUNT(*) as c FROM messages m JOIN leads l ON l.id=m.lead_id
         WHERE l.workspace_id=? AND DATE(m.timestamp)=DATE('now')
       `).get(wid).c;
-      const summary = await callGemini(`
+      const summary = await callAI(`
         Summarize today's CRM activity in 2-3 sentences:
         New leads today: ${todayLeads.length}
         Messages sent/received today: ${todayMessages}
@@ -4616,7 +4605,7 @@ User command: "${command}"
 
     else {
       // Unknown — try to answer with AI using CRM context
-      const aiAnswer = await callGemini(`
+      const aiAnswer = await callAI(`
         You are an AI assistant for a WhatsApp CRM.
         ${memoryContext}
         CRM Stats: ${JSON.stringify(stats)}
@@ -4748,7 +4737,7 @@ Return JSON only:
 Messages:
 ${msgSample}
         `.trim();
-        const raw = await callGemini(prompt);
+        const raw = await callAI(prompt);
         const match = raw.match(/\{[\s\S]*\}/);
         const aiResult = JSON.parse(match ? match[0] : raw);
         if (aiResult.confidence > confidence) {
@@ -4839,7 +4828,7 @@ ${context || 'No messages yet'}
 Lead status: ${lead.status}
     `.trim();
 
-    const raw = await callGemini(prompt);
+    const raw = await callAI(prompt);
     const match = raw.match(/\{[\s\S]*\}/);
     const suggestion = JSON.parse(match ? match[0] : raw);
     res.json({ suggestion, industry, workflow: { name: workflow.name, emoji: workflow.emoji, color: workflow.color } });

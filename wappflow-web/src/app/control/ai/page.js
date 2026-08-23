@@ -17,7 +17,7 @@ export default function AICenter() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>AI Control Center</h1>
         <Card><div style={{ fontSize: 13.5, color: 'var(--text-muted,#9a9aa5)' }}>
-          No AI calls metered yet. Metering is live (the <code>callGemini</code> path now records provider, tokens, latency, cost &amp; success to <code>ai_usage</code>) — this page populates as the app makes AI requests (summaries, reply suggestions, AI command, industry, knowledge).
+          No AI calls metered yet. Metering is live (every LLM call now records provider, tokens, latency, cost &amp; success to <code>ai_usage</code>) — this page populates as the app makes AI requests (summaries, reply suggestions, AI command, industry, knowledge).
         </div></Card>
       </div>
     );
@@ -58,7 +58,7 @@ export default function AICenter() {
             </div>
           ))}
           {byFeature.some((f) => f.feature === '(unattributed)') && (
-            <div style={{ fontSize: 11.5, color: 'var(--text-dim,#666)', marginTop: 8 }}>Per-feature/workspace attribution fills in as call sites pass context (callGemini accepts an optional ctx arg).</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-dim,#666)', marginTop: 8 }}>Per-feature/workspace attribution fills in as call sites pass context (callAI accepts an optional ctx arg).</div>
           )}
         </Card>
       </div>
