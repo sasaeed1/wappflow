@@ -56,11 +56,31 @@ function paginate(db, { sql, countSql, params, page }) {
 }
 
 /** Turns `SELECT <cols> FROM x WHERE y ORDER BY z` into its COUNT(*) twin. */
+// Find a keyword at parenthesis depth 0 - i.e. one belonging to THIS query and
+// not to a subquery. Taking the first FROM naively breaks the moment a column is
+// computed by a correlated subquery (a lifetime-revenue SUM, say): the count
+// would then be built from the SUBQUERY's FROM and count the wrong table.
+function topLevelIndex(sql, word) {
+  const upper = sql.toUpperCase();
+  let depth = 0;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === '(') { depth++; continue; }
+    if (ch === ')') { depth--; continue; }
+    if (depth !== 0) continue;
+    if (!upper.startsWith(word, i)) continue;
+    const before = i === 0 ? ' ' : sql[i - 1];
+    const after = sql[i + word.length] === undefined ? ' ' : sql[i + word.length];
+    if (/[\s(),]/.test(before) && /[\s(),]/.test(after)) return i;
+  }
+  return -1;
+}
+
 function toCountSql(sql) {
-  const from = sql.search(/\bFROM\b/i);
+  const from = topLevelIndex(sql, 'FROM');
   if (from === -1) throw new Error('toCountSql: no FROM clause');
-  const order = sql.search(/\bORDER BY\b/i);
-  const body = order === -1 ? sql.slice(from) : sql.slice(from, order);
+  const order = topLevelIndex(sql, 'ORDER BY');
+  const body = (order === -1 || order < from) ? sql.slice(from) : sql.slice(from, order);
   return `SELECT COUNT(*) c ${body}`;
 }
 

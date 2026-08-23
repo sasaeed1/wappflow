@@ -61,7 +61,10 @@ export default function ClientsPage() {
     setBusy(null);
   };
 
-  const revenue = useMemo(() => clients.reduce((s, c) => s + (Number(c.actual_sale) || 0), 0), [clients]);
+  // Lifetime revenue is what they have actually PAID (sum of paid invoices),
+  // supplied by the API. actual_sale holds a single deal's value, so a repeat
+  // client's fifth booking used to be reported as their entire history.
+  const revenue = useMemo(() => clients.reduce((s, c) => s + (Number(c.lifetime_revenue) || 0), 0), [clients]);
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return clients;
@@ -140,10 +143,12 @@ export default function ClientsPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 18, marginBottom: 16, flexWrap: 'wrap' }}>
-                  {c.actual_sale ? (
+                  {(Number(c.lifetime_revenue) > 0 || c.actual_sale) ? (
                     <div>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>{fmtMoney(c.actual_sale, sym)}</div>
-                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Deal value</div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>{fmtMoney(Number(c.lifetime_revenue) || c.actual_sale, sym)}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {Number(c.lifetime_revenue) > 0 ? 'Paid to date' : 'Deal value'}
+                      </div>
                     </div>
                   ) : null}
                   {fmtDate(c.client_since) && (

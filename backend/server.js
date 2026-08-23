@@ -1649,7 +1649,15 @@ app.post('/api/leads/round-robin', auth, (req, res) => {
 app.get('/api/leads', auth, (req, res) => {
   try {
     const { status, assigned_to, source, platform, account_id, client } = req.query;
-    let query = 'SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)';
+    // Phase 7: lifetime revenue is what the contact has actually PAID — the sum of
+    // their paid invoices — not `actual_sale`, which holds a single deal's value
+    // and so reported a repeat client's fifth booking as their entire history.
+    // Correlated subquery rather than N+1: idx_invoices_lead makes it cheap.
+    let query = `SELECT leads.*,
+      (SELECT COALESCE(SUM(i.total), 0) FROM invoices i
+        WHERE i.lead_id = leads.id AND i.status = 'paid'
+          AND (i.is_deleted = 0 OR i.is_deleted IS NULL)) AS lifetime_revenue
+      FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)`;
     const params = [req.workspaceId];
     // Client filter is OPT-IN so other surfaces (Inbox, dashboard) are unchanged:
     //   client=1 → only clients (Clients page) · client=0 → only leads (Leads list)
@@ -2094,12 +2102,24 @@ app.put('/api/leads/:id/status', auth, (req, res) => {
   try {
     const { status, actual_sale, lost_reason } = req.body;
     const { id } = req.params;
+    // Read before writing: a returning client winning a second deal should not be
+    // announced as a new one.
+    const prior = getScopedLead(req, id);
+    const wasClient = !!(prior && prior.is_client);
     let query = 'UPDATE leads SET status = ?';
     const params = [status];
     if (status === 'Closed - Won' || status === 'Closed - Lost') {
       query += ', closed_at = CURRENT_TIMESTAMP';
       if (status === 'Closed - Won' && actual_sale) { query += ', actual_sale = ?'; params.push(actual_sale); }
       if (status === 'Closed - Lost' && lost_reason) { query += ', lost_reason = ?'; params.push(lost_reason); }
+      // Phase 7: winning a deal MAKES them a client. These were two disconnected
+      // ideas — the pipeline's success state, and the Clients list — bridged only
+      // by a manual "Move to Clients" click nobody thinks to make. Studios won
+      // deals and watched Clients stay empty. client_since keeps its first value,
+      // so re-winning a returning client does not reset when they joined.
+      if (status === 'Closed - Won') {
+        query += ', is_client = 1, client_since = COALESCE(client_since, CURRENT_TIMESTAMP)';
+      }
     }
     if (['Contacted', 'Interested', 'Negotiating'].includes(status)) {
       query += ', last_contacted_at = CURRENT_TIMESTAMP';
@@ -2109,6 +2129,15 @@ app.put('/api/leads/:id/status', auth, (req, res) => {
     db.prepare(query).run(...params);
     addContactHistory(id, req.userId, 'status_change', `Status changed to ${status}${lost_reason ? ` — ${lost_reason}` : ''}`);
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
+    if (status === 'Closed - Won' && !wasClient) {
+      addContactHistory(id, req.userId, 'client', 'Promoted to client (deal won)');
+      try {
+        notify(req.workspaceId, {
+          type: 'client', title: `New client: ${lead.customer_name || lead.customer_phone}`,
+          body: 'Deal won — moved into Clients.', url: `/leads/${id}`, icon: '🎉',
+        });
+      } catch {}
+    }
     broadcastToWorkspace(req.workspaceId, 'lead_updated', { lead });
     logAudit(req.workspaceId, req.userId, 'status_change', 'lead', id, { status, lost_reason });
     res.json(lead);
@@ -5640,6 +5669,9 @@ app.post('/api/leads/bulk-status', auth, (req, res) => {
     // are per-lead data the bulk UI does not collect; those stay single-record.)
     let stamps = '';
     if (status === 'Closed - Won' || status === 'Closed - Lost') stamps = ', closed_at = CURRENT_TIMESTAMP';
+    // Same rule as the single-record route: winning makes them a client. Moving
+    // ten deals to Won in bulk must not behave differently from moving one.
+    if (status === 'Closed - Won') stamps += ', is_client = 1, client_since = COALESCE(client_since, CURRENT_TIMESTAMP)';
     if (['Contacted', 'Interested', 'Negotiating'].includes(status)) stamps = ', last_contacted_at = CURRENT_TIMESTAMP';
     // A member who cannot view all leads can only move their own — the same rule
     // the leads list and bulk empty-trash enforce. (The single-status route
