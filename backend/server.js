@@ -6346,6 +6346,9 @@ paymentsApi = require('./payments')(app, db, { auth, generateId, broadcastToWork
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,
   path, fs, uploadsDir, multer,
+  // Signing a contract can raise an invoice and open a shoot. Both go through
+  // the shared creators so they are the same objects as the ones made by hand.
+  createInvoiceForLead, createProject: mediaStudioApi.createProject,
   clientBaseUrl: process.env.FRONTEND_URL || '',
   sendClientMessage: async ({ lead, userId, text }) => {
     if (!lead || !lead.customer_phone) return { skipped: true };

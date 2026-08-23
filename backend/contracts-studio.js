@@ -97,6 +97,10 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     notify = () => {},
     clientBaseUrl = process.env.FRONTEND_URL || '',
     sendClientMessage = async () => ({ skipped: true }),
+    // Injected: a signed contract raises the SAME invoice and opens the SAME kind
+    // of shoot as one created by hand, instead of a private near-copy of each.
+    createInvoiceForLead = null,
+    createProject = null,
     sendEmail = async () => ({ skipped: true }),
     path = require('path'),
     fs = require('fs'),
@@ -279,35 +283,65 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
       } catch (e) { recordEvent(doc, 'automation_error', { actor: 'system', meta: { step: 'pipeline', error: e.message } }); }
     }
 
+    // Automations act as the studio owner, since the client triggered them by
+    // signing. This shape is what the shared creators read.
+    const asOwner = { workspaceId: doc.workspace_id, workspaceOwnerId: ownerId, userId: doc.created_by, canViewAllLeads: true };
+
     let invoiceId = null;
     if (a.create_invoice && items.length) {
       try {
         const lead = doc.lead_id ? db.prepare('SELECT customer_name, customer_phone, email FROM leads WHERE id = ?').get(doc.lead_id) : null;
-        const prefix = cs.invoice_prefix || 'INV'; const counter = (cs.invoice_counter || 1000) + 1;
-        db.prepare('UPDATE company_settings SET invoice_counter = ? WHERE user_id = ?').run(counter, ownerId);
-        const num = `${prefix}-${counter}`; invoiceId = generateId();
         let invItems = items, invTotal = total, note = `Auto-created from signed ${doc.type}: ${doc.title}`;
         if (pay.enabled && pay.type === 'deposit') {
           const dep = pay.deposit_type === 'fixed' ? (Number(pay.deposit_value) || 0) : Math.round(total * ((Number(pay.deposit_value) || 0) / 100));
           invItems = [{ description: `Deposit — ${doc.title}`, qty: 1, rate: dep, amount: dep }];
           invTotal = dep; note = `Deposit (${pay.deposit_type === 'fixed' ? sym + dep : (pay.deposit_value || 0) + '%'}) for "${doc.title}". Balance due: ${sym}${total - dep}.`;
         }
-        db.prepare(`INSERT INTO invoices (id, user_id, lead_id, invoice_number, customer_name, customer_email, customer_phone, items, subtotal, tax_rate, tax_amount, discount, total, currency, currency_symbol, status, notes)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-          .run(invoiceId, ownerId, doc.lead_id, num, lead?.customer_name || signerName || null, lead?.email || null, lead?.customer_phone || null,
-            JSON.stringify(invItems), invTotal, 0, 0, 0, invTotal, cs.currency || 'USD', sym, 'sent', note);
-        if (doc.lead_id) addContactHistory(doc.lead_id, doc.created_by, 'invoice', `Invoice ${num} auto-created from signed ${doc.type} — ${sym}${invTotal}`);
+        // This was a FOURTH hand-rolled copy of invoice creation, and it inserted
+        // no workspace_id at all - contract-generated invoices landed with a null
+        // tenant and survived only on the legacy owner-id fallback.
+        if (!createInvoiceForLead) throw new Error('invoicing unavailable');
+        const invoice = createInvoiceForLead(asOwner, {
+          lead_id: doc.lead_id || null,
+          customer_name: lead?.customer_name || signerName || null,
+          customer_email: lead?.email || null, customer_phone: lead?.customer_phone || null,
+          items: invItems, subtotal: invTotal, tax_rate: 0, tax_amount: 0, discount: 0, total: invTotal,
+          notes: note, status: 'sent',
+        });
+        invoiceId = invoice.id;
         ran.push('invoice');
       } catch (e) { recordEvent(doc, 'automation_error', { actor: 'system', meta: { step: 'invoice', error: e.message } }); }
     }
 
     if (a.create_project) {
       try {
-        const pid = generateId();
-        db.prepare('INSERT INTO ms_projects (id, workspace_id, lead_id, title, project_type, status, created_by) VALUES (?,?,?,?,?,?,?)')
-          .run(pid, doc.workspace_id, doc.lead_id || null, doc.title, a.project_type || 'general', 'planning', doc.created_by);
+        // Was a third copy: it skipped the lead check, the timeline entry, the
+        // audit row and the broadcast, so a shoot born from a signed contract
+        // never appeared in the client's story or on anyone's screen.
+        if (!createProject) throw new Error('media studio unavailable');
+        createProject(asOwner, {
+          lead_id: doc.lead_id || null, title: doc.title, project_type: a.project_type || 'general',
+        });
         ran.push('project');
       } catch (e) { recordEvent(doc, 'automation_error', { actor: 'system', meta: { step: 'project', error: e.message } }); }
+    }
+
+    // Contract -> Booking. Signing is the moment a client is most willing to
+    // commit to a date, and the chain stopped dead there: the studio had to
+    // remember to go and ask. Send them the booking page so they can pick one.
+    if (a.send_booking_link && doc.lead_id) {
+      try {
+        const bs = db.prepare('SELECT slug FROM booking_settings WHERE workspace_id = ?').get(doc.workspace_id);
+        if (!bs?.slug) throw new Error('no public booking page is set up');
+        const link = `${clientBaseUrl}/book/${bs.slug}`;
+        const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(doc.lead_id);
+        if (lead?.customer_phone) {
+          sendClientMessage({ lead, userId: doc.created_by, text: `Thanks for signing "${doc.title}"! Pick your date here: ${link}` })
+            .catch(() => {});
+        }
+        addContactHistory(doc.lead_id, doc.created_by, 'booking', `Booking link sent after signing "${doc.title}"`, { url: link });
+        ran.push('booking_link');
+      } catch (e) { recordEvent(doc, 'automation_error', { actor: 'system', meta: { step: 'booking_link', error: e.message } }); }
     }
 
     if (ran.length) { recordEvent(doc, 'automation', { actor: 'system', meta: { ran, invoiceId, total } }); logAudit(doc.workspace_id, doc.created_by, 'cs_automation', 'cs_document', doc.id, { ran }); }
