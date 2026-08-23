@@ -16,12 +16,21 @@
  */
 const crypto = require('crypto');
 
+const videoEngine = require('./video-engine');
+
 module.exports = function mountVideoAI(app, db, deps = {}) {
   const {
     auth = (req, res, next) => next(),
     generateId = () => crypto.randomUUID(),
     broadcastToWorkspace = () => {},
   } = deps;
+
+  // This module writes ms_timelines, whose DDL and semantics belong to
+  // media-studio.js. That only works because media-studio mounts first; make the
+  // dependency explicit so a reordering fails loudly at boot.
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ms_timelines'").get()) {
+    throw new Error('ms_timelines must be created by media-studio before video-ai mounts');
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS ms_template_library (
@@ -129,36 +138,42 @@ module.exports = function mountVideoAI(app, db, deps = {}) {
         return { asset_id: b.asset_id, role: b.role, in_ms: 0, out_ms: dur, duration_ms: dur, motion: s.motion, transition: s.transition_in, caption: null };
       });
       const plan = { length_s: lengthS, aspect: def.aspect || '9:16', music_markers: def.music_markers || [], timeline, mode: req.body.mode || 'auto' };
+
+      // Phase 6: the Story Engine used to save its plan in a private shape
+      // (ms_reel_plans) that only its own editor could read — an editor with no
+      // render and no export, so the work dead-ended there. It now produces the
+      // SAME artifact every other path produces: a real ms_timelines row, which
+      // opens in the one timeline editor and can actually be exported.
+      const aspect = def.aspect || '9:16';
+      const doc = {
+        version: 1, aspect, fps: 30,
+        tracks: [{
+          id: 'v1', type: 'video',
+          clips: timeline.map((c, i) => ({
+            id: 'c' + i,
+            assetId: c.asset_id,
+            start: timeline.slice(0, i).reduce((a, x) => a + (x.duration_ms || 0), 0),
+            duration: c.duration_ms,
+            in: c.in_ms || 0,
+            out: c.out_ms || c.duration_ms,
+            // 'cut'/'whip' are the planner's vocabulary; video-engine resolves
+            // them to what the renderer can actually draw.
+            transitionIn: i === 0 ? null : { type: c.transition || 'fade', duration: 400 },
+            kenBurns: /kenburns|pan|zoom/i.test(c.motion || '')
+              ? { fromScale: 1, toScale: 1.12, fromX: 0, toX: i % 2 ? 0.06 : -0.06, fromY: 0, toY: 0 }
+              : undefined,
+          })),
+        }],
+      };
+      const san = videoEngine.sanitizeTimeline(doc);
       const id = generateId();
-      db.prepare('INSERT INTO ms_reel_plans (id, workspace_id, project_id, story_id, template_id, length_s, plan) VALUES (?,?,?,?,?,?,?)')
-        .run(id, req.workspaceId, project.id, storyId, tpl ? tpl.id : null, lengthS, JSON.stringify(plan));
-      res.json({ ok: true, reel_id: id, story_id: storyId, template: tpl ? tpl.name : null, plan });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
-  app.get('/api/video-ai/reels/:id', auth, (req, res) => {
-    try {
-      const r = db.prepare('SELECT * FROM ms_reel_plans WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
-      if (!r) return res.status(404).json({ error: 'Reel not found' });
-      res.json({ reel: { ...r, plan: J(r.plan, {}) } });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
-  app.put('/api/video-ai/reels/:id', auth, (req, res) => {
-    try {
-      const r = db.prepare('SELECT id FROM ms_reel_plans WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
-      if (!r) return res.status(404).json({ error: 'Reel not found' });
-      const set = {};
-      if (req.body.plan !== undefined) { set.plan = JSON.stringify(req.body.plan); if (req.body.plan.length_s) set.length_s = req.body.plan.length_s; }
-      if (req.body.status !== undefined) set.status = req.body.status;
-      const keys = Object.keys(set);
-      if (keys.length) db.prepare(`UPDATE ms_reel_plans SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: r.id });
-      res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
-  app.get('/api/video-ai/projects/:id/reels', auth, (req, res) => {
-    try {
-      const project = getProject(req.workspaceId, req.params.id);
-      if (!project) return res.status(404).json({ error: 'Project not found' });
-      res.json({ reels: db.prepare('SELECT id, length_s, template_id, plan, status, created_at FROM ms_reel_plans WHERE project_id = ? ORDER BY created_at DESC').all(project.id).map(r => ({ ...r, plan: J(r.plan, {}) })) });
+      db.prepare(`INSERT INTO ms_timelines (id, workspace_id, project_id, name, source, aspect_ratio, width, height, fps, duration_ms, document, status, created_by)
+        VALUES (?,?,?,?, 'ai_reel', ?,?,?,?,?, ?, 'ready', ?)`)
+        .run(id, req.workspaceId, project.id, tpl ? `${tpl.name}` : 'Story reel',
+             san.aspect, san.width, san.height, san.fps, san.duration, JSON.stringify(san), req.userId);
+      // reel_id is kept in the response under its old name so existing callers do
+      // not break; it now identifies a TIMELINE.
+      res.json({ ok: true, reel_id: id, timeline_id: id, story_id: storyId, template: tpl ? tpl.name : null, plan });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 };

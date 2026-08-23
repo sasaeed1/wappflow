@@ -50,7 +50,11 @@ check('the routes those DUPLICATED still exist — the capability was never remo
 
 check('endpoints that ARE wired up survived', () => {
   assert(/app\.post\('\/api\/video-ai\/projects\/:id\/reel'/.test(VIDEO_AI), 'reel generation removed — it has a caller');
-  assert(/app\.(get|put)\('\/api\/video-ai\/reels\/:id'/.test(VIDEO_AI), 'the reel editor routes were removed');
+  // The reel EDITOR routes were removed on purpose in the reel consolidation:
+  // the Story Engine now writes a canonical ms_timelines row opened by the one
+  // editor that can export, so its private plan store and editor are gone.
+  assert(!/app\.(get|put)\('\/api\/video-ai\/reels\/:id'/.test(VIDEO_AI),
+    'the dead-end reel editor routes are back');
   assert(/app\.post\('\/api\/ai\/command'/.test(SERVER), 'the AI command endpoint was removed');
   assert(/app\.post\('\/api\/studio-ai\/projects\/:id\/album'/.test(STUDIO_AI), 'album generation was removed');
 });
