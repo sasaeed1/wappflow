@@ -17,7 +17,7 @@
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const email = process.argv[2];
+const email = (process.argv[2] || '').trim();
 const apply = process.argv.includes('--apply');
 const TIER = 'enterprise';
 
@@ -26,8 +26,36 @@ if (!email) {
   process.exit(1);
 }
 
+// Resolve the database the SERVER actually uses, not whatever this shell happens
+// to have. NODE_ENV lives in backend/.env, which pm2 loads for the app but a
+// plain `node grant-master.js` does not — so without this the script silently
+// reads the development database and reports an empty one, which is a great way
+// to "successfully" grant nothing.
+const fs = require('fs');
+function envFromFile() {
+  try {
+    const txt = fs.readFileSync(path.join(__dirname, '.env'), 'utf8');
+    for (const rawLine of txt.split(String.fromCharCode(10))) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const eq = line.indexOf('=');
+      if (eq < 1) continue;
+      const k = line.slice(0, eq).trim();
+      const v = line.slice(eq + 1).trim();
+      if (process.env[k] === undefined) process.env[k] = v;
+    }
+  } catch { /* no .env - development defaults are then correct */ }
+}
+envFromFile();
+
 const DATA_DIR = process.env.NODE_ENV === 'production' ? '/data' : __dirname;
 const dbPath = path.join(DATA_DIR, 'wappflow.db');
+if (!fs.existsSync(dbPath)) {
+  console.error(`✗ No database at ${dbPath}`);
+  console.error(`  NODE_ENV=${process.env.NODE_ENV || '(unset)'} — production reads /data, otherwise this folder.`);
+  process.exit(1);
+}
+console.log(`database  : ${dbPath}`);
 const db = new Database(dbPath);
 
 const user = db.prepare('SELECT id, email, workspace_id FROM users WHERE lower(email) = lower(?)').get(email);
