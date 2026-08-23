@@ -15,6 +15,7 @@ const nodemailer = require('nodemailer');
 const aiEngine = require('./ai-engine');
 const entitlements = require('./entitlements');   // data-driven plan/feature/limit resolver
 const pricing = require('./pricing');             // usage tracking + soft-limit enforcement
+const { describeWaError } = require('./wa-errors'); // unwraps minified whatsapp-web.js/puppeteer errors
 
 // VAPID keys (generate once, store in env for production)
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BPismtnocRKwNB_MlJqoFdWIG5vKNGhw89sH0nut1Ms7mS2Jlod5htjjgL53Wd_X8emuODWC5a1P1Hy52oUqAv0';
@@ -1907,8 +1908,10 @@ app.post('/api/leads/:leadId/messages/voice', auth, (req, res) => {
           await whatsappService.sendVoiceNote(lead.customer_phone, req.file.path, req.file.mimetype);
           delivered = true;
         } catch (sendErr) {
-          console.error('Voice send via WhatsApp failed:', sendErr);
-          const detail = sendErr.message || String(sendErr) || 'WhatsApp delivery failed';
+          // Was logging the raw error, which puppeteer had already reduced to a
+          // minified class name ("t: t") — useless for diagnosing a failed send.
+          console.error(`Voice send via WhatsApp failed:\n${describeWaError(sendErr)}`);
+          const detail = describeWaError(sendErr).split('\n')[0] || 'WhatsApp delivery failed';
           // Don't 500 — the file IS saved. Tell the client what went wrong with delivery.
           return res.status(502).json({ error: `WhatsApp send failed: ${detail}`, media_url: mediaUrl });
         }

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, execFile } = require('child_process');
 const qrcode = require('qrcode');
+const { describeWaError, isPageContextGone } = require('./wa-errors');
 
 class WhatsAppService {
   constructor(db, broadcastToUser, accountId = null, sessionName = undefined, broadcastToWorkspace = null, notify = null) {
@@ -91,6 +92,25 @@ class WhatsAppService {
     // Newer whatsapp-web.js exposes these directly; trust them when present.
     if (chat && (chat.isChannel === true || chat.isNewsletter === true || chat.isBroadcast === true)) return false;
     return true;
+  }
+
+  // WhatsApp Web's message key used to expose `_serialized`; current builds ship it
+  // under a minified name instead (`$1` today, something else after the next deploy),
+  // so `id._serialized` silently reads undefined and every wa_message_id lands NULL —
+  // which quietly disables duplicate detection. Read the field when it's there, then
+  // fall back to any own value already in serialized form, then rebuild it from parts.
+  static waMessageKey(id) {
+    if (!id) return null;
+    if (typeof id === 'string') return id;
+    if (typeof id._serialized === 'string' && id._serialized) return id._serialized;
+    for (const value of Object.values(id)) {
+      if (typeof value === 'string' && /^(true|false)_[^_]+_.+/.test(value)) return value;
+    }
+    if (id.id && id.remote) {
+      const remote = typeof id.remote === 'string' ? id.remote : (id.remote._serialized || '');
+      if (remote) return `${!!id.fromMe}_${remote}_${id.id}${id.participant ? `_${id.participant}` : ''}`;
+    }
+    return null;
   }
 
   _resolveOwner() {
@@ -285,7 +305,9 @@ class WhatsAppService {
         // Only skip if truly empty AND not a media message
         if (!message.hasMedia && (!message.body || message.body.trim() === '')) return;
 
-        const messageId = message.id._serialized || message.id;
+        // Falling back to the raw `message.id` OBJECT here made this Set useless — every
+        // object is a distinct key, so nothing was ever recognised as already processed.
+        const messageId = WhatsAppService.waMessageKey(message.id) || JSON.stringify(message.id);
         if (this.processedMessages.has(messageId)) return;
         this.processedMessages.add(messageId);
         if (this.processedMessages.size > 1000) {
@@ -370,7 +392,7 @@ class WhatsAppService {
         }
 
         const msgId = this.generateId();
-        const waId = message.id?._serialized || null;
+        const waId = WhatsAppService.waMessageKey(message.id);
         try {
           // Determine media type properly
           let mediaType = null;
@@ -872,7 +894,7 @@ class WhatsAppService {
     const messages = await chat.fetchMessages({ limit });
     console.log(`📜 Fetched ${messages.length} historical messages for ${phone}`);
     return messages.map(m => ({
-      wa_id: m.id?._serialized || null,
+      wa_id: WhatsAppService.waMessageKey(m.id),
       body: m.body || (m.hasMedia ? '[Media]' : ''),
       from_me: m.fromMe ? 1 : 0,
       ts: m.timestamp,
@@ -882,6 +904,103 @@ class WhatsAppService {
           : 'media')
         : null,
     }));
+  }
+
+  // Read the chats that saw inbound activity since `sinceSec`, straight out of the page.
+  //
+  // This deliberately does NOT use client.getChats(). That call runs every chat through
+  // whatsapp-web.js's getChatModel(), which reads `chat.lastReceivedKey._serialized` —
+  // a field current WhatsApp Web builds no longer expose — and passes the resulting
+  // `undefined` to an IndexedDB lookup, which throws DataError. Because getChats() is a
+  // Promise.all over every chat, one bad chat rejects the lot, and on this account 439
+  // of 690 chats hit it, so the sync could never get past its first line. Reading the
+  // Chat collection directly needs none of that machinery.
+  async _collectMissedFromPage(sinceSec, maxPerChat = 100) {
+    const page = this.client && this.client.pupPage;
+    if (!page || (typeof page.isClosed === 'function' && page.isClosed())) {
+      throw new Error('WhatsApp page context unavailable — session still starting or restarting');
+    }
+    return page.evaluate(async (since, perChat) => {
+      const collections = window.require('WAWebCollections');
+      let loader = null;
+      try { loader = window.require('WAWebChatLoadMessages'); } catch { /* older build — in-memory only */ }
+
+      // Same rename story as waMessageKey() on the Node side, except in here the key is
+      // still a live object, so its own toString() is the reliable answer.
+      const keyOf = (id) => {
+        if (!id) return null;
+        if (typeof id._serialized === 'string' && id._serialized) return id._serialized;
+        try {
+          const serialized = id.toString();
+          return serialized && serialized !== '[object Object]' ? serialized : null;
+        } catch { return null; }
+      };
+
+      // Bookkeeping rows WhatsApp keeps alongside real messages. `isNotification` does
+      // not cover all of them on the raw models, and importing a call record or an
+      // encryption notice would invent a lead out of something the customer never sent.
+      const NON_CONTENT_TYPES = new Set([
+        'e2e_notification', 'notification', 'notification_template', 'call_log',
+        'gp2', 'broadcast_notification', 'protocol', 'ciphertext', 'revoked',
+      ]);
+
+      const all = collections.Chat.getModelsArray();
+      const chats = [];
+      const skipped = [];
+
+      for (const chat of all) {
+        let jid = null;
+        try {
+          jid = chat.id && chat.id._serialized;
+          if (!jid) continue;
+          // Groups belong to the Groups feature, not the lead pipeline.
+          if (chat.groupMetadata || jid.endsWith('@g.us')) continue;
+          // `t` is the chat's last-activity stamp — available without building a model.
+          if (!chat.t || chat.t <= since) continue;
+
+          let msgs = chat.msgs ? chat.msgs.getModelsArray() : [];
+          // Only page backwards while the oldest message in hand is still inside our
+          // window, i.e. while there might be more of the missed run further back.
+          let loads = 0;
+          while (loader && msgs.length && msgs[0].t > since && msgs.length < perChat && loads < 5) {
+            const earlier = await loader.loadEarlierMsgs({ chat });
+            if (!earlier || !earlier.length) break;
+            msgs = chat.msgs.getModelsArray();
+            loads++;
+          }
+
+          const messages = [];
+          for (const m of msgs) {
+            if (m.isNotification) continue;
+            if (NON_CONTENT_TYPES.has(m.type)) continue;
+            if (m.id ? m.id.fromMe : m.fromMe) continue;
+            if (!m.t || m.t <= since) continue;
+            messages.push({
+              waId: keyOf(m.id),
+              body: m.body || m.caption || '',
+              ts: m.t,
+              type: m.type || 'chat',
+              // How whatsapp-web.js itself decides a message carries media.
+              hasMedia: !!(m.mediaKey && m.directPath),
+            });
+          }
+          if (!messages.length) continue;
+          messages.sort((a, b) => a.ts - b.ts);
+
+          chats.push({
+            id: jid,
+            name: chat.formattedTitle || chat.name || null,
+            isChannel: !!chat.isNewsletter,
+            isBroadcast: !!chat.isBroadcast,
+            messages: messages.slice(-perChat),
+          });
+        } catch (e) {
+          // One unreadable chat must not cost us the other 689.
+          skipped.push({ id: jid || 'unknown', reason: (e && (e.name || e.message)) || 'unknown' });
+        }
+      }
+      return { chats, skipped, scanned: all.length };
+    }, sinceSec, maxPerChat);
   }
 
   // ── Auto-import leads & messages missed while WhatsApp was disconnected ──
@@ -911,20 +1030,22 @@ class WhatsAppService {
       const sinceDate = new Date(sinceSec * 1000).toISOString();
       console.log(`🔄 Syncing missed messages since ${sinceDate}...`);
 
-      const chats = await this.client.getChats();
+      const { chats, skipped, scanned } = await this._collectMissedFromPage(sinceSec);
+      if (skipped.length) {
+        const sample = skipped.slice(0, 3).map(s => `${s.id} (${s.reason})`).join(', ');
+        console.log(`⚠️ ${skipped.length}/${scanned} chats unreadable during sync: ${sample}${skipped.length > 3 ? ' …' : ''}`);
+      }
+
       const stripSQL = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(customer_phone,' ',''),'+',''),'-',''),'(',''),')',''),'.','')`;
       let totalImported = 0;
       let leadsCreated = 0;
 
       for (const chat of chats) {
         try {
-          if (chat.isGroup) continue;
-          if (!WhatsAppService.isIngestableChat(chat.id && chat.id._serialized, chat)) continue;
-          // Skip chats with no activity since our last import
-          if (!chat.lastMessage || chat.lastMessage.timestamp <= sinceSec) continue;
+          const jid = chat.id;
+          if (!WhatsAppService.isIngestableChat(jid, chat)) continue;
 
           // Resolve phone number from JID
-          const jid = chat.id._serialized;
           let customerPhone;
           if (jid.endsWith('@lid')) {
             customerPhone = jid;
@@ -933,10 +1054,8 @@ class WhatsAppService {
           }
           const normPhone = customerPhone.replace(/\D/g, '');
 
-          // Fetch messages for this chat
-          const allMsgs = await chat.fetchMessages({ limit: 100 });
-          // Only inbound messages newer than our last import
-          const newMsgs = allMsgs.filter(m => !m.fromMe && m.timestamp > sinceSec);
+          // Already filtered to inbound messages newer than our last import.
+          const newMsgs = chat.messages;
           if (newMsgs.length === 0) continue;
 
           // Find or create lead
@@ -964,12 +1083,12 @@ class WhatsAppService {
           // Insert missing messages (skip duplicates via wa_message_id)
           let msgCount = 0;
           for (const m of newMsgs) {
-            const waId = m.id?._serialized || null;
+            const waId = m.waId;
             if (waId) {
               const dup = this.db.prepare('SELECT id FROM messages WHERE wa_message_id = ?').get(waId);
               if (dup) continue;
             }
-            const ts = new Date(m.timestamp * 1000).toISOString().replace('T', ' ').slice(0, 19);
+            const ts = new Date(m.ts * 1000).toISOString().replace('T', ' ').slice(0, 19);
             let mediaType = null;
             let bodyFallback = '[Media]';
             if (m.hasMedia) {
@@ -993,7 +1112,7 @@ class WhatsAppService {
           }
         } catch (chatErr) {
           // Skip chats that fail individually — don't abort the whole sync
-          console.log(`⚠️ Skipping chat during sync: ${chatErr.message}`);
+          console.log(`⚠️ Skipping chat ${chat.id} during sync:\n${describeWaError(chatErr)}`);
         }
       }
 
@@ -1004,7 +1123,11 @@ class WhatsAppService {
         console.log('✅ Missed-message sync: nothing new to import');
       }
     } catch (e) {
-      console.error('❌ Missed-message sync error:', e.message);
+      // `e.message` alone used to print a single minified character here.
+      const context = isPageContextGone(e)
+        ? ' (WhatsApp page went away mid-sync — session restarting, retry expected on next ready)'
+        : '';
+      console.error(`❌ Missed-message sync error${context}:\n${describeWaError(e)}`);
     }
   }
 
