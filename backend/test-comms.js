@@ -135,5 +135,10 @@ const ok = (c, m) => { if (!c) { fails++; console.error('  ✗', m); } else cons
   ok(db.prepare("SELECT COUNT(*) c FROM activity_timeline WHERE lead_id='lead1' AND title='project room message'").get().c === 1, 'project-room msg mirrors to the project lead timeline');
 
   console.log(`\n${fails === 0 ? '✅ ALL COMMS 2.0 + ROOMS CHECKS PASSED' : '❌ ' + fails + ' FAILED'}\n`);
-  srv.close(() => { try { db.close(); } catch {} process.exit(fails ? 1 : 0); });
+  // Let the loop drain instead of forcing process.exit(): tearing the process
+  // down with the http server's handle still closing trips a libuv assertion on
+  // Windows, which made this suite abort with a bogus exit code AFTER passing.
+  process.exitCode = fails ? 1 : 0;
+  try { srv.close(); } catch {}
+  try { db.close(); } catch {}
 })();

@@ -22,7 +22,7 @@ const read = (p) => fs.readFileSync(p, 'utf8');
 const srv = read(path.join(__dirname, 'server.js'));
 const planLib = read(path.join(WEB, 'lib', 'plan.js'));
 const planLock = read(path.join(WEB, 'components', 'PlanLock.js'));
-const navbar = read(path.join(WEB, 'components', 'NavBar.js'));
+const appShell = read(path.join(WEB, 'components', 'shell', 'AppShell.js'));
 const settings = read(path.join(WEB, 'app', 'settings', 'page.js'));
 const apiLib = read(path.join(WEB, 'lib', 'api.js'));
 
@@ -119,13 +119,15 @@ check('no dead-tier requiredPlan literals remain', () => {
   assert.strictEqual(bad.length, 0, bad.join(', '));
 });
 check('no upgrade CTA routes to tab=workspace / tab=billing remain', () => {
-  const t = planLock + navbar + settings + read(path.join(WEB, 'app', 'team', 'page.js')) + read(path.join(WEB, 'app', 'leads-list', 'page.js'));
+  const t = planLock + appShell + settings + read(path.join(WEB, 'app', 'team', 'page.js')) + read(path.join(WEB, 'app', 'leads-list', 'page.js'));
   // match actual navigations only (the settings alias comment legitimately mentions the old URL)
   assert(!/router\.push\('\/settings\?tab=billing'\)|href="\/settings\?tab=billing"/.test(t), 'tab=billing navigation survives');
   assert(!/router\.push\('\/settings\?tab=workspace'\)|href="\/settings\?tab=workspace"/.test(t), 'upgrade→workspace survives');
 });
-check('NavBar TIER_STYLE keyed on real tiers only', () => {
-  const block = navbar.slice(navbar.indexOf('const TIER_STYLE'), navbar.indexOf('const style = TIER_STYLE'));
+check('the plan-tier registry is keyed on real tiers only', () => {
+  // Was NavBar's private TIER_STYLE map; the tiers now live once in lib/plan.js,
+  // which every surface reads instead of keeping its own copy.
+  const block = planLib.slice(planLib.indexOf('export const PLAN_META'), planLib.indexOf('export const planLabel'));
   for (const k of ['creator:', 'studio:', 'studio_plus:', 'enterprise:']) assert(block.includes(k), k + ' missing');
   for (const k of ['free:', 'starter:', 'growth:']) assert(!block.includes(k), 'dead tier ' + k);
 });

@@ -23,6 +23,7 @@ import {
 import { formatSmart, formatDateTime, formatRelative, formatFull, formatDate, formatTime } from '../../../lib/datetime';
 import { markLeadSeen } from '../../../lib/unread';
 import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
+import ContactActions from '@/components/ContactActions';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
 import RoomPanel from '@/components/RoomPanel';
@@ -1302,6 +1303,7 @@ useEffect(() => {
           </div>
           <div className="lead-nav-actions" style={{ display: 'flex', gap: 8 }}>
             {/* Quick actions */}
+            <ContactActions lead={lead} onDone={fetchAll} />
             <button onClick={() => setShowInvoiceModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
               <Receipt size={14} /> Invoice
             </button>

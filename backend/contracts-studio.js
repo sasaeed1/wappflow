@@ -484,6 +484,11 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     try {
       const b = req.body || {};
       if (!b.title || !String(b.title).trim()) return res.status(400).json({ error: 'Title is required' });
+      // lead_id was stored unchecked. Attaching a document to ANOTHER tenant's lead
+      // published it on their client portal, signing token and all. Match what
+      // media-studio has always done and refuse a lead you do not own.
+      if (b.lead_id && !db.prepare('SELECT 1 FROM leads WHERE id = ? AND workspace_id = ?').get(b.lead_id, req.workspaceId))
+        return res.status(400).json({ error: 'lead_id not found in this workspace' });
       let blocks = Array.isArray(b.blocks) ? b.blocks : [];
       let packType = null;
       if (b.template_id) { const t = db.prepare('SELECT blocks, type FROM cs_templates WHERE id = ? AND workspace_id = ?').get(b.template_id, req.workspaceId); if (t) blocks = J(t.blocks, []); }

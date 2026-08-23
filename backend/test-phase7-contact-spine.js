@@ -81,5 +81,32 @@ check('pagination still counts the right table now that a subquery is in the SEL
   assert.strictEqual(pg.toCountSql('SELECT * FROM leads WHERE x = ?').trim(), 'SELECT COUNT(*) c FROM leads WHERE x = ?');
 });
 
+const WEB = path.join(__dirname, '..', 'wappflow-web', 'src');
+const webFile = (...q) => fs.readFileSync(path.join(WEB, ...q), 'utf8');
+
+check('the contact page can start the next thing, not just invoice and email', () => {
+  // Lead and client pages were dead ends. Every other module could be reached
+  // only by leaving, creating a record, and hunting for the contact in a picker
+  // - which is how the modules drifted into separate products sharing a login.
+  const page = strip(webFile('app', 'leads', '[id]', 'page.js'));
+  assert(/import ContactActions from/.test(page), 'the action hub is not imported');
+  assert(/<ContactActions[^>]*lead=\{lead\}/.test(page), 'the action hub is not mounted with the contact');
+});
+
+check('everything the hub creates is stamped with the contact it was started from', () => {
+  const hub = strip(webFile('components', 'ContactActions.js'));
+  assert(/csAPI\.create\(\{ lead_id: lead\.id/.test(hub), 'a contract would be created unlinked');
+  assert(/mediaAPI\.createProject\(\{ lead_id: lead\.id/.test(hub), 'a shoot would be created unlinked');
+  assert(/clientPortalAPI\.link\(lead\.id\)/.test(hub), 'the portal link is not for this contact');
+});
+
+check('the copied portal link works when pasted somewhere else', () => {
+  // The server builds it from FRONTEND_URL, which falls back to ''. A bare
+  // /client/<token> is dead the moment it lands in WhatsApp.
+  const hub = strip(webFile('components', 'ContactActions.js'));
+  assert(/window\.location\.origin/.test(hub), 'a relative portal link would be copied verbatim');
+  assert(/clipboard\.writeText/.test(hub), 'the link is shown but never copied - copying IS the action');
+});
+
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

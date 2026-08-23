@@ -9,6 +9,17 @@ db.exec(`
   CREATE TABLE ms_assets (id TEXT PRIMARY KEY, workspace_id TEXT, project_id TEXT, type TEXT);
   CREATE TABLE ms_asset_scores (id TEXT PRIMARY KEY, asset_id TEXT, score_type TEXT, value REAL, reasons TEXT);
 `);
+// reel-engine WRITES ms_timelines / ms_video_exports / ms_jobs but media-studio.js
+// OWNS their DDL, and reel-engine asserts at boot that the owner ran first. Lift the
+// real CREATE statements out of the owner rather than hand-copying them, so this
+// fixture can never quietly drift from the schema production actually uses.
+const msSrc = require('fs').readFileSync(require('path').join(__dirname, 'media-studio.js'), 'utf8');
+for (const t of ['ms_timelines', 'ms_video_exports', 'ms_jobs']) {
+  const i = msSrc.indexOf('CREATE TABLE IF NOT EXISTS ' + t);
+  if (i < 0) throw new Error('media-studio.js no longer creates ' + t + ' - this fixture is out of date');
+  db.exec(msSrc.slice(i, msSrc.indexOf(');', i) + 2));
+}
+
 db.prepare("INSERT INTO ms_projects VALUES ('p1','ws1')").run();
 // 6 assets with varied scores
 const A = [
@@ -65,5 +76,10 @@ let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.error('  ✗', 
   ok(x.status === 200, 'same workspace ok');
 
   console.log(`\n${fails === 0 ? '✅ ALL REEL-ENGINE CHECKS PASSED' : '❌ ' + fails + ' FAILED'}\n`);
-  srv.close(() => { try { db.close(); } catch {} process.exit(fails ? 1 : 0); });
+  // Let the loop drain instead of forcing process.exit(): tearing the process
+  // down with the http server's handle still closing trips a libuv assertion on
+  // Windows, which made this suite abort with a bogus exit code AFTER passing.
+  process.exitCode = fails ? 1 : 0;
+  try { srv.close(); } catch {}
+  try { db.close(); } catch {}
 })();

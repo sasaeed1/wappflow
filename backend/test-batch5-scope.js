@@ -104,8 +104,16 @@ check('one visibility rule: list + trash + empty-trash keyed on canViewAllLeads'
   assert.strictEqual((srv.match(/if \(!req\.canViewAllLeads\) \{ q(uery)? \+= ' AND assigned_to = \?';/g) || []).length, 3));
 check('getScopedLead enforces the assigned-leads clause', () =>
   assert(/if \(!req\.canViewAllLeads && lead\.assigned_to !== req\.userId\) return null;/.test(srv)));
-check('no route bypasses getScopedLead (single inline fetch = its own)', () =>
-  assert.strictEqual((srv.match(/FROM leads WHERE id = \? AND workspace_id = \?'\)\.get/g) || []).length, 1));
+check('no AUTHENTICATED route bypasses getScopedLead', () => {
+  // Counting every inline lead read was the wrong proxy: the PUBLIC client
+  // portal legitimately reads a lead by the PORTAL's workspace, because it has
+  // no authenticated req and must not apply per-member visibility to a client
+  // looking at their own portal. What matters is that nothing scopes a lead by
+  // req.workspaceId outside the one helper.
+  const inline = (srv.match(/FROM leads WHERE id = \? AND workspace_id = \?'\)\.get\([^)]*\)/g) || []);
+  const byReq = inline.filter((s) => s.includes('req.workspaceId'));
+  assert.strictEqual(byReq.length, 1, 'a route scopes a lead itself instead of using getScopedLead: ' + byReq.join(' | '));
+});
 check('getScopedLead now guards 35+ call sites', () =>
   assert((srv.match(/getScopedLead\(req/g) || []).length >= 35));
 check('members can still toggle reminders they created', () =>

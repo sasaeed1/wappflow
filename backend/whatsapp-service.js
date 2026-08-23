@@ -390,7 +390,7 @@ class WhatsAppService {
             try {
               const media = await message.downloadMedia();
               if (media && media.data) {
-                const uploadsBase = path.join(process.env.NODE_ENV === 'production' ? '/data' : __dirname, 'uploads');
+                const uploadsBase = path.join(process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : __dirname), 'uploads');
                 const ts = Date.now();
                 let subDir, filename;
                 if (mediaType === 'voice') {

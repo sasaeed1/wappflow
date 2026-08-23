@@ -55,5 +55,10 @@ let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.error('  ✗', 
   ok(rec.recommendations.some(r => r.kind === 'style'), 'has a style recommendation');
 
   console.log(`\n${fails === 0 ? '✅ ALL BRAINS & STYLE CHECKS PASSED' : '❌ ' + fails + ' FAILED'}\n`);
-  srv.close(() => { try { db.close(); } catch {} process.exit(fails ? 1 : 0); });
+  // Let the loop drain instead of forcing process.exit(): tearing the process
+  // down with the http server's handle still closing trips a libuv assertion on
+  // Windows, which made this suite abort with a bogus exit code AFTER passing.
+  process.exitCode = fails ? 1 : 0;
+  try { srv.close(); } catch {}
+  try { db.close(); } catch {}
 })();

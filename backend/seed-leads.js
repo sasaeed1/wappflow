@@ -11,7 +11,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DATA_DIR = process.env.NODE_ENV === 'production' ? '/data' : __dirname;
+const DATA_DIR = process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : __dirname);
 const db = new Database(path.join(DATA_DIR, 'wappflow.db'));
 db.pragma('journal_mode = WAL');
 

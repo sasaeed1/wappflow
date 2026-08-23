@@ -34,7 +34,7 @@ const app = express();
 // express-rate-limit + req.ip identify the real client, not the proxy. Configurable
 // via TRUST_PROXY (default 1 = one proxy in front).
 app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
-const DATA_DIR = process.env.NODE_ENV === 'production' ? '/data' : require('path').join(__dirname);
+const DATA_DIR = process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : require('path').join(__dirname));
 const db = new Database(require('path').join(DATA_DIR, 'wappflow.db'));
 
 // Enable WAL mode for better performance
@@ -55,7 +55,7 @@ db.pragma('foreign_keys = ON');
 
 // Upload directories
 // Persistent data directories (Railway volume: /data, local: __dirname)
-const DATA_ROOT = process.env.NODE_ENV === 'production' ? '/data' : __dirname;
+const DATA_ROOT = process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : __dirname);
 ['/data', DATA_ROOT, path.join(DATA_ROOT, 'uploads'), path.join(DATA_ROOT, 'uploads', 'logos'), path.join(DATA_ROOT, 'uploads', 'voices'), path.join(DATA_ROOT, 'uploads', 'avatars'), path.join(DATA_ROOT, 'uploads', 'images'), path.join(DATA_ROOT, 'uploads', 'videos'), path.join(DATA_ROOT, 'uploads', 'files')].forEach(d => {
   try { fs.mkdirSync(d, { recursive: true }); } catch {}
 });
@@ -2506,6 +2506,8 @@ app.post('/api/invoices', auth, (req, res) => {
       items, subtotal, tax_rate, tax_amount, discount, total, due_date, notes, status } = req.body;
 
     // Auto-generate invoice number
+    if (lead_id && !getScopedLead(req, lead_id))
+      return res.status(400).json({ error: 'lead_id not found in this workspace' });
     const cs = db.prepare('SELECT invoice_prefix, invoice_counter, currency, currency_symbol FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     const prefix = cs?.invoice_prefix || 'INV';
     const counter = (cs?.invoice_counter || 1000) + 1;
@@ -6096,22 +6098,30 @@ app.get('/api/client-portal/public/:token', (req, res) => {
   try {
     const p = db.prepare('SELECT * FROM client_portals WHERE token = ?').get(req.params.token);
     if (!p) return res.status(404).json({ error: 'Not available' });
-    const lead = db.prepare('SELECT id, customer_name FROM leads WHERE id = ?').get(p.lead_id);
+    // Everything below is read by lead_id, and this endpoint is PUBLIC — the token
+    // is the only credential. Filtering by lead_id ALONE trusted every writer to
+    // have checked that the lead belongs to them, and two of them did not: a rival
+    // tenant could attach a contract or an invoice to your lead id and your portal
+    // would then hand strangers their document's SIGNING token. Scope every read to
+    // the portal's own workspace so a bad row can never cross the boundary,
+    // whatever a present or future writer forgets to validate.
+    const ws = p.workspace_id;
+    const lead = db.prepare('SELECT id, customer_name FROM leads WHERE id = ? AND workspace_id = ?').get(p.lead_id, ws);
     if (!lead) return res.status(404).json({ error: 'Not available' });
-    const projects = db.prepare('SELECT id, title, status FROM ms_projects WHERE lead_id = ?').all(lead.id);
+    const projects = db.prepare('SELECT id, title, status FROM ms_projects WHERE lead_id = ? AND workspace_id = ?').all(lead.id, ws);
     const projIds = projects.map(x => x.id);
     let galleries = [];
-    if (projIds.length) galleries = db.prepare(`SELECT title, share_token FROM ms_galleries WHERE status = 'published' AND project_id IN (${projIds.map(() => '?').join(',')})`).all(...projIds);
+    if (projIds.length) galleries = db.prepare(`SELECT title, share_token FROM ms_galleries WHERE status = 'published' AND workspace_id = ? AND project_id IN (${projIds.map(() => '?').join(',')})`).all(ws, ...projIds);
     let documents = [];
-    try { documents = db.prepare('SELECT title, type, status, token FROM cs_documents WHERE lead_id = ? ORDER BY created_at DESC').all(lead.id); } catch {}
-    const invoices = db.prepare('SELECT invoice_number, total, currency_symbol, status, created_at FROM invoices WHERE lead_id = ? ORDER BY created_at DESC').all(lead.id);
+    try { documents = db.prepare('SELECT title, type, status, token FROM cs_documents WHERE lead_id = ? AND workspace_id = ? ORDER BY created_at DESC').all(lead.id, ws); } catch {}
+    const invoices = db.prepare('SELECT invoice_number, total, currency_symbol, status, created_at FROM invoices WHERE lead_id = ? AND workspace_id = ? ORDER BY created_at DESC').all(lead.id, ws);
     const owner = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(p.workspace_id);
     let cs = null; try { cs = owner ? db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(owner.user_id) : null; } catch {}
     // Client Portal 2.0 (P15): albums, orders, milestones/delivery progress
     let albums = [], orders = [], milestones = [];
-    try { if (projIds.length) albums = db.prepare(`SELECT title, page_count, status FROM ms_albums WHERE project_id IN (${projIds.map(() => '?').join(',')})`).all(...projIds); } catch {}
-    try { orders = db.prepare("SELECT items, total, currency_symbol, status, created_at FROM ms_print_orders WHERE lead_id = ? ORDER BY created_at DESC").all(lead.id).map(o => { try { o.items = JSON.parse(o.items); } catch { o.items = []; } return o; }); } catch {}
-    try { if (projIds.length) milestones = db.prepare(`SELECT title, status, due_date FROM ms_milestones WHERE project_id IN (${projIds.map(() => '?').join(',')}) ORDER BY sort_order`).all(...projIds); } catch {}
+    try { if (projIds.length) albums = db.prepare(`SELECT title, page_count, status FROM ms_albums WHERE workspace_id = ? AND project_id IN (${projIds.map(() => '?').join(',')})`).all(ws, ...projIds); } catch {}
+    try { orders = db.prepare("SELECT items, total, currency_symbol, status, created_at FROM ms_print_orders WHERE lead_id = ? AND workspace_id = ? ORDER BY created_at DESC").all(lead.id, ws).map(o => { try { o.items = JSON.parse(o.items); } catch { o.items = []; } return o; }); } catch {}
+    try { if (projIds.length) milestones = db.prepare(`SELECT title, status, due_date FROM ms_milestones WHERE workspace_id = ? AND project_id IN (${projIds.map(() => '?').join(',')}) ORDER BY sort_order`).all(ws, ...projIds); } catch {}
     res.json({
       client_name: lead.customer_name || 'there',
       brand: (cs && cs.company_name) || 'WappFlow',

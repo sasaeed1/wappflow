@@ -48,7 +48,7 @@ function envFromFile() {
 }
 envFromFile();
 
-const DATA_DIR = process.env.NODE_ENV === 'production' ? '/data' : __dirname;
+const DATA_DIR = process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : __dirname);
 const dbPath = path.join(DATA_DIR, 'wappflow.db');
 if (!fs.existsSync(dbPath)) {
   console.error(`✗ No database at ${dbPath}`);
