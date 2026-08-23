@@ -1808,7 +1808,8 @@ app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
     const msgId = generateId();
     db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp, platform) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)`)
       .run(msgId, leadId, req.userId, body, targetPlatform);
-    db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
+    db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP,
+      last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
     addContactHistory(leadId, req.userId, 'message', `Sent ${targetPlatform} message: ${body.substring(0, 80)}${body.length > 80 ? '…' : ''}`);
 
     res.json({ message: 'Sent', delivered, platform: targetPlatform });
@@ -1849,7 +1850,8 @@ app.post('/api/leads/:leadId/messages/voice', auth, (req, res) => {
       const msgId = generateId();
       db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, media_url, media_type, timestamp, platform) VALUES (?, ?, ?, ?, 1, ?, 'voice', CURRENT_TIMESTAMP, ?)`)
         .run(msgId, leadId, req.userId, '[Voice Note]', mediaUrl, platform);
-      db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
+      db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP,
+        last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
       res.json({ message: delivered ? 'Voice sent' : 'Voice saved as draft', media_url: mediaUrl, delivered, platform });
     } catch (e) {
       console.error('Voice route error:', e);

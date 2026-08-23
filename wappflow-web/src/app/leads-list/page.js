@@ -59,7 +59,18 @@ function nextAction(lead) {
   const created = lead.created_at ? new Date(lead.created_at).getTime() : now;
   const lastMs = lead.last_message_at ? new Date(lead.last_message_at).getTime() : 0;
   const quietDays = Math.round((now - (lastMs || created)) / 86400000);
+  // "Awaiting first response" must mean YOU have not replied — not merely that the
+  // pipeline stage is still New. Replying over WhatsApp does not advance the stage,
+  // so keying off status alone left this prompt up through an entire conversation.
+  // last_contacted_at is stamped whenever an outbound message is sent.
+  const contacted = lead.last_contacted_at ? new Date(lead.last_contacted_at).getTime() : 0;
   if (status === 'New') {
+    if (contacted) {
+      // Replied but never moved out of New: nudge the stage, do not re-ask for a reply.
+      return quietDays >= 2
+        ? { label: 'Update stage', reason: `Replied · still marked New (${quietDays}d)`, urgency: 1 }
+        : null;
+    }
     const hoursSince = (now - created) / 3600000;
     return hoursSince > 1 ? { label: 'Send first reply', reason: 'New lead awaiting first response', urgency: 3 } : null;
   }
