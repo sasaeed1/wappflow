@@ -507,7 +507,7 @@ function NotificationPanel({ leads, reminders, liveEvents, onClose, onMarkAllRea
     ...liveEvents.map(e => ({
       id: `live-${e.id}`,
       type: e.type,
-      title: e.type === 'lead_created' ? `New lead: ${e.data?.customer_name || 'Unknown'}` : `New message from ${e.data?.customer_name || 'Unknown'}`,
+      title: e.type === 'lead_created' ? `New lead: ${whoIs(e.data)}` : `New message from ${whoIs(e.data)}`,
       sub: e.time ? new Date(e.time).toLocaleTimeString() : 'Just now',
       color: e.type === 'lead_created' ? '#6366f1' : '#10b981',
       bg: e.type === 'lead_created' ? 'rgba(99,102,241,0.15)' : 'rgba(16,185,129,0.15)',
@@ -617,6 +617,15 @@ function CustomTooltip({ active, payload, label, sym = '$' }) {
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
+// Who a notification is about. WhatsApp is rolling out usernames and has
+// signalled numbers may be hidden, so fall through every identifier we hold
+// rather than assuming a name exists — this read "Unknown" for every inbound
+// message, because the event carried no identity at all.
+function whoIs(d) {
+  if (!d) return 'Unknown';
+  return d.customer_name || d.wa_username || d.customer_phone || 'Unknown';
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { play: playSound } = useSound();
@@ -681,7 +690,7 @@ export default function DashboardPage() {
           setLiveEvents(prev => [{ id: Date.now(), type: 'new_message', data, time: new Date().toISOString() }, ...prev].slice(0, 20));
           setNotifBadge(prev => prev + 1);
           if (soundEnabledRef.current) playSound(data.platform === 'whatsapp' || !data.platform ? 'whatsapp' : 'system');
-          showToast(`New message from ${data.customer_name || 'Unknown'}`, '#10b981', '💬');
+          showToast(`New message from ${whoIs(data)}`, '#10b981', '💬');
           setAllLeads(prev => prev.map(l => l.id === (data.lead_id || data.id) ? { ...l, total_messages: (l.total_messages || 0) + 1 } : l));
           break;
         }

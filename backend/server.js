@@ -653,6 +653,11 @@ safeAlter('ALTER TABLE leads ADD COLUMN closed_at TIMESTAMP');
 safeAlter('ALTER TABLE leads ADD COLUMN lost_reason TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN last_contacted_at TIMESTAMP');
 safeAlter('ALTER TABLE leads ADD COLUMN date_of_birth TEXT');
+// WhatsApp is rolling out usernames, and has signalled that numbers may become
+// optional/hidden. Capture whatever handle the platform exposes ALONGSIDE the
+// number rather than instead of it, so a contact stays reachable and
+// recognisable whichever identifier survives.
+safeAlter('ALTER TABLE leads ADD COLUMN wa_username TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN address TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN email TEXT');
 safeAlter('ALTER TABLE leads ADD COLUMN assigned_to TEXT');
@@ -3095,7 +3100,12 @@ app.get('/api/notifications/summary', auth, (req, res) => {
          WHERE m.user_id != ? AND (mem.last_read_at IS NULL OR m.created_at > mem.last_read_at)`
       ).get(req.userId, req.userId).c;
     } catch { /* comms tables absent on older DBs */ }
-    res.json({ todayLeads, reminders, unread, comms, total: todayLeads + reminders + unread + comms });
+    // `total` drives the BELL badge, so it must only count things the bell's panel
+    // can actually show: feed notifications, today's leads, due reminders. Unread
+    // team messages are returned separately for the Communications nav badge —
+    // counting them here made the bell advertise items it had no row for, so the
+    // panel opened empty, the badge cleared, and the next poll brought it back.
+    res.json({ todayLeads, reminders, unread, comms, total: todayLeads + reminders + unread });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

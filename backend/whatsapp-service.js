@@ -75,6 +75,21 @@ class WhatsAppService {
     this.broadcastToUser(user.id, type, data);
   }
 
+  // WhatsApp JID kinds we must never turn into leads.
+  //   @newsletter  → Channels (one-way broadcast feeds you follow)
+  //   status@broadcast / @broadcast → Status updates and broadcast lists
+  // Channels were being ingested as leads: every channel you follow became a
+  // customer, and its posts became their messages.
+  static isIngestableChat(jid, chat) {
+    const id = String(jid || '');
+    if (!id) return false;
+    if (id.includes('@newsletter')) return false;
+    if (id.includes('broadcast')) return false;
+    // Newer whatsapp-web.js exposes these directly; trust them when present.
+    if (chat && (chat.isChannel === true || chat.isNewsletter === true || chat.isBroadcast === true)) return false;
+    return true;
+  }
+
   _resolveOwner() {
     if (this.accountId) {
       try {
@@ -261,7 +276,9 @@ class WhatsAppService {
     // ── INCOMING MESSAGE ──
     this.client.on('message', async (message) => {
       try {
-        if (message.from.includes('@g.us') || message.from.includes('status@broadcast')) return;
+        // Groups are handled by the Groups feature, not the lead pipeline.
+        if (message.from.includes('@g.us')) return;
+        if (!WhatsAppService.isIngestableChat(message.from)) return;
         // Only skip if truly empty AND not a media message
         if (!message.hasMedia && (!message.body || message.body.trim() === '')) return;
 
@@ -273,6 +290,11 @@ class WhatsAppService {
         }
 
         const contact = await message.getContact();
+        // WhatsApp usernames: the library exposes this under different names as the
+        // feature rolls out, and not at all on older builds. Read whichever is
+        // present rather than pinning one, and store it as a SECOND identifier —
+        // the number stays authoritative until WhatsApp says otherwise.
+        const waUsername = (contact && (contact.username || contact.handle || contact.pushname_username)) || null;
         let customerPhone;
         if (message.from.endsWith('@lid')) {
           if (contact.id?._serialized && !contact.id._serialized.includes('@lid')) {
@@ -313,13 +335,15 @@ class WhatsAppService {
             ).get(workspaceId, `%${normPhone.slice(-10)}`);
           }
           if (l) {
-            this.db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?`).run(l.id);
+            this.db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP,
+              wa_username = COALESCE(?, wa_username) WHERE id = ?`).run(waUsername, l.id);
+            if (waUsername && !l.wa_username) l.wa_username = waUsername;
             return l;
           }
           const leadId = this.generateId();
           this.db.prepare(
-            `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, first_message, total_messages, status, platform_source, platform_account_id) VALUES (?, ?, ?, ?, ?, ?, 1, 'New', 'whatsapp', ?)`
-          ).run(leadId, user.id, workspaceId, customerName, customerPhone, firstMsg, this.accountId || null);
+            `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, wa_username, first_message, total_messages, status, platform_source, platform_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'New', 'whatsapp', ?)`
+          ).run(leadId, user.id, workspaceId, customerName, customerPhone, waUsername, firstMsg, this.accountId || null);
           leadCreated = true;
           return this.db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
         });
@@ -414,8 +438,14 @@ class WhatsAppService {
         // Retrieve the saved message to include correct media_type/media_url in broadcast
         let savedMsg;
         try { savedMsg = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId); } catch {}
+        // Identity travels WITH the event. It used to carry only lead_id, so every
+        // live notification read "New message from Unknown" — the consumer had
+        // nothing else to show.
         this._emit(user, 'new_message', {
           lead_id: lead.id,
+          customer_name: lead.customer_name || null,
+          customer_phone: lead.customer_phone || null,
+          wa_username: lead.wa_username || null,
           message: savedMsg || { id: msgId, body: message.body || '[Media]', from_me: 0, lead_id: lead.id }
         });
 
@@ -875,6 +905,7 @@ class WhatsAppService {
       for (const chat of chats) {
         try {
           if (chat.isGroup) continue;
+          if (!WhatsAppService.isIngestableChat(chat.id && chat.id._serialized, chat)) continue;
           // Skip chats with no activity since our last import
           if (!chat.lastMessage || chat.lastMessage.timestamp <= sinceSec) continue;
 

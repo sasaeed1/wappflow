@@ -275,7 +275,12 @@ check('the badge summary counts unread team messages', () => {
   assert(/JOIN chat_members mem ON mem\.channel_id = m\.channel_id AND mem\.user_id = \?/.test(route),
     'comms unread is not counted — team messages invisible outside /chat');
   assert(/m\.user_id != \?/.test(route), 'your own messages would count as unread');
-  assert(/total: todayLeads \+ reminders \+ unread \+ comms/.test(route), 'comms is counted but not totalled');
+  // The bell badge must NOT include comms: its panel has no row for a team
+  // message, so counting them made the badge point at nothing (it cleared on
+  // click and returned on the next poll). Comms rides the Communications nav badge.
+  assert(/total: todayLeads \+ reminders \+ unread(?! \+ comms)/.test(route),
+    'the bell badge counts comms again — the panel cannot show those');
+  assert(/comms,/.test(route), 'comms must still be returned for the nav badge');
 });
 
 // The comms-unread SQL decides a number users will trust — run it for real.
