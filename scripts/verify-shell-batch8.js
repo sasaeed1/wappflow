@@ -69,5 +69,18 @@ check('bookings listens for the renamed reschedule/cancel events too', () => {
   }
 });
 
+check('the bell only calls API methods that exist', () => {
+  // markAllRead?.() silently no-opped because the client exposes readAll.
+  // Optional chaining on a typo is indistinguishable from success.
+  const methods = [...bell.matchAll(/notificationsAPI[.](\w+)/g)].map((m) => m[1]);
+  const api = fs.readFileSync(path.join(SRC, 'lib', 'api.js'), 'utf8');
+  const i0 = api.indexOf('export const notificationsAPI');
+  const exported = api.slice(i0, i0 + 400);
+  for (const m of new Set(methods)) {
+    assert(exported.includes(m + ':'), 'bell calls notificationsAPI.' + m + ' which is not exported');
+  }
+  assert(!/notificationsAPI[.]\w+[?][.]/.test(bell), 'optional chaining hides a missing method - let it throw');
+});
+
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

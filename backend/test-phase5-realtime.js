@@ -138,7 +138,7 @@ check('inbound WhatsApp reaches the workspace, not just the owner', () => {
   assert(/_emit\(user, 'lead_created'/.test(WA) && /_emit\(user, 'new_message'/.test(WA),
     'WhatsApp events still go to the owner alone — teammates see nothing');
   assert(/this\.broadcastToWorkspace\(user\.workspace_id, type, data\)/.test(WA), 'no workspace fan-out in _emit');
-  assert(/new WhatsAppManager\(db, broadcastToUser, broadcastToWorkspace\)/.test(S), 'the manager never receives the broadcaster');
+  assert(/new WhatsAppManager\(db, broadcastToUser, broadcastToWorkspace/.test(S), 'the manager never receives the workspace broadcaster');
 });
 
 check('WhatsApp status transitions push instead of being polled for', () => {
@@ -278,9 +278,12 @@ check('the badge summary counts unread team messages', () => {
   // The bell badge must NOT include comms: its panel has no row for a team
   // message, so counting them made the badge point at nothing (it cleared on
   // click and returned on the next poll). Comms rides the Communications nav badge.
-  assert(/total: todayLeads \+ reminders \+ unread(?! \+ comms)/.test(route),
-    'the bell badge counts comms again — the panel cannot show those');
+  assert(/total: reminders \+ unread/.test(route),
+    'the bell badge must count only clearable items (reminders + unread)');
   assert(/comms,/.test(route), 'comms must still be returned for the nav badge');
+  // todayLeads is DERIVED from the leads table, so nothing can mark it read: counting
+  // it made the badge point at rows the panel hid behind a local dismissed-set.
+  assert(!/total: todayLeads/.test(route), 'the badge counts derived leads again — those cannot be cleared');
 });
 
 // The comms-unread SQL decides a number users will trust — run it for real.

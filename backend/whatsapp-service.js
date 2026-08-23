@@ -5,13 +5,16 @@ const { execSync, execFile } = require('child_process');
 const qrcode = require('qrcode');
 
 class WhatsAppService {
-  constructor(db, broadcastToUser, accountId = null, sessionName = undefined, broadcastToWorkspace = null) {
+  constructor(db, broadcastToUser, accountId = null, sessionName = undefined, broadcastToWorkspace = null, notify = null) {
     this.db = db;
     this.broadcastToUser = broadcastToUser || (() => {});
     // Phase 5: inbound WhatsApp activity used to reach the workspace OWNER only,
     // so a teammate's dashboard never moved when a message arrived. Everything
     // here is workspace-visible data, so it fans out to the workspace.
     this.broadcastToWorkspace = broadcastToWorkspace || null;
+    // WhatsApp is the busiest lead source and was the only one writing NO feed row,
+    // so the bell counted leads it could never mark as read.
+    this.notify = notify || (() => {});
     this.accountId = accountId;  // platform_accounts.id for this session
     this.sessionName = sessionName; // LocalAuth clientId (undefined = legacy session)
     this.client = null;
@@ -351,6 +354,17 @@ class WhatsAppService {
 
         if (leadCreated) {
           console.log(`🆕 Created new lead: ${customerName}`);
+          // A real feed row, so the bell has something it can actually show and
+          // mark as read — identity included rather than a bare "Unknown".
+          try {
+            this.notify(user.workspace_id, {
+              type: 'lead',
+              title: `New WhatsApp lead: ${lead.customer_name || lead.wa_username || lead.customer_phone}`,
+              body: (message.body || '[media]').slice(0, 140),
+              url: `/leads/${lead.id}`,
+              icon: '💬',
+            });
+          } catch {}
           this._emit(user, 'lead_created', { lead });
           this._maybeAutoAnalyze(lead, workspaceId);
         }
@@ -1023,10 +1037,11 @@ class WhatsAppService {
 
 // ── Multi-account WhatsApp manager ─────────────────────────────────────────────
 class WhatsAppManager {
-  constructor(db, broadcastToUser, broadcastToWorkspace = null) {
+  constructor(db, broadcastToUser, broadcastToWorkspace = null, notify = null) {
     this.db = db;
     this.broadcastToUser = broadcastToUser;
     this.broadcastToWorkspace = broadcastToWorkspace;
+    this.notify = notify;
     this.instances = new Map(); // accountId -> WhatsAppService
   }
 
@@ -1059,7 +1074,7 @@ class WhatsAppManager {
 
   _startLegacy() {
     if (this.instances.has('__legacy__')) return this.instances.get('__legacy__');
-    const service = new WhatsAppService(this.db, this.broadcastToUser, null, undefined, this.broadcastToWorkspace);
+    const service = new WhatsAppService(this.db, this.broadcastToUser, null, undefined, this.broadcastToWorkspace, this.notify);
     this.instances.set('__legacy__', service);
     service.initialize();
     return service;
@@ -1073,7 +1088,7 @@ class WhatsAppManager {
     // collide on Chromium ("browser is already running for .../session").
     // Each account now gets its own isolated `session-acct-<id>` profile.
     const sessionName = `acct-${accountId}`;
-    const service = new WhatsAppService(this.db, this.broadcastToUser, accountId, sessionName, this.broadcastToWorkspace);
+    const service = new WhatsAppService(this.db, this.broadcastToUser, accountId, sessionName, this.broadcastToWorkspace, this.notify);
     this.instances.set(accountId, service);
     service.initialize();
     return service;

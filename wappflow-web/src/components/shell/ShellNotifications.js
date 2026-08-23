@@ -112,7 +112,11 @@ export default function ShellNotifications() {
   };
 
   const markAllRead = async () => {
-    try { await notificationsAPI.markAllRead?.(); } catch {}
+    // notificationsAPI exposes readAll, not markAllRead. The optional call silently
+    // did nothing, so the server never marked anything read — the badge cleared
+    // locally and returned on the next poll. No optional chaining here: if this
+    // method ever disappears again, it should throw rather than no-op.
+    try { await notificationsAPI.readAll(); } catch (e) { console.error('mark all read failed', e); }
     const ids = items().map((i) => i.id);
     try {
       const dismissed = new Set(JSON.parse(localStorage.getItem('wf_dismissed_notifications') || '[]'));

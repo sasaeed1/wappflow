@@ -1154,7 +1154,7 @@ function addContactHistory(leadId, userId, type, description, metadata = null) {
 // ════════════════════════════════════════════════════════════
 
 const { WhatsAppService, WhatsAppManager } = require('./whatsapp-service');
-const whatsappService = new WhatsAppManager(db, broadcastToUser, broadcastToWorkspace);
+const whatsappService = new WhatsAppManager(db, broadcastToUser, broadcastToWorkspace, notify);
 
 // Rate-limit map for lead message sync — prevents flooding Puppeteer with
 // repeated fetchHistory calls when a user opens the same lead multiple times.
@@ -3107,7 +3107,12 @@ app.get('/api/notifications/summary', auth, (req, res) => {
     // team messages are returned separately for the Communications nav badge —
     // counting them here made the bell advertise items it had no row for, so the
     // panel opened empty, the badge cleared, and the next poll brought it back.
-    res.json({ todayLeads, reminders, unread, comms, total: todayLeads + reminders + unread });
+    // The badge must only count things the user can actually CLEAR. todayLeads is
+    // derived from the leads table, so nothing can mark it read: the bell showed a
+    // number, the panel hid those rows behind a local dismissed-set, clicking
+    // cleared it visually, and the next poll brought it straight back. Every lead
+    // source now writes a real notification row, so `unread` covers them properly.
+    res.json({ todayLeads, reminders, unread, comms, total: reminders + unread });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
