@@ -44,19 +44,35 @@ check("no public page falls back to a literal 'W' mark or a 'WappFlow' name slot
 
 // ── The primitives ───────────────────────────────────────────────────────────
 check('PublicBrandHeader: graceful fallback — no brand → no mark, never a placeholder identity', () => {
-  assert(/const initial = brand \? String\(brand\)\.trim\(\)\.charAt\(0\)\.toUpperCase\(\) : null;/.test(header), 'initial not derived from brand');
+  // Phase 8 replaced the D6 SEAM with the real thing: brand is now the object the
+  // public-brand resolver returns, so the identity is read off it rather than from
+  // a bare name string plus two unused placeholder props.
+  assert(/brand\?\.name/.test(header), 'the header does not read the studio name off the brand object');
+  assert(/const initial = name \? name\.trim\(\)\.charAt\(0\)\.toUpperCase\(\) : null;/.test(header), 'initial not derived from the brand name');
   assert(/\{logoUrl \? \(/.test(header) && /\) : initial \? \(/.test(header) && /\) : null\}/.test(header), 'mark renders without a brand');
   assert(!/['">]W[<'"]/.test(strip(header)), 'a literal W survives in the header');
 });
-check('PublicBrandHeader: the D6 seam exists (logoUrl + brandColor accepted, accent fallback)', () => {
-  assert(/logoUrl,/.test(header) && /brandColor,/.test(header), 'seam props missing');
-  assert(/brandColor \|\| 'var\(--accent\)'/.test(header), 'accent fallback missing');
+check('PublicBrandHeader: renders the studio logo and accent the resolver supplies', () => {
+  assert(/brand\?\.logo/.test(header), 'the header cannot render an uploaded logo');
+  assert(/brand\?\.accent \|\| 'var\(--accent\)'/.test(header), 'accent fallback missing');
   assert(/tone = 'light'/.test(header) && /dark:/.test(header), 'no dark tone for the gallery/executive surfaces');
 });
 check('PublicFooter: studio primary, platform credit separable, dark tone available', () => {
-  assert(/\{brand \? \(/.test(footer), 'no brand-first branch');
+  assert(/const name = brand\?\.name/.test(footer), 'the footer does not read the brand object');
+  assert(/\{name \? \(/.test(footer), 'no brand-first branch');
   assert(/Powered by WappFlow/.test(footer), 'platform credit missing');
   assert(/dark:/.test(footer), 'no dark tone');
+});
+check('every public surface is served the studio identity by ONE resolver', () => {
+  // Phase 8. Six endpoints each answered "who is the studio?" differently, and none
+  // served the logo. A studio that uploads one should see it everywhere at once.
+  const be = (f) => fs.readFileSync(path.join(__dirname, '..', 'backend', f), 'utf8');
+  for (const f of ['server.js', 'booking.js', 'print-store.js', 'contracts-studio.js', 'payments.js', 'media-studio.js']) {
+    assert(/publicBrand\(db,/.test(be(f)), `${f} does not use the shared brand resolver`);
+  }
+  const resolver = be('public-brand.js');
+  assert(/company_logo/.test(resolver), 'the resolver does not read the uploaded logo');
+  assert(/safeColor/.test(resolver), 'the accent is interpolated into public CSS without validation');
 });
 
 // ── The scope (the portal trap) ──────────────────────────────────────────────

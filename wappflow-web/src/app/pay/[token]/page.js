@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { fetchPayment } from '../../../lib/api';
 import PublicScope from '@/components/PublicScope';
+import PublicBrandMark from '@/components/PublicBrandMark';
+import PublicNextSteps from '@/components/PublicNextSteps';
 import PublicFooter from '@/components/PublicFooter';
 
 export default function PayPage() {
@@ -23,11 +25,21 @@ export default function PayPage() {
     <div className="wf-public" style={{ ...c, flexDirection: 'column' }}>
       <PublicScope />
       <div style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 18, padding: 28, boxShadow: '0 30px 80px rgba(0,0,0,0.12)', textAlign: 'center' }}>
+        {/* /pay carried no brand at all: a stranger's page asked a client for money
+            and never said on whose behalf. */}
+        {(p.brand?.logo || p.brand?.name) && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 18 }}>
+            <PublicBrandMark brand={p.brand} size={38} radius={10} />
+            {p.brand?.name && <div style={{ fontSize: 13, fontWeight: 700, color: '#16161a' }}>{p.brand.name}</div>}
+          </div>
+        )}
         {paid ? (
           <>
             <div style={{ width: 56, height: 56, borderRadius: 999, background: '#10b981', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 28, marginBottom: 14 }}>✓</div>
             <h1 style={{ fontSize: 24, margin: 0, color: '#16161a' }}>Payment received</h1>
             <p style={{ color: '#70707a', fontSize: 14, marginTop: 6 }}>Thank you — {p.currency_symbol}{Number(p.amount).toLocaleString()} paid.</p>
+            {p.description && <p style={{ color: '#9aa0aa', fontSize: 12.5, marginTop: 2 }}>{p.description}</p>}
+            <PublicNextSteps next={p.next} brand={p.brand} />
           </>
         ) : (
           <>
@@ -44,7 +56,7 @@ export default function PayPage() {
           </>
         )}
       </div>
-      <PublicFooter style={{ padding: '18px 0 0' }} />
+      <PublicFooter brand={p.brand} style={{ padding: '18px 0 0' }} />
     </div>
   );
 }

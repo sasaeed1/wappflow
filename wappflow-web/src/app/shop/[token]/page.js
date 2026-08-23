@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import { fetchShop, createOrder } from '../../../lib/api';
 
 import PublicScope from '@/components/PublicScope';
+import PublicBrandMark from '@/components/PublicBrandMark';
+import PublicNextSteps from '@/components/PublicNextSteps';
 import PublicFooter from '@/components/PublicFooter';
 
 export default function ShopPage() {
@@ -18,7 +20,7 @@ export default function ShopPage() {
   const [err, setErr] = useState('');
   const [done, setDone] = useState(null);
 
-  useEffect(() => { fetchShop(token).then(d => { setData(d); setState('ok'); document.title = `Shop · ${d.brand}`; }).catch(() => setState('missing')); }, [token]);
+  useEffect(() => { fetchShop(token).then(d => { setData(d); setState('ok'); document.title = `Shop · ${d.brand?.name || 'Print Shop'}`; }).catch(() => setState('missing')); }, [token]);
 
   const sym = data?.currency_symbol || '$';
   const total = useMemo(() => cart.reduce((s, c) => s + c.price * c.qty, 0), [cart]);
@@ -44,7 +46,17 @@ export default function ShopPage() {
     <div style={{ ...center, flexDirection: 'column', gap: 10, textAlign: 'center', padding: 24 }}>
       <div style={{ width: 56, height: 56, borderRadius: 999, background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 28 }}>✓</div>
       <h1 style={{ fontSize: 26, margin: '6px 0 0', color: '#16161a' }}>Order placed!</h1>
-      <p style={{ color: '#70707a', fontSize: 15 }}>Total {sym}{done.total?.toLocaleString()}. We’ll be in touch to finalize it.</p>
+      <p style={{ color: '#70707a', fontSize: 15 }}>
+        Total {sym}{done.total?.toLocaleString()}.{done.pay_url ? ' Settle up whenever you are ready.' : ' We’ll be in touch to finalize it.'}
+      </p>
+      {/* The store priced the order and then told the customer to wait for a
+          message. If a pay link was minted, let them finish now. */}
+      {done.pay_url && (
+        <a href={done.pay_url} style={{ display: 'inline-flex', padding: '11px 22px', borderRadius: 999, background: '#16161a', color: '#fff', fontSize: 13.5, fontWeight: 700, textDecoration: 'none', marginTop: 4 }}>
+          Pay {sym}{done.total?.toLocaleString()}
+        </a>
+      )}
+      <PublicNextSteps next={done.next} brand={data?.brand} />
     </div>
   );
 
@@ -53,8 +65,8 @@ export default function ShopPage() {
       <PublicScope />
       <div style={{ maxWidth: 620, margin: '0 auto', padding: '0 16px 140px' }}>
         <header style={{ textAlign: 'center', padding: '44px 0 26px' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 14 }}>{(data.brand || '')[0]?.toUpperCase()}</div>
-          <h1 style={{ fontSize: 'clamp(24px,5vw,30px)', fontWeight: 800, color: '#16161a', margin: 0, letterSpacing: '-0.02em' }}>{data.brand} Print Shop</h1>
+          <PublicBrandMark brand={data.brand} style={{ marginBottom: 14 }} />
+          <h1 style={{ fontSize: 'clamp(24px,5vw,30px)', fontWeight: 800, color: '#16161a', margin: 0, letterSpacing: '-0.02em' }}>{data.brand?.name ? `${data.brand.name} Print Shop` : 'Print Shop'}</h1>
           {data.gallery_title && <p style={{ fontSize: 14.5, color: '#70707a', margin: '6px 0 0' }}>From “{data.gallery_title}”</p>}
         </header>
 

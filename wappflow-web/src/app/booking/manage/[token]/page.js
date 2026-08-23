@@ -6,6 +6,7 @@ import { fetchBookingManage, rescheduleBookingPublic, cancelBookingPublic } from
 import { useConfirm } from '@/lib/confirm';
 
 import PublicScope from '@/components/PublicScope';
+import PublicBrandMark from '@/components/PublicBrandMark';
 import PublicFooter from '@/components/PublicFooter';
 
 const fmtDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -46,7 +47,7 @@ export default function BookingManagePage() {
       <PublicScope />
       <div style={{ maxWidth: 540, margin: '0 auto', padding: '0 16px 60px' }}>
         <header style={{ textAlign: 'center', padding: '44px 0 24px' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 14 }}>{(data.brand || '')[0]?.toUpperCase()}</div>
+          <PublicBrandMark brand={data.brand} style={{ marginBottom: 14 }} />
           <h1 style={{ fontSize: 'clamp(22px,5vw,28px)', fontWeight: 800, color: '#16161a', margin: 0 }}>Manage your booking</h1>
         </header>
 

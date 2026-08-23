@@ -31,6 +31,13 @@ const videoAiDrafts = require('./video-ai-drafts');
 const styleApply = require('./style-apply');
 const crypto = require('crypto');
 
+const { publicBrand } = require('./public-brand');
+
+// Set by the frontend's own server-side metadata fetch (lib/publicMeta.js) so a link
+// PREVIEW never registers as a client actually opening the page. A normal browser
+// navigation cannot send it.
+const isPreview = (req) => String(req.get('x-wf-preview') || '') === '1';
+
 module.exports = function mountMediaStudio(app, db, deps = {}) {
   const {
     auth = (req, res, next) => next(),
@@ -2466,6 +2473,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     return {
       title: pf.title, tagline: pf.tagline, bio: pf.bio, theme: pf.theme,
       cover_url: pf.cover_url, avatar_url: pf.avatar_url, settings, items: getPortfolioItems(pf.id),
+      brand: publicBrand(db, pf.workspace_id, clientBaseUrl),
     };
   }
   // called from gallery publish — opt-in auto-feed of published work (never raw)
@@ -2651,7 +2659,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       const h = req.params.handle;
       const pf = db.prepare('SELECT * FROM ms_portfolios WHERE (handle = ? OR token = ?) AND is_public = 1').get(h, h);
       if (!pf) return res.status(404).json({ error: 'Portfolio not found' });
-      try { db.prepare('UPDATE ms_portfolios SET view_count = view_count + 1 WHERE id = ?').run(pf.id); } catch {}
+      if (!isPreview(req)) { try { db.prepare('UPDATE ms_portfolios SET view_count = view_count + 1 WHERE id = ?').run(pf.id); } catch {} }
       res.json(shapePublicPortfolio(pf));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -2675,10 +2683,13 @@ Only suggest actions that make sense for the question. If none make sense, retur
         SELECT a.*, ga.sort_order FROM ms_gallery_assets ga JOIN ms_assets a ON a.id = ga.asset_id
         WHERE ga.gallery_id = ? AND ga.is_hidden = 0 ORDER BY ga.sort_order
       `).all(g.id);
-      try {
-        db.prepare('INSERT INTO ms_gallery_access (id, gallery_id, access_token, last_viewed_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)')
-          .run(generateId(), g.id, req.params.token);
-      } catch {}
+      // A link preview is not a client viewing their gallery - see isPreview.
+      if (!isPreview(req)) {
+        try {
+          db.prepare('INSERT INTO ms_gallery_access (id, gallery_id, access_token, last_viewed_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)')
+            .run(generateId(), g.id, req.params.token);
+        } catch {}
+      }
       // active proofing set (if any) + this gallery's current selections
       let proofing = null;
       const pset = db.prepare("SELECT * FROM ms_proofing_sets WHERE gallery_id = ? AND status IN ('open','revision','submitted') ORDER BY created_at DESC LIMIT 1").get(g.id);
@@ -2701,6 +2712,21 @@ Only suggest actions that make sense for the question. If none make sense, retur
       } catch {}
       res.json({
         title: g.title, version: g.version,
+        // The most-shared link in the whole product carried no studio identity at
+        // all: a client looked at their own wedding photographs on a page that
+        // never said who took them, above a footer crediting WappFlow.
+        brand: publicBrand(db, g.workspace_id, clientBaseUrl),
+        // The client surfaces had no way between them: a gallery was a cul-de-sac,
+        // and the portal that ties everything together could only be reached from
+        // whichever message the studio had sent it in. If this gallery's client
+        // already has a portal, offer it.
+        portal_url: (() => {
+          try {
+            if (!g.lead_id) return null;
+            const p = db.prepare('SELECT token FROM client_portals WHERE lead_id = ? AND workspace_id = ?').get(g.lead_id, g.workspace_id);
+            return p?.token ? `/client/${p.token}` : null;
+          } catch { return null; }
+        })(),
         download_policy: settings.download_policy || 'web',
         watermark: !!settings.watermark,
         proofing, store_enabled: storeEnabled, sections,
