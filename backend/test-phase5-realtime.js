@@ -233,7 +233,10 @@ check('every module that raises user-visible events receives the notify seam', (
     ['media-studio', /require\('\.\/media-studio'\)\(app, db, \{[\s\S]{0,120}?notify/],
     ['booking', /require\('\.\/booking'\)\(app, db, \{[\s\S]{0,120}?notify/],
   ]) assert(marker.test(S), `${mod} is mounted without notify`);
-  assert(/createMediaWorker\(db, \{[^}]*notify \}\)/.test(modSrc('media-studio.js')),
+  // Assert the worker RECEIVES notify, not that notify happens to be the last key
+  // in the literal - this pinned `notify }` and broke the moment another dep
+  // joined it.
+  assert(/createMediaWorker\(db, \{[^}]*notify[^}]*\}\)/.test(modSrc('media-studio.js')),
     'the media WORKER — where jobs actually finish — still has no notify');
 });
 

@@ -721,6 +721,36 @@ try {
   if (bf1.changes || bf2.changes) console.log(`🏷️  workspace re-key backfill: invoices=${bf1.changes}, email_workflows=${bf2.changes}`);
 } catch (e) { console.error('workspace re-key backfill failed (non-fatal):', e.message); }
 
+// One-time: fold the pre-existing contact_history into the activity spine.
+//
+// The timeline used to read contact_history AND activity_timeline and show both,
+// which listed every media event twice. It reads only the spine now, so history
+// written before the cutover has to be moved across or a studio would open a
+// client they have worked with for a year and see nothing before today.
+//
+// Marker-gated so it runs once, and NOT-EXISTS-guarded so running it twice is
+// still harmless - the same shape as the payments ledger backfill.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT)`);
+  const done = db.prepare("SELECT value FROM app_meta WHERE key = 'backfill_history_to_activity'").get();
+  if (!done) {
+    const r = db.prepare(`
+      INSERT INTO activity_timeline (id, lead_id, workspace_id, user_id, actor_name, activity_type, title, metadata, created_at)
+      SELECT lower(hex(randomblob(16))), h.lead_id, l.workspace_id, h.user_id, NULL,
+             COALESCE(h.type, 'note'), h.description, h.metadata, h.created_at
+      FROM contact_history h
+      JOIN leads l ON l.id = h.lead_id
+      WHERE h.description IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM activity_timeline a
+          WHERE a.lead_id = h.lead_id AND a.title = h.description AND a.created_at = h.created_at
+        )
+    `).run();
+    db.prepare("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('backfill_history_to_activity', ?)").run(String(r.changes));
+    if (r.changes) console.log('activity spine: folded in ' + r.changes + ' historical contact event(s)');
+  }
+} catch (e) { console.error('activity backfill failed (non-fatal):', e.message); }
+
 // ── Reminders schema drift fix: older DBs created the table BEFORE these columns existed.
 // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so add the columns explicitly.
 safeAlter("ALTER TABLE reminders ADD COLUMN title TEXT");
@@ -1140,6 +1170,31 @@ function logAudit(workspaceId, userId, action, entityType, entityId, details) {
   } catch {}
 }
 
+// ── The activity spine ──────────────────────────────────────────────────────
+//
+// activity_timeline is the canonical record of what happened to a contact. It
+// had four writers in the whole codebase, so the "unified" timeline showed
+// messages, notes and meetings while contracts, invoices, payments, bookings and
+// orders were missing from it entirely - the CRM could not tell you the story of
+// a client it had been managing for a year.
+//
+// Everything now arrives through here. Modules keep calling addContactHistory,
+// which is where most of that history already flowed, and the spine gets fed as
+// a side effect rather than asking twenty call sites to remember a second call.
+function logActivity(leadId, { workspaceId, userId, actorName, type, title, body, metadata } = {}) {
+  if (!leadId || !title) return;
+  try {
+    // The caller usually knows the lead but not its workspace; resolve it so the
+    // row is properly scoped rather than landing with a null tenant.
+    const ws = workspaceId || db.prepare('SELECT workspace_id FROM leads WHERE id = ?').get(leadId)?.workspace_id || null;
+    db.prepare(`
+      INSERT INTO activity_timeline (id, lead_id, workspace_id, user_id, actor_name, activity_type, title, body, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(generateId(), leadId, ws, userId || null, actorName || null, type || 'note', title,
+           body || null, metadata ? JSON.stringify(metadata) : null);
+  } catch { /* the timeline is a record, never a reason to fail the action */ }
+}
+
 function addContactHistory(leadId, userId, type, description, metadata = null) {
   try {
     db.prepare(`
@@ -1147,6 +1202,10 @@ function addContactHistory(leadId, userId, type, description, metadata = null) {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(generateId(), leadId, userId, type, description, metadata ? JSON.stringify(metadata) : null);
   } catch {}
+  // Same event, one spine. The timeline reads activity_timeline ONLY, so writing
+  // both here is what stops an event appearing twice in the feed - which is
+  // exactly what media-studio's own double-write used to do.
+  logActivity(leadId, { userId, type, title: description, metadata });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2748,10 +2807,37 @@ app.get('/api/analytics', auth, (req, res) => {
     const thisMonth = db.prepare(`SELECT COUNT(*) as c FROM leads WHERE workspace_id=? AND strftime('%Y-%m', created_at)=strftime('%Y-%m','now') AND (is_deleted=0 OR is_deleted IS NULL)`).get(wid).c;
     const lastMonth = db.prepare(`SELECT COUNT(*) as c FROM leads WHERE workspace_id=? AND strftime('%Y-%m', created_at)=strftime('%Y-%m', 'now', '-1 month') AND (is_deleted=0 OR is_deleted IS NULL)`).get(wid).c;
 
+    // Real money, not the estimate typed on a lead.
+    //
+    // total_sales sums leads.actual_sale - a number somebody typed into the deal
+    // record. Meanwhile the studio raises invoices, takes payments, signs
+    // contracts and books work, and none of it reached Analytics: a studio could
+    // collect a year of revenue and see zero here, or see a figure nobody ever
+    // received. The estimate stays (it is what the pipeline is worth), and the
+    // ledger is reported beside it as what actually happened.
+    const money = (sql, ...p) => { try { return db.prepare(sql).get(wid, ...p)?.t || 0; } catch { return 0; } };
+    const count = (sql, ...p) => { try { return db.prepare(sql).get(wid, ...p)?.c || 0; } catch { return 0; } };
+
+    const collected = money(`SELECT SUM(amount) t FROM payments WHERE workspace_id=? AND status='paid'`);
+    const collectedThisMonth = money(`SELECT SUM(amount) t FROM payments WHERE workspace_id=? AND status='paid'
+                                        AND strftime('%Y-%m', COALESCE(paid_at, created_at))=strftime('%Y-%m','now')`);
+    const outstanding = money(`SELECT SUM(total) t FROM invoices WHERE workspace_id=? AND status != 'paid'
+                                 AND (is_deleted=0 OR is_deleted IS NULL)`);
+    const invoicesRaised = count(`SELECT COUNT(*) c FROM invoices WHERE workspace_id=? AND (is_deleted=0 OR is_deleted IS NULL)`);
+    const contractsSigned = count(`SELECT COUNT(*) c FROM cs_documents WHERE workspace_id=? AND status IN ('signed','completed')
+                                     AND (is_deleted=0 OR is_deleted IS NULL)`);
+    const contractsAwaiting = count(`SELECT COUNT(*) c FROM cs_documents WHERE workspace_id=? AND status IN ('sent','viewed')
+                                       AND (is_deleted=0 OR is_deleted IS NULL)`);
+    const bookingsUpcoming = count(`SELECT COUNT(*) c FROM bookings WHERE workspace_id=? AND status != 'cancelled'
+                                      AND (is_deleted=0 OR is_deleted IS NULL) AND start_at >= datetime('now')`);
+
     res.json({
       total_leads: totalLeads, leads_today: leadsToday, total_sales: totalSales,
       conversion_rate: conversionRate, leads_by_status: leadsByStatus, avg_deal_size: avgDealSize,
-      currency_symbol: sym, this_month_leads: thisMonth, last_month_leads: lastMonth, closed_won: closedWon
+      currency_symbol: sym, this_month_leads: thisMonth, last_month_leads: lastMonth, closed_won: closedWon,
+      // What the business actually did, as opposed to what was estimated.
+      collected, collected_this_month: collectedThisMonth, outstanding, invoices_raised: invoicesRaised,
+      contracts_signed: contractsSigned, contracts_awaiting: contractsAwaiting, bookings_upcoming: bookingsUpcoming,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -5288,11 +5374,10 @@ app.get('/api/leads/:leadId/timeline', auth, (req, res) => {
     // 3) Notes
     const notes = db.prepare(`SELECT * FROM notes WHERE lead_id = ? ORDER BY created_at DESC LIMIT 30`).all(req.params.leadId);
     for (const n of notes) items.push({ id: 'note-' + n.id, activity_type: 'note', title: 'Note added', body: n.content, created_at: n.created_at, source: 'note' });
-    // 4) History
-    try {
-      const hist = db.prepare(`SELECT * FROM contact_history WHERE lead_id = ? ORDER BY created_at DESC LIMIT 30`).all(req.params.leadId);
-      for (const h of hist) items.push({ id: 'hist-' + h.id, activity_type: h.type || 'status_change', title: h.description, created_at: h.created_at, source: 'history' });
-    } catch {}
+    // contact_history is NOT read here any more. Every new history row is written
+    // through addContactHistory, which also writes the activity row above, so
+    // reading both listed each event twice. Rows predating that change were
+    // backfilled into activity_timeline at boot, so nothing was lost.
     items.sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
     res.json({ timeline: items.slice(0, 100) });
   } catch (e) { res.status(500).json({ error: e.message }); }

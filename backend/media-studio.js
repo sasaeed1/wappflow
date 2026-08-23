@@ -367,14 +367,10 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   // a missing/optional core table must never break a media route.
   function emitToLead(project, req, activityType, title, body) {
     if (!project || !project.lead_id) return;
-    try {
-      db.prepare(`
-        INSERT INTO activity_timeline (id, lead_id, workspace_id, user_id, actor_name, activity_type, title, body)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(generateId(), project.lead_id, project.workspace_id, req.userId || null,
-             req.senderName || 'Team Member', activityType, title, body || null);
-    } catch {}
-    try { addContactHistory(project.lead_id, req.userId, 'media', title); } catch {}
+    // Wrote the activity row AND a history row, which the timeline merged - so
+    // every media event showed up twice. addContactHistory feeds the spine now,
+    // so one call is one entry.
+    try { addContactHistory(project.lead_id, req.userId, activityType || 'media', title, body ? { body } : null); } catch {}
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -2641,6 +2637,9 @@ Only suggest actions that make sense for the question. If none make sense, retur
           try { await sendClientMessage({ lead, userId: req.userId, text: `✨ Have a look at my portfolio:\n${link}` }); delivery.whatsapp = 'sent'; }
           catch (e) { delivery.whatsapp = 'failed'; delivery.error = e.message; }
         } else delivery.whatsapp = 'no_phone';
+        // Publishing a gallery has always logged CRM activity; sending somebody
+        // your portfolio - a sales action - left no trace at all.
+        if (lead) { try { addContactHistory(lead.id, req.userId, 'portfolio', `Portfolio shared with ${lead.customer_name || 'client'}`, { url: link }); } catch {} }
       }
       res.json({ share_url: link, delivery });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2849,7 +2848,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
 
   // ── Worker: drains ms_jobs → variants + EXIF + advisory CV scores ────────────
   // Pass startWorker:false in tests to drive worker.processOnce() deterministically.
-  const worker = createMediaWorker(db, { uploadsDir, path, fs, generateId, broadcastToWorkspace, notify });
+  const worker = createMediaWorker(db, { uploadsDir, path, fs, generateId, broadcastToWorkspace, notify, addContactHistory });
   if (deps.startWorker !== false) worker.start();
 
   console.log('📸 Media Studio module mounted at /api/media');

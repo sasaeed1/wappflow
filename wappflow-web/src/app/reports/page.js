@@ -7,7 +7,8 @@ import {
   Clock, Award, BarChart2, PieChart as PieIcon, Activity,
   Download, RefreshCw, Calendar, ChevronDown, ArrowUpRight,
   ArrowDownRight, Minus, AlertCircle, CheckCircle, XCircle,
-  Camera, Globe as GlobeIcon, MonitorSmartphone, Layers, MessageCircle
+  Camera, Globe as GlobeIcon, MonitorSmartphone, Layers, MessageCircle,
+  Receipt, FileSignature, CalendarDays
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -352,10 +353,25 @@ export default function ReportsPage() {
                   <StatCard icon={Users} label="Total Leads" value={analytics?.total_leads || 0} color="#6366f1"
                     trend={analytics?.this_month_leads > analytics?.last_month_leads ? 'up' : analytics?.this_month_leads < analytics?.last_month_leads ? 'down' : 'neutral'}
                     trendVal={`${analytics?.this_month_leads || 0} this month`} />
-                  <StatCard icon={DollarSign} label="Total Revenue" value={`${sym}${(analytics?.total_sales || 0).toLocaleString()}`} color="#10b981"
-                    sub={`${sym}${(analytics?.avg_deal_size || 0).toLocaleString()} avg deal`} />
+                  {/* "Total Revenue" summed a number typed on the deal record, so a
+                      studio could collect a year of real money and see none of it here.
+                      Collected is the payments ledger; the deal estimate stays below it
+                      as what the pipeline is judged to be worth. */}
+                  <StatCard icon={DollarSign} label="Collected" value={`${sym}${(analytics?.collected || 0).toLocaleString()}`} color="#10b981"
+                    sub={`${sym}${(analytics?.collected_this_month || 0).toLocaleString()} this month`} />
+                  <StatCard icon={Receipt} label="Outstanding" value={`${sym}${(analytics?.outstanding || 0).toLocaleString()}`} color="#f97316"
+                    sub={`${analytics?.invoices_raised || 0} invoice${analytics?.invoices_raised === 1 ? '' : 's'} raised`} />
                   <StatCard icon={Target} label="Conversion Rate" value={`${analytics?.conversion_rate || 0}%`} color="#f59e0b"
                     sub={`${analytics?.closed_won || 0} deals won`} />
+                </div>
+
+                <div className="r-stack-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                  <StatCard icon={TrendingUp} label="Pipeline Value" value={`${sym}${(analytics?.total_sales || 0).toLocaleString()}`} color="#6366f1"
+                    sub={`${sym}${(analytics?.avg_deal_size || 0).toLocaleString()} avg deal`} />
+                  <StatCard icon={FileSignature} label="Contracts Signed" value={analytics?.contracts_signed || 0} color="#8b5cf6"
+                    sub={`${analytics?.contracts_awaiting || 0} awaiting signature`} />
+                  <StatCard icon={CalendarDays} label="Upcoming Bookings" value={analytics?.bookings_upcoming || 0} color="#0ea5e9"
+                    sub="Confirmed and ahead" />
                   <StatCard icon={Clock} label="Avg Response Time" value={avgResponseDisplay || '—'} color="#8b5cf6"
                     sub="Time to first reply" />
                 </div>

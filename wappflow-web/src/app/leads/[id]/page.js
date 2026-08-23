@@ -9,10 +9,11 @@ import {
   Trophy, ThumbsDown, Send, Paperclip, Bold,
   Italic, List, Zap, ChevronDown, Tag, Star,
   Mail, MapPin, User, Smile, Mic, MicOff, Square,
-  FileText, History, Play, Volume2, Globe, Hash,
+  FileText, Play, Volume2, Globe, Hash,
   ChevronRight, Activity, Receipt, Workflow, RefreshCw,
   Layers, Link2, GitMerge, Network, Lock, MessageCircle,
-  Camera, MonitorSmartphone, Video
+  Camera, MonitorSmartphone, Video,
+  FileSignature, Banknote, ShoppingBag, Film
 } from 'lucide-react';
 import {
   leadsAPI, presetsAPI, tagsAPI, emailTemplatesAPI,
@@ -611,7 +612,6 @@ export default function LeadDetailPage() {
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [emailWorkflows, setEmailWorkflows] = useState([]);
   const [invoices, setInvoices] = useState([]);
-  const [history, setHistory] = useState([]);
   const [leadEmails, setLeadEmails] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [company, setCompany] = useState(null);
@@ -638,6 +638,20 @@ const [aiError, setAiError] = useState('');
   const [channels, setChannels] = useState([]);
   const [relatedLeads, setRelatedLeads] = useState({ suggestions: [], linked: [] });
   const [timeline, setTimeline] = useState([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
+  // The Timeline tab used to open empty above a "Click Refresh Timeline to load
+  // all activity" message - the one view meant to tell you the story of a client
+  // asked you to fetch it yourself, so most people assumed it was broken.
+  const loadTimeline = useCallback(async () => {
+    if (!leadId) return;
+    setTimelineLoading(true);
+    try { const r = await timelineAPI.get(leadId); setTimeline(r.data.timeline || []); }
+    catch { /* leave whatever we already have on screen */ }
+    finally { setTimelineLoading(false); }
+  }, [leadId]);
+
+  useEffect(() => { if (activeTab === 'timeline') loadTimeline(); }, [activeTab, loadTimeline]);
   const [addingChannel, setAddingChannel] = useState(false);
   const [newChannel, setNewChannel] = useState({ platform: 'whatsapp', identifier: '', display_name: '' });
   // Active chat platform — defaults to the lead's source. The 4 platform tabs above the chat
@@ -805,7 +819,6 @@ const [aiError, setAiError] = useState('');
       setActivePlatform(prev => prev || (leadData.platform_source || 'whatsapp').toLowerCase());
       setNotes(data.notes || []);
       setReminders(data.reminders || []);
-      setHistory(data.history || []);
       setInvoices(data.invoices || []);
       setEmailWorkflows(data.emailWorkflows || []);
 
@@ -1213,7 +1226,6 @@ useEffect(() => {
   { id: 'timeline', label: 'Timeline', count: 0, color: '#6366f1' },
   { id: 'notes', label: 'Notes', count: notes.length, color: '#f59e0b' },
   { id: 'reminders', label: 'Reminders', count: reminders.filter(r => !r.is_completed).length, color: '#8b5cf6' },
-  { id: 'history', label: 'History', count: history.length, color: '#06b6d4' },
   { id: 'invoices', label: 'Invoices', count: invoices.length, color: '#10b981' },
   { id: 'emails', label: 'Emails', count: leadEmails.length, color: '#10b981' },
   { id: 'email-flow', label: 'Email Flow', count: emailWorkflows.length, color: '#6366f1' },
@@ -2131,37 +2143,6 @@ useEffect(() => {
                 </div>
               )}
 
-              {/* CONTACT HISTORY */}
-              {activeTab === 'history' && (
-                <div>
-                  <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 16 }}>Complete history of all activity on this lead — preserved forever.</p>
-                  {history.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--border)' }}>
-                      <History size={32} style={{ margin: '0 auto 8px' }} />
-                      <p style={{ fontSize: 14, color: 'var(--text-dim)' }}>No history yet</p>
-                    </div>
-                  ) : (
-                    <div style={{ position: 'relative' }}>
-                      <div style={{ position: 'absolute', left: 15, top: 0, bottom: 0, width: 2, background: 'var(--surface2)' }} />
-                      {history.map((h, i) => {
-                        const HistIcon = HISTORY_ICONS[h.type] || Activity;
-                        const color = HISTORY_COLORS[h.type] || '#6b7280';
-                        return (
-                          <div key={h.id || i} style={{ display: 'flex', gap: 14, marginBottom: 16, position: 'relative' }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 10, background: color + '18', border: `2px solid ${color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, zIndex: 1, background: 'var(--surface)', boxShadow: `0 0 0 3px white` }}>
-                              <HistIcon size={14} color={color} />
-                            </div>
-                            <div style={{ flex: 1, paddingTop: 4 }}>
-                              <p style={{ fontSize: 13, color: 'var(--text)', margin: '0 0 3px', fontWeight: 500 }}>{h.description}</p>
-                              <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{formatSmart(h.created_at)}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* INVOICES */}
               {activeTab === 'invoices' && (
@@ -2641,27 +2622,42 @@ useEffect(() => {
                   reminder_done: CheckCircle, status_change: Activity, assignment: UserCheck,
                   invoice: Receipt, email: Mail, channel_added: Layers, relation_linked: Link2,
                   lead_created: Star, created: Star, message: MessageSquare,
+                  // Everything below now reaches the spine and used to render as a
+                  // generic grey dot - a booking was indistinguishable from a note.
+                  booking: Calendar, meeting_scheduled: Video, contract: FileSignature,
+                  payment: Banknote, order: ShoppingBag, media: Camera, media_project: Camera,
+                  reel: Film, portfolio: Globe, client: UserCheck, pipeline: TrendingUp,
                 };
                 const TIMELINE_COLORS = {
                   message_in: '#25d366', message_out: '#6366f1', note: '#f59e0b', reminder: '#8b5cf6',
                   reminder_done: '#10b981', status_change: '#06b6d4', assignment: '#06b6d4',
                   invoice: '#10b981', email: '#f59e0b', channel_added: '#ec4899', relation_linked: '#6366f1',
                   lead_created: '#10b981', created: '#10b981', message: '#25d366',
+                  booking: '#0ea5e9', meeting_scheduled: '#6366f1', contract: '#8b5cf6',
+                  payment: '#10b981', order: '#f97316', media: '#ec4899', media_project: '#ec4899',
+                  reel: '#a855f7', portfolio: '#0ea5e9', client: '#10b981', pipeline: '#06b6d4',
                 };
                 const PLATFORM_LABELS = { whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', website: 'Website', email: 'Email', system: 'System' };
                 return (
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
-                      <button onClick={async () => { try { const r = await timelineAPI.get(leadId); setTimeline(r.data.timeline || []); } catch {} }}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                      <p style={{ fontSize: 12.5, color: 'var(--text-dim)', margin: 0 }}>
+                        Everything that has happened with this contact — messages, notes, bookings, contracts, invoices, payments, shoots and deliveries.
+                      </p>
+                      <button onClick={loadTimeline} disabled={timelineLoading}
                         style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                        <RefreshCw size={12} /> Refresh Timeline
+                        <RefreshCw size={12} /> {timelineLoading ? 'Loading…' : 'Refresh'}
                       </button>
                     </div>
                     {timeline.length === 0 ? (
                       <div style={{ textAlign: 'center', padding: '40px 0' }}>
                         <Activity size={36} color="#d1d5db" style={{ margin: '0 auto 10px' }} />
-                        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>Unified Timeline</p>
-                        <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>Click "Refresh Timeline" to load all activity</p>
+                        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>
+                          {timelineLoading ? 'Loading the timeline…' : 'Nothing has happened yet'}
+                        </p>
+                        <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+                          {timelineLoading ? '' : 'Messages, bookings, contracts and invoices will appear here as they happen.'}
+                        </p>
                       </div>
                     ) : (
                       <div style={{ position: 'relative' }}>
