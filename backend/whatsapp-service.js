@@ -712,13 +712,31 @@ class WhatsAppService {
   async sendVoiceNote(phone, filePath, mimetype) {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
 
+    // WhatsApp Web accepts only a handful of audio containers. Anything else is
+    // rejected inside the page by WAWebPrepRawMedia.prepRawMedia with
+    // `InvalidMediaCheckRepairFailedType` — which crosses the puppeteer boundary as
+    // the unreadable "t: t", because WhatsApp's error classes are minified and
+    // puppeteer cannot serialize them. Browsers record voice notes as webm/opus,
+    // which is NOT accepted, so the ffmpeg transcode below is load-bearing rather
+    // than cosmetic. ogg/opus, mp4/aac and mp3 were each verified against the live
+    // WhatsApp Web page; webm/opus was verified to fail.
+    const SENDABLE_AUDIO = {
+      ogg: 'audio/ogg; codecs=opus',
+      oga: 'audio/ogg; codecs=opus',
+      m4a: 'audio/mp4',
+      mp4: 'audio/mp4',
+      mp3: 'audio/mpeg',
+    };
+
     // Transcode browser-recorded webm/opus → ogg/opus with ffmpeg.
     // ASYNC (execFile) — never use execSync in a request path, it blocks the
     // entire Node event loop and freezes every other API call.
     let sendPath = filePath;
+    let transcodeError = null;
+    // The upload's extension is derived from its mimetype (see voiceUpload in
+    // server.js), so the extension alone decides whether a transcode is needed.
     const srcExt = (filePath.split('.').pop() || '').toLowerCase();
-    const srcMt = (mimetype || '').toLowerCase();
-    if (srcExt !== 'ogg' && !srcMt.includes('ogg')) {
+    if (!SENDABLE_AUDIO[srcExt]) {
       const oggPath = filePath.replace(/\.[^.]+$/, '') + '-conv.ogg';
       try {
         await new Promise((resolve, reject) => {
@@ -730,21 +748,32 @@ class WhatsAppService {
         if (fs.existsSync(oggPath) && fs.statSync(oggPath).size > 0) {
           sendPath = oggPath;
         } else {
-          console.log('⚠️ Voice transcode produced no output — sending original');
+          transcodeError = new Error('ffmpeg produced no output');
         }
       } catch (e) {
-        console.log('⚠️ Voice transcode (ffmpeg) failed — sending original:', e.message);
+        transcodeError = e;
       }
+      if (transcodeError) console.log('⚠️ Voice transcode (ffmpeg) failed:', transcodeError.message);
     }
 
-    const data = fs.readFileSync(sendPath).toString('base64');
+    // Never hand WhatsApp a container it is going to reject. This used to fall
+    // through and "send the original" webm, which could not succeed — it only
+    // turned a missing ffmpeg into an unreadable page-boundary error.
     const ext = (sendPath.split('.').pop() || '').toLowerCase();
-    let mime = 'audio/ogg; codecs=opus';
-    let filename = 'voice.ogg';
-    if (ext === 'webm')      { mime = 'audio/webm; codecs=opus'; filename = 'voice.webm'; }
-    else if (ext === 'm4a' || ext === 'mp4') { mime = 'audio/mp4'; filename = 'voice.m4a'; }
-    else if (ext === 'mp3')  { mime = 'audio/mpeg'; filename = 'voice.mp3'; }
+    const mime = SENDABLE_AUDIO[ext];
+    if (!mime) {
+      const why = transcodeError
+        ? (transcodeError.code === 'ENOENT'
+            ? 'ffmpeg is not installed on this server'
+            : `ffmpeg failed: ${transcodeError.message}`)
+        : `nothing converted the .${ext || 'unknown'} recording`;
+      throw new Error(
+        `Voice note could not be converted to a format WhatsApp accepts (${why}). ` +
+        `WhatsApp rejects .${ext || 'unknown'} audio — install ffmpeg (apt install -y ffmpeg) and retry.`);
+    }
 
+    const filename = `voice.${ext === 'oga' ? 'ogg' : ext}`;
+    const data = fs.readFileSync(sendPath).toString('base64');
     const media = new MessageMedia(mime, data, filename);
 
     // Resolve the chat target directly — no getNumberId() (it hangs).
@@ -755,7 +784,36 @@ class WhatsAppService {
     // wedges the WhatsApp Web page, which then breaks every other send
     // (text included) on the account. A plain audio attachment delivers
     // reliably and still plays for the recipient.
-    await this.client.sendMessage(target, media);
+    try {
+      await this.client.sendMessage(target, media);
+    } catch (e) {
+      const real = await this._describeMediaFailure(mime, data, filename);
+      throw new Error(`WhatsApp rejected the voice note${real ? `: ${real}` : ` (${e.message || e})`}`);
+    }
+  }
+
+  // Ask the page why a media send failed. whatsapp-web.js does the send inside
+  // page.evaluate, and WhatsApp's own error classes are minified, so everything
+  // puppeteer can tell us is "t: t". The only way to read one is to catch it
+  // INSIDE the page and return it as data — which is what this does, by replaying
+  // the media-prep step that a media send fails on. Best effort: null if it can't
+  // reproduce the failure, so the caller falls back to the original error.
+  async _describeMediaFailure(mimetype, data, filename) {
+    try {
+      const page = this.client && this.client.pupPage;
+      if (!page) return null;
+      return await page.evaluate(async (media) => {
+        try {
+          const file = window.WWebJS.mediaInfoToFile(media);
+          const opaque = await window.require('WAWebMediaOpaqueData').createFromData(file, media.mimetype);
+          await window.require('WAWebPrepRawMedia').prepRawMedia(opaque, {}).waitForPrep();
+          return null; // Media prep is fine — the send failed further along.
+        } catch (err) {
+          if (!err || typeof err !== 'object') return String(err);
+          return err.message ? `${err.name || 'Error'}: ${err.message}` : (err.name || String(err));
+        }
+      }, { mimetype, data, filename });
+    } catch { return null; }
   }
 
   // ── Group creation & editing ─────────────────────────────────
