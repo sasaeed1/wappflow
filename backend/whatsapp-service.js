@@ -821,27 +821,43 @@ class WhatsAppService {
     return { groupId, inviteLink, addedCount: participants.length, skipped };
   }
 
-  async setGroupSubject(groupId, name) {
+  // Every group-info edit funnels through here, because whatsapp-web.js does NOT
+  // throw when an edit is refused: GroupChat.setSubject/setDescription/setPicture
+  // catch ServerStatusCodeError and return `false` when the account lacks the
+  // permission (not a group admin, or the group is set to "only admins can edit
+  // group info"). Awaiting them without reading the result is how a PATCH reported
+  // success while WhatsApp changed nothing. A strict `=== false` keeps a library
+  // version that returns nothing on success from being misread as a refusal.
+  async _editGroup(groupId, field, apply) {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
     const chat = await this.client.getChatById(groupId);
     if (!chat || !chat.isGroup) throw new Error('Not a group chat');
-    await chat.setSubject(name);
+    const ok = await apply(chat);
+    if (ok === false) {
+      throw Object.assign(
+        new Error(`WhatsApp refused the group ${field} change — this account may not be a group admin`),
+        { notPermitted: true, field },
+      );
+    }
+    return true;
+  }
+
+  async setGroupSubject(groupId, name) {
+    return this._editGroup(groupId, 'name', (chat) => chat.setSubject(name));
   }
 
   async setGroupDescription(groupId, description) {
-    if (!this.isReady) throw new Error('WhatsApp client is not ready');
-    const chat = await this.client.getChatById(groupId);
-    if (!chat || !chat.isGroup) throw new Error('Not a group chat');
-    await chat.setDescription(description);
+    return this._editGroup(groupId, 'description', (chat) => chat.setDescription(description));
   }
 
   async setGroupPicture(groupId, filePath, mimetype) {
-    if (!this.isReady) throw new Error('WhatsApp client is not ready');
-    const chat = await this.client.getChatById(groupId);
-    if (!chat || !chat.isGroup) throw new Error('Not a group chat');
-    const data = fs.readFileSync(filePath).toString('base64');
-    const media = new MessageMedia(mimetype || 'image/jpeg', data, 'group.jpg');
-    await chat.setPicture(media);
+    // The file is read inside the callback so a dead session or a non-group id
+    // still fails on that first, exactly as it did before.
+    return this._editGroup(groupId, 'icon', (chat) => {
+      const data = fs.readFileSync(filePath).toString('base64');
+      const media = new MessageMedia(mimetype || 'image/jpeg', data, 'group.jpg');
+      return chat.setPicture(media);
+    });
   }
 
   saveOutgoingMessage(leadId, userId, body) {

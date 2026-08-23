@@ -5703,18 +5703,52 @@ app.patch('/api/whatsapp/groups/:groupId', auth, (req, res) => {
       const ownsGroup = db.prepare('SELECT 1 FROM whatsapp_groups WHERE workspace_id = ? AND group_id = ?').get(req.workspaceId, groupId);
       if (!ownsGroup && !account_id) return denyGroup('Group not found');
 
-      if (name) await whatsappService.setGroupSubject(groupId, String(name).trim(), account_id || null);
-      if (typeof description === 'string') await whatsappService.setGroupDescription(groupId, description, account_id || null);
-      if (req.file) await whatsappService.setGroupPicture(groupId, req.file.path, req.file.mimetype, account_id || null);
+      // Each field is applied independently. WhatsApp can refuse one edit and allow
+      // another (the "only admins can edit group info" setting covers name,
+      // description and icon, but a refusal arrives per call), and these run in
+      // sequence — so a partial failure is reported field by field instead of
+      // collapsing into one all-or-nothing answer.
+      const trimmedName = name ? String(name).trim() : null;
+      const applied = [];
+      const failed = [];
+      const applyField = async (field, run) => {
+        try {
+          await run();
+          applied.push(field);
+        } catch (e) {
+          failed.push({
+            field,
+            error: e.message || `Could not update the group ${field}`,
+            permission: e.notPermitted === true,
+          });
+        }
+      };
 
-      // Update our local mirror
+      if (name) await applyField('name', () => whatsappService.setGroupSubject(groupId, trimmedName, account_id || null));
+      if (typeof description === 'string') await applyField('description', () => whatsappService.setGroupDescription(groupId, description, account_id || null));
+      if (req.file) await applyField('icon', () => whatsappService.setGroupPicture(groupId, req.file.path, req.file.mimetype, account_id || null));
+
+      // Update our local mirror — but ONLY for the fields WhatsApp actually accepted,
+      // so the mirror can never show a name or description the real group does not have.
+      const nameApplied = applied.includes('name');
+      const descApplied = applied.includes('description');
       try {
-        if (name || typeof description === 'string') {
+        if (nameApplied || descApplied) {
           db.prepare(`UPDATE whatsapp_groups SET name = COALESCE(?, name), description = COALESCE(?, description) WHERE workspace_id = ? AND group_id = ?`)
-            .run(name || null, typeof description === 'string' ? description : null, req.workspaceId, groupId);
+            .run(nameApplied ? trimmedName : null, descApplied ? description : null, req.workspaceId, groupId);
         }
       } catch {}
-      res.json({ success: true });
+
+      if (failed.length === 0) return res.json({ success: true, applied });
+      // A refusal is the account's permissions, not a server fault — 403 unless
+      // something genuinely broke (dead session, unreadable icon, …).
+      const status = failed.every((f) => f.permission) ? 403 : 500;
+      return res.status(status).json({
+        success: false,
+        error: failed.map((f) => `${f.field}: ${f.error}`).join(' · '),
+        applied,
+        failed,
+      });
     } catch (e) {
       console.error('Group update error:', e);
       res.status(500).json({ error: e.message || 'Group update failed' });
