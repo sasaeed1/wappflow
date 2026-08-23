@@ -1,8 +1,9 @@
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia, GroupChat, PrivateChat } = require('whatsapp-web.js');
 const fs = require('fs');
 const path = require('path');
 const { execSync, execFile } = require('child_process');
 const qrcode = require('qrcode');
+const { describeWaError } = require('./wa-errors');
 
 class WhatsAppService {
   constructor(db, broadcastToUser, accountId = null, sessionName = undefined, broadcastToWorkspace = null, notify = null) {
@@ -91,6 +92,25 @@ class WhatsAppService {
     // Newer whatsapp-web.js exposes these directly; trust them when present.
     if (chat && (chat.isChannel === true || chat.isNewsletter === true || chat.isBroadcast === true)) return false;
     return true;
+  }
+
+  // WhatsApp Web's message key used to expose `_serialized`; current builds ship it
+  // under a minified name instead (`$1` today, something else after the next deploy),
+  // so `id._serialized` silently reads undefined and every wa_message_id lands NULL —
+  // which quietly disables duplicate detection. Read the field when it's there, then
+  // fall back to any own value already in serialized form, then rebuild it from parts.
+  static waMessageKey(id) {
+    if (!id) return null;
+    if (typeof id === 'string') return id;
+    if (typeof id._serialized === 'string' && id._serialized) return id._serialized;
+    for (const value of Object.values(id)) {
+      if (typeof value === 'string' && /^(true|false)_[^_]+_.+/.test(value)) return value;
+    }
+    if (id.id && id.remote) {
+      const remote = typeof id.remote === 'string' ? id.remote : (id.remote._serialized || '');
+      if (remote) return `${!!id.fromMe}_${remote}_${id.id}${id.participant ? `_${id.participant}` : ''}`;
+    }
+    return null;
   }
 
   _resolveOwner() {
@@ -758,6 +778,98 @@ class WhatsAppService {
     await this.client.sendMessage(target, media);
   }
 
+  // ── Chat lookup that survives WhatsApp's key rename ──────────────────────────
+  //
+  // `client.getChatById()` cannot be used against current WhatsApp Web builds. It
+  // asks the page for a chat *model*, and whatsapp-web.js builds that model in
+  // `getChatModel()` by reading `chat.lastReceivedKey._serialized` — a field
+  // WhatsApp no longer publishes, since the message key now ships under a minified
+  // name (`$1` today, something else after the next deploy). The read yields
+  // undefined, undefined is handed to `Msg.getMessagesById([undefined])`, and
+  // IndexedDB rejects it with `DataError: Failed to execute 'get' on
+  // 'IDBObjectStore': No key or key range specified`. Every chat that has ever
+  // received a message is affected — 439 of 690 on the production account.
+  //
+  // Nothing we do with a chat needs that model. fetchMessages(), setSubject(),
+  // setDescription(), setPicture() and getInviteCode() each reach back into the
+  // page with `chat.id._serialized` and nothing else. So read the Chat collection
+  // directly — the same door the missed-message sync uses — return only the fields
+  // the structures actually read, and build the structure on this side.
+  //
+  // Returns null when the chat does not exist, and throws when the lookup itself
+  // failed, so callers can tell "no such chat" from "the lookup is broken".
+  async _getChat(chatId) {
+    const page = this.client && this.client.pupPage;
+    if (!page || (typeof page.isClosed === 'function' && page.isClosed())) {
+      throw new Error('WhatsApp page context unavailable — session still starting or restarting');
+    }
+
+    const result = await page.evaluate(async (id) => {
+      // Wids still carry `_serialized`, but the message-key rename is a standing
+      // warning that these fields move; toString() is the stable fallback.
+      const widString = (wid) => {
+        if (!wid) return null;
+        if (typeof wid === 'string') return wid;
+        if (typeof wid._serialized === 'string' && wid._serialized) return wid._serialized;
+        try {
+          const text = wid.toString();
+          return text && text !== '[object Object]' ? text : null;
+        } catch { return null; }
+      };
+
+      let chat = null;
+      try {
+        const wid = window.require('WAWebWidFactory').createWid(id);
+        chat = window.require('WAWebCollections').Chat.get(wid);
+        if (!chat) {
+          // A chat we have never opened is not in the collection yet. Same fallback
+          // the library's own getChat() uses.
+          const opened = await window.require('WAWebFindChatAction').findOrCreateLatestChat(wid);
+          chat = (opened && opened.chat) || null;
+        }
+      } catch (e) {
+        // A throw from in here reaches Node as a minified class name and nothing
+        // else, so report the failure as data while the detail still exists.
+        return { error: `${(e && e.name) || 'Error'}: ${(e && e.message) || 'chat lookup failed'}` };
+      }
+      if (!chat) return { chat: null };
+
+      const serialized = widString(chat.id);
+      if (!serialized) return { error: 'chat found but its id could not be read' };
+      const metadata = chat.groupMetadata;
+
+      return {
+        chat: {
+          id: { _serialized: serialized, user: chat.id.user, server: chat.id.server },
+          formattedTitle: chat.formattedTitle || chat.name || null,
+          isGroup: !!metadata || serialized.endsWith('@g.us'),
+          isReadOnly: !!(metadata && metadata.announce),
+          t: chat.t || null,
+          unreadCount: chat.unreadCount || 0,
+          archive: !!chat.archive,
+          pin: chat.pin || 0,
+          isMuted: !!(chat.mute && chat.mute.expiration !== 0),
+          muteExpiration: (chat.mute && chat.mute.expiration) || 0,
+          // Only what the group operations read. Participants are left out on
+          // purpose: the library remaps their @lid ids to phone numbers while
+          // building a model, and a half-migrated list is worse than none.
+          groupMetadata: metadata ? {
+            desc: metadata.desc || null,
+            owner: widString(metadata.owner),
+            creation: metadata.creation || null,
+            announce: !!metadata.announce,
+            restrict: !!metadata.restrict,
+          } : undefined,
+        },
+      };
+    }, chatId);
+
+    if (result && result.error) throw new Error(`WhatsApp could not open chat ${chatId} — ${result.error}`);
+    const data = result && result.chat;
+    if (!data) return null;
+    return data.isGroup ? new GroupChat(this.client, data) : new PrivateChat(this.client, data);
+  }
+
   // ── Group creation & editing ─────────────────────────────────
   // Resolve a mix of E.164 phones and @lid JIDs to whatsapp-web.js participant IDs.
   // Returns { participants, skipped } so the caller can tell the user which numbers were unreachable.
@@ -800,48 +912,73 @@ class WhatsAppService {
     const groupId = (typeof result === 'string') ? result : (result?.gid?._serialized || result?.gid || result?._serialized);
     if (!groupId) throw new Error('Group creation succeeded but no group id returned');
 
+    // One lookup serves both of the follow-up steps.
+    let chat = null;
+    try {
+      chat = await this._getChat(groupId);
+    } catch (e) {
+      console.log(`⚠️ Group ${groupId} was created but could not be read back:\n${describeWaError(e)}`);
+    }
+    const group = chat && chat.isGroup ? chat : null;
+
     // Optional description — set via the group chat's setDescription
-    if (description) {
+    if (description && group) {
       try {
-        const chat = await this.client.getChatById(groupId);
-        if (chat && chat.isGroup) await chat.setDescription(description);
-      } catch (e) { console.log('⚠️ Could not set group description:', e.message); }
+        await group.setDescription(description);
+      } catch (e) { console.log(`⚠️ Could not set group description:\n${describeWaError(e)}`); }
     }
 
     // Try to fetch an invite code so the user can share the link if they want
     let inviteLink = null;
-    try {
-      const chat = await this.client.getChatById(groupId);
-      if (chat && chat.isGroup && typeof chat.getInviteCode === 'function') {
-        const code = await chat.getInviteCode();
+    if (group && typeof group.getInviteCode === 'function') {
+      try {
+        const code = await group.getInviteCode();
         if (code) inviteLink = `https://chat.whatsapp.com/${code}`;
+      } catch (e) {
+        // Still best-effort — the group exists either way — but say why in the log.
+        console.log(`⚠️ Could not read the invite link for ${groupId}:\n${describeWaError(e)}`);
       }
-    } catch (e) { /* invite-link is best-effort */ }
+    }
 
     return { groupId, inviteLink, addedCount: participants.length, skipped };
   }
 
-  async setGroupSubject(groupId, name) {
-    if (!this.isReady) throw new Error('WhatsApp client is not ready');
-    const chat = await this.client.getChatById(groupId);
+  // Look up a group chat, refusing anything that is not one.
+  async _getGroupChat(groupId) {
+    const chat = await this._getChat(groupId);
     if (!chat || !chat.isGroup) throw new Error('Not a group chat');
-    await chat.setSubject(name);
+    return chat;
+  }
+
+  // The three edits below all fail the same way: the page throws, and by the time
+  // the throw reaches Node its message is a minified class name. Log the full
+  // description here, and give the caller the one line worth showing.
+  async _editGroup(groupId, what, apply) {
+    if (!this.isReady) throw new Error('WhatsApp client is not ready');
+    const chat = await this._getGroupChat(groupId);
+    try {
+      return await apply(chat);
+    } catch (e) {
+      const detail = describeWaError(e);
+      console.log(`⚠️ Could not ${what} for ${groupId}:\n${detail}`);
+      throw new Error(`Could not ${what} — ${detail.split('\n')[0]}`);
+    }
+  }
+
+  async setGroupSubject(groupId, name) {
+    await this._editGroup(groupId, 'rename the group', chat => chat.setSubject(name));
   }
 
   async setGroupDescription(groupId, description) {
-    if (!this.isReady) throw new Error('WhatsApp client is not ready');
-    const chat = await this.client.getChatById(groupId);
-    if (!chat || !chat.isGroup) throw new Error('Not a group chat');
-    await chat.setDescription(description);
+    await this._editGroup(groupId, 'set the group description', chat => chat.setDescription(description));
   }
 
   async setGroupPicture(groupId, filePath, mimetype) {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
-    const chat = await this.client.getChatById(groupId);
-    if (!chat || !chat.isGroup) throw new Error('Not a group chat');
+    // Read the upload before touching WhatsApp so a bad file fails as a bad file.
     const data = fs.readFileSync(filePath).toString('base64');
     const media = new MessageMedia(mimetype || 'image/jpeg', data, 'group.jpg');
-    await chat.setPicture(media);
+    await this._editGroup(groupId, 'set the group picture', chat => chat.setPicture(media));
   }
 
   saveOutgoingMessage(leadId, userId, body) {
@@ -866,13 +1003,21 @@ class WhatsAppService {
       chatId = numberId._serialized;
     }
     let chat;
-    try { chat = await this.client.getChatById(chatId); } catch {
-      throw new Error('Chat not found — the contact may not have messaged this WhatsApp number yet');
+    try {
+      chat = await this._getChat(chatId);
+    } catch (e) {
+      // This catch used to swallow the getChatModel DataError and blame the contact
+      // for never having messaged us, which sent people hunting through WhatsApp for
+      // a problem that lives in this process.
+      const detail = describeWaError(e);
+      console.log(`⚠️ Could not open chat ${chatId} to read history:\n${detail}`);
+      throw new Error(`Could not open the WhatsApp chat for ${phone} — ${detail.split('\n')[0]}`);
     }
+    if (!chat) throw new Error('Chat not found — the contact may not have messaged this WhatsApp number yet');
     const messages = await chat.fetchMessages({ limit });
     console.log(`📜 Fetched ${messages.length} historical messages for ${phone}`);
     return messages.map(m => ({
-      wa_id: m.id?._serialized || null,
+      wa_id: WhatsAppService.waMessageKey(m.id),
       body: m.body || (m.hasMedia ? '[Media]' : ''),
       from_me: m.fromMe ? 1 : 0,
       ts: m.timestamp,
