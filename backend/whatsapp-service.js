@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, execFile } = require('child_process');
 const qrcode = require('qrcode');
-const { describeWaError } = require('./wa-errors');
+const { describeWaError, isPageContextGone } = require('./wa-errors');
 
 class WhatsAppService {
   constructor(db, broadcastToUser, accountId = null, sessionName = undefined, broadcastToWorkspace = null, notify = null) {
@@ -305,7 +305,9 @@ class WhatsAppService {
         // Only skip if truly empty AND not a media message
         if (!message.hasMedia && (!message.body || message.body.trim() === '')) return;
 
-        const messageId = message.id._serialized || message.id;
+        // Falling back to the raw `message.id` OBJECT here made this Set useless — every
+        // object is a distinct key, so nothing was ever recognised as already processed.
+        const messageId = WhatsAppService.waMessageKey(message.id) || JSON.stringify(message.id);
         if (this.processedMessages.has(messageId)) return;
         this.processedMessages.add(messageId);
         if (this.processedMessages.size > 1000) {
@@ -390,7 +392,7 @@ class WhatsAppService {
         }
 
         const msgId = this.generateId();
-        const waId = message.id?._serialized || null;
+        const waId = WhatsAppService.waMessageKey(message.id);
         try {
           // Determine media type properly
           let mediaType = null;
@@ -732,13 +734,31 @@ class WhatsAppService {
   async sendVoiceNote(phone, filePath, mimetype) {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
 
+    // WhatsApp Web accepts only a handful of audio containers. Anything else is
+    // rejected inside the page by WAWebPrepRawMedia.prepRawMedia with
+    // `InvalidMediaCheckRepairFailedType` — which crosses the puppeteer boundary as
+    // the unreadable "t: t", because WhatsApp's error classes are minified and
+    // puppeteer cannot serialize them. Browsers record voice notes as webm/opus,
+    // which is NOT accepted, so the ffmpeg transcode below is load-bearing rather
+    // than cosmetic. ogg/opus, mp4/aac and mp3 were each verified against the live
+    // WhatsApp Web page; webm/opus was verified to fail.
+    const SENDABLE_AUDIO = {
+      ogg: 'audio/ogg; codecs=opus',
+      oga: 'audio/ogg; codecs=opus',
+      m4a: 'audio/mp4',
+      mp4: 'audio/mp4',
+      mp3: 'audio/mpeg',
+    };
+
     // Transcode browser-recorded webm/opus → ogg/opus with ffmpeg.
     // ASYNC (execFile) — never use execSync in a request path, it blocks the
     // entire Node event loop and freezes every other API call.
     let sendPath = filePath;
+    let transcodeError = null;
+    // The upload's extension is derived from its mimetype (see voiceUpload in
+    // server.js), so the extension alone decides whether a transcode is needed.
     const srcExt = (filePath.split('.').pop() || '').toLowerCase();
-    const srcMt = (mimetype || '').toLowerCase();
-    if (srcExt !== 'ogg' && !srcMt.includes('ogg')) {
+    if (!SENDABLE_AUDIO[srcExt]) {
       const oggPath = filePath.replace(/\.[^.]+$/, '') + '-conv.ogg';
       try {
         await new Promise((resolve, reject) => {
@@ -750,21 +770,32 @@ class WhatsAppService {
         if (fs.existsSync(oggPath) && fs.statSync(oggPath).size > 0) {
           sendPath = oggPath;
         } else {
-          console.log('⚠️ Voice transcode produced no output — sending original');
+          transcodeError = new Error('ffmpeg produced no output');
         }
       } catch (e) {
-        console.log('⚠️ Voice transcode (ffmpeg) failed — sending original:', e.message);
+        transcodeError = e;
       }
+      if (transcodeError) console.log('⚠️ Voice transcode (ffmpeg) failed:', transcodeError.message);
     }
 
-    const data = fs.readFileSync(sendPath).toString('base64');
+    // Never hand WhatsApp a container it is going to reject. This used to fall
+    // through and "send the original" webm, which could not succeed — it only
+    // turned a missing ffmpeg into an unreadable page-boundary error.
     const ext = (sendPath.split('.').pop() || '').toLowerCase();
-    let mime = 'audio/ogg; codecs=opus';
-    let filename = 'voice.ogg';
-    if (ext === 'webm')      { mime = 'audio/webm; codecs=opus'; filename = 'voice.webm'; }
-    else if (ext === 'm4a' || ext === 'mp4') { mime = 'audio/mp4'; filename = 'voice.m4a'; }
-    else if (ext === 'mp3')  { mime = 'audio/mpeg'; filename = 'voice.mp3'; }
+    const mime = SENDABLE_AUDIO[ext];
+    if (!mime) {
+      const why = transcodeError
+        ? (transcodeError.code === 'ENOENT'
+            ? 'ffmpeg is not installed on this server'
+            : `ffmpeg failed: ${transcodeError.message}`)
+        : `nothing converted the .${ext || 'unknown'} recording`;
+      throw new Error(
+        `Voice note could not be converted to a format WhatsApp accepts (${why}). ` +
+        `WhatsApp rejects .${ext || 'unknown'} audio — install ffmpeg (apt install -y ffmpeg) and retry.`);
+    }
 
+    const filename = `voice.${ext === 'oga' ? 'ogg' : ext}`;
+    const data = fs.readFileSync(sendPath).toString('base64');
     const media = new MessageMedia(mime, data, filename);
 
     // Resolve the chat target directly — no getNumberId() (it hangs).
@@ -775,7 +806,36 @@ class WhatsAppService {
     // wedges the WhatsApp Web page, which then breaks every other send
     // (text included) on the account. A plain audio attachment delivers
     // reliably and still plays for the recipient.
-    await this.client.sendMessage(target, media);
+    try {
+      await this.client.sendMessage(target, media);
+    } catch (e) {
+      const real = await this._describeMediaFailure(mime, data, filename);
+      throw new Error(`WhatsApp rejected the voice note${real ? `: ${real}` : ` (${e.message || e})`}`);
+    }
+  }
+
+  // Ask the page why a media send failed. whatsapp-web.js does the send inside
+  // page.evaluate, and WhatsApp's own error classes are minified, so everything
+  // puppeteer can tell us is "t: t". The only way to read one is to catch it
+  // INSIDE the page and return it as data — which is what this does, by replaying
+  // the media-prep step that a media send fails on. Best effort: null if it can't
+  // reproduce the failure, so the caller falls back to the original error.
+  async _describeMediaFailure(mimetype, data, filename) {
+    try {
+      const page = this.client && this.client.pupPage;
+      if (!page) return null;
+      return await page.evaluate(async (media) => {
+        try {
+          const file = window.WWebJS.mediaInfoToFile(media);
+          const opaque = await window.require('WAWebMediaOpaqueData').createFromData(file, media.mimetype);
+          await window.require('WAWebPrepRawMedia').prepRawMedia(opaque, {}).waitForPrep();
+          return null; // Media prep is fine — the send failed further along.
+        } catch (err) {
+          if (!err || typeof err !== 'object') return String(err);
+          return err.message ? `${err.name || 'Error'}: ${err.message}` : (err.name || String(err));
+        }
+      }, { mimetype, data, filename });
+    } catch { return null; }
   }
 
   // ── Chat lookup that survives WhatsApp's key rename ──────────────────────────
@@ -1029,6 +1089,103 @@ class WhatsAppService {
     }));
   }
 
+  // Read the chats that saw inbound activity since `sinceSec`, straight out of the page.
+  //
+  // This deliberately does NOT use client.getChats(). That call runs every chat through
+  // whatsapp-web.js's getChatModel(), which reads `chat.lastReceivedKey._serialized` —
+  // a field current WhatsApp Web builds no longer expose — and passes the resulting
+  // `undefined` to an IndexedDB lookup, which throws DataError. Because getChats() is a
+  // Promise.all over every chat, one bad chat rejects the lot, and on this account 439
+  // of 690 chats hit it, so the sync could never get past its first line. Reading the
+  // Chat collection directly needs none of that machinery.
+  async _collectMissedFromPage(sinceSec, maxPerChat = 100) {
+    const page = this.client && this.client.pupPage;
+    if (!page || (typeof page.isClosed === 'function' && page.isClosed())) {
+      throw new Error('WhatsApp page context unavailable — session still starting or restarting');
+    }
+    return page.evaluate(async (since, perChat) => {
+      const collections = window.require('WAWebCollections');
+      let loader = null;
+      try { loader = window.require('WAWebChatLoadMessages'); } catch { /* older build — in-memory only */ }
+
+      // Same rename story as waMessageKey() on the Node side, except in here the key is
+      // still a live object, so its own toString() is the reliable answer.
+      const keyOf = (id) => {
+        if (!id) return null;
+        if (typeof id._serialized === 'string' && id._serialized) return id._serialized;
+        try {
+          const serialized = id.toString();
+          return serialized && serialized !== '[object Object]' ? serialized : null;
+        } catch { return null; }
+      };
+
+      // Bookkeeping rows WhatsApp keeps alongside real messages. `isNotification` does
+      // not cover all of them on the raw models, and importing a call record or an
+      // encryption notice would invent a lead out of something the customer never sent.
+      const NON_CONTENT_TYPES = new Set([
+        'e2e_notification', 'notification', 'notification_template', 'call_log',
+        'gp2', 'broadcast_notification', 'protocol', 'ciphertext', 'revoked',
+      ]);
+
+      const all = collections.Chat.getModelsArray();
+      const chats = [];
+      const skipped = [];
+
+      for (const chat of all) {
+        let jid = null;
+        try {
+          jid = chat.id && chat.id._serialized;
+          if (!jid) continue;
+          // Groups belong to the Groups feature, not the lead pipeline.
+          if (chat.groupMetadata || jid.endsWith('@g.us')) continue;
+          // `t` is the chat's last-activity stamp — available without building a model.
+          if (!chat.t || chat.t <= since) continue;
+
+          let msgs = chat.msgs ? chat.msgs.getModelsArray() : [];
+          // Only page backwards while the oldest message in hand is still inside our
+          // window, i.e. while there might be more of the missed run further back.
+          let loads = 0;
+          while (loader && msgs.length && msgs[0].t > since && msgs.length < perChat && loads < 5) {
+            const earlier = await loader.loadEarlierMsgs({ chat });
+            if (!earlier || !earlier.length) break;
+            msgs = chat.msgs.getModelsArray();
+            loads++;
+          }
+
+          const messages = [];
+          for (const m of msgs) {
+            if (m.isNotification) continue;
+            if (NON_CONTENT_TYPES.has(m.type)) continue;
+            if (m.id ? m.id.fromMe : m.fromMe) continue;
+            if (!m.t || m.t <= since) continue;
+            messages.push({
+              waId: keyOf(m.id),
+              body: m.body || m.caption || '',
+              ts: m.t,
+              type: m.type || 'chat',
+              // How whatsapp-web.js itself decides a message carries media.
+              hasMedia: !!(m.mediaKey && m.directPath),
+            });
+          }
+          if (!messages.length) continue;
+          messages.sort((a, b) => a.ts - b.ts);
+
+          chats.push({
+            id: jid,
+            name: chat.formattedTitle || chat.name || null,
+            isChannel: !!chat.isNewsletter,
+            isBroadcast: !!chat.isBroadcast,
+            messages: messages.slice(-perChat),
+          });
+        } catch (e) {
+          // One unreadable chat must not cost us the other 689.
+          skipped.push({ id: jid || 'unknown', reason: (e && (e.name || e.message)) || 'unknown' });
+        }
+      }
+      return { chats, skipped, scanned: all.length };
+    }, sinceSec, maxPerChat);
+  }
+
   // ── Auto-import leads & messages missed while WhatsApp was disconnected ──
   async syncMissedMessages() {
     if (!this.isReady) return;
@@ -1056,20 +1213,22 @@ class WhatsAppService {
       const sinceDate = new Date(sinceSec * 1000).toISOString();
       console.log(`🔄 Syncing missed messages since ${sinceDate}...`);
 
-      const chats = await this.client.getChats();
+      const { chats, skipped, scanned } = await this._collectMissedFromPage(sinceSec);
+      if (skipped.length) {
+        const sample = skipped.slice(0, 3).map(s => `${s.id} (${s.reason})`).join(', ');
+        console.log(`⚠️ ${skipped.length}/${scanned} chats unreadable during sync: ${sample}${skipped.length > 3 ? ' …' : ''}`);
+      }
+
       const stripSQL = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(customer_phone,' ',''),'+',''),'-',''),'(',''),')',''),'.','')`;
       let totalImported = 0;
       let leadsCreated = 0;
 
       for (const chat of chats) {
         try {
-          if (chat.isGroup) continue;
-          if (!WhatsAppService.isIngestableChat(chat.id && chat.id._serialized, chat)) continue;
-          // Skip chats with no activity since our last import
-          if (!chat.lastMessage || chat.lastMessage.timestamp <= sinceSec) continue;
+          const jid = chat.id;
+          if (!WhatsAppService.isIngestableChat(jid, chat)) continue;
 
           // Resolve phone number from JID
-          const jid = chat.id._serialized;
           let customerPhone;
           if (jid.endsWith('@lid')) {
             customerPhone = jid;
@@ -1078,10 +1237,8 @@ class WhatsAppService {
           }
           const normPhone = customerPhone.replace(/\D/g, '');
 
-          // Fetch messages for this chat
-          const allMsgs = await chat.fetchMessages({ limit: 100 });
-          // Only inbound messages newer than our last import
-          const newMsgs = allMsgs.filter(m => !m.fromMe && m.timestamp > sinceSec);
+          // Already filtered to inbound messages newer than our last import.
+          const newMsgs = chat.messages;
           if (newMsgs.length === 0) continue;
 
           // Find or create lead
@@ -1109,12 +1266,12 @@ class WhatsAppService {
           // Insert missing messages (skip duplicates via wa_message_id)
           let msgCount = 0;
           for (const m of newMsgs) {
-            const waId = m.id?._serialized || null;
+            const waId = m.waId;
             if (waId) {
               const dup = this.db.prepare('SELECT id FROM messages WHERE wa_message_id = ?').get(waId);
               if (dup) continue;
             }
-            const ts = new Date(m.timestamp * 1000).toISOString().replace('T', ' ').slice(0, 19);
+            const ts = new Date(m.ts * 1000).toISOString().replace('T', ' ').slice(0, 19);
             let mediaType = null;
             let bodyFallback = '[Media]';
             if (m.hasMedia) {
@@ -1138,7 +1295,7 @@ class WhatsAppService {
           }
         } catch (chatErr) {
           // Skip chats that fail individually — don't abort the whole sync
-          console.log(`⚠️ Skipping chat during sync: ${chatErr.message}`);
+          console.log(`⚠️ Skipping chat ${chat.id} during sync:\n${describeWaError(chatErr)}`);
         }
       }
 
@@ -1149,7 +1306,11 @@ class WhatsAppService {
         console.log('✅ Missed-message sync: nothing new to import');
       }
     } catch (e) {
-      console.error('❌ Missed-message sync error:', e.message);
+      // `e.message` alone used to print a single minified character here.
+      const context = isPageContextGone(e)
+        ? ' (WhatsApp page went away mid-sync — session restarting, retry expected on next ready)'
+        : '';
+      console.error(`❌ Missed-message sync error${context}:\n${describeWaError(e)}`);
     }
   }
 
