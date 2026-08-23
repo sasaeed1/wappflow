@@ -351,7 +351,19 @@ export default function ProjectPage() {
           <div className="ms-hero-veil" />
           <div className="ms-hero-body">
             <div style={{ minWidth: 0 }}>
-              <p className="ms-hero-kicker">{(project.project_type || 'general').replace('_', ' ')}{project.client_name ? ` · ${project.client_name}` : ''}</p>
+              <p className="ms-hero-kicker">
+                {(project.project_type || 'general').replace('_', ' ')}
+                {project.client_name && (
+                  <>
+                    {' · '}
+                    {/* Was dead text. A shoot always belongs to somebody, and this is
+                        the only route back to who they are and what else is running. */}
+                    <a href={`/leads/${project.lead_id}`}
+                       style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}
+                       title="Open this client in the CRM">{project.client_name}</a>
+                  </>
+                )}
+              </p>
               <h1 className="ms-hero-title" style={{ fontSize: 'clamp(26px, 3.6vw, 44px)' }}>{project.title}</h1>
               <p className="ms-hero-sub">{photoCount} photo{photoCount === 1 ? '' : 's'}{videoCount > 0 ? ` · ${videoCount} video${videoCount === 1 ? '' : 's'}` : ''} · {galleries.length} galler{galleries.length === 1 ? 'y' : 'ies'}</p>
             </div>

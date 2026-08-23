@@ -159,7 +159,9 @@ check('payments: settle failure surfaced as warning + audited', () =>
   assert(/warning/.test(pay) && /logAudit\(workspaceId, userId, 'invoice_mark_paid'/.test(pay)));
 check('payments: new invoice mark-paid route registered + module returns helper', () => {
   assert(/app\.post\('\/api\/payments\/invoice\/:invoiceId\/mark-paid', auth/.test(pay));
-  assert(/return \{ markPaidByInvoice \}/.test(pay));
+  // Assert the module HANDS OVER the helper, not the exact shape of the object -
+  // this asserted a one-key literal and broke the moment a second export joined it.
+  assert(/return \{[^}]*markPaidByInvoice[^}]*\}/.test(pay), 'markPaidByInvoice is no longer exported');
 });
 check('server: PUT /api/invoices/:id delegates paid (no direct paid write)', () => {
   const put = srv.slice(srv.indexOf("app.put('/api/invoices/:id'"), srv.indexOf("app.delete('/api/invoices/:id'"));

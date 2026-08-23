@@ -203,17 +203,26 @@ module.exports = function mountPayments(app, db, deps = {}) {
   });
 
   // ── Create a payment link (authed) ──────────────────────────────────────────
+  // Minting a pay link is not the private business of one authenticated route:
+  // a print order placed on a PUBLIC gallery has to raise one too, and it must be
+  // the same object - same ledger row, same Stripe path, same public token - or
+  // store money would be invisible to the payments screen.
+  async function createPaymentLink({ workspaceId, userId, kind, ref_id, lead_id, amount, currency, currency_symbol, description }) {
+    const token = crypto.randomBytes(16).toString('hex'); const id = generateId();
+    db.prepare(`INSERT INTO payments (id, workspace_id, kind, ref_id, lead_id, amount, currency, currency_symbol, description, provider, public_token, created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, workspaceId, kind, ref_id || null, lead_id || null, Number(amount), currency || 'USD', currency_symbol || '$', description || null, configured ? 'stripe' : 'manual', token, userId || null);
+    const p = db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+    let url = `${clientBaseUrl}/pay/${token}`;
+    if (configured) { const sc = await createStripeCheckout(p, token); if (sc) { db.prepare('UPDATE payments SET checkout_url = ?, provider_ref = ? WHERE id = ?').run(sc.url, sc.ref, id); url = sc.url; } }
+    return { id, token, url, pay_page: `${clientBaseUrl}/pay/${token}`, provider: configured ? 'stripe' : 'manual' };
+  }
+
   app.post('/api/payments/link', auth, async (req, res) => {
     try {
       const b = req.body || {};
       if (!b.amount || !b.kind) return res.status(400).json({ error: 'amount + kind required' });
-      const token = crypto.randomBytes(16).toString('hex'); const id = generateId();
-      db.prepare(`INSERT INTO payments (id, workspace_id, kind, ref_id, lead_id, amount, currency, currency_symbol, description, provider, public_token, created_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, req.workspaceId, b.kind, b.ref_id || null, b.lead_id || null, Number(b.amount), b.currency || 'USD', b.currency_symbol || '$', b.description || null, configured ? 'stripe' : 'manual', token, req.userId);
-      const p = db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
-      let url = `${clientBaseUrl}/pay/${token}`;
-      if (configured) { const sc = await createStripeCheckout(p, token); if (sc) { db.prepare('UPDATE payments SET checkout_url = ?, provider_ref = ? WHERE id = ?').run(sc.url, sc.ref, id); url = sc.url; } }
-      res.json({ ok: true, id, token, url, pay_page: `${clientBaseUrl}/pay/${token}`, provider: configured ? 'stripe' : 'manual' });
+      const link = await createPaymentLink({ ...b, workspaceId: req.workspaceId, userId: req.userId });
+      res.json({ ok: true, ...link });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -284,7 +293,7 @@ module.exports = function mountPayments(app, db, deps = {}) {
 
   // Exposed so server.js's legacy PUT /api/invoices/:id can delegate status='paid'
   // through the same idempotency-guarded ledger path (never a direct status write).
-  return { markPaidByInvoice };
+  return { markPaidByInvoice, createPaymentLink };
 };
 
 // Exposed for the test harness (pure function; no closure state).

@@ -10,6 +10,11 @@ const routes = {};
 const cap = (m) => (p, ...h) => { routes[m + ' ' + p] = h[h.length - 1]; };
 const app = { get: cap('GET'), post: cap('POST'), put: cap('PUT'), delete: cap('DELETE'), patch: cap('PATCH'), use: () => {} };
 
+// leads is owned by server.js, and media-studio joins it for the client name on
+// every project read. This fixture mounts the module on its own, so it has to
+// stand in for the owner - same reason test-reel-engine builds ms_timelines.
+db.exec(`CREATE TABLE IF NOT EXISTS leads (id TEXT PRIMARY KEY, workspace_id TEXT, customer_name TEXT, customer_phone TEXT);`);
+
 // Mount media-studio (creates the ms_* schema); worker OFF so no background loop.
 require('./media-studio')(app, db, {
   auth: (q, s, n) => n && n(), generateId: () => 'id_' + Math.random().toString(16).slice(2, 10),

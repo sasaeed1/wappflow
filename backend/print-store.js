@@ -16,6 +16,9 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     broadcastToWorkspace = () => {},
     addContactHistory = () => {},
     sendClientMessage = async () => ({ skipped: true }),
+    // Injected: an order bills through the same creators as everything else.
+    createInvoiceForLead = null,
+    createPaymentLink = null,
   } = deps;
 
   db.exec(`
@@ -34,6 +37,9 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     );
     CREATE INDEX IF NOT EXISTS idx_print_orders_ws ON ms_print_orders(workspace_id);
   `);
+  // Phase 7: an order used to record money it never went on to collect. These say
+  // what it became, and stop a retry from billing the customer twice.
+  for (const c of ['invoice_id TEXT', 'payment_id TEXT', 'pay_url TEXT']) { try { db.exec(`ALTER TABLE ms_print_orders ADD COLUMN ${c}`); } catch { /* exists */ } }
 
   const J = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
   const owner = (ws) => { const r = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(ws); return r ? r.user_id : null; };
@@ -124,9 +130,43 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
       db.prepare('INSERT INTO ms_print_orders (id, workspace_id, gallery_id, lead_id, items, total, currency_symbol, customer_name, customer_phone, customer_email, note) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
         .run(oid, ws, g.id, leadId, JSON.stringify(lines), total, sym, name, phone || null, email || null, note || null);
       try { addContactHistory(leadId, ownerId, 'order', `Print order — ${sym}${total} (${lines.length} item${lines.length === 1 ? '' : 's'})`); } catch {}
-      try { const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId); if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `🛍️ Thanks for your order (${sym}${total})! We’ll be in touch to finalize it.` }); } catch {}
+
+      // The store priced the order, took the customer's details, and then told them
+      // "we'll be in touch" - it never billed anybody. Raise the invoice and a pay
+      // link now, through the SAME creators the rest of the app uses, so store money
+      // appears on the invoices screen and in the payments ledger like any other.
+      let payUrl = null;
+      if (createInvoiceForLead && total > 0) {
+        try {
+          const asOwner = { workspaceId: ws, workspaceOwnerId: ownerId, userId: ownerId, canViewAllLeads: true };
+          const invoice = createInvoiceForLead(asOwner, {
+            lead_id: leadId, customer_name: name, customer_email: email || null, customer_phone: phone || null,
+            items: lines.map((l) => ({ description: [l.name, l.option].filter(Boolean).join(' — '), qty: l.qty, rate: l.price, amount: l.price * l.qty })),
+            subtotal: total, tax_rate: 0, tax_amount: 0, discount: 0, total,
+            notes: note || null, status: 'sent',
+          });
+          db.prepare('UPDATE ms_print_orders SET invoice_id = ? WHERE id = ?').run(invoice.id, oid);
+          if (createPaymentLink) {
+            const link = await createPaymentLink({
+              workspaceId: ws, userId: ownerId, kind: 'invoice', ref_id: invoice.id, lead_id: leadId,
+              amount: total, currency: invoice.currency, currency_symbol: sym,
+              description: `Print order — ${invoice.invoice_number}`,
+            });
+            payUrl = link.url;
+            db.prepare('UPDATE ms_print_orders SET payment_id = ?, pay_url = ? WHERE id = ?').run(link.id, payUrl, oid);
+          }
+        } catch (e) { console.warn('print order → invoice/payment failed:', e.message); }
+      }
+
+      try {
+        const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
+        const text = payUrl
+          ? `🛍️ Thanks for your order (${sym}${total})! Pay securely here: ${payUrl}`
+          : `🛍️ Thanks for your order (${sym}${total})! We’ll be in touch to finalize it.`;
+        if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text });
+      } catch {}
       broadcastToWorkspace(ws, 'print_order_created', { id: oid, lead_id: leadId });
-      res.json({ ok: true, total, currency_symbol: sym });
+      res.json({ ok: true, total, currency_symbol: sym, pay_url: payUrl });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 };

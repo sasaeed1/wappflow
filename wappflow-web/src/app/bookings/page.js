@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, Plus, Trash2, Copy, Check, Clock, ExternalLink } from 'lucide-react';
+import { Calendar, Plus, Trash2, Copy, Check, Clock, ExternalLink, Camera, Receipt, X } from 'lucide-react';
 import { bookingAPI } from '../../lib/api';
 import { useRealtime } from '@/components/shell/realtime';
 
@@ -15,8 +15,33 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
 
   const loadBookings = () => bookingAPI.list().then(r => setBookings(r.data.bookings || [])).catch(() => {});
+
+  // A booking used to be a dead end: the studio took the appointment and then
+  // re-typed the same client into Media Studio and again into an invoice. These
+  // create the record already linked to the booking's contact, and the booking
+  // remembers what it became, so a second click opens the first one.
+  const handoff = async (b, target) => {
+    setBusy(b.id + target); setErr('');
+    try {
+      const r = await bookingAPI.handoff(b.id, target);
+      await loadBookings();
+      if (r.data?.url) router.push(r.data.url);
+    } catch (e) {
+      setErr(e?.response?.data?.error || 'Could not do that right now.');
+    } finally { setBusy(''); }
+  };
+
+  const cancelBooking = async (b) => {
+    if (!confirm(`Cancel ${b.service} with ${b.name}? The client is told, and the calendar entry is removed.`)) return;
+    setBusy(b.id + 'cancel'); setErr('');
+    try { await bookingAPI.cancel(b.id); await loadBookings(); }
+    catch (e) { setErr(e?.response?.data?.error || 'Could not cancel.'); }
+    finally { setBusy(''); }
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/bookings'); return; }
@@ -70,6 +95,11 @@ export default function BookingsPage() {
                 <input type="number" value={s.duration} onChange={e => setSvc(i, { duration: Number(e.target.value) })} style={{ width: 76, ...fld }} title="Minutes" />
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>min</span>
                 <input type="number" value={s.price} onChange={e => setSvc(i, { price: Number(e.target.value) })} style={{ width: 80, ...fld }} title="Price" />
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                       title="Booking this service creates a Media Studio shoot straight away. Leave off for calls and consultations.">
+                  <input type="checkbox" checked={!!s.creates_shoot} onChange={e => setSvc(i, { creates_shoot: e.target.checked })} />
+                  Is a shoot
+                </label>
                 <button onClick={() => delSvc(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={15} /></button>
               </div>
             ))}
@@ -125,6 +155,11 @@ export default function BookingsPage() {
         <button onClick={save} style={{ padding: '12px 22px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontWeight: 800, fontSize: 14.5 }}>Save &amp; publish</button>
 
         <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '28px 0 12px' }}>Upcoming</h2>
+        {err && (
+          <div role="alert" style={{ marginBottom: 10, padding: '9px 12px', borderRadius: 10, background: 'var(--danger-bg, rgba(239,68,68,0.1))', color: 'var(--danger-fg, #b91c1c)', fontSize: 13 }}>
+            {err}
+          </div>
+        )}
         {bookings.length === 0 ? <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>No bookings yet — share your link to get started.</p> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {bookings.map(b => (
@@ -133,7 +168,29 @@ export default function BookingsPage() {
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{b.name} · {b.service}</div>
                   <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{new Date(b.start_at.replace(' ', 'T')).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{b.phone ? ` · ${b.phone}` : ''}</div>
                 </div>
-                {b.lead_id && <button onClick={() => router.push(`/leads/${b.lead_id}`)} style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>Open lead →</button>}
+                <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {b.lead_id && (
+                    <button onClick={() => handoff(b, 'shoot')} disabled={!!busy} style={rowBtn}
+                            title={b.project_id ? 'Open the shoot this booking created' : 'Create a shoot linked to this contact'}>
+                      <Camera size={13} /> {b.project_id ? 'Open shoot' : 'Shoot'}
+                    </button>
+                  )}
+                  {b.lead_id && (
+                    <button onClick={() => handoff(b, 'invoice')} disabled={!!busy} style={rowBtn}
+                            title={b.invoice_id ? 'This booking already has an invoice' : 'Raise an invoice for this contact'}>
+                      <Receipt size={13} /> {b.invoice_id ? 'Invoiced' : 'Invoice'}
+                    </button>
+                  )}
+                  {b.calendar_html_link && (
+                    <a href={b.calendar_html_link} target="_blank" rel="noopener noreferrer" style={{ ...rowBtn, textDecoration: 'none' }} title="Open on Google Calendar">
+                      <Calendar size={13} /> Calendar
+                    </a>
+                  )}
+                  <button onClick={() => cancelBooking(b)} disabled={!!busy} style={{ ...rowBtn, color: '#ef4444', borderColor: '#fecaca' }} title="Cancel this booking">
+                    <X size={13} /> Cancel
+                  </button>
+                  {b.lead_id && <button onClick={() => router.push(`/leads/${b.lead_id}`)} style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>Open lead →</button>}
+                </div>
               </div>
             ))}
           </div>
@@ -143,3 +200,4 @@ export default function BookingsPage() {
   );
 }
 const fld = { padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, outline: 'none' };
+const rowBtn = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' };

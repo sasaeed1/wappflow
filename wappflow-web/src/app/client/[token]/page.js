@@ -87,12 +87,12 @@ export default function ClientPortalPage() {
         )}
 
         <Section title="Invoices" empty={data.invoices.length ? null : 'No invoices yet.'}>
-          {data.invoices.map((inv, i) => <Row key={i} icon="💳" title={inv.invoice_number} sub={fmtDate(inv.created_at)} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(inv.currency_symbol, inv.total)}</b><Pill map={INV_STATUS} s={inv.status} /></span>} />)}
+          {data.invoices.map((inv, i) => <Row key={i} icon="💳" title={inv.invoice_number} sub={fmtDate(inv.created_at)} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(inv.currency_symbol, inv.total)}</b>{inv.pay_url ? <a href={inv.pay_url} style={payBtn}>Pay now</a> : <Pill map={INV_STATUS} s={inv.status} />}</span>} />)}
         </Section>
 
         {(data.orders || []).length > 0 && (
           <Section title="Orders">
-            {data.orders.map((o, i) => <Row key={i} icon="🛍️" title={(o.items || []).map(it => `${it.qty}× ${it.name}`).join(', ') || 'Order'} sub={fmtDate(o.created_at)} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(o.currency_symbol, o.total)}</b><span style={{ fontSize: 12, color: '#8a8a93', textTransform: 'capitalize' }}>{o.status}</span></span>} />)}
+            {data.orders.map((o, i) => <Row key={i} icon="🛍️" title={(o.items || []).map(it => `${it.qty}× ${it.name}`).join(', ') || 'Order'} sub={fmtDate(o.created_at)} right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><b style={{ fontSize: 14, color: '#16161a' }}>{money(o.currency_symbol, o.total)}</b>{o.pay_url && o.status !== 'paid' ? <a href={o.pay_url} style={payBtn}>Pay now</a> : <span style={{ fontSize: 12, color: '#8a8a93', textTransform: 'capitalize' }}>{o.status}</span>}</span>} />)}
           </Section>
         )}
 
@@ -110,3 +110,8 @@ export default function ClientPortalPage() {
 
 const center = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eceef2' };
 const spinner = { width: 26, height: 26, border: '2px solid rgba(0,0,0,0.15)', borderTopColor: '#16161a', borderRadius: '50%', animation: 'csp .9s linear infinite' };
+
+// The portal used to LIST money owed with no way to settle it - the client read
+// 'unpaid' and had to go find an email. Now the row is the action.
+const payBtn = { display: 'inline-flex', alignItems: 'center', padding: '5px 12px', borderRadius: 999,
+  background: '#16161a', color: '#fff', fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' };

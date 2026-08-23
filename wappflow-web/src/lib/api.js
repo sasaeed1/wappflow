@@ -555,6 +555,8 @@ export const bookingAPI = {
   updateSettings: (settings, slug) => api.put('/booking/settings', { settings, slug }),
   list: () => api.get('/booking/list'),
   cancel: (id) => api.post(`/booking/${id}/cancel`),
+  // Turn an appointment into the work it represents. target: 'shoot' | 'invoice'.
+  handoff: (id, target) => api.post(`/booking/${id}/handoff`, { target }),
 };
 export const storeAPI = {
   products: () => api.get('/store/products'),

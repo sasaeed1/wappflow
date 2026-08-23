@@ -2500,40 +2500,49 @@ app.get('/api/invoices/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// An invoice is raised from three places now: this route, a booking handoff, and a
+// print-store order. One function, so the numbering sequence, the workspace keys,
+// the CRM history line and the audit row cannot drift between them - a store order
+// that skipped the counter would hand two customers the same invoice number.
+// Throws an Error carrying .status for the caller to surface.
+function createInvoiceForLead(req, body) {
+  const { lead_id, customer_name, customer_email, customer_phone, customer_address,
+    items, subtotal, tax_rate, tax_amount, discount, total, due_date, notes, status } = body || {};
+
+  if (lead_id && !getScopedLead(req, lead_id))
+    throw Object.assign(new Error('lead_id not found in this workspace'), { status: 400 });
+
+  // Auto-generate invoice number
+  const cs = db.prepare('SELECT invoice_prefix, invoice_counter, currency, currency_symbol FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
+  const prefix = cs?.invoice_prefix || 'INV';
+  const counter = (cs?.invoice_counter || 1000) + 1;
+  const invoiceNumber = `${prefix}-${counter}`;
+
+  db.prepare(`
+    UPDATE company_settings SET invoice_counter = ? WHERE user_id = ?
+  `).run(counter, req.workspaceOwnerId);
+
+  const id = generateId();
+  db.prepare(`
+    INSERT INTO invoices (id, user_id, workspace_id, lead_id, invoice_number, customer_name, customer_email, customer_phone,
+      customer_address, items, subtotal, tax_rate, tax_amount, discount, total, currency, currency_symbol, due_date, notes, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.workspaceOwnerId, req.workspaceId, lead_id, invoiceNumber, customer_name, customer_email, customer_phone,
+    customer_address, JSON.stringify(items || []), subtotal, tax_rate, tax_amount, discount || 0,
+    total, cs?.currency || 'USD', cs?.currency_symbol || '$', due_date, notes, status || 'draft');
+
+  if (lead_id) {
+    addContactHistory(lead_id, req.userId, 'invoice', `Invoice ${invoiceNumber} created — Total: ${cs?.currency_symbol || '$'}${total}`);
+  }
+  logAudit(req.workspaceId, req.userId, 'create_invoice', 'invoice', id, { invoiceNumber, total });
+
+  return parseInvoice(db.prepare('SELECT * FROM invoices WHERE id = ?').get(id));
+}
+
 app.post('/api/invoices', auth, (req, res) => {
   try {
-    const { lead_id, customer_name, customer_email, customer_phone, customer_address,
-      items, subtotal, tax_rate, tax_amount, discount, total, due_date, notes, status } = req.body;
-
-    // Auto-generate invoice number
-    if (lead_id && !getScopedLead(req, lead_id))
-      return res.status(400).json({ error: 'lead_id not found in this workspace' });
-    const cs = db.prepare('SELECT invoice_prefix, invoice_counter, currency, currency_symbol FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
-    const prefix = cs?.invoice_prefix || 'INV';
-    const counter = (cs?.invoice_counter || 1000) + 1;
-    const invoiceNumber = `${prefix}-${counter}`;
-
-    db.prepare(`
-      UPDATE company_settings SET invoice_counter = ? WHERE user_id = ?
-    `).run(counter, req.workspaceOwnerId);
-
-    const id = generateId();
-    db.prepare(`
-      INSERT INTO invoices (id, user_id, workspace_id, lead_id, invoice_number, customer_name, customer_email, customer_phone,
-        customer_address, items, subtotal, tax_rate, tax_amount, discount, total, currency, currency_symbol, due_date, notes, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, req.workspaceOwnerId, req.workspaceId, lead_id, invoiceNumber, customer_name, customer_email, customer_phone,
-      customer_address, JSON.stringify(items || []), subtotal, tax_rate, tax_amount, discount || 0,
-      total, cs?.currency || 'USD', cs?.currency_symbol || '$', due_date, notes, status || 'draft');
-
-    if (lead_id) {
-      addContactHistory(lead_id, req.userId, 'invoice', `Invoice ${invoiceNumber} created — Total: ${cs?.currency_symbol || '$'}${total}`);
-    }
-    logAudit(req.workspaceId, req.userId, 'create_invoice', 'invoice', id, { invoiceNumber, total });
-
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
-    res.status(201).json({ invoice: parseInvoice(invoice) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.status(201).json({ invoice: createInvoiceForLead(req, req.body) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 app.put('/api/invoices/:id', auth, (req, res) => {
@@ -5814,19 +5823,37 @@ async function googleRefreshAccessToken(refreshToken) {
   return data.access_token;
 }
 
-async function googleCreateCalendarEvent(accessToken, { summary, description, startsAt, endsAt, attendees, timezone }) {
-  const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all';
+// Google accepts EITHER an instant or a wall-clock time plus an IANA zone. Bookings
+// are stored as a studio-LOCAL naive 'YYYY-MM-DD HH:MM:SS', so running them through
+// new Date().toISOString() would reinterpret them in the SERVER's zone and land the
+// event at the wrong hour. Pass a naive string straight through with its zone.
+function calTime(v, timezone) {
+  const s = String(v || '');
+  const naive = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(s);
+  if (naive && timezone) {
+    let t = s.replace(' ', 'T');
+    if (t.length === 16) t += ':00';          // 'YYYY-MM-DDTHH:MM' needs seconds
+    return { dateTime: t, timeZone: timezone };
+  }
+  return { dateTime: new Date(s).toISOString(), timeZone: timezone || 'UTC' };
+}
+
+async function googleCreateCalendarEvent(accessToken, { summary, description, startsAt, endsAt, attendees, timezone, withMeet = true, location }) {
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=${withMeet ? 'all' : 'none'}`;
   const body = {
     summary,
     description: description || '',
-    start: { dateTime: new Date(startsAt).toISOString(), timeZone: timezone || 'UTC' },
-    end:   { dateTime: new Date(endsAt).toISOString(),   timeZone: timezone || 'UTC' },
-    conferenceData: {
-      createRequest: {
-        requestId: 'wf-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-        conferenceSolutionKey: { type: 'hangoutsMeet' },
+    location: location || undefined,
+    start: calTime(startsAt, timezone),
+    end:   calTime(endsAt, timezone),
+    ...(withMeet ? {
+      conferenceData: {
+        createRequest: {
+          requestId: 'wf-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
       },
-    },
+    } : {}),
     attendees: (attendees || []).filter(a => a && a.email).map(a => ({ email: a.email, displayName: a.name || undefined })),
     reminders: { useDefault: true },
   };
@@ -5839,6 +5866,65 @@ async function googleCreateCalendarEvent(accessToken, { summary, description, st
   if (!res.ok) throw new Error((data.error && data.error.message) || 'Calendar event creation failed');
   return data;
 }
+
+async function googlePatchCalendarEvent(accessToken, eventId, { startsAt, endsAt, timezone, summary }) {
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...(summary ? { summary } : {}),
+      ...(startsAt ? { start: calTime(startsAt, timezone) } : {}),
+      ...(endsAt ? { end: calTime(endsAt, timezone) } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error('Calendar event update failed');
+  return res.json();
+}
+
+async function googleDeleteCalendarEvent(accessToken, eventId) {
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  // 410 = already gone, which is the state we wanted anyway.
+  if (!res.ok && res.status !== 404 && res.status !== 410) throw new Error('Calendar event delete failed');
+  return true;
+}
+
+// Put a public booking on the studio's real calendar - the one they check on their
+// phone - so bookings and meetings stop living in two different places.
+//
+// Deliberately a no-op unless the studio has set a booking timezone: booking times
+// are studio-local-naive, and without a zone every pushed event would silently land
+// at the server's offset. A missing event is recoverable; a calendar full of events
+// at the wrong hour is not.
+const bookingCalendar = {
+  async create({ workspaceId, timezone, summary, description, startsAt, endsAt, attendee, location }) {
+    if (!timezone) return null;
+    const intg = readIntegrations(workspaceId);
+    if (!intg?.google_calendar_refresh_token) return null;
+    const token = await googleRefreshAccessToken(intg.google_calendar_refresh_token);
+    const ev = await googleCreateCalendarEvent(token, {
+      summary, description, startsAt, endsAt, timezone, location, withMeet: false,
+      attendees: attendee?.email ? [attendee] : [],
+    });
+    return { event_id: ev.id, html_link: ev.htmlLink || null };
+  },
+  async move({ workspaceId, eventId, timezone, startsAt, endsAt }) {
+    if (!eventId || !timezone) return null;
+    const intg = readIntegrations(workspaceId);
+    if (!intg?.google_calendar_refresh_token) return null;
+    const token = await googleRefreshAccessToken(intg.google_calendar_refresh_token);
+    return googlePatchCalendarEvent(token, eventId, { startsAt, endsAt, timezone });
+  },
+  async remove({ workspaceId, eventId }) {
+    if (!eventId) return null;
+    const intg = readIntegrations(workspaceId);
+    if (!intg?.google_calendar_refresh_token) return null;
+    const token = await googleRefreshAccessToken(intg.google_calendar_refresh_token);
+    return googleDeleteCalendarEvent(token, eventId);
+  },
+};
 
 // Routes ---------------------------------------------------------------------
 
@@ -6063,7 +6149,7 @@ app.use((req, res, next) => {
 // ════════════════════════════════════════════════════════════
 //  MEDIA STUDIO  (additive module — owns the ms_* namespace, touches no core table)
 // ════════════════════════════════════════════════════════════
-require('./media-studio')(app, db, {
+const mediaStudioApi = require('./media-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,
   multer, path, fs, uploadsDir,
   ai: aiEngine, // Studio Copilot reuses the existing text-AI provider chain
@@ -6114,13 +6200,26 @@ app.get('/api/client-portal/public/:token', (req, res) => {
     if (projIds.length) galleries = db.prepare(`SELECT title, share_token FROM ms_galleries WHERE status = 'published' AND workspace_id = ? AND project_id IN (${projIds.map(() => '?').join(',')})`).all(ws, ...projIds);
     let documents = [];
     try { documents = db.prepare('SELECT title, type, status, token FROM cs_documents WHERE lead_id = ? AND workspace_id = ? ORDER BY created_at DESC').all(lead.id, ws); } catch {}
-    const invoices = db.prepare('SELECT invoice_number, total, currency_symbol, status, created_at FROM invoices WHERE lead_id = ? AND workspace_id = ? ORDER BY created_at DESC').all(lead.id, ws);
+    // An unpaid invoice used to be a dead line of text. If a pay link has already
+    // been minted for it, hand it over so the client can actually settle up.
+    const invoices = db.prepare(`
+      SELECT i.invoice_number, i.total, i.currency_symbol, i.status, i.created_at,
+             (SELECT p.public_token FROM payments p
+               WHERE p.kind = 'invoice' AND p.ref_id = i.id AND p.workspace_id = i.workspace_id
+                 AND p.status != 'paid' AND p.public_token IS NOT NULL
+               ORDER BY p.created_at DESC LIMIT 1) AS pay_token
+      FROM invoices i WHERE i.lead_id = ? AND i.workspace_id = ? ORDER BY i.created_at DESC
+    `).all(lead.id, ws).map((i) => ({
+      ...i,
+      pay_url: i.status !== 'paid' && i.pay_token ? `/pay/${i.pay_token}` : null,
+      pay_token: undefined,
+    }));
     const owner = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(p.workspace_id);
     let cs = null; try { cs = owner ? db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(owner.user_id) : null; } catch {}
     // Client Portal 2.0 (P15): albums, orders, milestones/delivery progress
     let albums = [], orders = [], milestones = [];
     try { if (projIds.length) albums = db.prepare(`SELECT title, page_count, status FROM ms_albums WHERE workspace_id = ? AND project_id IN (${projIds.map(() => '?').join(',')})`).all(ws, ...projIds); } catch {}
-    try { orders = db.prepare("SELECT items, total, currency_symbol, status, created_at FROM ms_print_orders WHERE lead_id = ? AND workspace_id = ? ORDER BY created_at DESC").all(lead.id, ws).map(o => { try { o.items = JSON.parse(o.items); } catch { o.items = []; } return o; }); } catch {}
+    try { orders = db.prepare("SELECT items, total, currency_symbol, status, created_at, pay_url FROM ms_print_orders WHERE lead_id = ? AND workspace_id = ? ORDER BY created_at DESC").all(lead.id, ws).map(o => { try { o.items = JSON.parse(o.items); } catch { o.items = []; } return o; }); } catch {}
     try { if (projIds.length) milestones = db.prepare(`SELECT title, status, due_date FROM ms_milestones WHERE workspace_id = ? AND project_id IN (${projIds.map(() => '?').join(',')}) ORDER BY sort_order`).all(ws, ...projIds); } catch {}
     res.json({
       client_name: lead.customer_name || 'there',
@@ -6142,10 +6241,17 @@ require('./booking')(app, db, {
   auth, generateId, broadcastToWorkspace, addContactHistory, notify,
   clientBaseUrl: process.env.FRONTEND_URL || '',
   sendClientMessage: bookingSend,
+  // Booking mounts AFTER media-studio, so its creator is available to hand off to.
+  createProject: mediaStudioApi.createProject,
+  createInvoiceForLead,
+  calendar: bookingCalendar,
 });
 require('./print-store')(app, db, {
   auth, generateId, broadcastToWorkspace, addContactHistory, notify,
   sendClientMessage: bookingSend,
+  createInvoiceForLead,
+  // print-store mounts BEFORE payments, so this resolves at call time, not now.
+  createPaymentLink: (args) => paymentsApi.createPaymentLink(args),
 });
 require('./studio-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./video-ai')(app, db, { auth, generateId, broadcastToWorkspace });

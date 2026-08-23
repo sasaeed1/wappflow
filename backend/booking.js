@@ -20,6 +20,13 @@ module.exports = function mountBooking(app, db, deps = {}) {
     notify = () => {},
     sendClientMessage = async () => ({ skipped: true }),
     clientBaseUrl = process.env.FRONTEND_URL || '',
+    // Injected so a booking hands off to the SAME creators the rest of the app
+    // uses - a shoot booked from the calendar is not a second kind of shoot.
+    createProject = null,
+    createInvoiceForLead = null,
+    // Puts the appointment on the studio's real (Google) calendar. A no-op unless
+    // the studio set a booking timezone - see the note on bookingCalendar.
+    calendar = null,
   } = deps;
 
   db.exec(`
@@ -51,6 +58,10 @@ module.exports = function mountBooking(app, db, deps = {}) {
   `);
   // Booking 2.0 columns (idempotent for existing installs)
   for (const c of ['token TEXT', 'intake TEXT']) { try { db.exec(`ALTER TABLE bookings ADD COLUMN ${c}`); } catch { /* exists */ } }
+  // Phase 7: what this booking became. Kept ON the booking so the handoff is
+  // idempotent - clicking "Create shoot" twice opens the first shoot instead of
+  // quietly making a second one for the same appointment.
+  for (const c of ['project_id TEXT', 'invoice_id TEXT', 'calendar_event_id TEXT', 'calendar_html_link TEXT']) { try { db.exec(`ALTER TABLE bookings ADD COLUMN ${c}`); } catch { /* exists */ } }
 
   const J = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
   const DEFAULTS = {
@@ -66,6 +77,19 @@ module.exports = function mountBooking(app, db, deps = {}) {
   const brandName = (ws) => { const o = owner(ws); if (!o) return 'WappFlow'; try { const cs = db.prepare('SELECT company_name FROM company_settings WHERE user_id = ?').get(o); return (cs && cs.company_name) || 'WappFlow'; } catch { return 'WappFlow'; } };
   const getRow = (ws) => db.prepare('SELECT * FROM booking_settings WHERE workspace_id = ?').get(ws);
   const cfgOf = (row) => ({ ...DEFAULTS, ...J(row && row.settings, {}) });
+
+  // Add minutes to a studio-LOCAL naive 'YYYY-MM-DD HH:MM:SS' and return the same
+  // shape. Deliberately does its own arithmetic: new Date() on a naive string
+  // reinterprets it in the SERVER's zone, which would shift every end time by the
+  // studio's offset.
+  function addMinutes(stamp, mins) {
+    const m = String(stamp || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!m) return stamp;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+    d.setUTCMinutes(d.getUTCMinutes() + (Number(mins) || 0));
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:00`;
+  }
 
   function slugify(s) { return String(s || 'studio').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'studio'; }
 
@@ -127,9 +151,71 @@ module.exports = function mountBooking(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/booking/:id/cancel', auth, (req, res) => {
-    try { db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND workspace_id = ?").run(req.params.id, req.workspaceId); res.json({ ok: true }); }
-    catch (e) { res.status(500).json({ error: e.message }); }
+  // ── Handoff: turn an appointment into the work it represents ──────────────
+  // A booking used to be a dead end - the studio took the appointment and then
+  // re-typed the client into Media Studio and again into an invoice. Both records
+  // are created ALREADY LINKED to the same lead, and the link is stored on the
+  // booking so a second click opens the first one.
+  app.post('/api/booking/:id/handoff', auth, (req, res) => {
+    try {
+      const b = db.prepare('SELECT * FROM bookings WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!b) return res.status(404).json({ error: 'Booking not found' });
+      if (!b.lead_id) return res.status(400).json({ error: 'This booking is not linked to a contact yet.' });
+      const target = String(req.body?.target || '');
+
+      if (target === 'shoot') {
+        if (b.project_id) return res.json({ ok: true, existing: true, id: b.project_id, url: `/studio/${b.project_id}` });
+        if (!createProject) return res.status(503).json({ error: 'Media Studio unavailable' });
+        const project = createProject(req, {
+          lead_id: b.lead_id,
+          title: `${b.name || 'Client'} — ${b.service || 'Shoot'}`,
+          // start_at is a studio-LOCAL 'YYYY-MM-DD HH:MM:SS'; the shoot date is the
+          // date part of it, not a converted instant.
+          shoot_date: String(b.start_at || '').slice(0, 10) || null,
+        });
+        db.prepare('UPDATE bookings SET project_id = ? WHERE id = ?').run(project.id, b.id);
+        return res.json({ ok: true, id: project.id, url: `/studio/${project.id}` });
+      }
+
+      if (target === 'invoice') {
+        if (b.invoice_id) return res.json({ ok: true, existing: true, id: b.invoice_id, url: `/invoices` });
+        if (!createInvoiceForLead) return res.status(503).json({ error: 'Invoicing unavailable' });
+        const invoice = createInvoiceForLead(req, {
+          lead_id: b.lead_id,
+          customer_name: b.name || null, customer_email: b.email || null, customer_phone: b.phone || null,
+          items: [{ description: b.service || 'Session', qty: 1, rate: 0, amount: 0 }],
+          subtotal: 0, tax_rate: 0, tax_amount: 0, discount: 0, total: 0,
+          notes: `For the ${b.service || 'session'} on ${b.start_at}.`,
+          status: 'draft',
+        });
+        db.prepare('UPDATE bookings SET invoice_id = ? WHERE id = ?').run(invoice.id, b.id);
+        return res.json({ ok: true, id: invoice.id, url: `/invoices` });
+      }
+
+      return res.status(400).json({ error: 'target must be "shoot" or "invoice"' });
+    } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+  });
+
+  app.post('/api/booking/:id/cancel', auth, async (req, res) => {
+    try {
+      const b = db.prepare('SELECT * FROM bookings WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!b) return res.status(404).json({ error: 'Booking not found' });
+      db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND workspace_id = ?").run(req.params.id, req.workspaceId);
+      if (calendar && b.calendar_event_id) {
+        try { await calendar.remove({ workspaceId: b.workspace_id, eventId: b.calendar_event_id }); } catch (e) { console.warn('booking cancel → calendar failed:', e.message); }
+        db.prepare('UPDATE bookings SET calendar_event_id = NULL, calendar_html_link = NULL WHERE id = ?').run(b.id);
+      }
+      // The studio cancelling was silent on every channel: no client message, no
+      // history line, no feed entry. The client-side cancel did all three.
+      const ownerId = owner(req.workspaceId);
+      try { if (b.lead_id) addContactHistory(b.lead_id, req.userId || ownerId, 'booking', `Cancelled ${b.service}`); } catch {}
+      try {
+        const lead = b.lead_id ? db.prepare('SELECT * FROM leads WHERE id = ?').get(b.lead_id) : null;
+        if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `Your ${b.service} booking has been cancelled. Reply if you'd like to rebook.` });
+      } catch {}
+      broadcastToWorkspace(req.workspaceId, 'booking_cancelled', { id: b.id });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   // ── Public ────────────────────────────────────────────────────────────────
@@ -175,6 +261,33 @@ module.exports = function mountBooking(app, db, deps = {}) {
       try { db.prepare('INSERT INTO reminders (id, lead_id, user_id, title, due_date, reminder_date) VALUES (?,?,?,?,?,?)').run(generateId(), lead.id, ownerId, `${svc.name} with ${name}`, start_at, start_at); } catch {}
       try { addContactHistory(lead.id, ownerId, 'booking', `Booked ${svc.name} for ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`); } catch {}
       try { if (lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text: `✅ You're booked: ${svc.name} on ${new Date(start_at.replace(' ', 'T')).toLocaleString()}.\nManage/reschedule: ${manageUrl}` }); } catch {}
+      // A service can declare itself a shoot, and then the booking creates the
+      // project up front. Opt-in on purpose: auto-creating a Media Studio project
+      // for every 15-minute discovery call would bury the real shoots.
+      if (svc.creates_shoot && createProject) {
+        try {
+          const project = createProject(
+            { workspaceId: ws, userId: ownerId, senderName: 'Booking' },
+            { lead_id: lead.id, title: `${name} — ${svc.name}`, shoot_date: String(start_at).slice(0, 10) },
+          );
+          db.prepare('UPDATE bookings SET project_id = ? WHERE id = ?').run(project.id, bid);
+        } catch (e) { console.warn('booking → shoot failed:', e.message); }
+      }
+      // The studio's real calendar is the one on their phone. Failing to reach it
+      // must never fail the client's booking, so this is best-effort.
+      if (calendar) {
+        try {
+          const ev = await calendar.create({
+            workspaceId: ws, timezone: cfg.timezone,
+            summary: `${svc.name} — ${name}`,
+            description: [notes, `Manage: ${manageUrl}`].filter(Boolean).join(String.fromCharCode(10)),
+            startsAt: start_at,
+            endsAt: addMinutes(start_at, svc.duration || 30),
+            attendee: email ? { email, name } : null,
+          });
+          if (ev) db.prepare('UPDATE bookings SET calendar_event_id = ?, calendar_html_link = ? WHERE id = ?').run(ev.event_id, ev.html_link, bid);
+        } catch (e) { console.warn('booking → calendar failed:', e.message); }
+      }
       broadcastToWorkspace(ws, 'booking_created', { id: bid, lead_id: lead.id });
       try { notify(ws, { type: 'booking', title: 'New booking', body: `${name} booked ${svc.name} · ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`, url: `/leads/${lead.id}`, icon: '📅' }); } catch {}
       res.json({ ok: true, service: svc.name, start_at, manage_url: manageUrl });
@@ -199,6 +312,18 @@ module.exports = function mountBooking(app, db, deps = {}) {
       const clash = db.prepare("SELECT id FROM bookings WHERE workspace_id = ? AND start_at = ? AND status != 'cancelled' AND id != ?").get(b.workspace_id, start_at, b.id);
       if (clash) return res.status(409).json({ error: 'That time was just taken.' });
       db.prepare("UPDATE bookings SET start_at = ?, status = 'confirmed' WHERE id = ?").run(start_at, b.id);
+      // Move the calendar entry with it. A booking that moves but leaves its event
+      // behind is worse than never having pushed one: the studio blocks out an hour
+      // they are actually free and misses the one they are not.
+      if (calendar && b.calendar_event_id) {
+        try {
+          await calendar.move({
+            workspaceId: b.workspace_id, eventId: b.calendar_event_id,
+            timezone: cfgOf(getRow(b.workspace_id)).timezone,
+            startsAt: start_at, endsAt: addMinutes(start_at, b.duration_min || 30),
+          });
+        } catch (e) { console.warn('booking reschedule → calendar failed:', e.message); }
+      }
       const ownerId = owner(b.workspace_id);
       try { addContactHistory(b.lead_id, ownerId, 'booking', `Rescheduled ${b.service} → ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`); } catch {}
       // Notify the client of the new time (was previously silent — Appendix A fix).
@@ -215,6 +340,10 @@ module.exports = function mountBooking(app, db, deps = {}) {
       const b = db.prepare('SELECT * FROM bookings WHERE token = ?').get(req.params.token);
       if (!b) return res.status(404).json({ error: 'Not found' });
       db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?").run(b.id);
+      if (calendar && b.calendar_event_id) {
+        try { await calendar.remove({ workspaceId: b.workspace_id, eventId: b.calendar_event_id }); } catch (e) { console.warn('booking cancel → calendar failed:', e.message); }
+        db.prepare('UPDATE bookings SET calendar_event_id = NULL, calendar_html_link = NULL WHERE id = ?').run(b.id);
+      }
       const ownerId = owner(b.workspace_id);
       try { addContactHistory(b.lead_id, ownerId, 'booking', `Client cancelled ${b.service}`); } catch {}
       // Notify the client their cancellation went through (Appendix A fix).

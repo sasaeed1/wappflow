@@ -324,8 +324,23 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   // ───────────────────────────────────────────────────────────────────────────
   // 3. HELPERS
   // ───────────────────────────────────────────────────────────────────────────
+  // Reading a project joins the CRM for the client's name, so leads is a hard
+  // dependency of this module now. Fail at mount rather than turning the first
+  // project someone opens into a 500.
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='leads'").get()) {
+    throw new Error('leads must exist before media-studio mounts (it joins the CRM for client names)');
+  }
+
   function getProject(workspaceId, id) {
-    return db.prepare('SELECT * FROM ms_projects WHERE id = ? AND workspace_id = ?').get(id, workspaceId);
+    // The LIST route has always joined the lead for client_name; the DETAIL route
+    // did not, so the project page's "· client name" was reading a field that was
+    // never sent and silently rendered nothing. Same shape from both now.
+    return db.prepare(`
+      SELECT p.*, l.customer_name AS client_name, l.customer_phone AS client_phone
+      FROM ms_projects p
+      LEFT JOIN leads l ON l.id = p.lead_id AND l.workspace_id = p.workspace_id
+      WHERE p.id = ? AND p.workspace_id = ?
+    `).get(id, workspaceId);
   }
 
   function canManage(req) {
@@ -407,30 +422,38 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // A shoot is created from three places now: this route, the contact action hub,
+  // and the booking handoff. One function, so a shoot booked from the calendar is
+  // the same object as one created by hand - same CRM link, same audit row, same
+  // timeline entry. Throws an Error carrying .status for the caller to surface.
+  function createProject(req, body) {
+    const { title, project_type, lead_id, shoot_date, location, settings } = body || {};
+    if (!title || !String(title).trim()) throw Object.assign(new Error('title is required'), { status: 400 });
+
+    // If a lead is linked, validate it belongs to this workspace (keeps the CRM link honest).
+    if (lead_id) {
+      const lead = db.prepare('SELECT id FROM leads WHERE id = ? AND workspace_id = ?').get(lead_id, req.workspaceId);
+      if (!lead) throw Object.assign(new Error('lead_id not found in this workspace'), { status: 400 });
+    }
+
+    const id = generateId();
+    db.prepare(`
+      INSERT INTO ms_projects (id, workspace_id, lead_id, title, project_type, shoot_date, location, settings, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.workspaceId, lead_id || null, String(title).trim(), project_type || 'general',
+           shoot_date || null, location || null, settings ? JSON.stringify(settings) : '{}', req.userId);
+
+    const project = getProject(req.workspaceId, id);
+    emitToLead(project, req, 'media_project', `Shoot created: ${project.title}`, null);
+    logAudit(req.workspaceId, req.userId, 'create', 'ms_project', id, { title: project.title });
+    broadcastToWorkspace(req.workspaceId, 'ms_project_created', { project });
+    return project;
+  }
+
   app.post('/api/media/projects', auth, (req, res) => {
     try {
-      const { title, project_type, lead_id, shoot_date, location, settings } = req.body;
-      if (!title || !String(title).trim()) return res.status(400).json({ error: 'title is required' });
-
-      // If a lead is linked, validate it belongs to this workspace (keeps the CRM link honest).
-      if (lead_id) {
-        const lead = db.prepare('SELECT id FROM leads WHERE id = ? AND workspace_id = ?').get(lead_id, req.workspaceId);
-        if (!lead) return res.status(400).json({ error: 'lead_id not found in this workspace' });
-      }
-
-      const id = generateId();
-      db.prepare(`
-        INSERT INTO ms_projects (id, workspace_id, lead_id, title, project_type, shoot_date, location, settings, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, req.workspaceId, lead_id || null, String(title).trim(), project_type || 'general',
-             shoot_date || null, location || null, settings ? JSON.stringify(settings) : '{}', req.userId);
-
-      const project = getProject(req.workspaceId, id);
-      emitToLead(project, req, 'media_project', `Shoot created: ${project.title}`, null);
-      logAudit(req.workspaceId, req.userId, 'create', 'ms_project', id, { title: project.title });
-      broadcastToWorkspace(req.workspaceId, 'ms_project_created', { project });
-      res.status(201).json(project);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+      res.status(201).json(createProject(req, req.body));
+    } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
   });
 
   app.get('/api/media/projects/:id', auth, (req, res) => {
@@ -2830,5 +2853,5 @@ Only suggest actions that make sense for the question. If none make sense, retur
   if (deps.startWorker !== false) worker.start();
 
   console.log('📸 Media Studio module mounted at /api/media');
-  return { worker };
+  return { worker, createProject };
 };
