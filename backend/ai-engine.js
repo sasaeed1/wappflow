@@ -27,10 +27,13 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
-const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
+const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || 'gemma-4-31b';
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'z-ai/glm-5.2:free';
 
+// A provider can also answer 'Payment required' with a perfectly valid key —
+// that is an ACCOUNT-level gate, not a bad credential and not a bad model id.
+// Drop that provider from AI_PROVIDERS rather than debugging the key.
 // NOTE: model ids have a SHELF LIFE. Every provider here retires names on its own
 // schedule, and a retired name fails the whole chain with a 404 even though the
 // keys are perfectly valid — which is exactly what happened on 2026-08-21, when
