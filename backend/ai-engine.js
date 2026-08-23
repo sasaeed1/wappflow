@@ -6,6 +6,20 @@
 // new AI features should be added here, not inline in server.js.
 
 const DEFAULT_PROVIDER = process.env.AI_PROVIDER || 'cerebras';
+
+// Each provider accepts a COMMA-SEPARATED LIST of keys, not just one.
+// Free tiers are metered per account, so stacking several accounts of the same
+// provider multiplies the quota — and when one key is exhausted the next takes
+// over without the user ever seeing an error. Previously only the first key of
+// each provider was ever read, so extra keys sat unused.
+const _keyList = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
+const KEYS = {
+  cerebras:   _keyList(process.env.CEREBRAS_API_KEY),
+  groq:       _keyList(process.env.GROQ_API_KEY),
+  openai:     _keyList(process.env.OPENAI_API_KEY),
+  anthropic:  _keyList(process.env.ANTHROPIC_API_KEY),
+  openrouter: _keyList(process.env.OPENROUTER_API_KEY),
+};
 const GROQ_KEY = process.env.GROQ_API_KEY;
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
@@ -27,7 +41,20 @@ const PROVIDER_CHAIN = (process.env.AI_PROVIDERS || `${DEFAULT_PROVIDER},cerebra
   .split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
   .filter((v, i, a) => a.indexOf(v) === i);
 const COOLDOWN_MS = 60000;
-const _cooldownUntil = {}; // provider -> epoch ms until which it is skipped
+// Keyed by `provider#index` so one exhausted key does not sideline its siblings.
+const _cooldownUntil = {};
+const _slot = (p, i) => `${p}#${i}`;
+/** First key index for this provider that is not cooling down, or -1. */
+function _liveKeyIndex(p) {
+  const list = KEYS[p] || [];
+  for (let i = 0; i < list.length; i++) {
+    const until = _cooldownUntil[_slot(p, i)];
+    if (!until || Date.now() >= until) return i;
+  }
+  return -1;
+}
+/** How many keys this provider has, for logging. */
+const _keyCount = (p) => (KEYS[p] || []).length;
 
 // Normalize provider usage shapes (OpenAI-style prompt/completion vs Anthropic input/output).
 function _norm(u = {}) {
@@ -44,19 +71,15 @@ let _meter = null;
 function setMeter(fn) { _meter = typeof fn === 'function' ? fn : null; }
 
 function _hasKey(p) {
-  return (p === 'cerebras'   && !!CEREBRAS_KEY)
-      || (p === 'groq'       && !!GROQ_KEY)
-      || (p === 'openai'     && !!OPENAI_KEY)
-      || (p === 'anthropic'  && !!ANTHROPIC_KEY)
-      || (p === 'openrouter' && !!OPENROUTER_KEY);
+  return _keyCount(p) > 0;
 }
 
-function _callProvider(p, prompt, system, maxTokens, temperature) {
-  if (p === 'cerebras')   return _callCerebras(prompt, system, maxTokens, temperature);
-  if (p === 'groq')       return _callGroq(prompt, system, maxTokens, temperature);
-  if (p === 'openai')     return _callOpenAI(prompt, system, maxTokens, temperature);
-  if (p === 'anthropic')  return _callAnthropic(prompt, system, maxTokens, temperature);
-  if (p === 'openrouter') return _callOpenRouter(prompt, system, maxTokens, temperature);
+function _callProvider(p, prompt, system, maxTokens, temperature, key) {
+  if (p === 'cerebras')   return _callCerebras(prompt, system, maxTokens, temperature, key);
+  if (p === 'groq')       return _callGroq(prompt, system, maxTokens, temperature, key);
+  if (p === 'openai')     return _callOpenAI(prompt, system, maxTokens, temperature, key);
+  if (p === 'anthropic')  return _callAnthropic(prompt, system, maxTokens, temperature, key);
+  if (p === 'openrouter') return _callOpenRouter(prompt, system, maxTokens, temperature, key);
   throw new Error('Unknown AI provider: ' + p);
 }
 
@@ -95,20 +118,29 @@ async function callLLM(prompt, opts = {}) {
 
   // Pass 1 — try each provider that is not currently cooling down.
   for (const p of candidates) {
-    if (_cooldownUntil[p] && Date.now() < _cooldownUntil[p]) continue;
-    const aT0 = Date.now();
-    try {
-      const out = await _callProvider(p, prompt, system, maxTokens, temperature);
-      _cooldownUntil[p] = 0;
-      if (_meter) { try { _meter({ ...ctx, provider: p, model: out.model, prompt_tokens: out.usage.prompt_tokens, completion_tokens: out.usage.completion_tokens, latency_ms: Date.now() - aT0, success: 1 }); } catch {} }
-      return out.content;
-    } catch (e) {
-      lastErr = e;
-      if (_isRateLimit(e)) {
-        _cooldownUntil[p] = Date.now() + COOLDOWN_MS;
-        console.log(`⏳ ${p} rate-limited — cooling down ${COOLDOWN_MS / 1000}s, failing over`);
-      } else {
+    // Exhaust this provider's OWN keys before moving on: a second account of the
+    // same provider is a fresh quota, and switching provider unnecessarily can
+    // mean a slower or lower-quality model for no reason.
+    let idx;
+    while ((idx = _liveKeyIndex(p)) !== -1) {
+      const aT0 = Date.now();
+      try {
+        const out = await _callProvider(p, prompt, system, maxTokens, temperature, KEYS[p][idx]);
+        _cooldownUntil[_slot(p, idx)] = 0;
+        if (_meter) { try { _meter({ ...ctx, provider: p, model: out.model, prompt_tokens: out.usage.prompt_tokens, completion_tokens: out.usage.completion_tokens, latency_ms: Date.now() - aT0, success: 1 }); } catch {} }
+        return out.content;
+      } catch (e) {
+        lastErr = e;
+        if (_isRateLimit(e)) {
+          _cooldownUntil[_slot(p, idx)] = Date.now() + COOLDOWN_MS;
+          const left = _liveKeyIndex(p) !== -1;
+          console.log(`⏳ ${p} key ${idx + 1}/${_keyCount(p)} rate-limited — cooling down ${COOLDOWN_MS / 1000}s, ${left ? 'trying its next key' : 'failing over to the next provider'}`);
+          continue; // another key of the same provider may still be live
+        }
+        // A non-quota failure (bad key, network, bad model) will hit every key of
+        // this provider the same way — move on rather than spinning through them.
         console.log(`⚠️ ${p} failed (${(e && e.message) || e}) — trying next provider`);
+        break;
       }
     }
   }
@@ -119,15 +151,18 @@ async function callLLM(prompt, opts = {}) {
     console.log(`⏳ all AI providers busy — waiting ${wait}ms then retrying the chain`);
     await _sleep(wait);
     for (const p of candidates) {
+      // After the wait, keys may have come off cooldown — take whichever is live,
+      // falling back to the first so a long outage still gets retried.
+      const idx = _liveKeyIndex(p) === -1 ? 0 : _liveKeyIndex(p);
       const aT0 = Date.now();
       try {
-        const out = await _callProvider(p, prompt, system, maxTokens, temperature);
-        _cooldownUntil[p] = 0;
+        const out = await _callProvider(p, prompt, system, maxTokens, temperature, KEYS[p][idx]);
+        _cooldownUntil[_slot(p, idx)] = 0;
         if (_meter) { try { _meter({ ...ctx, provider: p, model: out.model, prompt_tokens: out.usage.prompt_tokens, completion_tokens: out.usage.completion_tokens, latency_ms: Date.now() - aT0, success: 1 }); } catch {} }
         return out.content;
       } catch (e) {
         lastErr = e;
-        if (_isRateLimit(e)) _cooldownUntil[p] = Date.now() + COOLDOWN_MS;
+        if (_isRateLimit(e)) _cooldownUntil[_slot(p, idx)] = Date.now() + COOLDOWN_MS;
       }
     }
   }
@@ -139,14 +174,14 @@ async function callLLM(prompt, opts = {}) {
 }
 
 // OpenRouter — OpenAI-compatible aggregator (free model variants available).
-async function _callOpenRouter(prompt, system, maxTokens, temperature) {
+async function _callOpenRouter(prompt, system, maxTokens, temperature, key) {
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
                           : [{ role: 'user', content: prompt }];
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENROUTER_KEY}`,
+      'Authorization': `Bearer ${key}`,
       'HTTP-Referer': 'https://wappflow.remoteops.co',
       'X-Title': 'WappFlow CRM',
     },
@@ -164,12 +199,12 @@ async function _callOpenRouter(prompt, system, maxTokens, temperature) {
 }
 
 // Cerebras — OpenAI-compatible chat completions API.
-async function _callCerebras(prompt, system, maxTokens, temperature) {
+async function _callCerebras(prompt, system, maxTokens, temperature, key) {
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
                           : [{ role: 'user', content: prompt }];
   const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CEREBRAS_KEY}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
     body: JSON.stringify({ model: CEREBRAS_MODEL, messages, temperature, max_tokens: maxTokens })
   });
   if (!res.ok) {
@@ -180,12 +215,12 @@ async function _callCerebras(prompt, system, maxTokens, temperature) {
   return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: CEREBRAS_MODEL };
 }
 
-async function _callGroq(prompt, system, maxTokens, temperature) {
+async function _callGroq(prompt, system, maxTokens, temperature, key) {
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
                           : [{ role: 'user', content: prompt }];
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_KEY}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
     body: JSON.stringify({ model: GROQ_MODEL, messages, temperature, max_tokens: maxTokens })
   });
   if (!res.ok) {
@@ -196,12 +231,12 @@ async function _callGroq(prompt, system, maxTokens, temperature) {
   return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: GROQ_MODEL };
 }
 
-async function _callOpenAI(prompt, system, maxTokens, temperature) {
+async function _callOpenAI(prompt, system, maxTokens, temperature, key) {
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
                           : [{ role: 'user', content: prompt }];
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_KEY}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
     body: JSON.stringify({ model: OPENAI_MODEL, messages, temperature, max_tokens: maxTokens })
   });
   if (!res.ok) {
@@ -212,12 +247,12 @@ async function _callOpenAI(prompt, system, maxTokens, temperature) {
   return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: OPENAI_MODEL };
 }
 
-async function _callAnthropic(prompt, system, maxTokens, temperature) {
+async function _callAnthropic(prompt, system, maxTokens, temperature, key) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_KEY,
+      'x-api-key': key,
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
