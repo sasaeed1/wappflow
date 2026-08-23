@@ -6,6 +6,7 @@ import { fetchPublicDoc, signPublicDoc, declinePublicDoc, askPublicDoc, trackPub
 import { BlockView, DocFrame } from '../../contracts/blocks';
 import '../../contracts/contracts.css';
 import PublicBrandHeader from '@/components/PublicBrandHeader';
+import PublicNextSteps from '@/components/PublicNextSteps';
 import PublicFooter from '@/components/PublicFooter';
 
 const money = (c, n) => `${c || '$'}${(Number(n) || 0).toLocaleString()}`;
@@ -19,6 +20,7 @@ export default function PublicDocPage() {
   const [addonSel, setAddonSel] = useState({});
   const [signing, setSigning] = useState(false);
   const [done, setDone] = useState(false);
+  const [next, setNext] = useState(null);   // where the client can go after signing
 
   useEffect(() => {
     fetchPublicDoc(token).then(d => {
@@ -72,8 +74,8 @@ export default function PublicDocPage() {
 
   // Batch F: was a hand-rolled bar with a hardcoded WappFlow "W" mark (sky→indigo
   // gradient) and the literal string 'WappFlow' as the name fallback — above a client's
-  // legally-binding signature page. The primitive renders the studio's brand when the
-  // deferred endpoints serve it; until then, the document title alone and NO mark.
+  // legally-binding signature page. Phase 8 landed the backend that serves real brand
+  // data, so this now shows the studio's own logo and name.
   const Brand = () => (
     <PublicBrandHeader
       brand={data?.brand}
@@ -104,6 +106,11 @@ export default function PublicDocPage() {
                 <span style={{ width: 30, height: 30, borderRadius: 999, background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>✓</span>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cs-ink)', flex: 1 }}>Signed — thank you. A copy has been recorded.</div>
                 {data.settings?.signed_pdf && <a href={mediaUrl(data.settings.signed_pdf)} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: '#10b981', padding: '8px 14px', borderRadius: 9, textDecoration: 'none' }}>Download signed PDF</a>}
+                {/* Signing is the moment a client is most willing to do the next
+                    thing, and it used to end at "thank you". */}
+                <div style={{ flexBasis: '100%' }}>
+                  <PublicNextSteps next={next} brand={data?.brand} style={{ marginTop: 4, justifyContent: 'flex-start' }} />
+                </div>
               </div>
             )}
             {blocks.map((b, idx) => (
@@ -132,7 +139,7 @@ export default function PublicDocPage() {
 
       {signing && <SignSheet token={token} title={data.title} signerName={(data.signers || []).find(s => s.status === 'pending')?.name} onClose={() => setSigning(false)}
         selectionPayload={{ packages: pkgSel, addons: Object.fromEntries(Object.entries(addonSel).map(([k, set]) => [k, [...set]])), total, currency }}
-        onSigned={() => { setSigning(false); setDone(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+        onSigned={(res) => { setSigning(false); setDone(true); setNext(res?.next || null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
         onDeclined={() => { setSigning(false); setState('declined'); }} />}
 
       <AskWidget token={token} stickyOffset={!done && hasPricing} />
@@ -209,7 +216,7 @@ function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, se
     if (!typed.trim()) return setErr('Please type your full legal name.');
     if (!hasInk) return setErr('Please draw your signature.');
     setBusy(true);
-    try { await signPublicDoc(token, { typed_name: typed.trim(), signature_data: cv.current.toDataURL('image/png'), consent: true, selection: selectionPayload }); onSigned(); }
+    try { const r = await signPublicDoc(token, { typed_name: typed.trim(), signature_data: cv.current.toDataURL('image/png'), consent: true, selection: selectionPayload }); onSigned(r); }
     catch (e) { setErr(e.message || 'Could not submit'); setBusy(false); }
   };
   const decline = async () => { const reason = window.prompt('Decline this document? (optional reason)'); if (reason === null) return; await declinePublicDoc(token, reason); onDeclined(); };

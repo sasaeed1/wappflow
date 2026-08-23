@@ -9,6 +9,8 @@
  */
 const crypto = require('crypto');
 
+const { publicBrand, journeyLinks } = require('./public-brand');
+
 module.exports = function mountPrintStore(app, db, deps = {}) {
   const {
     auth = (req, res, next) => next(),
@@ -19,6 +21,7 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     // Injected: an order bills through the same creators as everything else.
     createInvoiceForLead = null,
     createPaymentLink = null,
+    clientBaseUrl = process.env.FRONTEND_URL || '',
   } = deps;
 
   db.exec(`
@@ -93,9 +96,9 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     try {
       const g = db.prepare('SELECT * FROM ms_galleries WHERE share_token = ?').get(req.params.token);
       if (!g) return res.status(404).json({ error: 'Not available' });
-      const { name, sym } = brandSym(g.workspace_id);
+      const { sym } = brandSym(g.workspace_id);
       const products = db.prepare('SELECT * FROM ms_print_products WHERE workspace_id = ? AND active = 1 ORDER BY sort_order, created_at').all(g.workspace_id).map(shape);
-      res.json({ brand: name, currency_symbol: sym, gallery_title: g.title, products });
+      res.json({ brand: publicBrand(db, g.workspace_id, clientBaseUrl), currency_symbol: sym, gallery_title: g.title, products });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -166,7 +169,10 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
         if (lead && lead.customer_phone) await sendClientMessage({ lead, userId: ownerId, text });
       } catch {}
       broadcastToWorkspace(ws, 'print_order_created', { id: oid, lead_id: leadId });
-      res.json({ ok: true, total, currency_symbol: sym, pay_url: payUrl });
+      res.json({
+        ok: true, total, currency_symbol: sym, pay_url: payUrl,
+        next: journeyLinks(db, ws, leadId, clientBaseUrl),
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 };

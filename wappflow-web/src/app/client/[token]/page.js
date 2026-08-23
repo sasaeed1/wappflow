@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { fetchClientPortal } from '../../../lib/api';
 
 import PublicScope from '@/components/PublicScope';
+import PublicBrandMark from '@/components/PublicBrandMark';
 import PublicFooter from '@/components/PublicFooter';
 
 const money = (s, n) => `${s || '$'}${(Number(n) || 0).toLocaleString()}`;
@@ -29,7 +30,7 @@ export default function ClientPortalPage() {
   const [state, setState] = useState('loading');
 
   useEffect(() => {
-    fetchClientPortal(token).then(d => { setData(d); setState('ok'); document.title = `${d.brand} · Your portal`; }).catch(() => setState('missing'));
+    fetchClientPortal(token).then(d => { setData(d); setState('ok'); document.title = `${d.brand?.name || 'Your'} · Client portal`; }).catch(() => setState('missing'));
   }, [token]);
 
   if (state === 'loading') return <div style={center}><div style={spinner} /><style>{`@keyframes csp{to{transform:rotate(360deg)}}`}</style></div>;
@@ -58,10 +59,20 @@ export default function ClientPortalPage() {
       <PublicScope />
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '0 16px 60px' }}>
         <header style={{ textAlign: 'center', padding: '48px 0 36px' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, marginBottom: 16 }}>{(data.brand || '')[0]?.toUpperCase()}</div>
-          <div style={{ fontSize: 12.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8a8a93' }}>{data.brand}</div>
+          <PublicBrandMark brand={data.brand} style={{ marginBottom: 16 }} />
+          <div style={{ fontSize: 12.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#8a8a93' }}>{data.brand?.name || ''}</div>
           <h1 style={{ fontSize: 'clamp(26px,5vw,34px)', fontWeight: 800, color: '#16161a', margin: '6px 0 0', letterSpacing: '-0.02em' }}>Welcome, {data.client_name}</h1>
           <p style={{ fontSize: 14.5, color: '#70707a', margin: '8px 0 0' }}>Everything for your project, in one place.</p>
+
+          {/* The portal listed what had already happened and offered no way to do
+              anything next. A client who wanted to book again had to hunt for the
+              link in an old message. */}
+          {(data.links?.book || data.links?.shop) && (
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 22 }}>
+              {data.links?.book && <a href={data.links.book} style={ctaPrimary}>Book another session</a>}
+              {data.links?.shop && <a href={data.links.shop} style={ctaGhost}>Order prints</a>}
+            </div>
+          )}
         </header>
 
         {(data.milestones || []).length > 0 && (
@@ -113,5 +124,9 @@ const spinner = { width: 26, height: 26, border: '2px solid rgba(0,0,0,0.15)', b
 
 // The portal used to LIST money owed with no way to settle it - the client read
 // 'unpaid' and had to go find an email. Now the row is the action.
+const ctaPrimary = { display: 'inline-flex', alignItems: 'center', padding: '11px 20px', borderRadius: 999,
+  background: '#16161a', color: '#fff', fontSize: 13.5, fontWeight: 700, textDecoration: 'none' };
+const ctaGhost = { display: 'inline-flex', alignItems: 'center', padding: '11px 20px', borderRadius: 999,
+  background: '#fff', color: '#16161a', border: '1.5px solid #d9dbe1', fontSize: 13.5, fontWeight: 700, textDecoration: 'none' };
 const payBtn = { display: 'inline-flex', alignItems: 'center', padding: '5px 12px', borderRadius: 999,
   background: '#16161a', color: '#fff', fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' };

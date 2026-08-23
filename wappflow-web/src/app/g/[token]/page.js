@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Heart, Download, Lock, MessageSquare, X, Loader, Check, ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
+import PublicBrandMark from '@/components/PublicBrandMark';
 import PublicFooter from '@/components/PublicFooter';
 import { BASE_URL } from '../../../lib/api';
 
@@ -178,7 +179,17 @@ export default function ClientGalleryPage() {
     <div style={{ minHeight: '100vh', background: '#0b0b0f', color: '#fff' }}>
       {/* header */}
       <header style={{ padding: '46px 24px 30px', textAlign: 'center', borderBottom: '1px solid #1a1a22' }}>
-        <p style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#c2a878', margin: '0 0 12px', fontWeight: 600 }}>Your Gallery</p>
+        {/* The single most-shared link in the product used to name nobody: a client
+            looked at their own wedding photographs above a footer crediting the
+            software vendor. The studio's mark leads now. */}
+        {(data?.brand?.logo || data?.brand?.name) && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
+            <PublicBrandMark brand={data.brand} size={38} radius={10} />
+          </div>
+        )}
+        <p style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#c2a878', margin: '0 0 12px', fontWeight: 600 }}>
+          {data?.brand?.name ? `By ${data.brand.name}` : 'Your Gallery'}
+        </p>
         <h1 className="ghero" style={{ fontSize: 'clamp(32px, 5.5vw, 60px)', fontWeight: 400, margin: 0, letterSpacing: '-0.02em', lineHeight: 1.04 }}>{data?.title}</h1>
         <p style={{ fontSize: 13, color: '#71717a', margin: '12px 0 0' }}>{assets.length} photos · tap the heart to mark your favourites</p>
         {faved.size > 0 && (
@@ -266,6 +277,20 @@ export default function ClientGalleryPage() {
           </section>
         ))}
       </main>
+
+      {/* A gallery was a cul-de-sac: the client's contracts, invoices and other
+          galleries all existed, reachable only from whichever message the studio
+          had sent each link in. */}
+      {data?.portal_url && (
+        <div style={{ textAlign: 'center', padding: '34px 20px 0' }}>
+          <a href={data.portal_url}
+             style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 22px', borderRadius: 999,
+                      border: '1px solid #2a2a33', background: '#15151b', color: '#e7e7ea',
+                      fontSize: 13.5, fontWeight: 700, textDecoration: 'none' }}>
+            Everything else from {data?.brand?.name || 'your studio'} →
+          </a>
+        </div>
+      )}
 
       <PublicFooter tone="dark" brand={data?.brand} />
 
