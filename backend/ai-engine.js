@@ -21,15 +21,22 @@ const KEYS = {
   openrouter: _keyList(process.env.OPENROUTER_API_KEY),
 };
 const GROQ_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
-const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || 'llama3.1-8b';
+const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'z-ai/glm-5.2:free';
+
+// NOTE: model ids have a SHELF LIFE. Every provider here retires names on its own
+// schedule, and a retired name fails the whole chain with a 404 even though the
+// keys are perfectly valid — which is exactly what happened on 2026-08-21, when
+// all three defaults (llama3.1-8b, llama-3.1-8b-instant, llama-3.3-70b:free) had
+// gone at once. Each is overridable via *_MODEL env vars; list what a key can
+// actually reach with a GET to the provider's /models endpoint.
 
 const _sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
