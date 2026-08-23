@@ -147,7 +147,16 @@ function _isRateLimit(e) {
 
 // ── Low-level LLM call — provider abstraction with automatic failover ──
 async function callLLM(prompt, opts = {}) {
-  const { maxTokens = 2048, temperature = 0.3, system = null, provider, ctx = {} } = opts;
+  const { maxTokens: _reqTokens = 2048, temperature = 0.3, system = null, provider, ctx = {} } = opts;
+  // Reasoning models (gpt-oss and friends) spend tokens THINKING before they emit
+  // any content, and that spend counts against max_tokens. Ask for 64 and the
+  // model can burn all 64 reasoning, return finish_reason 'length' and an EMPTY
+  // string — no error, just nothing, which callers then treat as a valid answer.
+  // (Sentiment classification asked for exactly 64 and would have silently
+  // reported 'neutral' forever.) A floor costs nothing: providers bill tokens
+  // actually produced, not the ceiling requested.
+  const MIN_TOKENS = 256;
+  const maxTokens = Math.max(_reqTokens, MIN_TOKENS);
   const tStart = Date.now();
 
   // Hard prompt-size cap — keeps every request inside the smallest free-tier

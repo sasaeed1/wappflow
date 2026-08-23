@@ -93,6 +93,26 @@ const ai = require('./ai-engine');
     await assert.rejects(() => ai4.callLLM('hi'), /No AI provider configured/);
   });
 
+  await check('a tiny token budget is raised to a floor, so reasoning models still answer', async () => {
+    // gpt-oss and similar spend tokens THINKING before emitting content, and that
+    // spend counts against max_tokens. A 64-token request came back as an EMPTY
+    // string with finish_reason 'length' - no error, so callers treated nothing
+    // as a valid answer. Sentiment classification asked for exactly 64.
+    process.env.GROQ_API_KEY = 'solo';
+    process.env.AI_PROVIDERS = 'groq';
+    delete require.cache[require.resolve('./ai-engine')];
+    let asked = null;
+    global.fetch = async (url, opts) => {
+      asked = JSON.parse(opts.body).max_tokens;
+      return { ok: true, json: async () => ({ choices: [{ message: { content: 'ok' } }], usage: {} }) };
+    };
+    const ai5 = require('./ai-engine');
+    await ai5.callLLM('hi', { maxTokens: 64 });
+    assert(asked >= 256, 'a 64-token request reached the provider as ' + asked + '; reasoning would eat it all');
+    await ai5.callLLM('hi', { maxTokens: 4000 });
+    assert.strictEqual(asked, 4000, 'a generous budget must be passed through untouched');
+  });
+
   console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);
 })();
