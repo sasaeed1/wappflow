@@ -93,6 +93,51 @@ function _callProvider(p, prompt, system, maxTokens, temperature, key) {
   throw new Error('Unknown AI provider: ' + p);
 }
 
+// ── Self-healing model ids ──────────────────────────────────────────────────
+// Providers retire model names on their own schedule. A retired id fails with a
+// 404 even though the key is perfectly valid, and because every provider in the
+// chain can be stale at once, the whole thing can go down while nothing is
+// actually wrong — which is exactly what happened on 2026-08-21.
+//
+// So: when a provider says the model is unknown, ASK IT what it has, pick a
+// sensible one, remember that, and retry. An outage becomes a log line.
+const MODELS_URL = {
+  groq:       'https://api.groq.com/openai/v1/models',
+  cerebras:   'https://api.cerebras.ai/v1/models',
+  openrouter: 'https://openrouter.ai/api/v1/models',
+  openai:     'https://api.openai.com/v1/models',
+};
+// Models that exist but cannot hold a conversation — moderation classifiers,
+// speech, embeddings. Picking one of these would "work" and then behave bizarrely.
+const NOT_CHAT = /whisper|tts|embed|guard|safety|safeguard|moderation|rerank|vision-only/i;
+const _discovered = {};   // provider -> model id learned at runtime
+
+function _isModelMissing(e) {
+  const m = String((e && e.message) || e).toLowerCase();
+  return m.includes('does not exist')
+    || m.includes('model_not_found') || m.includes('unknown model')
+    || m.includes('not a valid model') || m.includes('no such model')
+    || (m.includes('model') && (m.includes('404') || m.includes('unavailable')));
+}
+
+/** Ask a provider what this key can actually reach. Returns a model id or null. */
+async function _discoverModel(provider, key, preferFree) {
+  const url = MODELS_URL[provider];
+  if (!url || !key) return null;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+    if (!res.ok) return null;
+    const body = await res.json();
+    let ids = (body.data || []).map((m) => m.id).filter((id) => id && !NOT_CHAT.test(id));
+    // OpenRouter charges for most models; keep the free ones if that is what was asked for.
+    if (provider === 'openrouter' && preferFree) ids = ids.filter((id) => id.endsWith(':free'));
+    if (!ids.length) return null;
+    // Prefer a mid-sized instruct model over the first alphabetical accident.
+    const preferred = ids.find((id) => /instruct|chat|gpt-oss|glm|qwen|llama|gemma|mistral/i.test(id));
+    return preferred || ids[0];
+  } catch { return null; }
+}
+
 function _isRateLimit(e) {
   const m = String((e && e.message) || e).toLowerCase();
   return m.includes('rate limit') || m.includes('429') || m.includes('tokens per minute')
@@ -147,8 +192,21 @@ async function callLLM(prompt, opts = {}) {
           console.log(`⏳ ${p} key ${idx + 1}/${_keyCount(p)} rate-limited — cooling down ${COOLDOWN_MS / 1000}s, ${left ? 'trying its next key' : 'failing over to the next provider'}`);
           continue; // another key of the same provider may still be live
         }
-        // A non-quota failure (bad key, network, bad model) will hit every key of
-        // this provider the same way — move on rather than spinning through them.
+        // A retired model id is recoverable: ask the provider what it has now,
+        // remember it, and retry this provider once. Try it only when nothing has
+        // been discovered yet, so a genuinely broken provider cannot loop.
+        if (_isModelMissing(e) && !_discovered[p]) {
+          const found = await _discoverModel(p, KEYS[p][idx], /:free$/.test(OPENROUTER_MODEL));
+          if (found) {
+            _discovered[p] = found;
+            console.log(`🔎 ${p}: configured model was retired — switched to "${found}" and retrying`);
+            continue;
+          }
+          console.log(`⚠️ ${p}: model unavailable and nothing usable found — trying next provider`);
+          break;
+        }
+        // Any other failure (bad key, network) hits every key of this provider the
+        // same way — move on rather than spinning through them.
         console.log(`⚠️ ${p} failed (${(e && e.message) || e}) — trying next provider`);
         break;
       }
@@ -185,6 +243,7 @@ async function callLLM(prompt, opts = {}) {
 
 // OpenRouter — OpenAI-compatible aggregator (free model variants available).
 async function _callOpenRouter(prompt, system, maxTokens, temperature, key) {
+  const _model = _discovered['openrouter'] || OPENROUTER_MODEL;
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
                           : [{ role: 'user', content: prompt }];
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -195,7 +254,7 @@ async function _callOpenRouter(prompt, system, maxTokens, temperature, key) {
       'HTTP-Referer': 'https://wappflow.remoteops.co',
       'X-Title': 'WappFlow CRM',
     },
-    body: JSON.stringify({ model: OPENROUTER_MODEL, messages, temperature, max_tokens: maxTokens })
+    body: JSON.stringify({ model: _model, messages, temperature, max_tokens: maxTokens })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -205,56 +264,59 @@ async function _callOpenRouter(prompt, system, maxTokens, temperature, key) {
     throw new Error(`OpenRouter ${res.status}: ${detail}`);
   }
   const data = await res.json();
-  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: OPENROUTER_MODEL };
+  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: _model };
 }
 
 // Cerebras — OpenAI-compatible chat completions API.
 async function _callCerebras(prompt, system, maxTokens, temperature, key) {
+  const _model = _discovered['cerebras'] || CEREBRAS_MODEL;
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
                           : [{ role: 'user', content: prompt }];
   const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-    body: JSON.stringify({ model: CEREBRAS_MODEL, messages, temperature, max_tokens: maxTokens })
+    body: JSON.stringify({ model: _model, messages, temperature, max_tokens: maxTokens })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || err.message || `Cerebras error ${res.status}`);
   }
   const data = await res.json();
-  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: CEREBRAS_MODEL };
+  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: _model };
 }
 
 async function _callGroq(prompt, system, maxTokens, temperature, key) {
+  const _model = _discovered['groq'] || GROQ_MODEL;
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
                           : [{ role: 'user', content: prompt }];
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-    body: JSON.stringify({ model: GROQ_MODEL, messages, temperature, max_tokens: maxTokens })
+    body: JSON.stringify({ model: _model, messages, temperature, max_tokens: maxTokens })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `Groq error ${res.status}`);
   }
   const data = await res.json();
-  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: GROQ_MODEL };
+  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: _model };
 }
 
 async function _callOpenAI(prompt, system, maxTokens, temperature, key) {
+  const _model = _discovered['openai'] || OPENAI_MODEL;
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: prompt }]
                           : [{ role: 'user', content: prompt }];
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-    body: JSON.stringify({ model: OPENAI_MODEL, messages, temperature, max_tokens: maxTokens })
+    body: JSON.stringify({ model: _model, messages, temperature, max_tokens: maxTokens })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `OpenAI error ${res.status}`);
   }
   const data = await res.json();
-  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: OPENAI_MODEL };
+  return { content: data.choices?.[0]?.message?.content || '', usage: _norm(data.usage), model: _model };
 }
 
 async function _callAnthropic(prompt, system, maxTokens, temperature, key) {
