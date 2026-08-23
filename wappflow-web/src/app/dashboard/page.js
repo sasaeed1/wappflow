@@ -380,7 +380,7 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew, sym = '$'
             )}
 
             {/* AI intelligence badges — only shown after analysis has run */}
-            {(lead.sentiment || lead.urgency || (lead.lead_score && lead.lead_score > 0)) && (() => {
+            {(lead.sentiment || lead.urgency || Number(lead.lead_score) > 0) && (() => {
               const SENT = {
                 positive: { emoji: '😊', color: '#10b981' },
                 neutral:  { emoji: '😐', color: '#6b7280' },

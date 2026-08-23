@@ -1462,7 +1462,7 @@ useEffect(() => {
                 <UserCheck size={13} /> Move to Clients
               </button>
             )}
-            {lead.is_client && (
+            {!!lead.is_client && (
               <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 11px', borderRadius: 10, background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.3)' }}>
                 <span style={{ fontSize: 11.5, fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: 5 }}><UserCheck size={12} /> Client</span>
                 <button onClick={async () => { try { setActionLoading(true); await leadsAPI.setClient(leadId, false); await fetchAll(); } catch (e) { console.error(e); } finally { setActionLoading(false); } }} disabled={actionLoading} style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Move back to Leads</button>
@@ -1474,7 +1474,7 @@ useEffect(() => {
           <LeadStudioSection leadId={leadId} />
 
           {/* Lead Intelligence — shows AI-derived score / sentiment / urgency once analysis has run */}
-          {(lead.lead_score || lead.sentiment || lead.urgency) && (() => {
+          {(Number(lead.lead_score) > 0 || lead.sentiment || lead.urgency) && (() => {
             const SENT_META = {
               positive:   { emoji: '😊', color: '#10b981', label: 'Positive' },
               neutral:    { emoji: '😐', color: '#6b7280', label: 'Neutral' },
