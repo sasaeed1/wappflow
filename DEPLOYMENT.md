@@ -410,6 +410,11 @@ apt install -y nodejs
 apt install -y chromium-browser libnss3 libatk1.0-0 libatk-bridge2.0-0 \
   libcups2 libdrm2 libgbm1 libgtk-3-0 libxshmfence1 libasound2
 
+# ffmpeg — REQUIRED for voice notes. Browsers record webm/opus, which WhatsApp
+# Web rejects outright (InvalidMediaCheckRepairFailedType); ffmpeg transcodes it
+# to ogg/opus. Without ffmpeg, every voice-note send fails.
+apt install -y ffmpeg
+
 # PM2 for process management
 npm install -g pm2
 
@@ -546,6 +551,7 @@ RUN apt-get update && apt-get install -y \
     chromium chromium-sandbox \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgbm1 libgtk-3-0 \
     fonts-liberation libasound2 libxshmfence1 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true
