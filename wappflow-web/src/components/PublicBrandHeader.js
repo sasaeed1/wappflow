@@ -11,11 +11,14 @@
 //   <PublicBrandHeader brand={data.brand} meta="Proposal" sticky />
 //   <PublicBrandHeader brand={data.brand} tone="dark" title={data.title} />
 //
-// GRACEFUL FALLBACK IS THE POINT (owner decision D6 deferred the backend that will serve
-// real brand data): with no `brand` it renders the page's own title alone and suppresses
-// the mark entirely — never a generic "W", because a placeholder mark asserts an identity
-// that isn't the studio's. `logoUrl` and `brandColor` are the seam the follow-up proposal
-// fills; both are optional and unused by every caller today.
+// PHASE 8 — the deferred backend (D6) now exists. Every public endpoint returns a
+// `brand` OBJECT from backend/public-brand.js: { name, logo, accent, website, email,
+// phone, tagline }. This component takes that object whole.
+//
+// GRACEFUL FALLBACK IS STILL THE POINT: a studio that has uploaded nothing gets their
+// name and an initial mark; a studio that has uploaded a logo gets the logo; a studio
+// with neither gets the page's own title and NO mark at all — never a generic "W",
+// because a placeholder mark asserts an identity that isn't theirs.
 
 const TONE = {
   light: { bg: 'var(--glass)', border: 'var(--border)', text: 'var(--text)', meta: 'var(--text-muted)' },
@@ -23,9 +26,7 @@ const TONE = {
 };
 
 export default function PublicBrandHeader({
-  brand,                 // the studio's name — absent until the deferred endpoints land
-  logoUrl,               // seam: real logo (unused today)
-  brandColor,            // seam: the studio's accent (unused today) — falls back to --accent
+  brand,                 // { name, logo, accent, … } from the public-brand resolver
   title,                 // page/document/gallery title
   eyebrow,               // small label above the title
   meta,                  // right-hand slot (e.g. document type)
@@ -34,8 +35,10 @@ export default function PublicBrandHeader({
   style,
 }) {
   const t = TONE[tone] || TONE.light;
-  const accent = brandColor || 'var(--accent)';
-  const initial = brand ? String(brand).trim().charAt(0).toUpperCase() : null;
+  const name = brand?.name || null;
+  const logoUrl = brand?.logo || null;
+  const accent = brand?.accent || 'var(--accent)';
+  const initial = name ? name.trim().charAt(0).toUpperCase() : null;
 
   return (
     <header
@@ -53,7 +56,7 @@ export default function PublicBrandHeader({
       {/* The mark renders ONLY with a real brand — no placeholder identity. */}
       {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- studio logos are dynamic URLs
-        <img src={logoUrl} alt={brand || ''} style={{ height: 26, maxWidth: 120, objectFit: 'contain', display: 'block' }} />
+        <img src={logoUrl} alt={name || ''} style={{ height: 26, maxWidth: 120, objectFit: 'contain', display: 'block' }} />
       ) : initial ? (
         <span
           aria-hidden="true"
@@ -75,9 +78,9 @@ export default function PublicBrandHeader({
           </span>
         )}
         <strong style={{ fontSize: 14, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {brand || title || ''}
+          {name || title || ''}
         </strong>
-        {brand && title && (
+        {name && title && (
           <span style={{ fontSize: 12, color: t.meta, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
         )}
       </span>

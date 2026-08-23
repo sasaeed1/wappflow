@@ -87,6 +87,13 @@ const PACKS = [
   },
 ];
 
+const { publicBrand, journeyLinks } = require('./public-brand');
+
+// Set by the frontend's own server-side metadata fetch (lib/publicMeta.js). A normal
+// browser navigation cannot send it, so it cannot be used to read a document without
+// being counted.
+const isPreview = (req) => String(req.get('x-wf-preview') || '') === '1';
+
 module.exports = function mountContractsStudio(app, db, deps = {}) {
   const {
     auth = (req, res, next) => next(),
@@ -1003,7 +1010,12 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       const d = loadByToken(req.params.token);
       if (!d || d.status === 'voided') return res.status(404).json({ error: 'Document not available' });
       if (d.expires_at && new Date(d.expires_at) < new Date() && !['signed', 'completed'].includes(d.status)) return res.status(410).json({ error: 'This link has expired' });
-      if (d.status === 'sent') {
+      // A LINK PREVIEW IS NOT A VIEW. Phase 8 gives each public page a server-side
+      // metadata fetch so shared links preview with the studio's identity - and that
+      // fetch hitting this route would flip every contract to 'viewed' and tell the
+      // studio their client had opened it, the moment they sent it. The one question
+      // this signal exists to answer would be permanently wrong.
+      if (d.status === 'sent' && !isPreview(req)) {
         db.prepare("UPDATE cs_documents SET status = 'viewed', viewed_at = COALESCE(viewed_at, CURRENT_TIMESTAMP) WHERE id = ?").run(d.id);
         recordEvent(d, 'viewed', { actor: 'client', ip: clientIp(req), ua: req.headers['user-agent'] });
         broadcastToWorkspace(d.workspace_id, 'cs_updated', { id: d.id });
@@ -1017,7 +1029,10 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       const fSettings = J(fresh.settings, {});
       const wsSettings = getSettings(fresh.workspace_id);
       const letterhead = (fSettings.letterhead !== false && wsSettings.letterhead_url) ? wsSettings.letterhead_url : null;
-      res.json({ title: fresh.title, type: fresh.type, theme: fresh.theme, blocks: J(fresh.blocks, []), settings: fSettings, totals: J(fresh.totals, {}), status: fresh.status, signers, letterhead });
+      // The signing page showed a hardcoded 'W' mark in WappFlow's gradient and the
+      // literal string 'WappFlow' as the name - on the single most consequential
+      // document a studio ever sends a client.
+      res.json({ title: fresh.title, type: fresh.type, theme: fresh.theme, blocks: J(fresh.blocks, []), settings: fSettings, totals: J(fresh.totals, {}), status: fresh.status, signers, letterhead, brand: publicBrand(db, fresh.workspace_id, clientBaseUrl) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -1057,7 +1072,9 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       broadcastToWorkspace(d.workspace_id, 'cs_signed', { id: d.id, automations });
       try { notify(d.workspace_id, { type: 'contract', title: allSigned ? 'Contract fully signed' : 'Contract signed', body: `${typed_name} signed "${d.title}"`, url: d.lead_id ? `/leads/${d.lead_id}` : '/contracts', icon: '✍️' }); } catch {}
       try { const lead = d.lead_id ? db.prepare('SELECT * FROM leads WHERE id = ?').get(d.lead_id) : null; if (lead?.customer_phone) await sendClientMessage({ lead, userId: d.created_by, text: `✅ "${d.title}" was signed. Thank you!` }); } catch {}
-      res.json({ ok: true, status, doc_hash: hash });
+      // Signing used to end at "thank you". It is the moment a client is most
+      // willing to do the next thing, and nothing was offered.
+      res.json({ ok: true, status, doc_hash: hash, next: journeyLinks(db, d.workspace_id, d.lead_id, clientBaseUrl) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

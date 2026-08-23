@@ -36,6 +36,8 @@ function verifyStripeSignature(rawBuf, sigHeader, secret, toleranceSec = 300, no
   });
 }
 
+const { publicBrand, journeyLinks } = require('./public-brand');
+
 module.exports = function mountPayments(app, db, deps = {}) {
   const {
     auth = (req, res, next) => next(),
@@ -243,9 +245,17 @@ module.exports = function mountPayments(app, db, deps = {}) {
   // ── Public pay page data ────────────────────────────────────────────────────
   app.get('/api/payments/public/:token', (req, res) => {
     try {
-      const p = db.prepare('SELECT amount, currency, currency_symbol, description, status, provider, checkout_url FROM payments WHERE public_token = ?').get(req.params.token);
+      const p = db.prepare('SELECT workspace_id, lead_id, amount, currency, currency_symbol, description, status, provider, checkout_url FROM payments WHERE public_token = ?').get(req.params.token);
       if (!p) return res.status(404).json({ error: 'Not found' });
-      res.json(p);
+      // /pay showed no brand at all: a client was asked for money by a page that
+      // never said who was asking.
+      const { workspace_id, lead_id, ...rest } = p;
+      res.json({
+        ...rest,
+        brand: publicBrand(db, workspace_id, clientBaseUrl),
+        // "Payment received" and then nothing - no receipt to keep, nowhere to go.
+        next: journeyLinks(db, workspace_id, lead_id, clientBaseUrl),
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

@@ -36,6 +36,8 @@ const app = express();
 // via TRUST_PROXY (default 1 = one proxy in front).
 app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
 const DATA_DIR = process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : require('path').join(__dirname));
+// Phase 8: one answer to "who is the studio?" for every public page.
+const { publicBrand, ensureBrandColumns } = require('./public-brand');
 const db = new Database(require('path').join(DATA_DIR, 'wappflow.db'));
 
 // Enable WAL mode for better performance
@@ -721,6 +723,9 @@ try {
   const bf2 = db.prepare(`UPDATE email_workflows SET workspace_id = COALESCE((SELECT u.workspace_id FROM users u WHERE u.id = email_workflows.user_id), user_id) WHERE workspace_id IS NULL OR workspace_id = ''`).run();
   if (bf1.changes || bf2.changes) console.log(`🏷️  workspace re-key backfill: invoices=${bf1.changes}, email_workflows=${bf2.changes}`);
 } catch (e) { console.error('workspace re-key backfill failed (non-fatal):', e.message); }
+
+// Phase 8: the two additive brand columns, declared beside their reader.
+try { ensureBrandColumns(db); } catch (e) { console.error('brand column setup failed (non-fatal):', e.message); }
 
 // One-time: fold the pre-existing contact_history into the activity spine.
 //
@@ -2193,6 +2198,11 @@ app.put('/api/leads/:id/status', auth, (req, res) => {
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
     if (status === 'Closed - Won' && !wasClient) {
       addContactHistory(id, req.userId, 'client', 'Promoted to client (deal won)');
+      // Winning the deal is exactly when the client needs one place to find their
+      // contracts, galleries and invoices. The portal existed only if somebody went
+      // looking for the button, so most clients never got one.
+      const portal = ensureClientPortal(id, req.workspaceId);
+      if (portal) addContactHistory(id, req.userId, 'portal', 'Client portal ready to share', { url: portal.url });
       try {
         notify(req.workspaceId, {
           type: 'client', title: `New client: ${lead.customer_name || lead.customer_phone}`,
@@ -5796,6 +5806,14 @@ app.post('/api/leads/bulk-status', auth, (req, res) => {
       return { changes, owned };
     });
     const { changes, owned } = move();
+    // Moving deals to Won in bulk must promote them exactly like the single route,
+    // portal and all - otherwise which screen you used decides what your client gets.
+    if (status === 'Closed - Won') {
+      for (const id of owned) {
+        const portal = ensureClientPortal(id, req.workspaceId);
+        if (portal) addContactHistory(id, req.userId, 'portal', 'Client portal ready to share', { url: portal.url });
+      }
+    }
     logAudit(req.workspaceId, req.userId, 'bulk_status', 'leads', null, { count: changes, status, lead_ids });
     try {
       for (const id of owned) {
@@ -6258,13 +6276,30 @@ db.exec(`CREATE TABLE IF NOT EXISTS client_portals (
   lead_id TEXT PRIMARY KEY, workspace_id TEXT, token TEXT UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`);
 
+// The portal is the one link that ties a client's whole relationship together,
+// and it only existed if somebody remembered to go and mint it - buried behind a
+// button in the Contracts vault. Idempotent, so calling it at conversion, from the
+// contact hub, or twice by accident all give the same link.
+function ensureClientPortal(leadId, workspaceId) {
+  if (!leadId || !workspaceId) return null;
+  try {
+    let row = db.prepare('SELECT * FROM client_portals WHERE lead_id = ?').get(leadId);
+    if (!row) {
+      const token = crypto.randomBytes(18).toString('hex');
+      db.prepare('INSERT INTO client_portals (lead_id, workspace_id, token) VALUES (?,?,?)').run(leadId, workspaceId, token);
+      row = { token };
+    }
+    return { token: row.token, url: `${process.env.FRONTEND_URL || ''}/client/${row.token}` };
+  } catch { return null; }
+}
+
 app.post('/api/client-portal/:leadId', auth, (req, res) => {
   try {
     const lead = getScopedLead(req, req.params.leadId);
     if (!lead) return res.status(404).json({ error: 'Client not found' });
-    let row = db.prepare('SELECT * FROM client_portals WHERE lead_id = ?').get(lead.id);
-    if (!row) { const token = crypto.randomBytes(18).toString('hex'); db.prepare('INSERT INTO client_portals (lead_id, workspace_id, token) VALUES (?,?,?)').run(lead.id, req.workspaceId, token); row = { token }; }
-    res.json({ token: row.token, url: `${process.env.FRONTEND_URL || ''}/client/${row.token}` });
+    const portal = ensureClientPortal(lead.id, req.workspaceId);
+    if (!portal) return res.status(500).json({ error: 'Could not create the portal link' });
+    res.json(portal);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -6302,8 +6337,7 @@ app.get('/api/client-portal/public/:token', (req, res) => {
       pay_url: i.status !== 'paid' && i.pay_token ? `/pay/${i.pay_token}` : null,
       pay_token: undefined,
     }));
-    const owner = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(p.workspace_id);
-    let cs = null; try { cs = owner ? db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(owner.user_id) : null; } catch {}
+
     // Client Portal 2.0 (P15): albums, orders, milestones/delivery progress
     let albums = [], orders = [], milestones = [];
     try { if (projIds.length) albums = db.prepare(`SELECT title, page_count, status FROM ms_albums WHERE workspace_id = ? AND project_id IN (${projIds.map(() => '?').join(',')})`).all(ws, ...projIds); } catch {}
@@ -6311,10 +6345,33 @@ app.get('/api/client-portal/public/:token', (req, res) => {
     try { if (projIds.length) milestones = db.prepare(`SELECT title, status, due_date FROM ms_milestones WHERE workspace_id = ? AND project_id IN (${projIds.map(() => '?').join(',')}) ORDER BY sort_order`).all(ws, ...projIds); } catch {}
     res.json({
       client_name: lead.customer_name || 'there',
-      brand: (cs && cs.company_name) || 'WappFlow',
+      // Was the bare company_name, falling back to the literal 'WappFlow' - so a
+      // studio that had not filled in their name told their own client they were
+      // dealing with the software vendor.
+      brand: publicBrand(db, ws, process.env.FRONTEND_URL || ''),
       galleries: galleries.filter(g => g.share_token).map(g => ({ title: g.title, url: `/g/${g.share_token}` })),
       documents: documents.filter(d => d.token).map(d => ({ title: d.title, type: d.type, status: d.status, url: `/d/${d.token}` })),
       invoices, albums, orders, milestones, projects,
+      // The "unified" portal listed what had already happened and offered no way to
+      // do anything next: no booking, no shop, no way back to the studio. A client
+      // who wanted to book again had to go and find the link in an old message.
+      links: {
+        book: (() => {
+          try {
+            const bs = db.prepare('SELECT slug FROM booking_settings WHERE workspace_id = ?').get(ws);
+            return bs?.slug ? `/book/${bs.slug}` : null;
+          } catch { return null; }
+        })(),
+        shop: (() => {
+          try {
+            const hasProducts = db.prepare('SELECT COUNT(*) c FROM ms_print_products WHERE workspace_id = ? AND active = 1').get(ws).c > 0;
+            if (!hasProducts) return null;
+            // The shop hangs off a published gallery's share token.
+            const g = galleries.find((x) => x.share_token);
+            return g ? `/shop/${g.share_token}` : null;
+          } catch { return null; }
+        })(),
+      },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -6340,6 +6397,7 @@ require('./print-store')(app, db, {
   createInvoiceForLead,
   // print-store mounts BEFORE payments, so this resolves at call time, not now.
   createPaymentLink: (args) => paymentsApi.createPaymentLink(args),
+  clientBaseUrl: process.env.FRONTEND_URL || '',
 });
 require('./studio-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./video-ai')(app, db, { auth, generateId, broadcastToWorkspace });

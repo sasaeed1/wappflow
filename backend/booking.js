@@ -11,6 +11,8 @@
 const crypto = require('crypto');
 const availability = require('./availability');   // shared busy-calendar (bookings + meetings)
 
+const { publicBrand, journeyLinks } = require('./public-brand');
+
 module.exports = function mountBooking(app, db, deps = {}) {
   const {
     auth = (req, res, next) => next(),
@@ -74,7 +76,10 @@ module.exports = function mountBooking(app, db, deps = {}) {
     timezone: '',         // display label (e.g. "Asia/Karachi"); slots are studio-local
   };
   const owner = (ws) => { const r = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(ws); return r ? r.user_id : null; };
-  const brandName = (ws) => { const o = owner(ws); if (!o) return 'WappFlow'; try { const cs = db.prepare('SELECT company_name FROM company_settings WHERE user_id = ?').get(o); return (cs && cs.company_name) || 'WappFlow'; } catch { return 'WappFlow'; } };
+  // One resolver for who the studio is, shared by every public surface. The old
+  // local helper returned a bare name and fell back to the literal 'WappFlow',
+  // which told a client they were booking with the software vendor.
+  const brand = (ws) => publicBrand(db, ws, clientBaseUrl);
   const getRow = (ws) => db.prepare('SELECT * FROM booking_settings WHERE workspace_id = ?').get(ws);
   const cfgOf = (row) => ({ ...DEFAULTS, ...J(row && row.settings, {}) });
 
@@ -133,7 +138,7 @@ module.exports = function mountBooking(app, db, deps = {}) {
     try {
       const cur = getRow(req.workspaceId);
       const settings = { ...DEFAULTS, ...(cur ? J(cur.settings, {}) : {}), ...(req.body.settings || {}) };
-      let slug = (cur && cur.slug) || slugify(req.body.slug || brandName(req.workspaceId));
+      let slug = (cur && cur.slug) || slugify(req.body.slug || brand(req.workspaceId).name || 'studio');
       // ensure unique
       const clash = db.prepare('SELECT workspace_id FROM booking_settings WHERE slug = ? AND workspace_id != ?').get(slug, req.workspaceId);
       if (clash) slug = `${slug}-${crypto.randomBytes(2).toString('hex')}`;
@@ -224,7 +229,7 @@ module.exports = function mountBooking(app, db, deps = {}) {
       const row = db.prepare('SELECT * FROM booking_settings WHERE slug = ?').get(req.params.slug);
       if (!row) return res.status(404).json({ error: 'Not available' });
       const cfg = cfgOf(row);
-      res.json({ brand: brandName(row.workspace_id), services: cfg.services || [], slots: computeSlots(row.workspace_id, cfg), intake: cfg.intake || [], timezone: cfg.timezone || '' });
+      res.json({ brand: brand(row.workspace_id), services: cfg.services || [], slots: computeSlots(row.workspace_id, cfg), intake: cfg.intake || [], timezone: cfg.timezone || '' });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -290,7 +295,10 @@ module.exports = function mountBooking(app, db, deps = {}) {
       }
       broadcastToWorkspace(ws, 'booking_created', { id: bid, lead_id: lead.id });
       try { notify(ws, { type: 'booking', title: 'New booking', body: `${name} booked ${svc.name} · ${new Date(start_at.replace(' ', 'T')).toLocaleString()}`, url: `/leads/${lead.id}`, icon: '📅' }); } catch {}
-      res.json({ ok: true, service: svc.name, start_at, manage_url: manageUrl });
+      res.json({
+        ok: true, service: svc.name, start_at, manage_url: manageUrl,
+        next: journeyLinks(db, ws, lead.id, clientBaseUrl),
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -301,7 +309,7 @@ module.exports = function mountBooking(app, db, deps = {}) {
       if (!b) return res.status(404).json({ error: 'Not found' });
       const row = db.prepare('SELECT * FROM booking_settings WHERE workspace_id = ?').get(b.workspace_id);
       const cfg = cfgOf(row);
-      res.json({ brand: brandName(b.workspace_id), booking: { service: b.service, start_at: b.start_at, name: b.name, status: b.status }, slots: computeSlots(b.workspace_id, cfg, b.duration_min) });
+      res.json({ brand: brand(b.workspace_id), booking: { service: b.service, start_at: b.start_at, name: b.name, status: b.status }, slots: computeSlots(b.workspace_id, cfg, b.duration_min) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.post('/api/booking/manage/:token/reschedule', async (req, res) => {
