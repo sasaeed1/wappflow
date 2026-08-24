@@ -116,11 +116,11 @@ const PLAN_DEFINITIONS = {
 };
 
 // Standard monthly list price (PKR). enterprise = custom (null).
-const PLAN_MONTHLY_PRICE = { creator: 7999, studio: 14999, studio_plus: 29999, enterprise: null };
-// Founding 100 price (PKR) — 50% off, locked permanently for the first 100 paying
+const PLAN_MONTHLY_PRICE = { creator: 29, studio: 59, studio_plus: 119, enterprise: null };
+// Founding 100 price (USD) — 50% off, locked permanently for the first 100 paying
 // customers. Stored as is_founding rows in plan_prices.
-const PLAN_FOUNDING_PRICE = { creator: 3999, studio: 7499, studio_plus: 14999, enterprise: null };
-const PLAN_CURRENCY = 'PKR';
+const PLAN_FOUNDING_PRICE = { creator: 14, studio: 29, studio_plus: 59, enterprise: null };
+const PLAN_CURRENCY = 'USD';
 const DEFAULT_PLAN = 'creator'; // entry plan for new workspaces / unknown tiers
 
 // ── Sold-but-unbuilt guard ───────────────────────────────────────────────────
@@ -192,6 +192,47 @@ function ensureSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_flag_assign ON flag_assignments(flag_key, scope, scope_id);
   `);
   seed(db);
+  repriceCurrency(db);
+}
+
+// One-time currency switch: PKR → USD.
+//
+// seed() deliberately returns early once a catalog exists, so editing
+// PLAN_MONTHLY_PRICE alone would change fresh installs and leave every deployed
+// database quoting the old currency — the marketing site and the in-app Plan tab
+// would then disagree about what the product costs. This rewrites the standard
+// price rows to the current catalog when they are still denominated in a
+// currency we no longer sell in.
+//
+// Safe to run against production: billing is not connected to a live gateway
+// (payments default to provider='manual'), so no customer is mid-charge on a
+// PKR amount. Only the 'default' region rows are touched — a region-specific or
+// Command-Center-authored price is somebody's deliberate decision and is left
+// exactly as it is.
+function repriceCurrency(db) {
+  try {
+    const stale = db.prepare(
+      `SELECT COUNT(*) AS n FROM plan_prices WHERE region = 'default' AND currency <> ?`
+    ).get(PLAN_CURRENCY);
+    if (!stale || !stale.n) return;
+
+    const upd = db.prepare(
+      `UPDATE plan_prices SET currency = ?, amount = ?
+        WHERE plan_key = ? AND interval = 'month' AND region = 'default' AND is_founding = ?`
+    );
+    const run = db.transaction(() => {
+      for (const key of Object.keys(PLAN_DEFINITIONS)) {
+        const std = PLAN_MONTHLY_PRICE[key];
+        if (std !== null && std !== undefined) upd.run(PLAN_CURRENCY, std, key, 0);
+        const found = PLAN_FOUNDING_PRICE[key];
+        if (found !== null && found !== undefined) upd.run(PLAN_CURRENCY, found, key, 1);
+      }
+    });
+    run();
+    console.log(`💱 pricing: repriced ${stale.n} plan price row(s) to ${PLAN_CURRENCY}`);
+  } catch (e) {
+    console.error('pricing: currency migration failed —', e.message);
+  }
 }
 
 // Seed the plan catalog into the plan_* tables. Re-seeds (retiring any prior

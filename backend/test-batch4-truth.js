@@ -29,9 +29,21 @@ const apiLib = read(path.join(WEB, 'lib', 'api.js'));
 // ── (1a) Live: formatMoney + nextPlanFor extracted from source ───────────────
 const fmSrc = planLib.match(/export const formatMoney = (\(amount[\s\S]*?);\r?\n/);
 const formatMoney = eval(fmSrc[1]);
-check('formatMoney(7999) === "PKR 7,999"', () => assert.strictEqual(formatMoney(7999), 'PKR 7,999'));
+check('formatMoney groups thousands', () => assert.strictEqual(formatMoney(7999, 'USD'), 'USD 7,999'));
 check('formatMoney(null) === "Custom"', () => assert.strictEqual(formatMoney(null), 'Custom'));
-check('formatMoney(500, "USD") uses row currency', () => assert.strictEqual(formatMoney(500, 'USD'), 'USD 500'));
+check('formatMoney uses the row currency, whatever it is', () => {
+  assert.strictEqual(formatMoney(500, 'USD'), 'USD 500');
+  assert.strictEqual(formatMoney(500, 'PKR'), 'PKR 500');
+  assert.strictEqual(formatMoney(500, 'AED'), 'AED 500');
+});
+// The fallback only fires for a row with no currency. It must agree with the
+// catalog, or the app quotes one currency while the pricing page quotes another.
+check('formatMoney default matches the backend catalog currency', () => {
+  const ent = read(path.join(__dirname, 'entitlements.js'));
+  const catalog = ent.match(/const PLAN_CURRENCY = '([A-Z]{3})'/)[1];
+  assert.strictEqual(formatMoney(500), `${catalog} 500`,
+    `formatMoney falls back to a different currency than the catalog (${catalog})`);
+});
 
 const npSrc = planLib.match(/export function nextPlanFor\(plan\) \{([\s\S]*?)\n\}/);
 const nextPlanFor = new Function('plan', npSrc[1]);
@@ -131,11 +143,22 @@ check('the plan-tier registry is keyed on real tiers only', () => {
   for (const k of ['creator:', 'studio:', 'studio_plus:', 'enterprise:']) assert(block.includes(k), k + ' missing');
   for (const k of ['free:', 'starter:', 'growth:']) assert(!block.includes(k), 'dead tier ' + k);
 });
-check('single currency impl: both pkr defs are formatMoney shims', () => {
-  const landing = read(path.join(WEB, 'app', 'page.js'));
-  assert(/const pkr = \(n\) => formatMoney\(n\)/.test(landing), 'landing pkr not unified');
-  assert(/const pkr = \(n\) => formatMoney\(n\)/.test(settings), 'settings pkr not unified');
-  assert(!/'PKR ' \+ Number/.test(landing + settings), 'hand-rolled PKR string survives');
+// Asserts the CAPABILITY — one currency source, no hard-coded currency — rather
+// than a particular spelling of the helper. The old version matched an exact
+// `const pkr = …` line, so rewriting either surface broke the test without
+// anything actually regressing.
+check('no surface hard-codes a currency into a price', () => {
+  const landing = read(path.join(WEB, 'components', 'landing', 'Landing.js'));
+  for (const [name, src] of [['landing', landing], ['settings', settings]]) {
+    assert(!/['"`]PKR ['"`]\s*\+/.test(src), `${name}: hand-rolled PKR string survives`);
+    assert(!/['"`]Rs\.? ['"`]\s*\+/.test(src), `${name}: hand-rolled Rs string survives`);
+  }
+  // The settings Plan tab must pass the row's currency through, not rely on a default.
+  assert(/formatMoney\(\s*n\s*,\s*p\?\.currency\s*\)/.test(settings),
+    'settings no longer passes the price row currency to formatMoney');
+  // The landing page reads currency from the live /api/plans response.
+  assert(/setCurrency\(d\.currency\)/.test(landing),
+    'landing no longer takes its currency from the API');
 });
 check('settings aliases billing→plan + validates tab ids', () =>
   assert(/TAB_ALIASES = \{ billing: 'plan' \}/.test(settings) && /TABS\.some\(t => t\.id === resolved\)/.test(settings)));

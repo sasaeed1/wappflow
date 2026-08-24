@@ -6,21 +6,21 @@ export const metadata = {
     default: 'WappFlow',
     template: '%s · WappFlow',
   },
-  description: 'AI-powered customer operations platform for teams that close deals on WhatsApp, Instagram, Facebook, and the web. Unified inbox, Google Meet scheduling, team huddles.',
+  description: 'The operating system for photo and video studios. Shared inbox, CRM, contracts, bookings, galleries, invoices and AI — one client record from the first message to the delivered gallery.',
   applicationName: 'WappFlow',
   authors: [{ name: 'RemoteOps' }],
   metadataBase: new URL('https://wappflow.remoteops.co'),
   openGraph: {
-    title: 'WappFlow — AI-powered customer operations',
-    description: 'The AI-native WhatsApp CRM. One inbox for every channel.',
+    title: 'WappFlow — the operating system for photo & video studios',
+    description: 'One conversation, one client record, one timeline. Contracts, invoices, shoots and bookings that create each other.',
     url: 'https://wappflow.remoteops.co',
     siteName: 'WappFlow',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'WappFlow — AI-powered customer operations',
-    description: 'The AI-native WhatsApp CRM. One inbox for every channel.',
+    title: 'WappFlow — the operating system for photo & video studios',
+    description: 'One conversation, one client record, one timeline. Contracts, invoices, shoots and bookings that create each other.',
   },
 }
 
