@@ -27,10 +27,16 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm,
 // fractional overlap and fail a boundary assertion for the wrong reason.
 const T0 = Math.floor(Date.now() / 1000) * 1000;
 const at = (h) => T0 + h * 3600e3;
+// A naive booking stamp is a WALL CLOCK AT THE STUDIO (Phase 9, studio-time.js).
+// With no configured zone it is read as UTC — the convention the whole codebase
+// now shares. This fixture used to build the stamp from LOCAL parts, which only
+// round-tripped because the old availability.toMs also parsed naive strings as
+// server-local; on any machine that is not UTC the two conventions disagree by
+// the host's offset, which is exactly the class of bug Phase 9 removed.
 const localStamp = (h) => {
   const d = new Date(at(h));
   const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 };
 const isoStamp = (h) => new Date(at(h)).toISOString();
 
@@ -116,6 +122,30 @@ check('creating a meeting refuses a time already committed', () => {
   const body = route.slice(0, route.indexOf('\n});'));
   assert(/availability\.busyIntervals\(db, req\.workspaceId/.test(body), 'meeting creation checks nothing');
   assert(/return res\.status\(409\)/.test(body), 'a clashing meeting should 409, not be created silently');
+});
+
+check('a booking and a meeting at the SAME REAL MOMENT land on one scale (Phase 9)', () => {
+  // availability.toMs parsed the naive booking as server-local and the ISO
+  // meeting as a true instant, so for a studio in Karachi the two sat five hours
+  // apart on the shared busy calendar and each system could sell the same hour.
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE bookings (id TEXT PRIMARY KEY, workspace_id TEXT, start_at TEXT, duration_min INTEGER, status TEXT, is_deleted INTEGER);
+    CREATE TABLE meetings (id TEXT PRIMARY KEY, workspace_id TEXT, starts_at TEXT, ends_at TEXT);
+  `);
+  // 14:00 in Karachi (UTC+5) is 09:00Z. Booked as the studio's wall clock; the
+  // meeting recorded as the instant. They are the same hour.
+  const day = new Date(Date.now() + 5 * 86400e3).toISOString().slice(0, 10);
+  db.prepare("INSERT INTO bookings VALUES ('bz','wsz',?,60,'confirmed',0)").run(`${day} 14:00:00`);
+  db.prepare('INSERT INTO meetings VALUES (?,?,?,?)').run('mz', 'wsz', `${day}T09:00:00.000Z`, `${day}T10:00:00.000Z`);
+
+  const busy = availability.busyIntervals(db, 'wsz', { timeZone: 'Asia/Karachi' });
+  assert.strictEqual(busy.length, 2, 'expected both rows');
+  // Same start instant, so the two intervals must coincide.
+  assert.strictEqual(busy[0][0], busy[1][0],
+    'a booking and a meeting at one moment are still on different scales: ' +
+    new Date(busy[0][0]).toISOString() + ' vs ' + new Date(busy[1][0]).toISOString());
+  db.close();
 });
 
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);

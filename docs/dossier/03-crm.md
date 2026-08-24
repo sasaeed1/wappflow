@@ -1,5 +1,12 @@
 ## CRM — leads, pipeline, clients and contact intelligence
 
+> **Line-citation snapshot note (added 2026-08-24).** This section's `backend/server.js` citations were
+> written against an earlier snapshot than the one §14/§15 were pinned to. Measured against the current
+> file (**6,595 lines**), they run low by roughly **+20 lines below ~line 2,000 and up to +50 lines above it**
+> — beyond the dossier-wide ±25 tolerance stated in §01. The endpoints named below have been re-pinned to the
+> current file; for any other `server.js:NNNN` reference in this section, grep for the quoted code rather than
+> trusting the number.
+
 ### What this part of the product is for
 
 WappFlow is sold as a "Creative Business Operating System" for photo/video studios, and the CRM is
@@ -101,9 +108,9 @@ top-level lead mutations (see Risks).
 | Inbound WhatsApp | `whatsapp-service.js:330-352` — atomic `upsertLead` transaction; digit-normalised exact match then last-10-digit suffix match | Yes | **No** | SHIPPED |
 | Manual `POST /api/leads` | `server.js:2089` | Yes (`findLeadByPhone`, `server.js:1111`) | Yes (`pricing.canCreate`, 402 on breach) | SHIPPED |
 | CSV bulk `POST /api/leads/bulk-upload` | `server.js:1793`; frontend parses CSV in `app/dashboard/page.js:115` | Yes; reports `skipped` | Yes; reports `limitSkipped` + warning | SHIPPED |
-| Instagram webhook | `server.js:5090` | Matches on sender id | **No** | PARTIAL — no signature verification, cross-tenant fallback (see Risks) |
-| Facebook webhook | `server.js:5155` | Matches on sender id | **No** | PARTIAL — same issues |
-| Website form `POST /api/website-form/:formToken/submit` | `server.js:5204` | **No** — every submission creates a new lead | **No** | PARTIAL |
+| Instagram webhook | `server.js:5139` | Matches on sender id | **No** | PARTIAL — no signature verification, cross-tenant fallback (see Risks) |
+| Facebook webhook | `server.js:5201` | Matches on sender id | **No** | PARTIAL — same issues |
+| Website form `POST /api/website-form/:formToken/submit` | `server.js:5254` | **No** — every submission creates a new lead | **No** | PARTIAL |
 | Public booking `POST /api/booking/public/:slug` | `backend/booking.js:246-253` | Exact phone, then exact email | **No** | SHIPPED |
 | Print store checkout | `backend/print-store.js:127` | Exact phone/email | **No** | SHIPPED |
 
@@ -362,14 +369,14 @@ conversation crowds out older non-message events under the 100-item cap.
 | GET | `/api/leads/:leadId/timeline` | `5361` | |
 | GET | `/api/leads/:leadId/history` | `1983` | Legacy `contact_history` read |
 | GET/POST | `/api/views`, DELETE `/api/views/:id` | `5817`–`5841` | |
-| GET | `/api/analytics` | `2797` | Pipeline + ledger stats |
-| GET | `/api/reports/overview` | `2850` | Time series, funnel, agent perf, lost reasons, platforms |
+| GET | `/api/analytics` | `2847` | Pipeline + ledger stats |
+| GET | `/api/reports/overview` | `2900` | Time series, funnel, agent perf, lost reasons, platforms |
 | GET | `/api/search?q=` | `backend/search.js:32` | Cross-entity, honours `view_all_leads` |
 | GET | `/api/notifications/summary` | `3197` | Badge counts |
 | POST | `/api/leads/:id/ai/{summary,reply-suggestions,analyze}` | `4087`, `4118`, `4163` | |
 | GET/POST | `/api/leads/:id/industry`, `/vertical-action`, `/vertical-suggest` | `4859`, `4921`, `4944` | Legacy verticals |
 | GET/POST | `/api/leads/:leadId/meetings` | `6190` / `6110` | Google Meet |
-| POST | `/api/website-form/:formToken/submit` | `5204` | **Public, unauthenticated** |
+| POST | `/api/website-form/:formToken/submit` | `5254` | **Public, unauthenticated** |
 
 **SSE event names** (unnamed frames; consumers switch on `data.type`): `lead_created`, `lead_updated`,
 `lead_deleted`, `lead_restored`, `new_message`, `email_received`, `reminder_due`, `notification`,
@@ -414,7 +421,7 @@ Studio 500, Studio+ 5000, Enterprise unlimited (`-1`). Metric names in `backend/
    booking and print-store lead creation are ungated, so the metered "leads per month" limit is
    trivially exceeded by the product's own primary intake channel.
 
-6. **Public website form is unauthenticated, undeduplicated and unthrottled** (`server.js:5204`,
+6. **Public website form is unauthenticated, undeduplicated and unthrottled** (`server.js:5254`,
    `Access-Control-Allow-Origin: *`). Anyone with the form token can create unlimited leads. It also
    writes `user_id = account.workspace_id`, i.e. a workspace id in a user-id column.
 

@@ -82,6 +82,26 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
   });
 
   // ── Admin: orders ───────────────────────────────────────────────────────────
+  // The store page explained the shop link in PROSE — "/shop/<gallery-token>" —
+  // and never showed one, so a studio could not actually share their shop without
+  // going to find a published gallery and assembling the URL by hand.
+  app.get('/api/store/links', auth, (req, res) => {
+    try {
+      const rows = db.prepare(`
+        SELECT g.title, g.share_token, p.title AS project_title
+        FROM ms_galleries g LEFT JOIN ms_projects p ON p.id = g.project_id
+        WHERE g.workspace_id = ? AND g.status = 'published' AND g.share_token IS NOT NULL
+        ORDER BY g.published_at DESC LIMIT 25
+      `).all(req.workspaceId);
+      res.json({
+        links: rows.map(r => ({
+          title: r.title, project: r.project_title || null,
+          url: `${clientBaseUrl}/shop/${r.share_token}`,
+        })),
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/store/orders', auth, (req, res) => {
     try { res.json({ orders: db.prepare('SELECT * FROM ms_print_orders WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 200').all(req.workspaceId).map(o => ({ ...o, items: J(o.items, []) })) }); }
     catch (e) { res.status(500).json({ error: e.message }); }

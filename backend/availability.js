@@ -13,17 +13,27 @@
 //  things with different flows. They simply share one definition of "busy".
 // ════════════════════════════════════════════════════════════════════════════
 
+const { wallClockToMs } = require('./studio-time');
+
 /**
- * Parse the two timestamp shapes this codebase stores.
- * bookings.start_at is 'YYYY-MM-DD HH:MM:SS' (studio-local); meetings.starts_at
- * is usually an ISO string. Returns NaN for anything unparseable, and callers
- * drop those rather than treating them as busy-at-epoch-zero.
+ * Parse the two timestamp shapes this codebase stores, into ONE instant scale.
+ *
+ * Phase 9 (audit gap-4). This used a bare Date.parse, which reads
+ * 'YYYY-MM-DD HH:MM:SS' as SERVER-local and an ISO string as a true instant.
+ * bookings.start_at is the first shape and means a wall clock AT THE STUDIO;
+ * meetings.starts_at is the second. So the two sat the studio's entire UTC
+ * offset apart on this shared calendar — five hours for Karachi — and the
+ * double-booking guard, the slot list and the calendar push all read it.
+ *
+ * `timeZone` is the studio's configured zone; without one this behaves exactly
+ * as before (naive stamps read as UTC), so an unconfigured studio sees no
+ * change and a configured one becomes correct.
+ *
+ * Returns NaN for anything unparseable, and callers drop those rather than
+ * treating them as busy-at-epoch-zero.
  */
-function toMs(v) {
-  if (!v) return NaN;
-  const s = String(v);
-  const t = Date.parse(s.includes('T') ? s : s.replace(' ', 'T'));
-  return Number.isFinite(t) ? t : NaN;
+function toMs(v, timeZone = '') {
+  return wallClockToMs(v, timeZone);
 }
 
 /**
@@ -33,6 +43,7 @@ function toMs(v) {
 function busyIntervals(db, workspaceId, opts = {}) {
   const bufferMs = Math.max(0, Number(opts.bufferMin) || 0) * 60000;
   const defaultDur = Math.max(1, Number(opts.defaultDurationMin) || 30);
+  const tz = opts.timeZone || '';        // the studio's zone; '' ⇒ treat naive stamps as UTC
   const out = [];
 
   // Public bookings.
@@ -45,7 +56,7 @@ function busyIntervals(db, workspaceId, opts = {}) {
     ).all(workspaceId);
     for (const r of rows) {
       if (opts.excludeBookingId && r.id === opts.excludeBookingId) continue;
-      const s = toMs(r.start_at);
+      const s = toMs(r.start_at, tz);
       if (!Number.isFinite(s)) continue;
       out.push([s, s + ((Number(r.duration_min) || defaultDur) * 60000) + bufferMs]);
     }
@@ -59,9 +70,9 @@ function busyIntervals(db, workspaceId, opts = {}) {
     ).all(workspaceId);
     for (const r of rows) {
       if (opts.excludeMeetingId && r.id === opts.excludeMeetingId) continue;
-      const s = toMs(r.starts_at);
+      const s = toMs(r.starts_at, tz);
       if (!Number.isFinite(s)) continue;
-      const e = toMs(r.ends_at);
+      const e = toMs(r.ends_at, tz);
       out.push([s, (Number.isFinite(e) && e > s ? e : s + defaultDur * 60000) + bufferMs]);
     }
   } catch { /* meetings is optional — the module predates it on some installs */ }

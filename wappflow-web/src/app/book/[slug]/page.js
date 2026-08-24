@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { fetchBookingPublic, createBooking } from '../../../lib/api';
 
+import { formatAppointment, zoneLabel } from '@/lib/datetime';
 import PublicScope from '@/components/PublicScope';
 import PublicBrandMark from '@/components/PublicBrandMark';
 import PublicNextSteps from '@/components/PublicNextSteps';
@@ -46,7 +47,10 @@ export default function BookingPage() {
     <div style={{ ...center, flexDirection: 'column', gap: 10, textAlign: 'center', padding: 24 }}>
       <div style={{ width: 56, height: 56, borderRadius: 999, background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 28 }}>✓</div>
       <h1 style={{ fontSize: 26, margin: '6px 0 0', color: '#16161a' }}>You’re booked!</h1>
-      <p style={{ color: '#70707a', fontSize: 15 }}>{done.service} · {new Date(done.start_at.replace(' ', 'T')).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+      <p style={{ color: '#70707a', fontSize: 15 }}>
+        {done.service} · {formatAppointment(done.start_at, data?.timezone, { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+        {data?.timezone ? ` (${zoneLabel(data.timezone)} time)` : ''}
+      </p>
       <p style={{ color: '#9aa0aa', fontSize: 13 }}>A confirmation has been sent. See you then.</p>
       {done.manage_url && (
         <a href={done.manage_url} style={{ fontSize: 13, fontWeight: 700, color: '#16161a', textDecoration: 'underline', textUnderlineOffset: 3 }}>

@@ -18,7 +18,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import ErrorState from '@/components/ui/ErrorState';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
-import { invoiceStatusMeta } from '@/lib/invoiceStatus';
+import { invoiceStatusMeta, displayInvoiceStatus } from '@/lib/invoiceStatus';
 import { buildInvoiceHTML } from '@/lib/invoiceDoc';
 
 // Invoice status presentation now lives in the shared registry (lib/invoiceStatus.js) rendered
@@ -59,7 +59,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
             <div>
               <h2 id="inv-view-title" style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)', margin: 0 }}>{invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : `Invoice #${invoice.id}`}</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <Badge tone={invoiceStatusMeta(invoice.status).tone} dot>{invoiceStatusMeta(invoice.status).label}</Badge>
+                <Badge tone={invoiceStatusMeta(displayInvoiceStatus(invoice)).tone} dot>{invoiceStatusMeta(displayInvoiceStatus(invoice)).label}</Badge>
                 {invoice.customer_name && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{invoice.customer_name}</span>}
               </div>
             </div>
@@ -301,13 +301,20 @@ export default function InvoicesPage() {
 
   const filtered = invoices.filter(inv => {
     const matchSearch = !search || (inv.customer_name || '').toLowerCase().includes(search.toLowerCase()) || String(inv.invoice_number || '').toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'all' || inv.status === filterStatus;
+    // Overdue is DERIVED (nothing ever wrote it), so the tab has to filter on the
+    // displayed status, not the stored one — which is why it always showed nothing.
+    const matchStatus = filterStatus === 'all' || displayInvoiceStatus(inv) === filterStatus;
     return matchSearch && matchStatus;
   });
 
   const sym = company?.currency_symbol || '$';
   const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + parseFloat(i.total || 0), 0);
-  const totalPending = invoices.filter(i => i.status === 'pending').reduce((s, i) => s + parseFloat(i.total || 0), 0);
+  // Money owed is every unpaid, non-draft invoice — not just the ones stored as
+  // 'pending'. Contract and store invoices are written as 'sent', so a studio's
+  // biggest receivables were missing from this figure entirely.
+  const totalPending = invoices
+    .filter(i => !['paid', 'draft', 'cancelled', 'void'].includes(String(i.status || '').toLowerCase()))
+    .reduce((s, i) => s + parseFloat(i.total || 0), 0);
 
   return (
     <>
@@ -346,7 +353,7 @@ export default function InvoicesPage() {
             { label: 'Total Invoices', value: invoices.length, icon: FileText, color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
             { label: 'Paid Revenue', value: `${sym}${totalRevenue.toLocaleString()}`, icon: CheckCircle, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
             { label: 'Pending', value: `${sym}${totalPending.toLocaleString()}`, icon: Clock, color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-            { label: 'Overdue', value: invoices.filter(i => i.status === 'overdue').length, icon: AlertCircle, color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+            { label: 'Overdue', value: invoices.filter(i => i.is_overdue).length, icon: AlertCircle, color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
           ].map(stat => (
             <div key={stat.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 44, height: 44, borderRadius: 14, background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -367,7 +374,7 @@ export default function InvoicesPage() {
               style={{ width: '100%', padding: '10px 12px 10px 36px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {['all', 'draft', 'pending', 'paid', 'overdue'].map(s => (
+            {['all', 'draft', 'sent', 'pending', 'paid', 'overdue'].map(s => (
               <button key={s} onClick={() => setFilterStatus(s)}
                 style={{
                   padding: '8px 14px', borderRadius: 8, border: `1px solid ${filterStatus === s ? '#6366f1' : 'var(--border)'}`,
@@ -433,7 +440,7 @@ export default function InvoicesPage() {
                 <span style={{ fontSize: 13, color: 'var(--text-muted)', alignSelf: 'center' }}>{formatDate(inv.created_at) || '—'}</span>
                 <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', alignSelf: 'center' }}>{sym}{parseFloat(inv.total || 0).toFixed(2)}</span>
                 <div style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-                  <Badge tone={invoiceStatusMeta(inv.status).tone} dot>{invoiceStatusMeta(inv.status).label}</Badge>
+                  <Badge tone={invoiceStatusMeta(displayInvoiceStatus(inv)).tone} dot>{invoiceStatusMeta(displayInvoiceStatus(inv)).label}</Badge>
                   <button onClick={e => { e.stopPropagation(); setEmailInvoice(inv); }} title="Email invoice"
                     style={{ padding: 6, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: '#6366f1', cursor: 'pointer', display: 'flex' }}>
                     <Send size={13} />

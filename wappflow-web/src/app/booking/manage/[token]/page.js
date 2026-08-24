@@ -5,13 +5,17 @@ import { useParams } from 'next/navigation';
 import { fetchBookingManage, rescheduleBookingPublic, cancelBookingPublic } from '../../../../lib/api';
 import { useConfirm } from '@/lib/confirm';
 
+import { formatAppointment, zoneLabel } from '@/lib/datetime';
 import PublicScope from '@/components/PublicScope';
 import PublicBrandMark from '@/components/PublicBrandMark';
 import PublicFooter from '@/components/PublicFooter';
 
 const fmtDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const fmtTime = (iso) => new Date(iso.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-const fmtFull = (iso) => new Date(iso.replace(' ', 'T')).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+// The stored stamp is a wall clock AT THE STUDIO. Parsing it with new Date()
+// reads it in the VISITOR's zone, so a client abroad saw a different appointment
+// time than the one the studio booked.
+const fmtFull = (stamp) => formatAppointment(stamp, '', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export default function BookingManagePage() {
   const { token } = useParams();
@@ -53,7 +57,9 @@ export default function BookingManagePage() {
 
         <div style={{ background: '#fff', border: '1px solid #ececf1', borderRadius: 16, padding: 18, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: '#16161a' }}>{b.service}</div>
-          <div style={{ fontSize: 14, color: '#70707a', marginTop: 4 }}>{fmtFull(b.start_at)}</div>
+          <div style={{ fontSize: 14, color: '#70707a', marginTop: 4 }}>
+            {fmtFull(b.start_at)}{data.timezone ? ` · ${zoneLabel(data.timezone)} time` : ''}
+          </div>
           <div style={{ marginTop: 8, display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: b.status === 'cancelled' ? '#fee2e2' : '#dcfce7', color: b.status === 'cancelled' ? '#dc2626' : '#16a34a', textTransform: 'capitalize' }}>{b.status}</div>
         </div>
 

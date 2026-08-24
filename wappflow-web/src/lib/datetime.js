@@ -105,3 +105,41 @@ export function formatFull(ts) {
     hour: 'numeric', minute: '2-digit', hour12: true,
   });
 }
+
+// ── Appointments ────────────────────────────────────────────────────────────
+//
+// Phase 9 (audit gap-4). Booking times are a WALL CLOCK AT THE STUDIO, not an
+// instant — the one shape in this codebase that the helpers above must not
+// touch, because toDate() appends 'Z' and treats a zone-less stamp as UTC. That
+// is why the bookings page hand-rolled `new Date(s.replace(' ','T'))`: it round-
+// trips correctly only for a viewer who happens to be in the studio's zone, and
+// silently shifts every appointment for anyone who is not.
+//
+// Pass the studio's timezone (the booking endpoints now return it) and every
+// reader sees the studio's clock, wherever they are.
+export function formatAppointment(stamp, timeZone, opts = {}) {   // timeZone: for zoneLabel(), not conversion
+  const s = String(stamp || '').trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return s;
+  // Read the wall-clock parts as UTC, then format in the studio's zone by asking
+  // for that zone explicitly — never by reinterpreting the digits.
+  const asUtc = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+  const fmt = {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+    ...opts,
+    timeZone: 'UTC',
+  };
+  // The zone is NOT used to convert — the stored digits already ARE the studio's
+  // clock, so converting them would move the shoot. It is formatted as UTC and
+  // callers append zoneLabel() when the reader might not be in that zone.
+  try { return new Intl.DateTimeFormat('en-US', fmt).format(asUtc); }
+  catch { return s; }
+}
+
+/** "Asia/Karachi" → "Karachi" for a compact zone note beside a time. */
+export function zoneLabel(timeZone) {
+  if (!timeZone) return '';
+  const tail = String(timeZone).split('/').pop() || '';
+  return tail.replace(/_/g, ' ');
+}

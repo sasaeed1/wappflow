@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Store, Plus, Trash2, Check } from 'lucide-react';
+import { Store, Plus, Trash2, Check, Copy, ExternalLink } from 'lucide-react';
 import { storeAPI } from '../../../lib/api';
 
 const KINDS = ['print', 'album', 'digital', 'frame'];
@@ -13,8 +13,10 @@ export default function StudioStorePage() {
   const [products, setProducts] = useState(null);
   const [orders, setOrders] = useState([]);
   const [savedId, setSavedId] = useState('');
+  const [links, setLinks] = useState([]);
+  const [copied, setCopied] = useState('');
 
-  const load = () => { storeAPI.products().then(r => setProducts(r.data.products || [])).catch(() => setProducts([])); storeAPI.orders().then(r => setOrders(r.data.orders || [])).catch(() => {}); };
+  const load = () => { storeAPI.products().then(r => setProducts(r.data.products || [])).catch(() => setProducts([])); storeAPI.orders().then(r => setOrders(r.data.orders || [])).catch(() => {}); storeAPI.links().then(r => setLinks(r.data.links || [])).catch(() => {}); };
   useEffect(() => { if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/studio/store'); return; } load(); }, []); // eslint-disable-line
 
   const patch = (i, p) => setProducts(ps => ps.map((x, j) => j === i ? { ...x, ...p } : x));
@@ -33,7 +35,39 @@ export default function StudioStorePage() {
     <>
       <div style={{ maxWidth: 820, margin: '0 auto', padding: '24px 20px 60px' }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.5px', display: 'inline-flex', alignItems: 'center', gap: 9 }}><Store size={22} /> Print Store</h1>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 22px' }}>Sell prints, albums &amp; digitals. Clients order from any published gallery’s shop link (<code style={{ fontSize: 12 }}>/shop/&lt;gallery-token&gt;</code>); orders land here and in the client’s CRM record.</p>
+        <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 18px' }}>Sell prints, albums &amp; digitals. Clients order from a published gallery’s shop link; orders land here and on the client’s CRM record, with an invoice and a pay link raised automatically.</p>
+
+        {/* This page used to EXPLAIN the shop link in prose — "/shop/&lt;gallery-token&gt;" —
+            and never show one, so a studio had to go find a published gallery and
+            assemble the URL by hand before they could sell anything. */}
+        <div style={{ padding: 16, borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)', marginBottom: 22 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: '0 0 8px' }}>Your shop links</h2>
+          {links.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+              Publish a gallery and its shop link appears here, ready to share.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {links.map(l => (
+                <div key={l.url} className="r-wrap" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{l.title}{l.project ? ` · ${l.project}` : ''}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.url}</div>
+                  </div>
+                  <button
+                    onClick={async () => { try { await navigator.clipboard.writeText(l.url); setCopied(l.url); setTimeout(() => setCopied(''), 1800); } catch {} }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                    {copied === l.url ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
+                  </button>
+                  <a href={l.url} target="_blank" rel="noopener noreferrer"
+                     style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
+                    <ExternalLink size={13} /> Open
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: 0 }}>Products</h2>

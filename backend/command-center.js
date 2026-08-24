@@ -448,7 +448,13 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
         .run(impId, req.admin.id, wid, auditId, writeMode ? 'write' : 'read', req.body?.reason || null);
       // Signed with the SAME secret as normal user tokens so the core `auth` accepts it; the
       // `imp` claim lets the app show a banner and tag every resulting action as impersonated.
-      const token = jwt.sign({ userId: owner.user_id, imp: { admin_id: req.admin.id, audit_id: auditId, imp_id: impId, mode: writeMode ? 'write' : 'read' } }, JWT_SECRET, { expiresIn: '30m' });
+      // Carry the user's CURRENT token_version (Phase 9). The auth middleware
+      // rejects any session token issued before a password reset; without this
+      // claim an impersonation token would be treated as version 0 and silently
+      // stop working for every user who had ever reset their password.
+      let tv = 0;
+      try { tv = db.prepare('SELECT token_version FROM users WHERE id = ?').get(owner.user_id)?.token_version || 0; } catch {}
+      const token = jwt.sign({ userId: owner.user_id, tv, imp: { admin_id: req.admin.id, audit_id: auditId, imp_id: impId, mode: writeMode ? 'write' : 'read' } }, JWT_SECRET, { expiresIn: '30m' });
       emit({ workspace_id: wid, actor_id: req.admin.id, type: 'impersonation_started', entity_type: 'workspace', entity_id: wid, payload: { mode: writeMode ? 'write' : 'read' } });
       res.json({ token, mode: writeMode ? 'write' : 'read', expires_in: 1800 });
     } catch (e) { res.status(500).json({ error: e.message }); }

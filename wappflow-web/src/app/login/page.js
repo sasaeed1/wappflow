@@ -193,7 +193,11 @@ function LoginContent() {
             <div className="auth-field">
               <div className="auth-field-row">
                 <label>Password</label>
-                {/* placeholder for forgot-password */}
+                {/* Was a placeholder comment. A studio owner who forgot their
+                    password was locked out of their business permanently. */}
+                <a href="/forgot-password" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
+                  Forgot password?
+                </a>
               </div>
               <div className="auth-input-wrap">
                 <Lock size={16} />

@@ -1,5 +1,12 @@
 ## Product overview, personas and the business model
 
+> **Line-citation snapshot note (added 2026-08-24).** This section's `backend/server.js` citations were
+> written against an earlier snapshot than the one §14/§15 were pinned to. Measured against the current
+> file (**6,595 lines**), they run low by roughly **+20 lines below ~line 2,000 and up to +50 lines above it**
+> — beyond the dossier-wide ±25 tolerance stated in §01. The endpoints named below have been re-pinned to the
+> current file; for any other `server.js:NNNN` reference in this section, grep for the quoted code rather than
+> trusting the number.
+
 ### What this part of the product is for
 
 WappFlow is a multi-tenant SaaS whose stated purpose is to be the single operating system a small
@@ -274,7 +281,7 @@ regex. Since no plan sets any module key to `false`, this only ever fires from a
 keys ever consumed: `analytics`, `reports`, `team_collaboration`, `google_calendar`, `calendly`
 (`app/reports/page.js:85`, `app/knowledge/page.js:235`, `app/team/page.js:506`, `app/settings/page.js:1000-1001`,
 plus `lockFeature: 'analytics'` on the Analytics nav item in `components/shell/modules.js:46`). The matching
-backend endpoints (`GET /api/reports/overview` at `server.js:2850`, `GET /api/knowledge` at `server.js:4468`)
+backend endpoints (`GET /api/reports/overview` at `server.js:2900`, `GET /api/knowledge` at `server.js:4518`)
 carry only `auth` — no entitlement check.
 
 **Consequence, stated plainly:** of ~60 advertised feature keys, **five** have any gate at all and all five are
@@ -365,8 +372,10 @@ Read-only observations. Nothing here was changed.
    regulatory risk.
 10. **Landing-page claims that the code contradicts.** *"WappFlow is self-hosted on your own server. Your
     conversations, leads, and files never leave your infrastructure"* (`page.js:2076`) — the deployed product
-    is a shared multi-tenant SQLite instance with cross-tenant Command Center admin access and optional
-    Cloudflare R2 storage (`backend/storage/providers/r2.js`). *"All plans include… audit logs"*
+    is a shared multi-tenant SQLite instance with cross-tenant Command Center admin access. (Files do stay
+    on the studio's — rather, the vendor's — single VPS disk: the Cloudflare R2 path in
+    `backend/storage/providers/r2.js` is unreachable, because the AWS SDK it requires is not a dependency
+    of `backend/package.json`. The claim is false on multi-tenancy, not on object storage.) *"All plans include… audit logs"*
     (`page.js:1932`) — the catalog makes `audit_logs` Enterprise-only (`entitlements.js:90`), while the code
     gates it for nobody. *"Huddles run on Jitsi Meet… no API keys needed"* (`page.js:2104`) — it is LiveKit,
     and it needs three env vars or the huddle modal reports `unconfigured`.

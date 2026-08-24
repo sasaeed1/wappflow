@@ -71,7 +71,14 @@ const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 
   await j('PUT', '/booking/settings', A.token, {
     slug: 'noor-' + RUN,
-    settings: { services: [{ name: 'Mehndi coverage', duration: 240, price: 80000 }], availability: { 1: [9, 18] }, slot_min: 60, days_ahead: 30 },
+    // Open every day. This fixture used to specify Mondays only and still book on
+    // an arbitrary future date - which only worked because the pre-Phase-9 guard
+    // never checked opening hours at all.
+    settings: {
+      services: [{ name: 'Mehndi coverage', duration: 240, price: 80000 }],
+      availability: { 0: [8, 20], 1: [8, 20], 2: [8, 20], 3: [8, 20], 4: [8, 20], 5: [8, 20], 6: [8, 20] },
+      slot_min: 60, days_ahead: 30,
+    },
   });
   await j('POST', '/store/products', A.token, { name: 'Framed print', options: [{ label: 'A3', price: 12000 }] });
 

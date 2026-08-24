@@ -4,9 +4,22 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, Plus, Trash2, Copy, Check, Clock, ExternalLink, Camera, Receipt, X } from 'lucide-react';
 import { bookingAPI } from '../../lib/api';
+import { formatAppointment, zoneLabel } from '@/lib/datetime';
 import { useRealtime } from '@/components/shell/realtime';
 
 const DOW = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
+
+// The browser knows every zone it can format. Offer that list rather than a
+// hand-maintained one that goes stale, with the viewer's own zone first because
+// it is nearly always the studio's.
+const ZONES = (() => {
+  let all = [];
+  try { all = (Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : []) || []; } catch { all = []; }
+  if (!all.length) all = ['Asia/Karachi', 'Asia/Dubai', 'Asia/Kolkata', 'Europe/London', 'America/New_York', 'UTC'];
+  let mine = '';
+  try { mine = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch {}
+  return mine && all.includes(mine) ? [mine, ...all.filter(z => z !== mine)] : all;
+})();
 
 export default function BookingsPage() {
   const router = useRouter();
@@ -17,8 +30,10 @@ export default function BookingsPage() {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [tz, setTz] = useState('');        // the studio's zone — appointments are ITS clock
+  const [res, setRes] = useState(null);    // { booking, slots, loading } while moving one
 
-  const loadBookings = () => bookingAPI.list().then(r => setBookings(r.data.bookings || [])).catch(() => {});
+  const loadBookings = () => bookingAPI.list().then(r => { setBookings(r.data.bookings || []); setTz(r.data.timezone || ''); }).catch(() => {});
 
   // A booking used to be a dead end: the studio took the appointment and then
   // re-typed the same client into Media Studio and again into an invoice. These
@@ -32,6 +47,30 @@ export default function BookingsPage() {
       if (r.data?.url) router.push(r.data.url);
     } catch (e) {
       setErr(e?.response?.data?.error || 'Could not do that right now.');
+    } finally { setBusy(''); }
+  };
+
+  // The studio could not move an appointment from anywhere — they had to ask the
+  // client to do it from their own link, or cancel and hope they rebooked.
+  const openReschedule = async (b) => {
+    setRes({ booking: b, slots: null, loading: true });
+    try {
+      const r = await bookingAPI.slots(b.id);
+      setRes({ booking: b, slots: r.data.slots || [], loading: false });
+    } catch (e) {
+      setRes(null);
+      setErr(e?.response?.data?.error || 'Could not load available times.');
+    }
+  };
+
+  const doReschedule = async (b, startAt) => {
+    setBusy(b.id + 'res'); setErr('');
+    try {
+      await bookingAPI.reschedule(b.id, startAt);
+      setRes(null);
+      await loadBookings();
+    } catch (e) {
+      setErr(e?.response?.data?.error || 'Could not move that booking.');
     } finally { setBusy(''); }
   };
 
@@ -132,7 +171,23 @@ export default function BookingsPage() {
           <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '0 0 14px' }}>Scheduling rules</h2>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', marginBottom: 14 }}>
             <label style={{ fontSize: 13, color: 'var(--text)' }}>Buffer between bookings <input type="number" value={settings.buffer_min || 0} onChange={e => setSettings(s => ({ ...s, buffer_min: Number(e.target.value) }))} style={{ ...fld, width: 70, marginLeft: 6 }} /> min</label>
-            <label style={{ fontSize: 13, color: 'var(--text)' }}>Timezone label <input value={settings.timezone || ''} onChange={e => setSettings(s => ({ ...s, timezone: e.target.value }))} placeholder="Asia/Karachi" style={{ ...fld, width: 160, marginLeft: 6 }} /></label>
+            {/* This was a "Timezone label" — free text that NOTHING read. It is
+                load-bearing now: slots, the double-booking guard, confirmation
+                messages and the Google Calendar push all use it. */}
+            <label style={{ fontSize: 13, color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              Timezone
+              <select value={settings.timezone || ''} onChange={e => setSettings(s => ({ ...s, timezone: e.target.value }))}
+                      style={{ ...fld, width: 220 }}>
+                <option value="">Not set — times treated as UTC</option>
+                {ZONES.map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+              </select>
+            </label>
+            {!settings.timezone && (
+              <p style={{ fontSize: 12, color: 'var(--warn-fg, #b45309)', margin: '6px 0 0', maxWidth: 520 }}>
+                Set your timezone so booking times mean the same thing to you, to your client and on your calendar.
+                Until it is set, appointments are treated as UTC and your Google Calendar is not updated.
+              </p>
+            )}
           </div>
           <label className="ms-label" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Blackout dates (YYYY-MM-DD, one per line)</label>
           <textarea value={(settings.blackout || []).join('\n')} onChange={e => setSettings(s => ({ ...s, blackout: e.target.value.split(/\s+/).map(x => x.trim()).filter(Boolean) }))} rows={2} placeholder="2026-12-25" style={{ width: '100%', maxWidth: 320, ...fld, resize: 'vertical', boxSizing: 'border-box' }} />
@@ -154,6 +209,43 @@ export default function BookingsPage() {
 
         <button onClick={save} style={{ padding: '12px 22px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontWeight: 800, fontSize: 14.5 }}>Save &amp; publish</button>
 
+        {res && (
+          <div role="dialog" aria-label="Move booking"
+               style={{ marginTop: 24, padding: 18, borderRadius: 14, background: 'var(--surface)', border: '1.5px solid var(--accent)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>Move {res.booking.name} · {res.booking.service}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+                  Currently {formatAppointment(res.booking.start_at, tz)}{tz ? ` (${zoneLabel(tz)})` : ''}. The client is told automatically.
+                </div>
+              </div>
+              <button onClick={() => setRes(null)} style={{ ...rowBtn, border: 'none' }}><X size={14} /> Close</button>
+            </div>
+            {res.loading ? (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Loading available times…</p>
+            ) : !res.slots?.length ? (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+                No free times in the booking window. Widen your availability or clear a blackout day.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 300, overflowY: 'auto' }}>
+                {res.slots.slice(0, 14).map(day => (
+                  <div key={day.date}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 5 }}>{day.date}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {day.times.map(t => (
+                        <button key={t} onClick={() => doReschedule(res.booking, t)} disabled={!!busy} style={rowBtn}>
+                          {t.slice(11, 16)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '28px 0 12px' }}>Upcoming</h2>
         {err && (
           <div role="alert" style={{ marginBottom: 10, padding: '9px 12px', borderRadius: 10, background: 'var(--danger-bg, rgba(239,68,68,0.1))', color: 'var(--danger-fg, #b91c1c)', fontSize: 13 }}>
@@ -166,7 +258,12 @@ export default function BookingsPage() {
               <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{b.name} · {b.service}</div>
-                  <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{new Date(b.start_at.replace(' ', 'T')).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{b.phone ? ` · ${b.phone}` : ''}</div>
+                  {/* Was new Date(...).toLocaleString() — the ADMIN's browser zone,
+                      so an owner travelling saw every appointment shifted. */}
+                  <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+                    {formatAppointment(b.start_at, tz)}
+                    {tz ? ` (${zoneLabel(tz)})` : ''}{b.phone ? ` · ${b.phone}` : ''}
+                  </div>
                 </div>
                 <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {b.lead_id && (
@@ -186,6 +283,9 @@ export default function BookingsPage() {
                       <Calendar size={13} /> Calendar
                     </a>
                   )}
+                  <button onClick={() => openReschedule(b)} disabled={!!busy} style={rowBtn} title="Move this booking to another time">
+                    <Clock size={13} /> Move
+                  </button>
                   <button onClick={() => cancelBooking(b)} disabled={!!busy} style={{ ...rowBtn, color: '#ef4444', borderColor: '#fecaca' }} title="Cancel this booking">
                     <X size={13} /> Cancel
                   </button>

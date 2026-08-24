@@ -190,6 +190,15 @@ const DEFAULT_ROLE_PERMISSIONS = {
 };
 
 // Auth Middleware — accepts token from Authorization header OR query string (for SSE/EventSource which can't set headers)
+// Issue a session token stamped with the user's CURRENT token_version, so a
+// password reset can invalidate everything issued before it. A path that
+// forgets this hands out a token that survives the reset meant to kill it.
+function signSession(userId, extra = {}) {
+  let tv = 0;
+  try { tv = db.prepare('SELECT token_version FROM users WHERE id = ?').get(userId)?.token_version || 0; } catch {}
+  return jwt.sign({ userId, tv, ...extra }, JWT_SECRET);
+}
+
 const auth = (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '') || req.query.token;
@@ -203,7 +212,17 @@ const auth = (req, res, next) => {
     if (decoded.imp) { req.impersonatedBy = decoded.imp.admin_id; req.impersonation = decoded.imp; }
 
     // Workspace context
-    const user = db.prepare('SELECT workspace_id, business_name, full_name FROM users WHERE id = ?').get(decoded.userId);
+    const user = db.prepare('SELECT workspace_id, business_name, full_name, token_version FROM users WHERE id = ?').get(decoded.userId);
+
+    // Session revocation (Phase 9). Tokens here are signed WITHOUT an expiry, so
+    // without this a stolen one outlives the password change meant to stop it.
+    // A missing `tv` claim counts as 0, which is what every token already in the
+    // wild carries — so deploying this logs nobody out. The first password reset
+    // bumps the user's version and those older tokens stop working.
+    if ((decoded.tv || 0) < (user?.token_version || 0)) {
+      return res.status(401).json({ error: 'Session ended — please sign in again.' });
+    }
+
     const workspaceId = user?.workspace_id || decoded.userId;
     req.workspaceId = workspaceId;
     req.senderName = user?.full_name || user?.business_name || 'Team Member';
@@ -1255,7 +1274,7 @@ app.post('/api/auth/register', async (req, res) => {
     db.prepare(`INSERT OR IGNORE INTO company_settings (id, user_id, company_name) VALUES (?, ?, ?)`)
       .run(generateId(), userId, businessName);
 
-    const token = jwt.sign({ userId }, JWT_SECRET);
+    const token = signSession(userId);
     res.status(201).json({
       token,
       user: { id: userId, email, business_name: businessName, role: 'super_admin', workspace_id: workspaceId },
@@ -1273,7 +1292,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET);
+    const token = signSession(user.id);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(user.workspace_id);
     const memberRow = db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(user.workspace_id || user.id, user.id);
     const role = memberRow?.role || 'super_admin';
@@ -1352,7 +1371,7 @@ app.post('/api/auth/accept-invite', async (req, res) => {
     invalidateWorkspaceMembers(member.workspace_id);
     db.prepare('UPDATE users SET workspace_id = ? WHERE id = ?').run(member.workspace_id, userId);
 
-    const token2 = jwt.sign({ userId }, JWT_SECRET);
+    const token2 = signSession(userId);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(member.workspace_id);
     res.json({ token: token2, user: { id: userId, email: member.invite_email, role: member.role, workspace_id: member.workspace_id }, workspace });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1408,7 +1427,7 @@ app.post('/api/auth/google', async (req, res) => {
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     }
 
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET);
+    const token = signSession(user.id);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(user.workspace_id);
     const memberRow = db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(user.workspace_id, user.id);
     const role = memberRow?.role || 'super_admin';
@@ -2522,9 +2541,32 @@ app.post('/api/leads/:leadId/messages/media', auth, (req, res) => {
 
 // Parse the JSON-stringified `items` field before sending to the client.
 // SQLite stores it as a string; the frontend needs a real array.
+// Is this invoice past its due date and still unpaid?
+//
+// Phase 9 (audit invoices-store-1). "Overdue" was a stat and a filter tab on the
+// invoices screen and NOTHING in the entire backend ever wrote that status, so
+// both were permanently zero — the one number a studio chasing money actually
+// wants. Derived on READ rather than swept by a cron: a stored status would need
+// a clock-driven job that races the payments ledger, and would go stale the
+// moment somebody edited a due date. Derivation cannot drift.
+//
+// Drafts are excluded: an unsent invoice cannot be late. So are paid and
+// cancelled, obviously.
+function isOverdue(inv) {
+  if (!inv || !inv.due_date) return false;
+  if (['paid', 'draft', 'cancelled', 'void'].includes(String(inv.status || '').toLowerCase())) return false;
+  const due = String(inv.due_date).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  return due < today;
+}
+
 function parseInvoice(inv) {
   if (!inv) return inv;
   try { inv.items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []); } catch { inv.items = []; }
+  // Every invoice response goes through here, so the whole app learns about
+  // overdue at once. `status` stays the STORED value; this is presentation.
+  inv.is_overdue = isOverdue(inv);
   return inv;
 }
 
@@ -6437,6 +6479,14 @@ require('./studio-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./video-ai')(app, db, { auth, generateId, broadcastToWorkspace });
 require('./studio-experience')(app, db, { auth, generateId, broadcastToWorkspace });
 paymentsApi = require('./payments')(app, db, { auth, generateId, broadcastToWorkspace, addContactHistory, logAudit, notify, clientBaseUrl: process.env.FRONTEND_URL || '' });
+
+// The way back in: there was no password reset of any kind, and the login page
+// carried a placeholder comment where the link should be.
+require('./account-recovery')(app, db, {
+  bcrypt, nodemailer, generateId, logAudit,
+  limiter: loginLimiter,
+  clientBaseUrl: process.env.FRONTEND_URL || '',
+});
 
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,

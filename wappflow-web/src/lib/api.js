@@ -557,6 +557,9 @@ export const bookingAPI = {
   cancel: (id) => api.post(`/booking/${id}/cancel`),
   // Turn an appointment into the work it represents. target: 'shoot' | 'invoice'.
   handoff: (id, target) => api.post(`/booking/${id}/handoff`, { target }),
+  // The client could reschedule from their manage link and the studio could not.
+  slots: (id) => api.get(`/booking/${id}/slots`),
+  reschedule: (id, start_at) => api.post(`/booking/${id}/reschedule`, { start_at }),
 };
 export const storeAPI = {
   products: () => api.get('/store/products'),
@@ -564,6 +567,8 @@ export const storeAPI = {
   updateProduct: (id, data) => api.put(`/store/products/${id}`, data),
   deleteProduct: (id) => api.delete(`/store/products/${id}`),
   orders: () => api.get('/store/orders'),
+  // Shareable shop links — one per published gallery.
+  links: () => api.get('/store/links'),
   orderStatus: (id, status) => api.post(`/store/orders/${id}/status`, { status }),
 };
 export async function fetchShop(token) {
