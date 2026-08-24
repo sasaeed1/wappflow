@@ -18,6 +18,9 @@ const pricing = require('./pricing');             // usage tracking + soft-limit
 const { describeWaError } = require('./wa-errors'); // unwraps minified whatsapp-web.js/puppeteer errors
 
 // VAPID keys (generate once, store in env for production)
+// Same shape of hazard, lower stakes: these defaults are in the public repo, so
+// push notifications signed with them are forgeable. Warned rather than fatal —
+// losing push is not worth refusing to serve the whole product over.
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BPismtnocRKwNB_MlJqoFdWIG5vKNGhw89sH0nut1Ms7mS2Jlod5htjjgL53Wd_X8emuODWC5a1P1Hy52oUqAv0';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '5FnXMUgUbQhTv4IelAJdA_y5SpeM344CJUIRQ9_oRiE';
 webpush.setVapidDetails('mailto:admin@wappflow.app', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -178,7 +181,20 @@ const avatarUpload = multer({
   }
 });
 
+// FAIL CLOSED. This fell back to a literal that is committed in a public
+// repository, so if .env ever failed to load the server would keep running and
+// happily accept tokens anybody could forge — an auth bypass that looks exactly
+// like a healthy boot. It happened once already: the box ran for a period with
+// no .env at all. Refusing to start is the correct behaviour; a studio noticing
+// their site is down is recoverable, a silent auth bypass is not.
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'your-secret-key-change-in-production') {
+  console.error('FATAL: JWT_SECRET is not set in production.');
+  console.error('Every session token would be signable by anyone who has read this repository.');
+  console.error('Fix: put JWT_SECRET=<64+ random chars> in backend/.env, then restart.');
+  console.error('Generate one with:  openssl rand -hex 48');
+  process.exit(1);
+}
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
