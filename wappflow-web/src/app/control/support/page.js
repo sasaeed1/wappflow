@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ccApi, fmtNum } from '@/lib/ccApi';
 import { Card, Pill, Stat } from '@/components/control/ControlShell';
+import { clickableRow, clickable } from '@/lib/a11y';
 
 const KINDS = ['bug', 'feature', 'escalation', 'question'];
 const PRIORITIES = ['low', 'medium', 'high'];
@@ -89,7 +90,7 @@ export default function Support() {
             {loading && <tr><td colSpan={6} style={{ padding: 20, color: 'var(--text-dim,#666)' }}>Loading…</td></tr>}
             {!loading && !tickets.length && <tr><td colSpan={6} style={{ padding: 20, color: 'var(--text-dim,#666)' }}>No tickets.</td></tr>}
             {tickets.map((t) => (
-              <tr key={t.id} onClick={() => setSelId(t.id)} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border,#1e1e26)' }}
+              <tr key={t.id} {...clickableRow(() => setSelId(t.id))} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border,#1e1e26)' }}
                 onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg,#0a0a0f)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
                 <td style={td}><div style={{ fontWeight: 600 }}>{t.subject || 'Untitled'}</div></td>
                 <td style={{ ...td, color: 'var(--text-muted,#9a9aa5)' }}>{t.workspace_name || '—'}</td>
@@ -152,7 +153,7 @@ function NewTicketModal({ onClose, onCreated }) {
               {wsResults.length > 0 && (
                 <div style={dropdown}>
                   {wsResults.map((w) => (
-                    <div key={w.id} onClick={() => { setWorkspace(w); setWsResults([]); }} style={dropItem}>
+                    <div key={w.id} {...clickable(() => { setWorkspace(w); setWsResults([]); })} style={dropItem}>
                       <span style={{ fontWeight: 600 }}>{w.name || 'Untitled'}</span>
                       <span style={{ color: 'var(--text-dim,#666)', fontSize: 11.5 }}>{w.owner_email || ''}</span>
                     </div>

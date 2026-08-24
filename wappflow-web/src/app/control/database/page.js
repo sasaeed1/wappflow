@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ccApi, ccAuth, fmtNum } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
+import { clickable } from '@/lib/a11y';
 
 export default function Database() {
   // ── Explorer state ──
@@ -76,7 +77,7 @@ export default function Database() {
           {tables.map((t) => {
             const active = selected === t.name;
             return (
-              <div key={t.name} onClick={() => openTable(t.name, 0)}
+              <div key={t.name} {...clickable(() => openTable(t.name, 0))}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '9px 14px', cursor: 'pointer', fontSize: 13,
                   background: active ? 'color-mix(in srgb, var(--accent,#6366f1) 14%, transparent)' : 'transparent',
                   color: active ? 'var(--accent,#818cf8)' : 'var(--text,#e8e8ea)', borderBottom: '1px solid var(--border,#1e1e26)' }}>

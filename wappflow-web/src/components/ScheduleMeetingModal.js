@@ -136,7 +136,7 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
             <form onSubmit={handleGoogleSchedule} className="sm-form">
               <div className="sm-field">
                 <label>Title</label>
-                <input
+                <input aria-label="Title"
                   type="text"
                   data-autofocus
                   value={form.title}
@@ -148,7 +148,7 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
               <div className="sm-row">
                 <div className="sm-field">
                   <label>Date</label>
-                  <input
+                  <input aria-label="Date"
                     type="date"
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
@@ -157,7 +157,7 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
                 </div>
                 <div className="sm-field">
                   <label>Time</label>
-                  <input
+                  <input aria-label="Time"
                     type="time"
                     value={form.time}
                     onChange={(e) => setForm({ ...form, time: e.target.value })}
@@ -166,7 +166,7 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
                 </div>
                 <div className="sm-field" style={{ maxWidth: 120 }}>
                   <label>Duration</label>
-                  <select
+                  <select aria-label="Duration"
                     value={form.duration}
                     onChange={(e) => setForm({ ...form, duration: parseInt(e.target.value, 10) })}
                   >

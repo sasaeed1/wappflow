@@ -7,6 +7,7 @@ import {
   Bell, BarChart2, Search, Zap, ChevronRight,
   Trophy, ThumbsDown, Star, Clock, MessageSquare
 } from 'lucide-react';
+import { clickable } from '@/lib/a11y';
 
 const API = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001';
 const authHeader = () => ({
@@ -152,7 +153,7 @@ export default function AICommandCenter({ enabled = true }) {
                 <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>AI Command Center</p>
                 <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Ask anything about your CRM</p>
               </div>
-              <button onClick={() => setOpen(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}>
+              <button aria-label="Close" onClick={() => setOpen(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}>
                 <X size={16} />
               </button>
             </div>
@@ -169,7 +170,7 @@ export default function AICommandCenter({ enabled = true }) {
                   placeholder="Show hot leads, summarize today, find Ali..."
                   style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: 'var(--text)', background: 'transparent' }}
                 />
-                {command && <button onClick={() => setCommand('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}><X size={12} /></button>}
+                {command && <button aria-label="Close" onClick={() => setCommand('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}><X size={12} /></button>}
               </div>
               <button onClick={() => handleCommand()} disabled={!command.trim() || loading}
                 style={{ width: 40, height: 40, borderRadius: 12, border: 'none', background: command.trim() && !loading ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'var(--border)', color: command.trim() && !loading ? 'white' : '#9ca3af', cursor: command.trim() && !loading ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -282,7 +283,7 @@ export default function AICommandCenter({ enabled = true }) {
                       </div>
                     ) : result.data.leads.map(lead => (
                       <div key={lead.id}
-                        onClick={() => { router.push(`/leads/${lead.id}`); setOpen(false); }}
+                        {...clickable(() => { router.push(`/leads/${lead.id}`); setOpen(false); })}
                         style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid var(--border)', cursor: 'pointer', transition: 'all 0.15s' }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.background = 'rgba(139,92,246,0.10)'; }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}>
@@ -330,7 +331,7 @@ export default function AICommandCenter({ enabled = true }) {
                     {result.data.todayLeads?.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {result.data.todayLeads.map(lead => (
-                          <div key={lead.id} onClick={() => { router.push(`/leads/${lead.id}`); setOpen(false); }}
+                          <div key={lead.id} {...clickable(() => { router.push(`/leads/${lead.id}`); setOpen(false); })}
                             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface)', borderRadius: 10, border: '1.5px solid var(--border)', cursor: 'pointer' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}>

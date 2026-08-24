@@ -90,7 +90,7 @@ export default function StudioStorePage() {
                   <div key={oi} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <input value={o.label} onChange={e => setOpt(i, oi, 'label', e.target.value)} placeholder="e.g. 8×10" style={{ flex: 1, ...fld }} />
                     <input type="number" value={o.price} onChange={e => setOpt(i, oi, 'price', e.target.value)} style={{ width: 90, ...fld }} />
-                    <button onClick={() => delOpt(i, oi)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                    <button aria-label="Delete" onClick={() => delOpt(i, oi)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={14} /></button>
                   </div>
                 ))}
               </div>

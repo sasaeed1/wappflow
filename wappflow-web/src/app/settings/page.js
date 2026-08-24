@@ -198,7 +198,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
         <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
           <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Currency</label>
-            <select
+            <select aria-label="Currency"
               value={company.currency || 'USD'}
               onChange={e => {
                 const cur = CURRENCIES.find(c => c.code === e.target.value);
@@ -211,7 +211,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
           </div>
           <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Currency Symbol</label>
-            <input
+            <input aria-label="Currency Symbol"
               value={company.currency_symbol || '$'}
               onChange={e => setCompany(p => ({ ...p, currency_symbol: e.target.value }))}
               style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
@@ -242,7 +242,7 @@ function CurrencyTab({ company, setCompany, onSave, saving }) {
           <Input label="Tax Name" value={company.tax_name} onChange={e => setCompany(p => ({ ...p, tax_name: e.target.value }))} placeholder="GST / VAT / Tax" />
           <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Default Tax Rate (%)</label>
-            <input
+            <input aria-label="Default Tax Rate (%)"
               type="number" min="0" max="100" step="0.1"
               value={company.tax_rate || 0}
               onChange={e => setCompany(p => ({ ...p, tax_rate: parseFloat(e.target.value) || 0 }))}
@@ -498,14 +498,14 @@ function EmailTemplatesTab({ showToast }) {
           <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px', marginBottom: 14 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Trigger Event</label>
-              <select value={form.trigger_event} onChange={e => setForm(p => ({ ...p, trigger_event: e.target.value }))}
+              <select aria-label="Trigger Event" value={form.trigger_event} onChange={e => setForm(p => ({ ...p, trigger_event: e.target.value }))}
                 style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', background: 'var(--surface)', boxSizing: 'border-box' }}>
                 {TRIGGERS.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Send After (days)</label>
-              <input type="number" min="0" value={form.delay_days} onChange={e => setForm(p => ({ ...p, delay_days: parseInt(e.target.value) || 0 }))}
+              <input aria-label="Send After (days)" type="number" min="0" value={form.delay_days} onChange={e => setForm(p => ({ ...p, delay_days: parseInt(e.target.value) || 0 }))}
                 style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
             </div>
           </div>
@@ -705,7 +705,8 @@ function TagsTab({ showToast }) {
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 10 }}>Color</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
             {PALETTE.map(c => (
-              <button key={c} onClick={() => setForm(p => ({ ...p, color: c }))} style={{
+              <button key={c} onClick={() => setForm(p => ({ ...p, color: c }))}
+                aria-label={`Colour ${c}`} aria-pressed={form.color === c} style={{
                 width: 30, height: 30, borderRadius: '50%', background: c, cursor: 'pointer',
                 border: `3px solid ${form.color === c ? '#111827' : 'transparent'}`,
                 boxShadow: form.color === c ? `0 0 0 2px white, 0 0 0 4px ${c}` : 'none',
@@ -734,8 +735,8 @@ function TagsTab({ showToast }) {
           <div key={tag.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 24, background: tag.color + '18', border: `1.5px solid ${tag.color}44` }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: tag.color }} />
             <span style={{ fontSize: 13, fontWeight: 700, color: tag.color }}>{tag.name}</span>
-            <button onClick={() => { setEditing(tag); setForm({ name: tag.name, color: tag.color }); setShowForm(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tag.color, opacity: 0.7, display: 'flex' }}><Edit2 size={12} /></button>
-            <button onClick={async () => { const ok = await confirm({ title: 'Delete this tag?', message: 'Leads currently tagged will lose it.', confirmLabel: 'Delete', tone: 'danger' }); if (!ok) return; await tagsAPI.delete(tag.id); fetchTags(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', opacity: 0.6, display: 'flex' }}><Trash2 size={12} /></button>
+            <button aria-label="Edit" onClick={() => { setEditing(tag); setForm({ name: tag.name, color: tag.color }); setShowForm(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tag.color, opacity: 0.7, display: 'flex' }}><Edit2 size={12} /></button>
+            <button aria-label="Delete" onClick={async () => { const ok = await confirm({ title: 'Delete this tag?', message: 'Leads currently tagged will lose it.', confirmLabel: 'Delete', tone: 'danger' }); if (!ok) return; await tagsAPI.delete(tag.id); fetchTags(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', opacity: 0.6, display: 'flex' }}><Trash2 size={12} /></button>
           </div>
         ))}
         {tags.length === 0 && !showForm && <p style={{ color: 'var(--text-dim)', fontSize: 14 }}>No tags yet. Create one above.</p>}
@@ -946,7 +947,7 @@ function NotificationsTab({ showToast }) {
 
         <div>
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 6 }}>Master volume</label>
-          <input type="range" min={0} max={1} step={0.05} value={sound.volume} onChange={(e) => sound.setVolume(parseFloat(e.target.value))}
+          <input aria-label="Master volume" type="range" min={0} max={1} step={0.05} value={sound.volume} onChange={(e) => sound.setVolume(parseFloat(e.target.value))}
             style={{ width: '100%', accentColor: '#818cf8' }} />
         </div>
       </div>
@@ -1423,7 +1424,7 @@ function WorkspaceTab({ showToast, router }) {
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 8 }}>Workspace Name</label>
           {editingName ? (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <input value={wsName} onChange={e => setWsName(e.target.value)} autoFocus
+              <input aria-label="Workspace Name" value={wsName} onChange={e => setWsName(e.target.value)} autoFocus
                 style={{ flex: 1, padding: '11px 14px', border: '1.5px solid #6366f1', borderRadius: 11, fontSize: 14, outline: 'none', color: 'var(--text)', boxSizing: 'border-box' }}
                 onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
               />
@@ -1965,7 +1966,7 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>{account.account_name}</p>
-                <button onClick={() => setEditingName(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}><Edit2 size={12} /></button>
+                <button aria-label="Edit" onClick={() => setEditingName(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}><Edit2 size={12} /></button>
               </div>
             )}
             <p style={{ fontSize: 12, color: isConnected ? '#10b981' : isError ? '#ef4444' : '#f59e0b', margin: 0, fontWeight: 600 }}>
@@ -2004,7 +2005,7 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
               Disconnect
             </button>
           )}
-          <button onClick={onDelete} style={{ padding: '7px 10px', background: 'transparent', border: '1.5px solid #ef444430', color: '#ef4444', borderRadius: 9, fontSize: 12, cursor: 'pointer', display: 'flex' }}>
+          <button aria-label="Delete" onClick={onDelete} style={{ padding: '7px 10px', background: 'transparent', border: '1.5px solid #ef444430', color: '#ef4444', borderRadius: 9, fontSize: 12, cursor: 'pointer', display: 'flex' }}>
             <Trash2 size={13} />
           </button>
         </div>
@@ -2120,7 +2121,7 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
               <Edit2 size={12} /> Edit
             </button>
           )}
-          <button onClick={onDelete} style={{ padding: '6px 10px', borderRadius: 9, border: '1.5px solid #ef444430', background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
+          <button aria-label="Delete" onClick={onDelete} style={{ padding: '6px 10px', borderRadius: 9, border: '1.5px solid #ef444430', background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
             <Trash2 size={13} />
           </button>
         </div>
@@ -3012,7 +3013,7 @@ function AICommandTab({ showToast }) {
           <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Tone</label>
-              <select
+              <select aria-label="Tone"
                 value={profile.tone || 'professional'}
                 onChange={e => setProfile(p => ({ ...p, tone: e.target.value }))}
                 style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}

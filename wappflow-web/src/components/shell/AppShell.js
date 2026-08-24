@@ -13,6 +13,7 @@ import { MODULES, isNavActive } from './modules';
 import { useSession, useSignOut, useAuthGuard } from './session';
 import { useSummary } from './summary';
 import { usePlan } from '@/lib/plan';
+import { clickable } from '@/lib/a11y';
 
 // AppShell — ONE shell for every authenticated module (Phase 2).
 //
@@ -103,6 +104,10 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      {/* Off-screen until focused. The first Tab on any page offers to jump past
+          the navigation — without it a keyboard user tabs through every nav item,
+          on every page, before reaching what they came for. */}
+      <a href="#wf-main" className="wf-skip-link">Skip to main content</a>
       <header
         className="wf-shell"
         style={{
@@ -115,7 +120,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
         <ModuleSwitcher current={mod.key} />
 
         <div
-          onClick={() => router.push(mod.home)}
+          {...clickable(() => router.push(mod.home))}
           style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', marginRight: 6 }}
         >
           <span style={{ width: 28, height: 28, borderRadius: 8, background: mod.mark, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -189,7 +194,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
       {subHeader}
 
       {/* .wf-page is load-bearing: the mobile rules in globals.css key off it. */}
-      <div className={mod.dialectClass ? `wf-page ${mod.dialectClass}` : 'wf-page'}>{children}</div>
+      <main id="wf-main" className={mod.dialectClass ? `wf-page ${mod.dialectClass}` : 'wf-page'}>{children}</main>
 
       {/* Module-scoped floating assistants. These used to be mounted by NavBar, which
           meant they existed only on CRM pages by accident of which shell a page picked. */}

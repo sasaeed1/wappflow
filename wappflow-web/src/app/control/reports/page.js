@@ -93,13 +93,13 @@ export default function Reports() {
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, background: 'var(--surface,#14141b)', border: '1px solid var(--border,#1e1e26)', borderRadius: 14, padding: 22 }}>
             <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700 }}>New report</h3>
             <label style={lbl}>Name</label>
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inp} autoFocus />
+            <input aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inp} autoFocus />
             <label style={lbl}>Dataset</label>
-            <select value={form.dataset} onChange={(e) => setForm({ ...form, dataset: e.target.value })} style={inp}>
+            <select aria-label="Dataset" value={form.dataset} onChange={(e) => setForm({ ...form, dataset: e.target.value })} style={inp}>
               {DATASETS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
             </select>
             <label style={lbl}>Schedule</label>
-            <select value={form.schedule} onChange={(e) => setForm({ ...form, schedule: e.target.value })} style={inp}>
+            <select aria-label="Schedule" value={form.schedule} onChange={(e) => setForm({ ...form, schedule: e.target.value })} style={inp}>
               {SCHEDULES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <label style={lbl}>Recipients (comma-separated emails)</label>

@@ -7,6 +7,7 @@ import { csAPI, mediaUrl } from '../../../lib/api';
 import RoomPanel from '@/components/RoomPanel';
 import { BLOCK_TYPES, defaultData, BlockView, DocFrame, computeTotals } from '../blocks';
 import '../contracts.css';
+import { clickable } from '@/lib/a11y';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const THEMES = [['monochrome', 'Monochrome'], ['editorial', 'Editorial'], ['executive', 'Executive']];
@@ -105,7 +106,7 @@ export default function BuilderPage() {
             )}
             {blocks.map((b, i) => (
               <div key={b.id}>
-                <div className={`cs-blockwrap ${selected === b.id ? 'is-sel' : ''}`} onClick={() => setSelected(b.id)}>
+                <div className={`cs-blockwrap ${selected === b.id ? 'is-sel' : ''}`} {...clickable(() => setSelected(b.id))}>
                   <div className="cs-block-ctl">
                     <Ctl onClick={(e) => { e.stopPropagation(); move(i, -1); }}><ChevronUp size={13} /></Ctl>
                     <Ctl onClick={(e) => { e.stopPropagation(); move(i, 1); }}><ChevronDown size={13} /></Ctl>
@@ -126,7 +127,7 @@ export default function BuilderPage() {
           <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 560, maxHeight: '82vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Add a block</h3>
-              <button onClick={() => setAddAt(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+              <button aria-label="Close" onClick={() => setAddAt(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
             </div>
             {GROUPS.map(g => (
               <div key={g} style={{ marginBottom: 14 }}>
@@ -185,7 +186,7 @@ function ClausePickerModal({ onClose, onInsert }) {
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 460, maxHeight: '80vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Insert a clause</h3>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
         </div>
         {!clauses ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p>
           : clauses.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No clauses yet — add them in Contracts Studio → Settings → Clause library.</p>
@@ -220,7 +221,7 @@ function VersionsModal({ id, onClose }) {
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 460, maxHeight: '82vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><History size={18} style={{ color: 'var(--accent)' }} /> Version history</h3>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '0 0 14px' }}>A snapshot is saved every time you send. Restore brings back that content.</p>
         {!data ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p>
@@ -287,7 +288,7 @@ function PeopleModal({ id, onClose }) {
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '86vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Users size={18} style={{ color: 'var(--accent)' }} /> Signers & activity</h3>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
         </div>
 
         {!data ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p> : (
@@ -394,7 +395,7 @@ function AIModal({ id, type, blocks, setBlocks, selectedBlock, updateBlock, onCl
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '86vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Sparkles size={18} style={{ color: 'var(--accent)' }} /> AI assistant</h3>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
         </div>
         <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--surface2)', border: '1px solid var(--border)', marginBottom: 16 }}>
           {[['assist', 'Assist'], ['draft', 'Draft new']].map(([t, l]) => <button key={t} onClick={() => { setTab(t); setOut(null); setErr(''); }} style={{ padding: '6px 14px', borderRadius: 7, border: 'none', cursor: 'pointer', background: tab === t ? 'var(--accent)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-muted)', fontSize: 12.5, fontWeight: tab === t ? 700 : 500 }}>{l}</button>)}
@@ -478,7 +479,7 @@ function SettingsModal({ id, settings, setSettings, hasLead, wsLetterhead, onClo
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '86vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Automations & settings</h3>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '0 0 8px' }}>What happens the moment this document is signed — the contract acts on the relationship.</p>
 
@@ -566,7 +567,7 @@ function SendModal({ id, doc, hasLead, defaultExpire = 0, onClose }) {
           <>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Send document</h3>
-              <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
+              <button aria-label="Close" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={17} /></button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px' }}>{doc.title || 'Untitled'} — deliver to the client and generate a secure signing link.</p>
             {!hasLead && <div style={{ padding: '10px 12px', borderRadius: 9, background: 'color-mix(in srgb, #f59e0b 14%, transparent)', border: '1px solid color-mix(in srgb, #f59e0b 40%, transparent)', fontSize: 12.5, color: 'var(--text)', marginBottom: 14 }}>No client linked — you’ll still get a shareable link to send manually.</div>}

@@ -17,6 +17,7 @@ import HuddleModal from '@/components/HuddleModal';
 import { useConfirm } from '@/lib/confirm';
 import { useSound } from '@/lib/sounds';
 import { useRealtime } from '@/components/shell/realtime';
+import { clickable } from '@/lib/a11y';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '✅', '👀', '🚀'];
 
@@ -139,7 +140,7 @@ function ChannelModal({ onSave, onClose }) {
       <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 18, padding: 28, width: 440, boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Create Channel</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={18} /></button>
         </div>
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Channel Name</label>
@@ -156,7 +157,7 @@ function ChannelModal({ onSave, onClose }) {
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 20 }}>
           <div style={{ width: 36, height: 20, borderRadius: 10, background: isPrivate ? '#6366f1' : 'var(--border)', position: 'relative', transition: 'background 0.2s', cursor: 'pointer' }}
-            onClick={() => setIsPrivate(!isPrivate)}>
+            {...clickable(() => setIsPrivate(!isPrivate))}>
             <div style={{ position: 'absolute', top: 2, left: isPrivate ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: 'var(--surface)', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
           </div>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{isPrivate ? <><Lock size={12} style={{ display: 'inline', marginRight: 4 }} />Private channel</> : 'Public channel'}</span>
@@ -214,7 +215,7 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
 
         {/* Reply context — click to open the thread */}
         {msg.reply_to && (
-          <div onClick={() => onOpenThread(msg.reply_to)} title="View thread"
+          <div {...clickable(() => onOpenThread(msg.reply_to))} title="View thread"
             style={{ background: 'var(--surface2)', borderLeft: '3px solid #6366f1', borderRadius: '0 8px 8px 0', padding: '4px 10px', marginBottom: 4, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>
             ↩ Replying to a message
           </div>
@@ -871,7 +872,7 @@ export default function ChatPage() {
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', marginBottom: 4 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Channels</span>
-            <button onClick={() => setShowCreateChannel(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: 2 }}
+            <button aria-label="Add" onClick={() => setShowCreateChannel(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: 2 }}
               onMouseEnter={e => e.currentTarget.style.color = 'white'} onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}>
               <Plus size={14} />
             </button>
@@ -1102,7 +1103,7 @@ export default function ChatPage() {
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', flex: 1 }}>
                   Replying to <strong>{replyTo.sender_name}</strong>: {replyTo.body?.slice(0, 60)}...
                 </span>
-                <button onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>
+                <button aria-label="Cancel reply" onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>
               </div>
             )}
 
@@ -1253,7 +1254,7 @@ export default function ChatPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 18px', borderBottom: '1px solid #e5e7eb' }}>
               <MessagesSquare size={16} color="#6366f1" />
               <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>Thread</span>
-              <button onClick={() => setThreadFor(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}><X size={17} /></button>
+              <button aria-label="Close thread" onClick={() => setThreadFor(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}><X size={17} /></button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               {!threadData ? (
@@ -1279,7 +1280,7 @@ export default function ChatPage() {
             <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid #e5e7eb' }}>
               <input value={threadReply} onChange={e => setThreadReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendThreadReply(); } }}
                 placeholder="Reply in thread…" style={{ flex: 1, padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
-              <button onClick={sendThreadReply} disabled={!threadReply.trim()} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 9, padding: '0 14px', cursor: threadReply.trim() ? 'pointer' : 'default', opacity: threadReply.trim() ? 1 : 0.5 }}><Send size={15} /></button>
+              <button aria-label="Send" onClick={sendThreadReply} disabled={!threadReply.trim()} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 9, padding: '0 14px', cursor: threadReply.trim() ? 'pointer' : 'default', opacity: threadReply.trim() ? 1 : 0.5 }}><Send size={15} /></button>
             </div>
           </div>
         </div>

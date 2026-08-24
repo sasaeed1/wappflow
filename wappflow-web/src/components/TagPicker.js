@@ -23,7 +23,7 @@ export function TagChip({ tag, onRemove, size = 'md' }) {
       <span style={{ width: sm ? 5 : 6, height: sm ? 5 : 6, borderRadius: '50%', background: tag.color, flexShrink: 0 }} />
       {tag.name}
       {onRemove && (
-        <button onClick={e => { e.stopPropagation(); onRemove(tag.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: tag.color, opacity: 0.7, marginLeft: 1 }}>
+        <button aria-label="Close" onClick={e => { e.stopPropagation(); onRemove(tag.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: tag.color, opacity: 0.7, marginLeft: 1 }}>
           <X style={{ width: sm ? 9 : 10, height: sm ? 9 : 10 }} />
         </button>
       )}

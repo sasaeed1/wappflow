@@ -14,6 +14,7 @@ const kindOf = (a) => (a?.type === 'video' ? 'video' : 'photo');
 const fmtDur = (ms) => { if (!ms) return null; const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 import { mediaAPI, mediaUrl, studioAiAPI, videoAiAPI } from '../../../lib/api';
 import RoomPanel from '@/components/RoomPanel';
+import { clickable } from '@/lib/a11y';
 
 function FocusChip({ sharpness }) {
   if (sharpness == null) return null;
@@ -57,8 +58,8 @@ function Lightbox({ assets, index, onClose, onNav, onAdvance, onDelete, selected
         : <img onClick={e => e.stopPropagation()} src={mediaUrl(a.variants?.web || a.url)} alt={a.filename} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain' }} />}
 
       <button onClick={(e) => { e.stopPropagation(); onClose(); }} style={lbBtn} title="Close (Esc)" aria-label="Close"><X size={20} /></button>
-      <button onClick={(e) => { e.stopPropagation(); onNav(-1); }} disabled={index === 0} style={{ ...lbArrow, left: 16, opacity: index === 0 ? 0.25 : 1 }}><ChevronLeft size={26} /></button>
-      <button onClick={(e) => { e.stopPropagation(); onNav(1); }} disabled={index === assets.length - 1} style={{ ...lbArrow, right: 16, opacity: index === assets.length - 1 ? 0.25 : 1 }}><ChevronRight size={26} /></button>
+      <button aria-label="Previous" onClick={(e) => { e.stopPropagation(); onNav(-1); }} disabled={index === 0} style={{ ...lbArrow, left: 16, opacity: index === 0 ? 0.25 : 1 }}><ChevronLeft size={26} /></button>
+      <button aria-label="Next" onClick={(e) => { e.stopPropagation(); onNav(1); }} disabled={index === assets.length - 1} style={{ ...lbArrow, right: 16, opacity: index === assets.length - 1 ? 0.25 : 1 }}><ChevronRight size={26} /></button>
 
       <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}>
         <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, padding: '0 6px' }}>{index + 1} / {assets.length}</span>
@@ -83,11 +84,11 @@ function CreateGalleryModal({ onClose, onCreate }) {
     finally { setSaving(false); }
   };
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 440 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
           <h2>New gallery</h2>
-          <button onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
         </div>
         <label className="ms-label">Gallery name</label>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Highlights" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
@@ -123,11 +124,11 @@ function ProofingRequestModal({ gallery, onClose, onCreate }) {
     finally { setSaving(false); }
   };
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 440 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Request selections</h2>
-          <button onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
         </div>
         <p className="ms-modal-sub" style={{ marginBottom: 22 }}>Your client picks their favourites right inside the gallery, then submits.</p>
         <label className="ms-label">Prompt</label>
@@ -392,7 +393,7 @@ export default function ProjectPage() {
                 <a href={banner.link} target="_blank" rel="noreferrer" className="ms-btn-text" style={{ textDecoration: 'none' }}><ExternalLink size={13} /> Open</a>
               </>
             )}
-            <button onClick={() => setBanner(null)} className="ms-iconbtn" style={{ border: 'none', width: 28, height: 28 }}><X size={15} /></button>
+            <button aria-label="Close" onClick={() => setBanner(null)} className="ms-iconbtn" style={{ border: 'none', width: 28, height: 28 }}><X size={15} /></button>
           </div>
         )}
 
@@ -531,7 +532,7 @@ export default function ProjectPage() {
               const poster = isVideo ? (a.poster_url || a.thumb_url) : a.thumb_url;
               const dur = isVideo ? fmtDur(a.v_duration_ms) : null;
               return (
-                <div key={a.id} onClick={() => setLightbox(i)} className={`ms-photo${isSel ? ' is-selected' : ''}`} title={isVideo ? 'Click to play' : 'Click to view full screen'}
+                <div key={a.id} {...clickable(() => setLightbox(i))} className={`ms-photo${isSel ? ' is-selected' : ''}`} title={isVideo ? 'Click to play' : 'Click to view full screen'}
                   style={collage ? { aspectRatio: isVideo && !poster ? '16/9' : 'auto', breakInside: 'avoid', marginBottom: 'var(--ms-grid-gap)', display: 'inline-block', width: '100%' } : undefined}>
                   {poster
                     ? <img src={mediaUrl(poster)} alt={a.filename} loading="lazy" style={{ opacity: (isVideo ? a.poster_url : a.variants?.thumb) ? 1 : 0.7, ...(collage ? { height: 'auto' } : {}) }} />
@@ -541,7 +542,7 @@ export default function ProjectPage() {
                     <span className="ms-play-badge" aria-hidden><Play size={18} fill="#fff" color="#fff" /></span>
                   )}
 
-                  <div onClick={(e) => { e.stopPropagation(); toggle(a.id); }} className="ms-photo-check" style={isSel ? { background: 'var(--ms-ink)', borderColor: 'var(--ms-ink)' } : undefined} title="Select">
+                  <div {...clickable((e) => { e.stopPropagation(); toggle(a.id); })} className="ms-photo-check" style={isSel ? { background: 'var(--ms-ink)', borderColor: 'var(--ms-ink)' } : undefined} title="Select">
                     {isSel && <Check size={13} color="var(--ms-paper)" />}
                   </div>
 
@@ -602,10 +603,10 @@ export default function ProjectPage() {
             </p>
 
             <label style={wmLbl}>Title</label>
-            <input value={editing.title} onChange={(e) => setEditing(s => ({ ...s, title: e.target.value }))} style={wmInp} />
+            <input aria-label="Title" value={editing.title} onChange={(e) => setEditing(s => ({ ...s, title: e.target.value }))} style={wmInp} />
 
             <label style={wmLbl}>Who can open it</label>
-            <select value={editing.visibility} onChange={(e) => setEditing(s => ({ ...s, visibility: e.target.value }))} style={wmInp}>
+            <select aria-label="Who can open it" value={editing.visibility} onChange={(e) => setEditing(s => ({ ...s, visibility: e.target.value }))} style={wmInp}>
               <option value="private">Private — anyone with the link</option>
               <option value="password">Password protected</option>
               <option value="public">Public</option>
@@ -621,7 +622,7 @@ export default function ProjectPage() {
             )}
 
             <label style={wmLbl}>Access ends</label>
-            <input type="date" value={editing.expires_at || ''}
+            <input aria-label="Access ends" type="date" value={editing.expires_at || ''}
                    onChange={(e) => setEditing(s => ({ ...s, expires_at: e.target.value }))} style={{ ...wmInp, marginBottom: 4 }} />
             <p style={{ fontSize: 11.5, color: 'var(--ms-ink-3,#888)', margin: '0 0 14px' }}>
               The client has all of that day. Leave it empty for no expiry — you can clear it any time to give access back.
@@ -703,7 +704,7 @@ function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 460, maxHeight: '88vh', overflowY: 'auto', background: 'var(--ms-paper, #fff)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ms-ink, #14120f)', display: 'inline-flex', alignItems: 'center', gap: 8 }}><Droplets size={18} /> Watermark</h3>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ms-ink-3, #888)' }}><X size={17} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ms-ink-3, #888)' }}><X size={17} /></button>
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3, #888)', margin: '0 0 12px' }}>Applies to {count} selected photo{count === 1 ? '' : 's'}. Originals are kept clean — only the client gallery shows the watermark.</p>
 
@@ -750,9 +751,9 @@ function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply
         </div>
 
         <label style={wmLbl}>Size — {cfg.size}% of width</label>
-        <input type="range" min={8} max={80} value={cfg.size} onChange={e => set({ size: Number(e.target.value) })} style={{ width: '100%', marginBottom: 12 }} />
+        <input aria-label="Size — % of width" type="range" min={8} max={80} value={cfg.size} onChange={e => set({ size: Number(e.target.value) })} style={{ width: '100%', marginBottom: 12 }} />
         <label style={wmLbl}>Opacity — {Math.round(cfg.opacity * 100)}%</label>
-        <input type="range" min={5} max={100} value={Math.round(cfg.opacity * 100)} onChange={e => set({ opacity: Number(e.target.value) / 100 })} style={{ width: '100%', marginBottom: 16 }} />
+        <input aria-label="Opacity — %" type="range" min={5} max={100} value={Math.round(cfg.opacity * 100)} onChange={e => set({ opacity: Number(e.target.value) / 100 })} style={{ width: '100%', marginBottom: 16 }} />
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => onApply(cfg)} disabled={cfg.type === 'logo' && !cfg.logo_url} style={{ flex: 1, padding: '13px', borderRadius: 11, border: 'none', cursor: 'pointer', background: 'var(--ms-ink, #14120f)', color: '#fff', fontWeight: 800, fontSize: 15, opacity: (cfg.type === 'logo' && !cfg.logo_url) ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Droplets size={15} /> Apply to {count} photo{count === 1 ? '' : 's'}</button>
@@ -787,7 +788,7 @@ function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '88vh', overflowY: 'auto', background: 'var(--ms-paper,#fff)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ms-ink,#14120f)', display: 'inline-flex', alignItems: 'center', gap: 8 }}><Wand2 size={18} /> Studio AI</h3>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ms-ink-3,#888)' }}><X size={17} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ms-ink-3,#888)' }}><X size={17} /></button>
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3,#888)', margin: '0 0 14px' }}>AI advises — you confirm. Selections are explainable and non-destructive.</p>
 

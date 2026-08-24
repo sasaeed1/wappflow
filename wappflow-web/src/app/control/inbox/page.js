@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, TrendingUp, Pause, Sparkles, Flag, X } from 'lucide-react';
 import { ccApi } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
+import { clickable } from '@/lib/a11y';
 
 const KIND_META = {
   suspended: { icon: Pause, label: 'Suspended' },
@@ -47,7 +48,7 @@ export default function FounderInbox() {
           return (
             <div key={it.id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border,#1e1e26)' }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', background: 'var(--bg,#0a0a0f)', flexShrink: 0 }}><Icon size={16} /></div>
-              <div style={{ flex: 1, minWidth: 0, cursor: it.link ? 'pointer' : 'default' }} onClick={() => it.link && router.push(it.link)}>
+              <div style={{ flex: 1, minWidth: 0, cursor: it.link ? 'pointer' : 'default' }} {...clickable(() => it.link && router.push(it.link))}>
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>{it.title}</div>
                 {it.body && <div style={{ fontSize: 12, color: 'var(--text-dim,#666)' }}>{it.body}</div>}
               </div>

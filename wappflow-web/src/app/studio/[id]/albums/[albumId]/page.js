@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, FileText, Download, Loader, Sparkles, X } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
+import { clickable } from '@/lib/a11y';
 
 const SLOTS = { single: 1, 'two-h': 2, 'two-v': 2, three: 3, grid4: 4 };
 const LAYOUT_OPTIONS = [['single', 'Single'], ['two-h', '2 across'], ['two-v', '2 stacked'], ['three', '3 across'], ['grid4', 'Grid of 4']];
@@ -15,7 +16,7 @@ function PagePreview({ page, activeIndex, ratio, onSlot }) {
     const s = page.slots[i];
     const active = activeIndex === i;
     return (
-      <div key={i} onClick={() => onSlot(i)} style={{
+      <div key={i} {...clickable(() => onSlot(i))} style={{
         position: 'relative', flex: 1, minWidth: 0, minHeight: 0, borderRadius: 5, cursor: 'pointer',
         background: s?.thumb_url ? `center/cover no-repeat url(${mediaUrl(s.thumb_url)})` : 'var(--surface2)',
         border: active ? '2px solid var(--accent)' : '1px dashed var(--border)',

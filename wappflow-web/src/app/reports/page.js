@@ -291,12 +291,12 @@ export default function ReportsPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Start</label>
-                    <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={customEnd || undefined}
+                    <input aria-label="Start" type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={customEnd || undefined}
                       style={{ width: '100%', padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)' }} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>End</label>
-                    <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} min={customStart || undefined} max={new Date().toISOString().slice(0, 10)}
+                    <input aria-label="End" type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} min={customStart || undefined} max={new Date().toISOString().slice(0, 10)}
                       style={{ width: '100%', padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)' }} />
                   </div>
                 </div>

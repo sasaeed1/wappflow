@@ -20,6 +20,7 @@ import { SkeletonRow } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { invoiceStatusMeta, displayInvoiceStatus } from '@/lib/invoiceStatus';
 import { buildInvoiceHTML } from '@/lib/invoiceDoc';
+import { clickable } from '@/lib/a11y';
 
 // Invoice status presentation now lives in the shared registry (lib/invoiceStatus.js) rendered
 // through <Badge>. The printed-document status colors below (statusColors) are a separate,
@@ -64,7 +65,7 @@ function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, 
               </div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer', color: 'var(--text-muted)' }}>
             <X size={18} />
           </button>
         </div>
@@ -206,7 +207,7 @@ function SendInvoiceModal({ invoice, company, onClose, onSent }) {
             <h3 id="send-inv-title" style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Email Invoice</h3>
             <p style={{ fontSize: 12.5, color: 'var(--text-dim)', margin: 0 }}>{invoice.invoice_number || `#${invoice.id}`} · A premium invoice will be sent.</p>
           </div>
-          <button onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 7, cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 7, cursor: 'pointer', color: 'var(--text-muted)' }}>
             <X size={17} />
           </button>
         </div>
@@ -428,7 +429,7 @@ export default function InvoicesPage() {
             return (
               <div key={inv.id}
                 style={{ display: 'grid', gridTemplateColumns: '50px 1fr 130px 120px 110px 200px', padding: '14px 20px', borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', transition: 'background 0.1s' }}
-                onClick={() => setViewInvoice(inv)}
+                {...clickable(() => setViewInvoice(inv))}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                 <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, alignSelf: 'center' }}>{idx + 1}</span>

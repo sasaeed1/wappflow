@@ -30,6 +30,7 @@ import { TagChip, TagPicker } from '../../../components/TagPicker';
 import RoomPanel from '@/components/RoomPanel';
 import { buildInvoiceHTML } from '@/lib/invoiceDoc';
 import { useRealtime } from '@/components/shell/realtime';
+import { clickable } from '@/lib/a11y';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
 // click the value, it becomes an input/select, saves on blur/Enter, Esc cancels.
@@ -88,7 +89,7 @@ function InlineEditField({ icon: Icon, color, bg, label, value, display, type = 
   }
 
   return (
-    <div onClick={() => setEditing(true)} title={`Click to edit ${label.toLowerCase()}`}
+    <div {...clickable(() => setEditing(true))} title={`Click to edit ${label.toLowerCase()}`}
       style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', borderRadius: 8, padding: 3, margin: -3, transition: 'background 0.12s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)'; }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
@@ -170,7 +171,7 @@ function ImageMessage({ src, onOpen }) {
   }
   return (
     <div
-      onClick={onOpen}
+      {...clickable(onOpen)}
       style={{ cursor: 'pointer', position: 'relative', display: 'inline-block', borderRadius: 8, overflow: 'hidden' }}
       title="Click to view full size"
     >
@@ -370,7 +371,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
               <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>For {lead.customer_name}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer' }}>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer' }}>
             <X size={18} color="#6b7280" />
           </button>
         </div>
@@ -407,7 +408,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
                 </td>
                 <td style={{ padding: '6px 4px' }}>
                   {items.length > 1 && (
-                    <button onClick={() => setItems(items.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 4 }}>
+                    <button aria-label="Close" onClick={() => setItems(items.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 4 }}>
                       <X size={14} />
                     </button>
                   )}
@@ -447,7 +448,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
         <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Due Date</label>
-            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+            <input aria-label="Due Date" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
               style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
           </div>
           <div>
@@ -498,7 +499,7 @@ function EmailWorkflowModal({ lead, templates, onClose, onSaved }) {
           <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Start Email Workflow</h2>
           <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>For {lead.customer_name}</p>
         </div>
-        <button onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer' }}><X size={18} color="#6b7280" /></button>
+        <button aria-label="Close" onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer' }}><X size={18} color="#6b7280" /></button>
       </div>
 
       {templates.length === 0 ? (
@@ -529,7 +530,7 @@ function EmailWorkflowModal({ lead, templates, onClose, onSaved }) {
           </div>
           <div style={{ marginBottom: 20 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Schedule (optional)</label>
-            <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
+            <input aria-label="Schedule (optional)" type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
               style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
           </div>
         </div>
@@ -1288,7 +1289,7 @@ useEffect(() => {
           >
             <span style={{ fontSize: 16 }}>{p.icon}</span>
             <span style={{ flex: 1 }}>{toast.message}</span>
-            <button onClick={() => setToast(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, width: 22, height: 22, color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <button aria-label="Dismiss this message" onClick={() => setToast(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, width: 22, height: 22, color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <X size={12} />
             </button>
           </div>
@@ -1447,7 +1448,7 @@ useEffect(() => {
                 const isPast = PIPELINE_STEPS.indexOf(lead.status) > i;
                 return (
                   <div key={step} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                    <div onClick={() => !actionLoading && handleStatusChange(step)} style={{ width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', border: `2px solid ${isActive || isPast ? meta.dot : 'var(--border)'}`, background: isActive ? meta.dot : isPast ? meta.dot + '44' : 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0 }}>
+                    <div {...clickable(() => !actionLoading && handleStatusChange(step))} style={{ width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', border: `2px solid ${isActive || isPast ? meta.dot : 'var(--border)'}`, background: isActive ? meta.dot : isPast ? meta.dot + '44' : 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0 }}>
                       {isPast ? <CheckCircle size={13} color={meta.dot} /> : isActive ? <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--surface)' }} /> : <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--border)' }} />}
                     </div>
                     {i < PIPELINE_STEPS.length - 1 && <div style={{ flex: 1, height: 2, background: isPast ? meta.dot + '66' : 'var(--border)' }} />}
@@ -1635,7 +1636,7 @@ useEffect(() => {
                         <p style={{ fontSize: 11, fontWeight: 700, color, margin: 0, textTransform: 'capitalize' }}>{ch.platform}</p>
                         <p style={{ fontSize: 12, color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.identifier}</p>
                       </div>
-                      <button onClick={async () => { await leadChannelsAPI.remove(leadId, ch.id); setChannels(prev => prev.filter(c => c.id !== ch.id)); }}
+                      <button aria-label="Close" onClick={async () => { await leadChannelsAPI.remove(leadId, ch.id); setChannels(prev => prev.filter(c => c.id !== ch.id)); }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
                         <X size={13} color="#9ca3af" />
                       </button>
@@ -2027,7 +2028,7 @@ useEffect(() => {
                 </button>
               )}
 
-              <button onClick={handleSendMessage} disabled={!newMessage.trim() || sendingMessage} style={{ width: 42, height: 42, borderRadius: 13, border: 'none', flexShrink: 0, background: sendingMessage || !newMessage.trim() ? 'var(--border)' : 'linear-gradient(135deg, #25d366, #128c7e)', color: sendingMessage || !newMessage.trim() ? '#9ca3af' : 'white', cursor: !newMessage.trim() || sendingMessage ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button aria-label="Send" onClick={handleSendMessage} disabled={!newMessage.trim() || sendingMessage} style={{ width: 42, height: 42, borderRadius: 13, border: 'none', flexShrink: 0, background: sendingMessage || !newMessage.trim() ? 'var(--border)' : 'linear-gradient(135deg, #25d366, #128c7e)', color: sendingMessage || !newMessage.trim() ? '#9ca3af' : 'white', cursor: !newMessage.trim() || sendingMessage ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Send size={17} />
               </button>
             </div>
@@ -2105,7 +2106,7 @@ useEffect(() => {
                     <div style={{ background: 'rgba(139,92,246,0.12)', border: '1.5px solid #ddd6fe', borderRadius: 14, padding: 16, marginBottom: 14 }}>
                       <div style={{ marginBottom: 10 }}>
                         <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>Date & Time</label>
-                        <input type="datetime-local" value={newReminder.reminder_date} onChange={e => setNewReminder(p => ({ ...p, reminder_date: e.target.value }))}
+                        <input aria-label="Date & Time" type="datetime-local" value={newReminder.reminder_date} onChange={e => setNewReminder(p => ({ ...p, reminder_date: e.target.value }))}
                           style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface)' }} />
                       </div>
                       <div style={{ marginBottom: 12 }}>
@@ -2134,7 +2135,7 @@ useEffect(() => {
                           </div>
                           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{r.message || r.title || 'No note'}</p>
                         </div>
-                        <button onClick={() => handleToggleReminder(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+                        <button aria-label="Mark reminder as done" onClick={() => handleToggleReminder(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
                           <CheckCircle size={20} color={r.is_completed ? '#10b981' : 'var(--border)'} />
                         </button>
                       </div>
@@ -2484,7 +2485,7 @@ useEffect(() => {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                         <span style={{ fontSize: 16 }}>🧠</span>
                         <p style={{ fontSize: 13, fontWeight: 800, color: '#7c3aed', margin: 0 }}>Chat Summary</p>
-                        <button onClick={() => setAiSummary('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
+                        <button aria-label="Close" onClick={() => setAiSummary('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
                       </div>
                       <p style={{ fontSize: 14, color: 'var(--text)', margin: 0, lineHeight: 1.7 }}>{aiSummary}</p>
                     </div>
@@ -2496,7 +2497,7 @@ useEffect(() => {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                         <span style={{ fontSize: 16 }}>⚡</span>
                         <p style={{ fontSize: 13, fontWeight: 800, color: '#0891b2', margin: 0 }}>Reply Suggestions</p>
-                        <button onClick={() => setAiSuggestions([])} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
+                        <button aria-label="Close" onClick={() => setAiSuggestions([])} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {aiSuggestions.map((s, i) => (
@@ -2519,7 +2520,7 @@ useEffect(() => {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                         <span style={{ fontSize: 16 }}>🎯</span>
                         <p style={{ fontSize: 13, fontWeight: 800, color: '#b45309', margin: 0 }}>Lead Analysis</p>
-                        <button onClick={() => setAiAnalysis(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
+                        <button aria-label="Close" onClick={() => setAiAnalysis(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
                       </div>
 
                       <div className="r-stack-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
@@ -2850,7 +2851,7 @@ function EmailComposeModal({ lead, onClose, onSent }) {
             <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Compose Email</h2>
             <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0 }}>To: {lead?.customer_name || 'Lead'}</p>
           </div>
-          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={18} /></button>
         </div>
 
         {error && (
@@ -2931,7 +2932,7 @@ function EmailComposeModal({ lead, onClose, onSent }) {
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', background: 'var(--surface2)', borderRadius: 20, fontSize: 12, color: 'var(--text)' }}>
                   <Paperclip size={11} />
                   {f.name}
-                  <button onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 0 }}>
+                  <button aria-label="Close" onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 0 }}>
                     <X size={11} />
                   </button>
                 </div>

@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { mediaUrl } from '../../lib/api';
 import './portfolio.css';
+import { clickable } from '@/lib/a11y';
 
 const igUrl = (h) => (/^https?:\/\//.test(h) ? h : `https://instagram.com/${String(h).replace('@', '')}`);
 const extUrl = (u) => (/^https?:\/\//.test(u) ? u : `https://${u}`);
@@ -85,7 +86,7 @@ export default function PortfolioCanvas({ portfolio, items = [], preview = false
       </footer>
 
       {lb != null && items[lb] && (
-        <div className="pf-lightbox" onClick={() => setLb(null)}>
+        <div className="pf-lightbox" {...clickable(() => setLb(null))}>
           {items[lb].kind === 'video'
             ? <video src={mediaUrl(items[lb].video_url || items[lb].full_url || items[lb].url)} poster={items[lb].poster_url ? mediaUrl(items[lb].poster_url) : undefined} controls autoPlay onClick={(e) => e.stopPropagation()} />
             : <img src={mediaUrl(items[lb].full_url || items[lb].url)} alt="" onClick={(e) => e.stopPropagation()} />}

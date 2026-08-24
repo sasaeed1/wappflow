@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ccApi, fmtBytes, fmtNum } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
 import ExportButton from '@/components/control/ExportButton';
+import { clickableRow } from '@/lib/a11y';
 
 export default function Customers() {
   const router = useRouter();
@@ -59,7 +60,7 @@ export default function Customers() {
             {loading && <tr><td colSpan={8} style={{ padding: 20, color: 'var(--text-dim,#666)' }}>Loading…</td></tr>}
             {!loading && !rows.length && <tr><td colSpan={8} style={{ padding: 20, color: 'var(--text-dim,#666)' }}>No workspaces.</td></tr>}
             {rows.map((w) => (
-              <tr key={w.id} onClick={() => router.push(`/control/customers/${w.id}`)} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border,#1e1e26)' }}
+              <tr key={w.id} {...clickableRow(() => router.push(`/control/customers/${w.id}`))} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border,#1e1e26)' }}
                 onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg,#0a0a0f)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
                 <td style={td}><div style={{ fontWeight: 600 }}>{w.name || 'Untitled'}</div></td>
                 <td style={td}><div>{w.owner_email || '—'}</div><div style={{ color: 'var(--text-dim,#666)', fontSize: 11.5 }}>{w.owner_name}</div></td>

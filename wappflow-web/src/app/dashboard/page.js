@@ -22,6 +22,7 @@ import AddLeadModal from '../../components/AddLeadModal';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import { useSound } from '@/lib/sounds';
 import { useRealtime } from '@/components/shell/realtime';
+import { clickable } from '@/lib/a11y';
 
 const COLUMNS = [
   { id: 'New',           label: 'New',        color: '#6366f1', light: 'rgba(99,102,241,0.2)' },
@@ -183,7 +184,7 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
             <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Bulk Upload Leads</h2>
             <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '4px 0 0' }}>Import leads from a CSV file</p>
           </div>
-          <button onClick={() => { reset(); onClose(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
+          <button aria-label="Close" onClick={() => { reset(); onClose(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
             <X style={{ width: 20, height: 20 }} />
           </button>
         </div>
@@ -233,7 +234,7 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
           <>
             {/* Drop zone */}
             <div
-              onClick={() => fileRef.current?.click()}
+              {...clickable(() => fileRef.current?.click())}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
               style={{
@@ -303,7 +304,7 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew, sym = '$'
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          onClick={() => onClick(lead.id)}
+          {...clickable(() => onClick(lead.id))}
           className="mb-2 cursor-pointer group"
           style={{ ...provided.draggableProps.style }}
         >
@@ -550,7 +551,7 @@ function NotificationPanel({ leads, reminders, liveEvents, onClose, onMarkAllRea
           {items.length > 0 && (
             <button onClick={onMarkAllRead} style={{ fontSize: 11, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Mark all read</button>
           )}
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex' }}>
             <X style={{ width: 16, height: 16 }} />
           </button>
         </div>
@@ -891,7 +892,7 @@ export default function DashboardPage() {
         }}>
           <span style={{ fontSize: 20 }}>{toast.icon}</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{toast.message}</span>
-          <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', marginLeft: 4 }}>
+          <button aria-label="Dismiss this message" onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', marginLeft: 4 }}>
             <X style={{ width: 14, height: 14 }} />
           </button>
         </div>
@@ -1111,7 +1112,7 @@ export default function DashboardPage() {
               ) : recentLeads.map(lead => {
                 const sc = STATUS_COLORS[lead.status] || STATUS_COLORS['New'];
                 return (
-                  <div key={lead.id} onClick={() => router.push(`/leads/${lead.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 8px', borderRadius: 8 }}
+                  <div key={lead.id} {...clickable(() => router.push(`/leads/${lead.id}`))} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 8px', borderRadius: 8 }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
                   >
@@ -1255,7 +1256,7 @@ export default function DashboardPage() {
               const sc = STATUS_COLORS[lead.status] || STATUS_COLORS['New'];
               const isNew = newLeadIds.has(lead.id);
               return (
-                <div key={lead.id} onClick={() => router.push(`/leads/${lead.id}`)}
+                <div key={lead.id} {...clickable(() => router.push(`/leads/${lead.id}`))}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < leads.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', transition: 'background 0.1s', background: isNew ? `${sc.bg}` : 'var(--surface)' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                   onMouseLeave={e => e.currentTarget.style.background = isNew ? sc.bg : 'var(--surface)'}

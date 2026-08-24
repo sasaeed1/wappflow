@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { csAPI, leadsAPI } from '../../lib/api';
 import { useConfirm } from '@/lib/confirm';
+import { clickable } from '@/lib/a11y';
 
 const TYPES = ['contract', 'proposal', 'quote', 'nda', 'sow', 'retainer', 'agreement'];
 const STATUS = {
@@ -106,7 +107,7 @@ export default function ContractsStudioPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {shown.map(d => (
-                    <div key={d.id} onClick={() => router.push(`/contracts/${d.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 13, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', transition: 'border-color .12s' }}
+                    <div key={d.id} {...clickable(() => router.push(`/contracts/${d.id}`))} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 13, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', transition: 'border-color .12s' }}
                       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
                       <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, background: 'var(--accent-light)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileText size={17} /></div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -201,7 +202,7 @@ function NewDocModal({ onClose, onCreated, say }) {
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, padding: 24, boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>New document</h2>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
         </div>
         {packs.length > 0 && (
           <>
@@ -292,7 +293,7 @@ function BulkSendModal({ onClose, say }) {
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, padding: 24, boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Bulk send</h2>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
         </div>
         <label style={lbl}>Document</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>

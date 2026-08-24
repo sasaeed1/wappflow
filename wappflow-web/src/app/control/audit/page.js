@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ccApi } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
 import ExportButton from '@/components/control/ExportButton';
+import { clickable } from '@/lib/a11y';
 
 export default function Audit() {
   const [rows, setRows] = useState([]);
@@ -22,7 +23,7 @@ export default function Audit() {
         {!rows.length && <div style={{ padding: 20, color: 'var(--text-dim,#666)', fontSize: 13 }}>No admin actions recorded yet.</div>}
         {rows.map((a) => (
           <div key={a.id} style={{ borderBottom: '1px solid var(--border,#1e1e26)' }}>
-            <div onClick={() => setOpen(open === a.id ? null : a.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', cursor: 'pointer', fontSize: 13 }}>
+            <div {...clickable(() => setOpen(open === a.id ? null : a.id))} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', cursor: 'pointer', fontSize: 13 }}>
               <Pill tone={a.action.includes('suspend') ? 'red' : a.action.includes('login') ? 'blue' : 'amber'}>{a.action}</Pill>
               <span style={{ color: 'var(--text-muted,#9a9aa5)' }}>{a.target_type}{a.target_id ? ` · ${String(a.target_id).slice(0, 14)}` : ''}</span>
               <span style={{ flex: 1 }} />

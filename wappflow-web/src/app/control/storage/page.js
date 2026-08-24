@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ccApi, fmtBytes, fmtNum } from '@/lib/ccApi';
 import { Card } from '@/components/control/ControlShell';
+import { clickable } from '@/lib/a11y';
 
 // Command Center · Storage dashboard (Phase 10). Global R2 usage + cost + the
 // largest workspaces, from the per-asset storage_size tracking.
@@ -55,7 +56,7 @@ export default function StorageDashboard() {
           <h3 style={h3}>Fastest growing (30d)</h3>
           {!fastest.length && <div style={{ fontSize: 13, color: 'var(--text-dim,#666)' }}>No recent uploads.</div>}
           {fastest.slice(0, 8).map((w) => (
-            <div key={w.workspace_id} onClick={() => router.push(`/control/customers/${w.workspace_id}`)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border,#1e1e26)', fontSize: 13 }}>
+            <div key={w.workspace_id} {...clickable(() => router.push(`/control/customers/${w.workspace_id}`))} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border,#1e1e26)', fontSize: 13 }}>
               <span style={{ fontFamily: 'monospace' }}>{String(w.workspace_id).slice(0, 14)}</span>
               <span style={{ color: '#34d399' }}>+{fmtBytes(w.growth_bytes)}</span>
             </div>
@@ -77,7 +78,7 @@ export default function StorageDashboard() {
         <h3 style={h3}>Largest workspaces (top 20)</h3>
         {!ws.length && <div style={{ fontSize: 13, color: 'var(--text-dim,#666)' }}>No storage tracked yet.</div>}
         {ws.map((w) => (
-          <div key={w.workspace_id} onClick={() => router.push(`/control/customers/${w.workspace_id}`)} style={{ cursor: 'pointer', padding: '8px 0', borderBottom: '1px solid var(--border,#1e1e26)' }}>
+          <div key={w.workspace_id} {...clickable(() => router.push(`/control/customers/${w.workspace_id}`))} style={{ cursor: 'pointer', padding: '8px 0', borderBottom: '1px solid var(--border,#1e1e26)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 5 }}>
               <span style={{ fontFamily: 'monospace' }}>{String(w.workspace_id).slice(0, 14)}</span>
               <span style={{ color: 'var(--text-dim,#666)' }}>{fmtBytes(w.bytes)} · {fmtNum(w.files)} files</span>

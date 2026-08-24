@@ -139,7 +139,7 @@ export default function BookingsPage() {
                   <input type="checkbox" checked={!!s.creates_shoot} onChange={e => setSvc(i, { creates_shoot: e.target.checked })} />
                   Is a shoot
                 </label>
-                <button onClick={() => delSvc(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={15} /></button>
+                <button aria-label="Delete" onClick={() => delSvc(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={15} /></button>
               </div>
             ))}
           </div>
@@ -200,7 +200,7 @@ export default function BookingsPage() {
               <div key={i} className="r-wrap" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input value={q.label} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} placeholder="e.g. What's the occasion?" style={{ flex: 1, ...fld }} />
                 <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><input type="checkbox" checked={!!q.required} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, required: e.target.checked } : x) }))} /> required</label>
-                <button onClick={() => setSettings(s => ({ ...s, intake: s.intake.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={15} /></button>
+                <button aria-label="Delete" onClick={() => setSettings(s => ({ ...s, intake: s.intake.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={15} /></button>
               </div>
             ))}
           </div>

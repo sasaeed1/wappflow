@@ -98,7 +98,7 @@ export default function ContractsSettingsPage() {
               <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
                   <input value={c.title} onChange={e => patchClause(c.id, { title: e.target.value })} onBlur={() => saveClause(c)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, fontWeight: 600, outline: 'none' }} />
-                  <button onClick={() => delClause(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={15} /></button>
+                  <button aria-label="Delete" onClick={() => delClause(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={15} /></button>
                 </div>
                 <textarea value={c.body} onChange={e => patchClause(c.id, { body: e.target.value })} onBlur={() => saveClause(c)} rows={2} placeholder="Clause text…" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
               </div>

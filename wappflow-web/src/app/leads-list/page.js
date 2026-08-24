@@ -26,6 +26,7 @@ import { toast } from '@/components/ui/Toast';
 import { leadStatusMeta } from '@/lib/leadStatus';
 import { UpgradeCta } from '@/components/PlanLock';
 import { Lock } from 'lucide-react';
+import { clickable } from '@/lib/a11y';
 
 const STATUS_META = {
   'New':           { dot: '#6366f1', bg: 'rgba(99,102,241,0.12)',  text: '#4338ca' },
@@ -132,7 +133,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
             <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Assign Leads</h2>
             <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0 }}>{leadIds.length} lead{leadIds.length > 1 ? 's' : ''} selected</p>
           </div>
-          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
+          <button aria-label="Close" onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
             <X size={18} />
           </button>
         </div>
@@ -389,7 +390,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
               {step === 3 && 'Group created successfully'}
             </p>
           </div>
-          <button onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer' }}>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer' }}>
             <X size={18} color="var(--text-muted)" />
           </button>
         </div>
@@ -655,7 +656,7 @@ function MergeDuplicatesModal({ onClose, onDone }) {
             <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Merge duplicates</h2>
             <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0 }}>Pick the contact to keep — the rest fold into it.</p>
           </div>
-          <button onClick={() => onClose(doneCount)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={() => onClose(doneCount)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={18} /></button>
         </div>
 
         {groups === null ? (
@@ -1038,7 +1039,7 @@ export default function LeadsListPage() {
                 {actionItems.slice(0, 6).map(({ lead, action }) => {
                   const uColor = action.urgency >= 3 ? '#ef4444' : action.urgency === 2 ? '#f59e0b' : '#6366f1';
                   return (
-                    <div key={lead.id} onClick={() => router.push(`/leads/${lead.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer' }}
+                    <div key={lead.id} {...clickable(() => router.push(`/leads/${lead.id}`))} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer' }}
                       onMouseEnter={e => e.currentTarget.style.borderColor = uColor + '88'}
                       onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: uColor, flexShrink: 0 }} />
@@ -1120,7 +1121,7 @@ export default function LeadsListPage() {
             >
               <Trash2 size={14} /> Move to Trash
             </button>
-            <button onClick={clearSelection} style={{ padding: '7px 12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 9, color: 'rgba(255,255,255,0.7)', fontSize: 13, cursor: 'pointer' }}>
+            <button aria-label="Close" onClick={clearSelection} style={{ padding: '7px 12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 9, color: 'rgba(255,255,255,0.7)', fontSize: 13, cursor: 'pointer' }}>
               <X size={14} />
             </button>
           </div>
@@ -1134,7 +1135,7 @@ export default function LeadsListPage() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, phone, status..."
               style={{ width: '100%', padding: '8px 12px 8px 34px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface2)', boxSizing: 'border-box' }}
             />
-            {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>}
+            {search && <button aria-label="Close" onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>}
           </div>
 
           {/* Sort */}
@@ -1195,7 +1196,7 @@ export default function LeadsListPage() {
           {views.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>Save a filter combination to reuse it.</span>}
           {views.map(v => (
             <span key={v.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 6px 4px 12px', borderRadius: 20, border: `1.5px solid ${activeView === v.name ? '#6366f1' : 'var(--border)'}`, background: activeView === v.name ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: activeView === v.name ? '#4338ca' : 'var(--text-muted)', fontSize: 11.5, fontWeight: 700 }}>
-              <span onClick={() => applyView(v)} style={{ cursor: 'pointer' }}>{v.name}</span>
+              <span {...clickable(() => applyView(v))} style={{ cursor: 'pointer' }}>{v.name}</span>
               <button onClick={() => deleteView(v)} title="Delete view" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', padding: 0 }}><X size={12} /></button>
             </span>
           ))}
@@ -1224,7 +1225,7 @@ export default function LeadsListPage() {
 
           {/* Table header */}
           <div className="r-tw" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
-            <div onClick={toggleAll} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div {...clickable(toggleAll)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {selected.size === leads.length && leads.length > 0
                 ? <CheckSquare size={16} color="#6366f1" />
                 : <Square size={16} color="#d1d5db" />
@@ -1274,7 +1275,7 @@ export default function LeadsListPage() {
                 onClick={() => router.push(`/leads/${lead.id}`)}
               >
                 {/* Checkbox */}
-                <div onClick={e => toggleSelect(lead.id, e)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div {...clickable(e => toggleSelect(lead.id, e))} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {isSelected ? <CheckSquare size={16} color="#6366f1" /> : <Square size={16} color="#d1d5db" />}
                 </div>
 
@@ -1440,7 +1441,7 @@ export default function LeadsListPage() {
         }}>
           <span>{toast.type === 'error' ? '⚠️' : toast.type === 'info' ? 'ℹ️' : '✓'}</span>
           <span style={{ flex: 1 }}>{toast.msg}</span>
-          <button onClick={() => setToast(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, width: 22, height: 22, color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12} /></button>
+          <button aria-label="Dismiss this message" onClick={() => setToast(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6, width: 22, height: 22, color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12} /></button>
         </div>
       )}
     </div>

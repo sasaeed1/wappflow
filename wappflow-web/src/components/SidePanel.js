@@ -90,7 +90,7 @@ function TasksPanel() {
         <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }}
           placeholder="Add a task…"
           style={{ flex: 1, padding: '9px 11px', border: '1.5px solid var(--border)', borderRadius: 9, fontSize: 13, outline: 'none', background: 'var(--surface2)', color: 'var(--text)', boxSizing: 'border-box' }} />
-        <button onClick={add} style={{ width: 36, borderRadius: 9, border: 'none', background: '#10b981', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <button aria-label="Add" onClick={add} style={{ width: 36, borderRadius: 9, border: 'none', background: '#10b981', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Plus size={16} />
         </button>
       </div>
@@ -103,7 +103,7 @@ function TasksPanel() {
             {!!t.done && <Check size={12} color="white" />}
           </button>
           <span style={{ flex: 1, fontSize: 13, color: t.done ? 'var(--text-dim)' : 'var(--text)', textDecoration: t.done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{t.title}</span>
-          <button onClick={() => del(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', flexShrink: 0 }}>
+          <button aria-label="Delete" onClick={() => del(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', flexShrink: 0 }}>
             <Trash2 size={13} />
           </button>
         </div>
@@ -126,7 +126,7 @@ function NoteCard({ note, onUpdate, onDelete }) {
           <button key={c} onClick={() => onUpdate(note.id, { color: c })} title={c}
             style={{ width: 15, height: 15, borderRadius: '50%', background: NOTE_COLORS[c], border: note.color === c ? '2px solid #374151' : '1px solid rgba(0,0,0,0.15)', cursor: 'pointer', padding: 0 }} />
         ))}
-        <button onClick={() => onDelete(note.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex' }}>
+        <button aria-label="Delete" onClick={() => onDelete(note.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex' }}>
           <Trash2 size={13} />
         </button>
       </div>
@@ -209,7 +209,7 @@ export default function SidePanel() {
         <div style={{ position: 'fixed', right: 58, top: 72, bottom: 90, width: 340, maxWidth: 'calc(100vw - 80px)', zIndex: 851, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'wfPanelIn 0.18s ease' }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>{RAIL.find(r => r.id === open)?.label}</span>
-            <button onClick={() => setOpen(null)} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+            <button aria-label="Close" onClick={() => setOpen(null)} style={{ background: 'var(--surface2)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
               <X size={16} />
             </button>
           </div>

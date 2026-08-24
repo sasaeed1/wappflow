@@ -161,7 +161,7 @@ export default function FloatingChat() {
               <Search size={14} color="#9ca3af" />
               <input autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads to chat…"
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: 'var(--text)' }} />
-              <button onClick={() => setShowLeadSearch(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
+              <button aria-label="Close" onClick={() => setShowLeadSearch(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
             </div>
             <div style={{ maxHeight: 220, overflowY: 'auto' }}>
               {filteredLeads.length === 0 ? (
@@ -217,7 +217,7 @@ export default function FloatingChat() {
           <button onClick={() => setMinimized(v => !v)} style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
             {minimized ? <Maximize2 size={12} /> : <Minus size={12} />}
           </button>
-          <button onClick={closeLead} style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+          <button aria-label="Close" onClick={closeLead} style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
             <X size={12} />
           </button>
         </div>
@@ -229,7 +229,7 @@ export default function FloatingChat() {
               <Search size={13} color="#9ca3af" />
               <input autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads…"
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: 'var(--text)' }} />
-              <button onClick={() => setShowLeadSearch(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>
+              <button aria-label="Close" onClick={() => setShowLeadSearch(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>
             </div>
             <div style={{ maxHeight: 200, overflowY: 'auto' }}>
               {filteredLeads.map(l => (
@@ -313,10 +313,10 @@ export default function FloatingChat() {
 
           {/* Input row */}
           <div style={{ padding: '8px 10px', borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-end', gap: 6, background: 'var(--surface)', flexShrink: 0 }}>
-            <button onClick={() => setShowPicker(v => !v)} style={{ width: 30, height: 30, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <button aria-label="Add an emoji" onClick={() => setShowPicker(v => !v)} style={{ width: 30, height: 30, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Smile size={16} />
             </button>
-            <button onClick={() => fileInputRef.current?.click()} style={{ width: 30, height: 30, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <button aria-label="Attach a file" onClick={() => fileInputRef.current?.click()} style={{ width: 30, height: 30, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Paperclip size={16} />
             </button>
             <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
@@ -325,7 +325,7 @@ export default function FloatingChat() {
               placeholder="Type a message…" rows={1}
               style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 20, padding: '7px 12px', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, minHeight: 34, maxHeight: 80, overflowY: 'auto', boxSizing: 'border-box' }}
             />
-            <button onClick={handleSend} disabled={sending || !newMsg.trim()}
+            <button aria-label="Send" onClick={handleSend} disabled={sending || !newMsg.trim()}
               style={{ width: 34, height: 34, background: newMsg.trim() ? 'linear-gradient(135deg, #25d366, #128c7e)' : 'var(--surface2)', border: 'none', borderRadius: '50%', cursor: newMsg.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>
               <Send size={14} color={newMsg.trim() ? 'white' : '#d1d5db'} />
             </button>

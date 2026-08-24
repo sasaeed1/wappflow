@@ -265,7 +265,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
                       <span style={{ fontSize:11, color: local[key] ? '#10b981' : '#ef4444', fontWeight:700 }}>{local[key] ? 'ON' : 'OFF'}</span>
                       <Toggle value={!!local[key]} onChange={v => setLocal(prev=>({...prev,[key]:v}))} color={roleInfo.color} />
                       {isCustom && (
-                        <button onClick={() => setLocal(prev => { const n={...prev}; delete n[key]; return n; })} style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', padding:2 }}>
+                        <button aria-label="Close" onClick={() => setLocal(prev => { const n={...prev}; delete n[key]; return n; })} style={{ background:'none', border:'none', cursor:'pointer', color:'#ef4444', padding:2 }}>
                           <X size={14} />
                         </button>
                       )}
@@ -368,7 +368,7 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
                         <span style={{ fontSize:10, color:perms[key]?'#10b981':'#9ca3af', fontWeight:700, minWidth:24 }}>{perms[key]?'ON':'OFF'}</span>
                         <Toggle value={!!perms[key]} onChange={v=>isOwner&&setLocal(prev=>({...prev,[role]:{...prev[role],[key]:v}}))} color={ri?.color} disabled={!isOwner} />
                         {isCustom && isOwner && (
-                          <button onClick={()=>setLocal(prev=>{const n={...prev,[role]:{...prev[role]}};delete n[role][key];return n;})} style={{ background:'none',border:'none',cursor:'pointer',color:'#ef4444',padding:1 }}><X size={12}/></button>
+                          <button aria-label="Close" onClick={()=>setLocal(prev=>{const n={...prev,[role]:{...prev[role]}};delete n[role][key];return n;})} style={{ background:'none',border:'none',cursor:'pointer',color:'#ef4444',padding:1 }}><X size={12}/></button>
                         )}
                       </div>
                     </div>

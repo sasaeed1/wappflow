@@ -520,3 +520,27 @@ html.wf-public {
    --focus-ring rather than suppressing box-shadow the way .ms-root does. */
 html.wf-public body { background: var(--bg); color: var(--text); transition: none; }
 .wf-public select option { background: var(--surface); color: var(--text); }
+
+/* ── Skip link ───────────────────────────────────────────────────────────────
+   Hidden until it receives keyboard focus, then it becomes the first thing on
+   the page. Deliberately NOT display:none — that would remove it from the tab
+   order, which is the one thing it needs to be in. */
+.wf-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10000;
+  padding: 12px 18px;
+  border-radius: 0 0 10px 0;
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+}
+.wf-skip-link:focus,
+.wf-skip-link:focus-visible {
+  left: 0;
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

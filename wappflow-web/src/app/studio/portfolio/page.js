@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../../lib/api';
 import PortfolioCanvas, { PORTFOLIO_THEME_META } from '../../folio/portfolio-view';
+import { clickable } from '@/lib/a11y';
 
 const THEME_ORDER = ['atelier', 'noir', 'editorial', 'gallery', 'film', 'brut', 'luxe', 'vivid', 'mono', 'frame'];
 
@@ -232,7 +233,7 @@ export default function PortfolioEditorPage() {
               </label>
               <label className="ms-label">Accent colour</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input type="color" value={s.accent || '#b07d52'} onChange={e => setSetting('accent', e.target.value)} onBlur={e => saveSetting('accent', e.target.value)} style={{ width: 42, height: 32, border: '1px solid var(--ms-line)', borderRadius: 8, background: 'none', cursor: 'pointer' }} />
+                <input aria-label="Accent colour" type="color" value={s.accent || '#b07d52'} onChange={e => setSetting('accent', e.target.value)} onBlur={e => saveSetting('accent', e.target.value)} style={{ width: 42, height: 32, border: '1px solid var(--ms-line)', borderRadius: 8, background: 'none', cursor: 'pointer' }} />
                 <button onClick={() => saveSetting('accent', '')} className="ms-btn-text">Reset</button>
               </div>
             </div>
@@ -270,11 +271,11 @@ function CandidatesPicker({ onClose, onAdded }) {
   };
   const available = (cands || []).filter(c => !c.in_portfolio);
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 820, width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Add from published work</h2>
-          <button onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
         </div>
         <p className="ms-modal-sub" style={{ marginBottom: 18 }}>Only photos &amp; videos from your published galleries — never raw shoots.</p>
         {cands == null ? <p className="ms-loading">Loading your published work…</p>
@@ -315,11 +316,11 @@ function ShareModal({ pf, onClose, onCopy, say, onPublic }) {
     setSending(null);
   };
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Share portfolio</h2>
-          <button onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
         </div>
         {!pf.is_public && (
           <div className="ms-banner" style={{ marginBottom: 16 }}>

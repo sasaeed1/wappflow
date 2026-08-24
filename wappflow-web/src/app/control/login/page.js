@@ -42,9 +42,9 @@ export default function ControlLogin() {
         <p style={{ fontSize: 12.5, color: 'var(--text-dim, #666)', margin: '4px 0 18px' }}>This is the WappFlow control plane. Access is restricted and fully audited.</p>
 
         <label style={lbl}>Email</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus style={inp} />
+        <input aria-label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus style={inp} />
         <label style={lbl}>Password</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={inp} />
+        <input aria-label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={inp} />
 
         {err && <div style={{ color: '#f87171', fontSize: 13, margin: '4px 0 12px' }}>{err}</div>}
 

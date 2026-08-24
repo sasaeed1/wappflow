@@ -6,6 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X, LayoutTemplate, Loader, RefreshCw, Wand2 } from 'lucide-react';
 import { mediaAPI, reelAPI } from '../../../../lib/api';
 import { ASPECTS, ASPECT_LABELS } from '../../video-constants';
+import { clickable } from '@/lib/a11y';
 
 const fmtDur = (ms) => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
@@ -82,7 +83,7 @@ export default function ReelListPage() {
         </div>
 
         {timelines.length === 0 ? (
-          <div className="ms-hero" onClick={() => setShowNew(true)} style={{ minHeight: '46vh', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <div className="ms-hero" {...clickable(() => setShowNew(true))} style={{ minHeight: '46vh', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <div className="ms-hero-fallback" />
             <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: 24 }}>
               <Film size={32} color="#fff" style={{ opacity: 0.9, marginBottom: 12 }} />
@@ -123,12 +124,12 @@ export default function ReelListPage() {
                   </div>
                   <span style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 6, zIndex: 2 }}>
                     {t.source === 'ai_draft' && t.ai_stale ? (
-                      <span onClick={(e) => refresh(t.id, e)} title="New media added — refresh this AI draft"
+                      <span {...clickable((e) => refresh(t.id, e))} title="New media added — refresh this AI draft"
                         style={{ width: 26, height: 26, borderRadius: 8, background: 'var(--ms-accent)', color: 'var(--ms-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {refreshing === t.id ? <Loader size={12} className="ms-spin" /> : <RefreshCw size={12} />}
                       </span>
                     ) : null}
-                    <span onClick={(e) => remove(t.id, e)} title="Delete reel"
+                    <span {...clickable((e) => remove(t.id, e))} title="Delete reel"
                       style={{ width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Trash2 size={13} />
                     </span>
@@ -172,7 +173,7 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
   const ordered = (data?.styles || []).slice().sort((a, b) => (recSet.has(b.id) ? 1 : 0) - (recSet.has(a.id) ? 1 : 0));
 
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 560 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -182,7 +183,7 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
               <p className="ms-modal-sub">Pick a style — AI builds a draft from your best shots. You edit &amp; export it.</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
         </div>
 
         {!hasMedia && <p style={{ fontSize: 12.5, color: '#d39a3e', margin: '10px 0 0' }}>Upload photos or clips first — AI drafts from your shoot’s media.</p>}
@@ -243,7 +244,7 @@ function TemplateGalleryModal({ projectId, hasMedia, onClose }) {
   };
 
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 1160, width: '95vw' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 4 }}>
           <div>
@@ -313,11 +314,11 @@ function TemplateGalleryModal({ projectId, hasMedia, onClose }) {
 function NewReelModal({ onClose, onPick }) {
   const order = ['9:16', '1:1', '4:5', '16:9', '21:9', '3:2'];
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 520 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>New reel</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
         </div>
         <p className="ms-modal-sub" style={{ marginBottom: 20 }}>Pick a canvas to start — you can switch aspect ratios any time.</p>
         <div className="r-stack-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>

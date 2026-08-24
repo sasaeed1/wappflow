@@ -7,6 +7,7 @@ import Dropdown from '@/components/ui/Dropdown';
 import { useRealtime } from './realtime';
 import { publishSummary } from './summary';
 import api, { leadsAPI, remindersAPI, notificationsAPI, displayPhone } from '@/lib/api';
+import { clickable } from '@/lib/a11y';
 
 // ShellNotifications — the notification bell, lifted out of NavBar (Phase 2).
 //
@@ -230,7 +231,7 @@ export default function ShellNotifications() {
             ) : list.map((item) => (
               <div
                 key={item.id}
-                onClick={() => { if (item.href) { close(); router.push(item.href); } }}
+                {...clickable(() => { if (item.href) { close(); router.push(item.href); } })}
                 style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 16px', borderBottom: '1px solid var(--border)', cursor: item.href ? 'pointer' : 'default' }}
               >
                 <div style={{ width: 30, height: 30, borderRadius: 8, background: item.bg, display: 'grid', placeItems: 'center', flexShrink: 0, fontSize: 15 }}>

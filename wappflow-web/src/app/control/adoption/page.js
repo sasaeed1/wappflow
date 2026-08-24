@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ccApi, fmtNum } from '@/lib/ccApi';
 import { Card } from '@/components/control/ControlShell';
+import { clickable } from '@/lib/a11y';
 
 export default function Adoption() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function Adoption() {
         <h3 style={h3}>Power users (top health)</h3>
         {!d.powerUsers.length && <div style={{ fontSize: 13, color: 'var(--text-dim,#666)' }}>No scores yet — run a rollup from Customer Health.</div>}
         {d.powerUsers.map((w) => (
-          <div key={w.id} onClick={() => router.push(`/control/customers/${w.id}`)} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border,#1e1e26)', cursor: 'pointer', fontSize: 13 }}>
+          <div key={w.id} {...clickable(() => router.push(`/control/customers/${w.id}`))} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border,#1e1e26)', cursor: 'pointer', fontSize: 13 }}>
             <span style={{ fontWeight: 600 }}>{w.name || 'Untitled'}</span>
             <span style={{ color: 'var(--text-dim,#666)' }}>health {w.health} · expansion {w.expansion}</span>
           </div>

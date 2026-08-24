@@ -98,7 +98,7 @@ export default function RoomPanel({ type, id, title }) {
           placeholder="Message the team…"
           style={{ flex: 1, padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border,#1e1e26)', background: 'var(--bg,#0a0a0f)', color: 'var(--text,#e8e8ea)', fontSize: 13, outline: 'none' }}
         />
-        <button onClick={send} disabled={!text.trim() || sending} style={{ background: 'var(--accent,#6366f1)', color: '#fff', border: 'none', borderRadius: 9, padding: '0 14px', cursor: text.trim() ? 'pointer' : 'default', opacity: text.trim() ? 1 : 0.5 }}>
+        <button aria-label="Send" onClick={send} disabled={!text.trim() || sending} style={{ background: 'var(--accent,#6366f1)', color: '#fff', border: 'none', borderRadius: 9, padding: '0 14px', cursor: text.trim() ? 'pointer' : 'default', opacity: text.trim() ? 1 : 0.5 }}>
           <Send size={15} />
         </button>
       </div>

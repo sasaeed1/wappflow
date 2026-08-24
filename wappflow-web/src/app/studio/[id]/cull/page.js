@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { mediaAPI, mediaUrl, brainsAPI } from '../../../../lib/api';
 import { PRESETS, previewFilter, previewVignette, suggestEnhance } from '../../presets';
+import { clickable } from '@/lib/a11y';
 
 const FILTERS = [
   ['all', 'All'], ['undecided', 'Review'], ['keep', 'Keep'], ['maybe', 'Maybe'], ['reject', 'Reject'],
@@ -486,8 +487,8 @@ export default function CullPage() {
               </div>
               {!zoomed && (
                 <>
-                  <button onClick={(e) => { e.stopPropagation(); prev(); }} disabled={idx === 0} style={navArrow('left', idx === 0)}><ChevronLeft size={22} /></button>
-                  <button onClick={(e) => { e.stopPropagation(); next(); }} disabled={idx >= view.length - 1} style={navArrow('right', idx >= view.length - 1)}><ChevronRight size={22} /></button>
+                  <button aria-label="Previous" onClick={(e) => { e.stopPropagation(); prev(); }} disabled={idx === 0} style={navArrow('left', idx === 0)}><ChevronLeft size={22} /></button>
+                  <button aria-label="Next" onClick={(e) => { e.stopPropagation(); next(); }} disabled={idx >= view.length - 1} style={navArrow('right', idx >= view.length - 1)}><ChevronRight size={22} /></button>
                 </>
               )}
             </div>
@@ -607,8 +608,8 @@ export default function CullPage() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0 6px' }}>
                       <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', flex: 1 }}>Rotate</span>
-                      <button onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate - 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCcw size={14} /></button>
-                      <button onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate + 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCw size={14} /></button>
+                      <button aria-label="Undo" onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate - 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCcw size={14} /></button>
+                      <button aria-label="Redo" onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate + 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCw size={14} /></button>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                       <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>Straighten</span>
@@ -758,7 +759,7 @@ export default function CullPage() {
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
             <span style={{ color: '#fff', fontSize: 14, fontWeight: 600, flex: 1 }}>{dupMembers ? `Duplicate set — ${compareSet.length} similar frames` : 'Compare'}</span>
             {dupMembers && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginRight: 14 }}>Pick the best — “Keep this” rejects the others</span>}
-            <button onClick={() => setCompare(false)} style={{ ...navArrow('right', false), position: 'static', transform: 'none', width: 38, height: 38 }}><X size={18} /></button>
+            <button aria-label="Close" onClick={() => setCompare(false)} style={{ ...navArrow('right', false), position: 'static', transform: 'none', width: 38, height: 38 }}><X size={18} /></button>
           </div>
           <div className="r-stack-2" style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${Math.min(compareSet.length, 4)}, 1fr)`, gap: 12, minHeight: 0 }}>
             {compareSet.map(a => {
@@ -778,8 +779,8 @@ export default function CullPage() {
                       <button onClick={async () => { for (const o of compareSet) await decide(o.id === a.id ? 'keep' : 'reject', o.id); setCompare(false); }}
                         style={{ ...cmpBtn, background: '#2f9e6e' }}><Check size={13} /> Keep this</button>
                     ) : null}
-                    <button onClick={() => decide('keep', a.id)} style={{ ...cmpBtn, background: dec === 'keep' ? '#2f9e6e' : 'rgba(255,255,255,0.1)' }}><Check size={13} /></button>
-                    <button onClick={() => decide('reject', a.id)} style={{ ...cmpBtn, background: dec === 'reject' ? '#d4564a' : 'rgba(255,255,255,0.1)' }}><X size={13} /></button>
+                    <button aria-label="Keep this photo" onClick={() => decide('keep', a.id)} style={{ ...cmpBtn, background: dec === 'keep' ? '#2f9e6e' : 'rgba(255,255,255,0.1)' }}><Check size={13} /></button>
+                    <button aria-label="Reject this photo" onClick={() => decide('reject', a.id)} style={{ ...cmpBtn, background: dec === 'reject' ? '#d4564a' : 'rgba(255,255,255,0.1)' }}><X size={13} /></button>
                   </div>
                 </div>
               );
@@ -815,7 +816,7 @@ function GalleryFromKeepersModal({ projectId, keepers, onClose, onDone }) {
   };
 
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 420 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: 'var(--ms-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Images size={18} color="var(--ms-on-accent)" /></div>

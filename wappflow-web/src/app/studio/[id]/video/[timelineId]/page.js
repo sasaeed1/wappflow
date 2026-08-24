@@ -13,6 +13,7 @@ import {
   ASPECTS, ASPECT_LABELS, EXPORT_PRESETS, QUALITIES, SAFE_AREAS, TRANSITIONS, VIDEO_EFFECTS,
   TEXT_TYPES, TEXT_ANIM, FONT_FAMILIES, DEFAULT_PHOTO_MS, DEFAULT_VIDEO_MS, PX_PER_MS, aspectBox, uid, colorPreviewFilter,
 } from '../../../video-constants';
+import { clickable } from '@/lib/a11y';
 
 const ZERO_COLOR = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0 };
 
@@ -427,8 +428,8 @@ export default function VideoEditor() {
             <button onClick={() => selId && duplicateClip(selId)} disabled={!selId} className="ms-ve-tool" title="Duplicate"><Copy size={14} /></button>
             <button onClick={() => selId && removeClip(selId)} disabled={!selId} className="ms-ve-tool" title="Delete (Del)"><Trash2 size={14} /></button>
             <div style={{ flex: 1 }} />
-            <button onClick={() => setScale(s => clamp(s / 1.3, 0.012, 0.4))} className="ms-ve-tool"><ZoomOut size={14} /></button>
-            <button onClick={() => setScale(s => clamp(s * 1.3, 0.012, 0.4))} className="ms-ve-tool"><ZoomIn size={14} /></button>
+            <button aria-label="Zoom out" onClick={() => setScale(s => clamp(s / 1.3, 0.012, 0.4))} className="ms-ve-tool"><ZoomOut size={14} /></button>
+            <button aria-label="Zoom in" onClick={() => setScale(s => clamp(s * 1.3, 0.012, 0.4))} className="ms-ve-tool"><ZoomIn size={14} /></button>
           </div>
           <div className="ms-ve-tl-scroll">
             <div style={{ position: 'relative', width: Math.max(duration * scale + 40, 600) }} onPointerDown={scrubTo}>
@@ -548,14 +549,14 @@ function MusicModal({ projectId, audioAssets, current, onClose, onPick, onUpload
   };
 
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 480 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
             <span style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--ms-accent)', color: 'var(--ms-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Music size={18} /></span>
             <div><h2>Music</h2><p className="ms-modal-sub">Add a track to your reel.</p></div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
         </div>
 
         <label className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', cursor: 'pointer', margin: '14px 0' }}>
@@ -912,11 +913,11 @@ function ExportModal({ timelineId, aspect, duration, onClose }) {
   const failed = exp && exp.status === 'failed';
 
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
           <div><h2>Export reel</h2><p className="ms-modal-sub">{fmtClock(duration)} · MP4 / H.264</p></div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
         </div>
 
         {!exp && (

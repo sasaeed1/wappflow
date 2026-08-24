@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ccApi } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
 import ExportButton from '@/components/control/ExportButton';
+import { clickableRow } from '@/lib/a11y';
 
 const RISK_LABELS = {
   inactive_30d: 'Inactive 30d+', inactive_14d: 'Inactive 14d+', no_messages: 'No messages',
@@ -55,7 +56,7 @@ export default function Health() {
           <tbody>
             {!rows.length && <tr><td colSpan={7} style={{ padding: 20, color: 'var(--text-dim,#666)' }}>No data.</td></tr>}
             {rows.map((w) => (
-              <tr key={w.id} onClick={() => router.push(`/control/customers/${w.id}`)} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border,#1e1e26)' }}>
+              <tr key={w.id} {...clickableRow(() => router.push(`/control/customers/${w.id}`))} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border,#1e1e26)' }}>
                 <td style={td}><div style={{ fontWeight: 600 }}>{w.name || 'Untitled'}</div></td>
                 <td style={td}><Pill tone={w.plan === 'enterprise' ? 'green' : w.plan === 'growth' ? 'purple' : 'blue'}>{w.plan}</Pill></td>
                 <td style={{ ...td, fontWeight: 700, color: scoreColor(w.health) }}>{w.health ?? '—'}</td>

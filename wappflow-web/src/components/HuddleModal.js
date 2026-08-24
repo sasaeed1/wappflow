@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Video, VideoOff, Phone, PhoneOff, Mic, MicOff, MonitorUp, Users, Loader2, AlertCircle, Hand } from 'lucide-react';
 import { commsAPI } from '../lib/api';
+import { clickable } from '@/lib/a11y';
 
 /**
  * HuddleModal — self-hosted LiveKit voice/video/screenshare room (replaces the old
@@ -147,7 +148,7 @@ export default function HuddleModal({ open, onClose, roomName, displayName, star
   const raisedCount = Object.values(hands).filter(Boolean).length;
 
   return (
-    <div className="hd-overlay" onClick={onClose}>
+    <div className="hd-overlay" {...clickable(onClose)}>
       <div className="hd-card" onClick={(e) => e.stopPropagation()}>
         <div className="hd-head">
           <div className="hd-title">

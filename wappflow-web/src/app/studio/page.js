@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X, Search, MapPin, Calendar, ArrowRight } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../lib/api';
+import { clickable } from '@/lib/a11y';
 
 const TYPES = ['wedding', 'event', 'portrait', 'real_estate', 'commercial', 'product', 'general'];
 
@@ -41,14 +42,14 @@ function NewProjectModal({ onClose, onCreated }) {
   };
 
   return (
-    <div onClick={onClose} className="ms-modal-overlay">
+    <div {...clickable(onClose)} className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal">
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
             <h2>New shoot</h2>
             <p className="ms-modal-sub">A collection holds all media &amp; delivery for one shoot.</p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
         </div>
 
         <label className="ms-label">Shoot name</label>
@@ -64,7 +65,7 @@ function NewProjectModal({ onClose, onCreated }) {
         <div style={{ display: 'flex', gap: 16, marginBottom: 22 }}>
           <div style={{ flex: 1 }}>
             <label className="ms-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Calendar size={11} /> Shoot date</label>
-            <input type="date" value={shootDate} onChange={e => setShootDate(e.target.value)} className="ms-input" />
+            <input aria-label="Shoot date" type="date" value={shootDate} onChange={e => setShootDate(e.target.value)} className="ms-input" />
           </div>
           <div style={{ flex: 1 }}>
             <label className="ms-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><MapPin size={11} /> Location</label>
@@ -134,7 +135,7 @@ export default function StudioPage() {
       {loading ? (
         <div className="ms-page"><p className="ms-loading">Opening the studio…</p></div>
       ) : projects.length === 0 ? (
-        <div className="ms-stage ms-stage-empty" onClick={() => setShowNew(true)}>
+        <div className="ms-stage ms-stage-empty" {...clickable(() => setShowNew(true))}>
           <div className="ms-hero-fallback" />
           <div className="ms-stage-veil" />
           <div className="ms-stage-content" style={{ alignItems: 'center', textAlign: 'center' }}>

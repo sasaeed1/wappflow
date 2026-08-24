@@ -411,7 +411,7 @@ export default function KnowledgePage() {
                                   <Database size={12} /> Memories {expandedDoc === doc.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 </button>
                               )}
-                              <button onClick={() => handleDeleteDoc(doc.id)} style={{ padding: '7px 12px', borderRadius: 10, border: '1.5px solid #fecaca', background: 'rgba(239,68,68,0.10)', color: '#ef4444', cursor: 'pointer' }}>
+                              <button aria-label="Delete" onClick={() => handleDeleteDoc(doc.id)} style={{ padding: '7px 12px', borderRadius: 10, border: '1.5px solid #fecaca', background: 'rgba(239,68,68,0.10)', color: '#ef4444', cursor: 'pointer' }}>
                                 <Trash2 size={14} />
                               </button>
                             </div>
@@ -473,19 +473,19 @@ export default function KnowledgePage() {
                     <div style={{ background: 'rgba(139,92,246,0.10)', border: '2px solid #8b5cf6', borderRadius: 16, padding: 20, marginBottom: 16 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                         <p style={{ fontSize: 15, fontWeight: 800, color: '#7c3aed', margin: 0 }}>{editingMemory ? 'Edit Memory' : 'Add Memory'}</p>
-                        <button onClick={() => { setShowMemoryForm(false); setEditingMemory(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={16} /></button>
+                        <button aria-label="Close" onClick={() => { setShowMemoryForm(false); setEditingMemory(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={16} /></button>
                       </div>
                       <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                         <div>
                           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Type</label>
-                          <select value={memoryForm.memory_type} onChange={e => setMemoryForm(p => ({ ...p, memory_type: e.target.value }))}
+                          <select aria-label="Type" value={memoryForm.memory_type} onChange={e => setMemoryForm(p => ({ ...p, memory_type: e.target.value }))}
                             style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)', boxSizing: 'border-box' }}>
                             {MEMORY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                           </select>
                         </div>
                         <div>
                           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Confidence %</label>
-                          <input type="number" min="0" max="100" value={memoryForm.confidence} onChange={e => setMemoryForm(p => ({ ...p, confidence: parseInt(e.target.value) || 90 }))}
+                          <input aria-label="Confidence %" type="number" min="0" max="100" value={memoryForm.confidence} onChange={e => setMemoryForm(p => ({ ...p, confidence: parseInt(e.target.value) || 90 }))}
                             style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                         </div>
                       </div>
@@ -537,8 +537,8 @@ export default function KnowledgePage() {
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-                                  <button onClick={() => openEditMemory(m)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}><Edit2 size={12} /></button>
-                                  <button onClick={() => handleDeleteMemory(m.id)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'rgba(239,68,68,0.10)', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={12} /></button>
+                                  <button aria-label="Edit" onClick={() => openEditMemory(m)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}><Edit2 size={12} /></button>
+                                  <button aria-label="Delete" onClick={() => handleDeleteMemory(m.id)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'rgba(239,68,68,0.10)', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={12} /></button>
                                 </div>
                               </div>
                             ))}

@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, HardDrive, AlertTriangle } from 'lucide-react';
 import { storageAPI } from '@/lib/api';
+import { clickable } from '@/lib/a11y';
 
 const GB = 1024 ** 3;
 const fmtBytes = (n) => {
@@ -87,7 +88,7 @@ export default function StorageSettings() {
               <div style={card}>
                 <h3 style={h3}>Largest projects</h3>
                 {(data.largest_projects || []).map((p) => (
-                  <div key={p.id} onClick={() => router.push(`/studio/${p.id}`)} style={{ ...row, cursor: 'pointer' }}>
+                  <div key={p.id} {...clickable(() => router.push(`/studio/${p.id}`))} style={{ ...row, cursor: 'pointer' }}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{p.title || 'Untitled'}</span>
                     <span style={{ color: 'var(--text-dim,#666)' }}>{fmtBytes(p.bytes)}</span>
                   </div>

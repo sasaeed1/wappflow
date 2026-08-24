@@ -3,6 +3,7 @@ import { Suspense, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ccApi } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
+import { clickable } from '@/lib/a11y';
 
 export default function TimeMachinePage() {
   // useSearchParams must be inside a Suspense boundary in this Next.js.
@@ -129,7 +130,7 @@ function TimelineRow({ item }) {
   const hasDiff = item.before || item.after;
   return (
     <div style={{ borderBottom: '1px solid var(--border,#1e1e26)' }}>
-      <div onClick={() => hasDiff && setOpen(!open)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', cursor: hasDiff ? 'pointer' : 'default', fontSize: 13 }}>
+      <div {...clickable(() => hasDiff && setOpen(!open))} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', cursor: hasDiff ? 'pointer' : 'default', fontSize: 13 }}>
         <Pill tone={item.source === 'audit' ? 'amber' : 'blue'}>{item.source}</Pill>
         <span style={{ fontWeight: 600 }}>{item.label}</span>
         <span style={{ flex: 1 }} />

@@ -294,10 +294,10 @@ function HeroPreview() {
             </div>
 
             <div className="lp-preview-composer">
-              <button className="lp-icon-btn"><ImageIcon size={15} /></button>
-              <button className="lp-icon-btn"><Mic size={15} /></button>
+              <button aria-hidden="true" tabIndex={-1} className="lp-icon-btn"><ImageIcon size={15} /></button>
+              <button aria-hidden="true" tabIndex={-1} className="lp-icon-btn"><Mic size={15} /></button>
               <div className="lp-fake-input">Type a message…</div>
-              <button className="lp-send-btn"><Send size={14} /></button>
+              <button aria-hidden="true" tabIndex={-1} className="lp-send-btn"><Send size={14} /></button>
             </div>
           </div>
 
@@ -1382,9 +1382,9 @@ function HuddleSection() {
             </div>
 
             <div className="lp-huddle-toolbar">
-              <button className="lp-huddle-btn"><Mic size={14} /></button>
-              <button className="lp-huddle-btn"><Video size={14} /></button>
-              <button className="lp-huddle-btn"><MapPin size={14} /></button>
+              <button aria-hidden="true" tabIndex={-1} className="lp-huddle-btn"><Mic size={14} /></button>
+              <button aria-hidden="true" tabIndex={-1} className="lp-huddle-btn"><Video size={14} /></button>
+              <button aria-hidden="true" tabIndex={-1} className="lp-huddle-btn"><MapPin size={14} /></button>
               <button className="lp-huddle-btn lp-huddle-end">End</button>
             </div>
           </div>

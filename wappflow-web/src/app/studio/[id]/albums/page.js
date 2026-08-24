@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, BookOpen, X, FileText } from 'lucide-react';
 import { mediaAPI } from '../../../../lib/api';
+import { clickable } from '@/lib/a11y';
 
 const SIZES = [
   { label: '30×30 cm square', spec: { w_mm: 300, h_mm: 300, margin_mm: 12 } },
@@ -22,11 +23,11 @@ function NewAlbumModal({ projectId, onClose, onCreated }) {
     catch { setSaving(false); }
   };
   return (
-    <div onClick={onClose} style={overlay}>
+    <div {...clickable(onClose)} style={overlay}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={modalBox}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>New album</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
+          <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
         </div>
         <label style={labelStyle}>Album name</label>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Wedding Album" style={inputStyle} autoFocus />
@@ -77,7 +78,7 @@ export default function AlbumsPage() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
             {albums.map(a => (
-              <div key={a.id} onClick={() => router.push(`/studio/${id}/albums/${a.id}`)} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 18, cursor: 'pointer' }}>
+              <div key={a.id} {...clickable(() => router.push(`/studio/${id}/albums/${a.id}`))} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 18, cursor: 'pointer' }}>
                 <div style={{ width: 44, height: 44, borderRadius: 11, background: 'var(--ms-ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><BookOpen size={20} color="var(--ms-paper)" /></div>
                 <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px' }}>{a.title}</h3>
                 <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0 }}>
