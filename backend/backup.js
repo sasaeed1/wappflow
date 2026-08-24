@@ -30,6 +30,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { execFileSync } = require('child_process');
 const Database = require('better-sqlite3');
 
@@ -108,7 +109,7 @@ function prune() {
   }
   [...weeks.values()].slice(0, KEEP_WEEKLY).forEach((f) => keep.add(f));
 
-  let removed = 0;
+  let removed = 0, blocked = 0;
   for (const { f } of files) {
     if (keep.has(f)) continue;
     try {
@@ -116,9 +117,13 @@ function prune() {
       const tar = path.join(DEST, f.replace(/\.db$/, '-uploads.tar.gz'));
       if (fs.existsSync(tar)) fs.unlinkSync(tar);
       removed++;
-    } catch { /* leave it rather than fail the run */ }
+    } catch { blocked++; }
   }
   if (removed) log(`  pruned ${removed} old backup(s)`);
+  // A prune that silently cannot delete fills the disk, and a full disk makes the
+  // NEXT backup fail — at which point there is no backup and no warning either.
+  // (This is exactly what happens if some runs are root-owned and others are not.)
+  if (blocked) console.error(`  ! could not delete ${blocked} old backup(s) — check ownership of ${DEST}`);
 }
 
 function main() {
@@ -137,6 +142,9 @@ function main() {
     const target = args[1];
     if (!target || !fs.existsSync(target)) { console.error('give a backup file to verify'); process.exitCode = 1; return; }
     const problems = verify(target, null);
+    // Opening it to check it creates -wal/-shm beside it; tidy up so a verify does
+    // not leave litter in the backup directory.
+    for (const sfx of ['-wal', '-shm']) { try { fs.unlinkSync(target + sfx); } catch {} }
     if (problems.length) { console.error('✗ NOT USABLE:\n  ' + problems.join('\n  ')); process.exitCode = 1; }
     else log('✓ verified: opens cleanly and passes integrity_check');
     return;
