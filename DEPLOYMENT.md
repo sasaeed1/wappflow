@@ -685,36 +685,91 @@ Put Nginx/Caddy in front for HTTPS (see §7.5–7.6 — same config, just point 
 
 In production (`NODE_ENV=production`) the backend uses `/data` as the root. In dev it uses `backend/`.
 
-### Daily backup (VPS)
+### Daily backup (VPS) — INSTALLED
 
-Add to `/etc/cron.daily/wappflow-backup` (chmod +x):
+**This is done.** `/etc/cron.daily/wappflow-backup` runs nightly as the `ubuntu`
+user and writes to `/data/backups`. Nothing needs setting up; this section
+describes what is already running.
 
 ```bash
-#!/bin/bash
-set -e
-DEST=/var/backups/wappflow
-TODAY=$(date +%Y-%m-%d)
-mkdir -p $DEST
-# SQLite hot backup (safe even while server is running)
-sqlite3 /data/wappflow.db ".backup $DEST/wappflow-$TODAY.db"
-# Uploads tarball
-tar czf $DEST/uploads-$TODAY.tar.gz -C /data uploads
-# Keep last 14 days
-find $DEST -type f -mtime +14 -delete
+# Take one now, by hand
+cd /var/www/wappflow/backend && NODE_ENV=production DATA_DIR=/data node backup.js
+
+node backup.js --list                  # what exists
+node backup.js --verify-only <file>    # prove one is usable
 ```
+
+Retention: 14 daily + 8 weekly, pruned automatically. About 43MB per run today,
+almost all of it photographs.
+
+**The previous version of this section was wrong in two ways that both mattered**,
+which is why it is worth spelling out:
+
+1. It shelled out to `sqlite3`. **That binary is not installed on this box**, so
+   the documented job could not have run even if anybody had installed it.
+2. Any approach built on copying the file (`cp`, `rsync`, a volume snapshot taken
+   while the process is live) is unsafe here. SQLite runs in **WAL mode**, and on
+   this box the write-ahead log has been observed at 4MB against a 1.7MB database.
+   A file copy takes the `.db` and leaves the WAL behind, silently losing every
+   commit since the last checkpoint — and **the copy still opens cleanly**, so the
+   loss is invisible until the day somebody needs it. Measured in
+   `test-backup-restore.js`: a plain copy captured 473 of 700 rows and none of the
+   payments.
+
+`backend/backup.js` uses SQLite's online-backup API, which folds the WAL in and
+is safe while the server is writing. Every run then re-opens what it wrote, runs
+`PRAGMA integrity_check` and compares row counts against the source; a backup
+that fails verification is **deleted** rather than left around to be trusted.
 
 For Railway: enable **Volume Backups** in the volume settings (paid tier feature).
 
-### Restore
+### Restore — TESTED
 
-Stop the server, drop the file in place, restart:
+This procedure has been run end to end against production data (a copy; the live
+database was never touched), and is exercised on every test run by
+`backend/test-backup-restore.js`, which destroys a database and brings it back.
 
 ```bash
+# 1. Prove the backup is usable BEFORE you destroy anything.
+cd /var/www/wappflow/backend
+node backup.js --verify-only /data/backups/wappflow-<stamp>.db
+
+# 2. Keep what is currently there. Even a broken database is evidence.
 pm2 stop wappflow-api
-cp /var/backups/wappflow/wappflow-2026-05-17.db /data/wappflow.db
-rm /data/wappflow.db-wal /data/wappflow.db-shm   # forces clean reopen
+mv /data/wappflow.db /data/wappflow.db.before-restore
+
+# 3. Put the backup in place.
+cp /data/backups/wappflow-<stamp>.db /data/wappflow.db
+
+# 4. Remove the stale WAL and shared-memory files.
+#    They belong to the OLD database. Leaving them can corrupt the restored one.
+rm -f /data/wappflow.db-wal /data/wappflow.db-shm
+
+# 5. Photographs, if those were lost too.
+cd /data && tar -xzf /data/backups/wappflow-<stamp>-uploads.tar.gz
+
+# 6. Ownership, or the app cannot write.
+chown -R ubuntu:ubuntu /data
+
 pm2 start wappflow-api
 ```
+
+Then check it actually came back — not just that the process started:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}
+' https://wappflow.remoteops.co/login
+pm2 logs wappflow-api --lines 20 --nostream | grep -i "Server running\|error"
+```
+
+**What a restore costs you:** everything since that backup ran. Backups are
+nightly, so worst case is roughly 24 hours of leads, messages and invoices. If
+you are about to do something risky, take one by hand first — it takes seconds.
+
+**What is NOT in the backup:** the WhatsApp session (`/data/.wwebjs_auth`). After
+a restore onto a new machine you will have to re-scan the QR code. That is
+deliberate — those files are large, machine-specific, and re-pairing takes a
+minute.
 
 ---
 
