@@ -22,10 +22,14 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded }) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // The API tells us WHICH lead the phone number already belongs to; the modal used
+  // to throw that away and show a dead-end error (audit crm-leads-3).
+  const [duplicateId, setDuplicateId] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setDuplicateId(null);
     if (!formData.customer_phone) { setError('Phone number is required'); return; }
     setLoading(true);
     try {
@@ -38,7 +42,10 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded }) {
       if (onLeadAdded) onLeadAdded();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create lead');
+      const d = err.response?.data || {};
+      setError(d.error || 'Failed to create lead');
+      // A duplicate is not a failure — it means the contact is already here.
+      if (d.existing_id) setDuplicateId(d.existing_id);
     } finally {
       setLoading(false);
     }
@@ -57,7 +64,13 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded }) {
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {error && (
           <div style={{ padding: '10px 13px', background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)', borderRadius: 'var(--radius)', color: 'var(--danger-fg)', fontSize: 12.5 }}>
-            {error}
+            {duplicateId ? 'You already have a contact with this phone number.' : error}
+            {duplicateId && (
+              <a href={`/leads/${duplicateId}`}
+                 style={{ display: 'inline-block', marginTop: 8, fontWeight: 700, color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                Open that contact instead →
+              </a>
+            )}
           </div>
         )}
 

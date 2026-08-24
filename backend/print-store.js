@@ -44,6 +44,12 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
   // what it became, and stop a retry from billing the customer twice.
   for (const c of ['invoice_id TEXT', 'payment_id TEXT', 'pay_url TEXT']) { try { db.exec(`ALTER TABLE ms_print_orders ADD COLUMN ${c}`); } catch { /* exists */ } }
 
+  // Same rule as media-studio's: expires_at is a DAY, and the client has all of it.
+  const isGalleryExpired = (g) => {
+    if (!g || !g.expires_at) return false;
+    const day = String(g.expires_at).slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(day) && day < new Date().toISOString().slice(0, 10);
+  };
   const J = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
   const owner = (ws) => { const r = db.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ? AND role = 'super_admin' LIMIT 1").get(ws); return r ? r.user_id : null; };
   const brandSym = (ws) => { const o = owner(ws); let name = 'WappFlow', sym = '$'; if (o) { try { const cs = db.prepare('SELECT company_name, currency_symbol FROM company_settings WHERE user_id = ?').get(o); if (cs) { name = cs.company_name || name; sym = cs.currency_symbol || sym; } } catch {} } return { name, sym }; };
@@ -116,6 +122,8 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     try {
       const g = db.prepare('SELECT * FROM ms_galleries WHERE share_token = ?').get(req.params.token);
       if (!g) return res.status(404).json({ error: 'Not available' });
+      // The shop hangs off the gallery's token, so it closes when the gallery expires.
+      if (isGalleryExpired(g)) return res.status(410).json({ error: 'This gallery has expired.', expired: true });
       const { sym } = brandSym(g.workspace_id);
       const products = db.prepare('SELECT * FROM ms_print_products WHERE workspace_id = ? AND active = 1 ORDER BY sort_order, created_at').all(g.workspace_id).map(shape);
       res.json({ brand: publicBrand(db, g.workspace_id, clientBaseUrl), currency_symbol: sym, gallery_title: g.title, products });
@@ -126,6 +134,8 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     try {
       const g = db.prepare('SELECT * FROM ms_galleries WHERE share_token = ?').get(req.params.token);
       if (!g) return res.status(404).json({ error: 'Not available' });
+      // The shop hangs off the gallery's token, so it closes when the gallery expires.
+      if (isGalleryExpired(g)) return res.status(410).json({ error: 'This gallery has expired.', expired: true });
       const ws = g.workspace_id; const { sym } = brandSym(ws);
       const { items, name, phone, email, note } = req.body || {};
       if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Your cart is empty' });

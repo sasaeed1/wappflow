@@ -403,15 +403,50 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Drafts (Phase 10, audit comms-11). The composer is a contentEditable, not React
+  // state, so switching channels simply discarded whatever had been typed — a
+  // half-written reply vanished the moment somebody checked another conversation.
+  // Kept per channel and in sessionStorage, so a refresh does not lose it either.
+  const draftsRef = useRef({});
+  const DRAFT_KEY = 'wf-chat-drafts';
+  useEffect(() => {
+    try { draftsRef.current = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || '{}'); } catch { draftsRef.current = {}; }
+  }, []);
+  const stashDraft = useCallback((channelId) => {
+    if (!channelId || !inputRef.current) return;
+    const html = inputRef.current.innerHTML.trim();
+    const plain = (inputRef.current.innerText || '').trim();
+    if (plain) draftsRef.current[channelId] = html;
+    else delete draftsRef.current[channelId];
+    try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draftsRef.current)); } catch {}
+  }, []);
+
   // Keep a ref to the active channel so the persistent SSE handler isn't stale,
   // and mark the channel read whenever it becomes active.
   useEffect(() => {
+    const previous = activeChannelRef.current;
+    if (previous && previous.id !== activeChannel?.id) stashDraft(previous.id);
+
     activeChannelRef.current = activeChannel;
     if (activeChannel) {
       commsAPI.markRead(activeChannel.id).catch(() => {});
       setUnreadCounts(prev => ({ ...prev, [activeChannel.id]: 0 }));
+      // Put back whatever was typed here last time.
+      const el = inputRef.current;
+      if (el) {
+        const saved = draftsRef.current[activeChannel.id] || '';
+        el.innerHTML = saved;
+        setHasContent(!!(el.innerText || '').trim());
+      }
     }
-  }, [activeChannel]);
+  }, [activeChannel, stashDraft]);
+
+  // A refresh or a tab close should not lose it either.
+  useEffect(() => {
+    const save = () => stashDraft(activeChannelRef.current?.id);
+    window.addEventListener('beforeunload', save);
+    return () => { save(); window.removeEventListener('beforeunload', save); };
+  }, [stashDraft]);
 
   // Real-time over the shell's single connection (Phase 5). This effect used to
   // own an EventSource whose deps included `muted` and `playSound`, so toggling
@@ -572,6 +607,9 @@ export default function ChatPage() {
       el.innerHTML = '';
       setHasContent(false);
       setReplyTo(null);
+      // Clear the stored draft too, or the sent text reappears on returning here.
+      delete draftsRef.current[activeChannel.id];
+      try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draftsRef.current)); } catch {}
     } catch (e) { console.error(e); } finally { setSending(false); }
   };
 

@@ -8,6 +8,7 @@ import Drawer from '@/components/ui/Drawer';
 import ModuleSwitcher from './ModuleSwitcher';
 import ShellNotifications from './ShellNotifications';
 import CommandPalette from './CommandPalette';
+import { useShortcuts, ShortcutHelp } from './shortcuts';
 import { MODULES, isNavActive } from './modules';
 import { useSession, useSignOut, useAuthGuard } from './session';
 import { useSummary } from './summary';
@@ -36,6 +37,9 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useSession();
+  // App-wide keyboard shortcuts. The product had exactly one hotkey (Ctrl+K) and
+  // no way to discover even that.
+  const { helpOpen, setHelpOpen } = useShortcuts();
   const signOut = useSignOut();
   const plan = usePlan();
   const summary = useSummary();
@@ -132,6 +136,9 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
         {mod.notifications && <ShellNotifications />}
         {/* Ctrl+K, in every module — the old binding lived in a CRM-only fab. */}
         <CommandPalette />
+        {/* "g then a letter" to navigate, "?" for the list. Mounted on the ONE
+            shell, so every module gets them and nothing binds keys twice. */}
+        <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
 
         <button
           className="wf-shell-burger"

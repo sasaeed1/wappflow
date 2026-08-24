@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
   Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
-  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause, Droplets, Wand2, SlidersHorizontal,
+  Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause, Droplets, Wand2, SlidersHorizontal, Settings,
 } from 'lucide-react';
 
 // photo | video — RAW and stills both live under "photo"
@@ -159,6 +159,8 @@ export default function ProjectPage() {
   const [viewSize, setViewSize] = useState('c'); // collage (natural sizes) is the default — gallery feel
   const [mediaTab, setMediaTab] = useState('all'); // all | photo | video — works like a filter, reads like sections
   const [aiHints, setAiHints] = useState(true);    // Settings → Defaults: show advisory AI badges
+  const [editing, setEditing] = useState(null);    // the gallery being edited — there was no way to change one after creation
+  const [savingGallery, setSavingGallery] = useState(false);
   const [lightbox, setLightbox] = useState(null); // index into the SHOWN list
   const [wmModal, setWmModal] = useState(false);
   const [aiPanel, setAiPanel] = useState(false);
@@ -409,7 +411,13 @@ export default function ProjectPage() {
               <div key={g.id} className="ms-panel">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9 }}>
                   <span style={{ fontFamily: 'var(--ms-serif)', fontSize: 18, fontWeight: 500, color: 'var(--ms-ink)', flex: 1, lineHeight: 1.2 }}>{g.title}</span>
-                  <span className={`ms-status${g.status === 'published' ? ' ms-status-live' : ''}`}>{g.status}</span>
+                  {/* Gallery Expiry (Phase 10). expires_at sat in the schema marked
+                      "RESERVED for Gallery Expiry (named roadmap feature)" and nothing
+                      ever set, read or showed it — the feature was named in the product
+                      and did not exist. */}
+                  {g.is_expired
+                    ? <span className="ms-status" style={{ background: 'rgba(179,38,30,0.12)', color: '#b3261e' }}>expired</span>
+                    : <span className={`ms-status${g.status === 'published' ? ' ms-status-live' : ''}`}>{g.status}</span>}
                 </div>
                 <p style={{ fontSize: 12.5, color: 'var(--ms-ink-3)', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 10, textTransform: 'capitalize', flexWrap: 'wrap' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>{g.has_password ? <Lock size={11} /> : g.visibility === 'public' ? <Globe size={11} /> : <Eye size={11} />}{g.visibility} · {g.asset_count || 0}</span>
@@ -420,8 +428,18 @@ export default function ProjectPage() {
                     </span>
                   )}
                 </p>
+                {g.expires_at && (
+                  <p style={{ fontSize: 12, color: g.is_expired ? '#b3261e' : 'var(--ms-ink-3)', margin: '-6px 0 12px' }}>
+                    {g.is_expired ? `Expired ${String(g.expires_at).slice(0, 10)} — the client can no longer open it.`
+                                  : `Access ends ${String(g.expires_at).slice(0, 10)}.`}
+                  </p>
+                )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {selected.size > 0 && <button onClick={() => addSelected(g.id)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Plus size={13} /> Add {selected.size}</button>}
+                  <button onClick={() => setEditing({ id: g.id, title: g.title, visibility: g.visibility, expires_at: (g.expires_at || '').slice(0, 10), password: '' })}
+                          className="ms-btn-ghost" style={{ padding: '7px 13px' }}>
+                    <Settings size={13} /> Edit
+                  </button>
                   {g.status === 'published'
                     ? <>
                         <button onClick={() => g.share_url ? window.open(g.share_url, '_blank', 'noopener,noreferrer') : setBanner({ type: 'error', msg: 'Share link not ready — the API needs a restart (pm2 restart wappflow-api), then refresh.' })} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Eye size={13} /> Open</button>
@@ -571,6 +589,68 @@ export default function ProjectPage() {
         </div>
       )}
       {aiPanel && <StudioAIModal projectId={id} onClose={() => setAiPanel(false)} onGallery={refreshGalleries} setBanner={setBanner} />}
+
+      {/* Gallery settings. There was no way to change a gallery after creating it -
+          not its title, not who could open it, not its password - and Gallery Expiry
+          was a named feature backed by a column nothing ever wrote. */}
+      {editing && (
+        <div className="ms-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setEditing(null); }}>
+          <div className="ms-modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Gallery settings">
+            <h2 style={{ fontFamily: 'var(--ms-serif)', fontSize: 20, margin: '0 0 4px', color: 'var(--ms-ink)' }}>Gallery settings</h2>
+            <p className="ms-modal-sub" style={{ marginBottom: 18 }}>
+              Rename it, change who can open it, or set a date after which the link stops working.
+            </p>
+
+            <label style={wmLbl}>Title</label>
+            <input value={editing.title} onChange={(e) => setEditing(s => ({ ...s, title: e.target.value }))} style={wmInp} />
+
+            <label style={wmLbl}>Who can open it</label>
+            <select value={editing.visibility} onChange={(e) => setEditing(s => ({ ...s, visibility: e.target.value }))} style={wmInp}>
+              <option value="private">Private — anyone with the link</option>
+              <option value="password">Password protected</option>
+              <option value="public">Public</option>
+              <option value="client_portal">Client portal only</option>
+            </select>
+
+            {editing.visibility === 'password' && (
+              <>
+                <label style={wmLbl}>Password</label>
+                <input type="text" value={editing.password} placeholder="Leave blank to keep the current one"
+                       onChange={(e) => setEditing(s => ({ ...s, password: e.target.value }))} style={wmInp} />
+              </>
+            )}
+
+            <label style={wmLbl}>Access ends</label>
+            <input type="date" value={editing.expires_at || ''}
+                   onChange={(e) => setEditing(s => ({ ...s, expires_at: e.target.value }))} style={{ ...wmInp, marginBottom: 4 }} />
+            <p style={{ fontSize: 11.5, color: 'var(--ms-ink-3,#888)', margin: '0 0 14px' }}>
+              The client has all of that day. Leave it empty for no expiry — you can clear it any time to give access back.
+            </p>
+
+            <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditing(null)} className="ms-btn-ghost" style={{ padding: '9px 16px' }}>Cancel</button>
+              <button
+                disabled={savingGallery || !editing.title.trim()}
+                onClick={async () => {
+                  setSavingGallery(true);
+                  try {
+                    const body = { title: editing.title.trim(), visibility: editing.visibility, expires_at: editing.expires_at || '' };
+                    if (editing.password) body.password = editing.password;
+                    await mediaAPI.updateGallery(editing.id, body);
+                    setEditing(null);
+                    await refreshGalleries();
+                    setBanner({ type: 'ok', msg: 'Gallery updated' });
+                  } catch (err) {
+                    setBanner({ type: 'error', msg: err.response?.data?.error || 'Could not save the gallery' });
+                  } finally { setSavingGallery(false); }
+                }}
+                className="ms-btn-ink" style={{ padding: '9px 18px' }}>
+                {savingGallery ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

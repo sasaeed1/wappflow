@@ -1525,7 +1525,25 @@ Only suggest actions that make sense for the question. If none make sense, retur
   } catch (e) { console.error('Album page backfill skipped:', e.message); }
 
   function getGallery(workspaceId, id) {
-    return db.prepare('SELECT * FROM ms_galleries WHERE id = ? AND workspace_id = ?').get(id, workspaceId);
+    const g = db.prepare('SELECT * FROM ms_galleries WHERE id = ? AND workspace_id = ?').get(id, workspaceId);
+    return g ? { ...g, is_expired: isGalleryExpired(g) } : g;
+  }
+
+  // ── Gallery Expiry (Phase 10) ─────────────────────────────────────────────
+  //
+  // expires_at has sat in this schema since the beginning marked "RESERVED for
+  // Gallery Expiry (named roadmap feature)". Nothing ever set it, read it or
+  // exposed it: the feature was named in the product and did not exist. A studio
+  // who believed it was delivering photographs on a link that would stop working.
+  //
+  // The date is a DAY, not an instant: "expires 30 June" means the client has all
+  // of the 30th. Compared as a date string so it does not silently depend on the
+  // server's zone — the class of bug Phase 9 removed from bookings.
+  function isGalleryExpired(g) {
+    if (!g || !g.expires_at) return false;
+    const day = String(g.expires_at).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+    return day < new Date().toISOString().slice(0, 10);
   }
   function pwHash(galleryId, pw) {
     return crypto.createHash('sha256').update(`${galleryId}::${pw}`).digest('hex');
@@ -1629,6 +1647,10 @@ Only suggest actions that make sense for the question. If none make sense, retur
       res.json({ galleries: rows.map(g => ({
         ...g, has_password: !!g.password_hash, password_hash: undefined,
         share_url: g.share_token ? `${clientBaseUrl}/g/${g.share_token}` : null,
+        // This route builds its own rows rather than going through getGallery, so
+        // it needs the derivation too — otherwise the studio finds out a gallery
+        // expired when the client rings.
+        is_expired: isGalleryExpired(g),
       })) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -1657,6 +1679,12 @@ Only suggest actions that make sense for the question. If none make sense, retur
       ['title', 'visibility', 'status'].forEach(f => { if (req.body[f] !== undefined) { fields.push(`${f} = ?`); params.push(req.body[f]); } });
       if (req.body.settings !== undefined) { fields.push('settings = ?'); params.push(JSON.stringify(req.body.settings)); }
       if (req.body.password !== undefined) { fields.push('password_hash = ?'); params.push(req.body.password ? pwHash(g.id, req.body.password) : null); }
+      // Gallery Expiry: '' or null clears it, so a studio can always give access back.
+      if (req.body.expires_at !== undefined) {
+        const v = String(req.body.expires_at || '').slice(0, 10);
+        if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return res.status(400).json({ error: 'expires_at must be YYYY-MM-DD.' });
+        fields.push('expires_at = ?'); params.push(v || null);
+      }
       if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
       params.push(g.id, req.workspaceId);
       db.prepare(`UPDATE ms_galleries SET ${fields.join(', ')} WHERE id = ? AND workspace_id = ?`).run(...params);
@@ -2665,14 +2693,26 @@ Only suggest actions that make sense for the question. If none make sense, retur
   });
 
   // ── Public client portal (NO auth — the share token IS the capability) ───────
-  function loadPublishedGallery(token) {
-    return db.prepare("SELECT * FROM ms_galleries WHERE share_token = ? AND status = 'published'").get(token);
+  function loadPublishedGallery(token, { allowExpired = false } = {}) {
+    const g = db.prepare("SELECT * FROM ms_galleries WHERE share_token = ? AND status = 'published'").get(token);
+    if (!g) return undefined;
+    // Expired galleries are invisible to every caller by default, so favouriting,
+    // commenting, downloading, exporting and proofing all stop with the page.
+    // Only the page itself asks for one, so it can say "expired" instead of
+    // "never existed".
+    if (!allowExpired && isGalleryExpired(g)) return undefined;
+    return g;
   }
 
   app.get('/api/media/portal/:token', (req, res) => {
     try {
-      const g = loadPublishedGallery(req.params.token);
+      const g = loadPublishedGallery(req.params.token, { allowExpired: true });
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
+      // An expiry nobody enforces is not a feature. 410 Gone, distinct from 404,
+      // so the page can say "this expired" rather than "this never existed".
+      if (isGalleryExpired(g)) {
+        return res.status(410).json({ error: 'This gallery has expired.', expired: true, expired_on: String(g.expires_at).slice(0, 10) });
+      }
       if (!portalAllowed(g, req.query.pw)) return res.status(401).json({ error: 'Password required', needs_password: true });
 
       let settings = {}; try { settings = JSON.parse(g.settings || '{}'); } catch {}

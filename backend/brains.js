@@ -60,6 +60,37 @@ module.exports = function mountBrains(app, db, deps = {}) {
   }
 
   // ── Style Engine: house style from the scores of KEPT work ──────────────────
+  // How long a derived style profile is considered good enough. It is an ADVISORY
+  // hint ("your keeps tend to be a little brighter"), not a number anything
+  // depends on, so a few hours of staleness costs nothing and a recomputation on
+  // every page load costs two 5000-row joins and a write.
+  const STYLE_TTL_MS = 6 * 60 * 60 * 1000;
+
+  /**
+   * Phase 10 (audit studio-library-6). deriveStyle was called on every request to
+   * /api/media/recommendations, and the cull page calls that on every mount — so
+   * opening the culling screen ran two 5000-row joins and then WROTE to
+   * style_profiles, every time, for a hint that changes over weeks.
+   *
+   * Returns the stored profile when it is fresh. `force` re-derives on demand.
+   */
+  function getStyle(workspaceId, scope = 'workspace', scopeId = null, { force = false } = {}) {
+    const sid = scopeId || workspaceId;
+    if (!force) {
+      try {
+        const row = db.prepare('SELECT profile, confidence, sample_n, updated_at FROM style_profiles WHERE workspace_id = ? AND scope = ? AND scope_id = ?')
+          .get(workspaceId, scope, sid);
+        if (row && row.updated_at) {
+          const age = Date.now() - new Date(String(row.updated_at).replace(' ', 'T') + 'Z').getTime();
+          if (Number.isFinite(age) && age >= 0 && age < STYLE_TTL_MS) {
+            return { scope, scope_id: sid, profile: J(row.profile, {}), confidence: row.confidence, sample_n: row.sample_n, cached: true };
+          }
+        }
+      } catch { /* fall through and derive */ }
+    }
+    return deriveStyle(workspaceId, scope, sid);
+  }
+
   function deriveStyle(workspaceId, scope = 'workspace', scopeId = null) {
     scopeId = scopeId || workspaceId;
     const userFilter = scope === 'creator' ? 'AND c.user_id = ?' : '';
@@ -115,6 +146,7 @@ module.exports = function mountBrains(app, db, deps = {}) {
   app.post('/api/media/style-profile/derive', auth, (req, res) => {
     try {
       const scope = req.body && req.body.scope === 'creator' ? 'creator' : 'workspace';
+      // This endpoint MEANS "recompute now", so it always derives.
       res.json(deriveStyle(req.workspaceId, scope, scope === 'creator' ? req.userId : req.workspaceId));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -123,7 +155,7 @@ module.exports = function mountBrains(app, db, deps = {}) {
   app.get('/api/media/recommendations', auth, (req, res) => {
     try {
       const cb = deriveCreatorBrain(req.workspaceId, req.userId);
-      const style = deriveStyle(req.workspaceId, 'workspace', req.workspaceId);
+      const style = getStyle(req.workspaceId, 'workspace', req.workspaceId);
       const recs = [];
       if (cb.cull_keep_rate) recs.push({ kind: 'cull', text: `You keep about ${Math.round(cb.cull_keep_rate.value * 100)}% of shots — auto-flag the bottom ${Math.round((1 - cb.cull_keep_rate.value) * 100)}% by hero score for a faster first pass.`, confidence: cb.cull_keep_rate.confidence });
       // Surface style hints once there's a small sample; confidence rides along so
@@ -143,7 +175,7 @@ module.exports = function mountBrains(app, db, deps = {}) {
     try {
       const project = db.prepare('SELECT id FROM ms_projects WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
       if (!project) return res.status(404).json({ error: 'Project not found' });
-      const style = deriveStyle(req.workspaceId, 'workspace', req.workspaceId);
+      const style = getStyle(req.workspaceId, 'workspace', req.workspaceId);
       const target = style.profile || {};
       const assets = db.prepare("SELECT id FROM ms_assets WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL").all(req.params.id, req.workspaceId);
       const ids = assets.map(a => a.id);
