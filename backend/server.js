@@ -193,15 +193,35 @@ const DEFAULT_ROLE_PERMISSIONS = {
 // Issue a session token stamped with the user's CURRENT token_version, so a
 // password reset can invalidate everything issued before it. A path that
 // forgets this hands out a token that survives the reset meant to kill it.
+// Sessions were signed with NO EXPIRY, so a token copied off a laptop worked
+// forever — token_version revokes on a password reset, but a user who never
+// resets had an immortal credential. Thirty days is long enough not to nag a
+// studio that lives in this app daily, and short enough that a leaked token
+// stops working. Tokens already issued carry no `exp` and keep working, so
+// deploying this signs nobody out.
+const SESSION_TTL = process.env.SESSION_TTL || '30d';
+
 function signSession(userId, extra = {}) {
   let tv = 0;
   try { tv = db.prepare('SELECT token_version FROM users WHERE id = ?').get(userId)?.token_version || 0; } catch {}
-  return jwt.sign({ userId, tv, ...extra }, JWT_SECRET);
+  return jwt.sign({ userId, tv, ...extra }, JWT_SECRET, { expiresIn: SESSION_TTL });
 }
+
+// EventSource cannot set an Authorization header, so the SSE stream — and only
+// the SSE stream — may carry its token in the query string. Everywhere else this
+// is a credential-leak vector: a token in a URL ends up in nginx access logs,
+// browser history, and the Referer header sent to any third party the page later
+// links to. It used to be accepted on ALL 384 authenticated routes.
+const SSE_PATHS = new Set(['/api/events']);
+const bearerOf = (req) => {
+  const header = req.header('Authorization')?.replace('Bearer ', '');
+  if (header) return header;
+  return SSE_PATHS.has(req.path) ? req.query.token : undefined;
+};
 
 const auth = (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '') || req.query.token;
+    const token = bearerOf(req);
     if (!token) throw new Error();
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId;
@@ -1254,6 +1274,11 @@ whatsappService.loadAccounts();
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, businessName } = req.body;
+    // Registration accepted ANY password — including an empty string — while the
+    // reset flow required eight characters. The weakest door defines the security
+    // of the account, so they have to agree.
+    if (!email || !String(email).includes('@')) return res.status(400).json({ error: 'A valid email is required.' });
+    if (!password || String(password).length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = generateId();
     const workspaceId = generateId();
@@ -1308,7 +1333,9 @@ app.put('/api/auth/password', auth, async (req, res) => {
   try {
     const { current_password, new_password } = req.body;
     if (!current_password || !new_password) return res.status(400).json({ error: 'current_password and new_password are required' });
-    if (new_password.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    // Was 6 here while register, invite and the reset flow all demanded 8. One
+    // minimum, stated once: the weakest door defines the account's security.
+    if (String(new_password).length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -1318,7 +1345,9 @@ app.put('/api/auth/password', auth, async (req, res) => {
     if (!isMatch) return res.status(401).json({ error: 'Current password is incorrect' });
 
     const newHash = await bcrypt.hash(new_password, 10);
-    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(newHash, req.userId);
+    // Changing a password should end other sessions, exactly as resetting one does
+    // — someone changing it because they think it leaked expects that.
+    db.prepare('UPDATE users SET password = ?, token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(newHash, req.userId);
     logAudit(req.workspaceId, req.userId, 'change_password', 'user', req.userId, {});
     res.json({ message: 'Password changed successfully' });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1351,6 +1380,7 @@ app.post('/api/auth/accept-invite', async (req, res) => {
     const { token, password, full_name } = req.body;
     const member = db.prepare('SELECT * FROM workspace_members WHERE invite_token = ? AND invite_status = ?').get(token, 'pending');
     if (!member) return res.status(404).json({ error: 'Invalid or expired invite' });
+    if (!password || String(password).length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     let userId = member.user_id;
@@ -6312,7 +6342,7 @@ app.use((req, res, next) => {
     const gate = MODULE_GATES.find(g => req.path.startsWith(g.prefix));
     if (!gate) return next();
     if (gate.publicRe && gate.publicRe.test(req.path)) return next(); // tokenized client routes: never gate
-    const token = req.header('Authorization')?.replace('Bearer ', '') || req.query.token;
+    const token = bearerOf(req);
     if (!token) return next(); // let the route's own auth return 401
     let wsId;
     try {
