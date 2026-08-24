@@ -47,9 +47,11 @@ export const nextPlanLabel = (plan) => planLabel(nextPlanFor(plan) || plan);
 // settings tab id; 'billing' is accepted there as a legacy alias.)
 export const UPGRADE_ROUTE = '/settings?tab=plan';
 
-// One currency formatter for all plan pricing. Currency should come from the
-// price row (all_plans[].currency); 'PKR' is strictly the absent-value fallback.
-export const formatMoney = (amount, currency = 'PKR') =>
+// One currency formatter for all plan pricing. Currency should always come from
+// the price row (all_plans[].currency) — the default is only a last resort for a
+// row that somehow arrived without one, and it tracks the catalog currency in
+// backend/entitlements.js so the two can never quote different money.
+export const formatMoney = (amount, currency = 'USD') =>
   amount == null ? 'Custom' : `${currency} ${Number(amount).toLocaleString('en-US')}`;
 
 export function PlanProvider({ children }) {

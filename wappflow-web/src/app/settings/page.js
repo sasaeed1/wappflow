@@ -1265,7 +1265,9 @@ function PlanBillingTab({ showToast }) {
   const founding = plan.founding || null;
   const curKey = plan.plan;
 
-  const pkr = (n) => formatMoney(n); // shared formatter — lib/plan.js (single currency impl)
+  // Currency comes from the price row the API returned, never from a default —
+  // otherwise this tab quotes one currency while the pricing page quotes another.
+  const money = (n, p) => formatMoney(n, p?.currency);
   const fmtReset = (s) => { try { return new Date(String(s).replace(' ', 'T') + 'Z').toLocaleDateString(); } catch { return ''; } };
   const levelColor = (lvl) => lvl === 'reached' ? '#ef4444' : (lvl === 'critical' || lvl === 'warn') ? '#f59e0b' : '#10b981';
 
@@ -1333,11 +1335,11 @@ function PlanBillingTab({ showToast }) {
                 {featured && <div style={{ ...pill('#8b5cf6'), position: 'absolute', top: -10, left: 14 }}>Most popular</div>}
                 <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text)', marginTop: featured ? 4 : 0 }}>{p.name}</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text)', marginTop: 6 }}>
-                  {p.price != null ? pkr(p.price) : 'Custom'}
+                  {p.price != null ? money(p.price, p) : 'Custom'}
                   {p.price != null && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>/mo</span>}
                 </div>
                 {p.founding_price != null && founding?.open && (
-                  <div style={{ fontSize: 12, color: '#d97706', marginTop: 2, fontWeight: 600 }}>Founding 100: {pkr(p.founding_price)}/mo</div>
+                  <div style={{ fontSize: 12, color: '#d97706', marginTop: 2, fontWeight: 600 }}>Founding 100: {money(p.founding_price, p)}/mo</div>
                 )}
                 {isCur ? (
                   <div style={{ marginTop: 12, padding: '8px', textAlign: 'center', borderRadius: 9, background: 'var(--surface)', color: 'var(--text-muted)', fontSize: 12.5, fontWeight: 700, border: '1px solid var(--border)' }}>✓ Current plan</div>
