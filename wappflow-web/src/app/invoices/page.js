@@ -30,7 +30,10 @@ import { clickable } from '@/lib/a11y';
 // emailed version produced by the backend so customers see one consistent doc).
 
 function InvoiceViewModal({ invoice, company, onClose, onMarkPaid, onSendEmail, onDelete }) {
-  const sym = company?.currency_symbol || '$';
+  // An invoice stores the currency it was RAISED in. Falling straight through to
+  // the workspace symbol printed a USD invoice as "Rs2600.00" — the right number
+  // wearing the wrong currency, on the document a client is asked to pay.
+  const sym = invoice?.currency_symbol || company?.currency_symbol || '$';
   const [payLink, setPayLink] = useState('');
   const makePayLink = async () => {
     try {
@@ -439,7 +442,7 @@ export default function InvoicesPage() {
                 </div>
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', alignSelf: 'center' }}>{inv.invoice_number ? `${inv.invoice_number}` : `#${inv.id}`}</span>
                 <span style={{ fontSize: 13, color: 'var(--text-muted)', alignSelf: 'center' }}>{formatDate(inv.created_at) || '—'}</span>
-                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', alignSelf: 'center' }}>{sym}{parseFloat(inv.total || 0).toFixed(2)}</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', alignSelf: 'center' }}>{inv.currency_symbol || sym}{parseFloat(inv.total || 0).toFixed(2)}</span>
                 <div style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
                   <Badge tone={invoiceStatusMeta(displayInvoiceStatus(inv)).tone} dot>{invoiceStatusMeta(displayInvoiceStatus(inv)).label}</Badge>
                   <button onClick={e => { e.stopPropagation(); setEmailInvoice(inv); }} title="Email invoice"
