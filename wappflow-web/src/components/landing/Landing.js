@@ -5,9 +5,16 @@
 
    Rebuilt from scratch. The organising idea is the thing the product actually
    does that a stack of separate tools cannot: one conversation becomes a lead,
-   a signed contract, an invoice, a shoot, a booking and a delivered gallery,
-   with each step creating the next. The page is built around demonstrating
-   that chain rather than listing features beside it.
+   a signed contract, an invoice, a project, a booking and a delivery, with
+   each step creating the next. The page is built around demonstrating that
+   chain rather than listing features beside it.
+
+   POSITIONING (2026-08-25): WappFlow is presented CRM-FIRST. The CRM — leads,
+   conversations, pipeline, timeline, AI, team — is the core; everything else
+   (contracts, booking, payments, portals, Media Studio…) is a module around
+   it. Media Studio stays showcased, but as ONE module, never the identity.
+   Platform-level copy stays industry-agnostic; vertical language belongs only
+   inside module-scoped content and the worked example in the hero demo.
 
    Ground rules for anything added here:
      • Only claim what ships. Parked and beta work is labelled as such.
@@ -190,7 +197,7 @@ const STAGES = [
       { icon: Target, title: 'Next best action', tag: 'AI',
         body: '“Send the December wedding package” — surfaced on the lead, not buried in a report.' },
     ],
-    note: 'Bring your own API key if you would rather the AI ran on your account. Enterprise studios usually do.',
+    note: 'Bring your own API key if you would rather the AI ran on your account. Enterprise customers usually do.',
   },
   {
     key: 'contract',
@@ -271,7 +278,11 @@ function ChainDemo() {
 
   return (
     <div className="lp-chain" id="chain">
-      <div className="lp-chain-rail" role="tablist" aria-label="Walk through a booking">
+      <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--lp-text-muted)', margin: '0 0 18px', lineHeight: 1.6 }}>
+        One client, end to end. This example follows a photography studio — the same
+        chain runs for whatever your business sells.
+      </p>
+      <div className="lp-chain-rail" role="tablist" aria-label="Walk through one client, end to end">
         {STAGES.map((s, n) => (
           <button
             key={s.key}
@@ -359,24 +370,24 @@ function Hero({ authed }) {
         <div className="lp-hero-head">
           <Reveal>
             <span className="lp-badge">
-              <span className="lp-badge-pill">NEW</span>
-              Contracts, invoices, shoots and bookings now create each other
+              <span className="lp-badge-pill">MODULAR</span>
+              Start with the CRM. Add the modules your business needs.
             </span>
           </Reveal>
 
           <Reveal delay={60}>
             <h1 className="lp-h1">
-              Run your whole studio from{' '}
-              <span className="lp-gradient">one conversation</span>.
+              One CRM. <span className="lp-gradient">Every client.</span>{' '}
+              Everything connected.
             </h1>
           </Reveal>
 
           <Reveal delay={120}>
             <p className="lp-lead">
-              WappFlow is the operating system for photo and video studios. The enquiry that
-              arrives on WhatsApp on Tuesday becomes the signed contract on Wednesday, the
-              shoot on Saturday and the delivered gallery on Monday — without you retyping
-              a single thing.
+              WappFlow puts a conversation-native CRM at the core of your business — leads,
+              pipeline, clients, AI — and connects the modules you need around it: contracts,
+              booking, invoicing, client portals, galleries and more. One customer record,
+              from the first message to the final delivery.
             </p>
           </Reveal>
 
@@ -447,7 +458,7 @@ function Strip() {
 const SCATTER = [
   { icon: MessageSquare, name: 'WhatsApp', cost: 'leads lost in the scroll' },
   { icon: FileText, name: 'A signing tool', cost: '$25/mo' },
-  { icon: Images, name: 'A gallery host', cost: '$40/mo' },
+  { icon: Globe2, name: 'A client-portal tool', cost: '$40/mo' },
   { icon: Receipt, name: 'Invoicing software', cost: '$20/mo' },
   { icon: Calendar, name: 'A booking page', cost: '$15/mo' },
   { icon: Database, name: 'A spreadsheet CRM', cost: 'and the retyping' },
@@ -461,7 +472,7 @@ function Problem() {
       <div className="lp-container">
         <SectionHead
           eyebrow="The problem" icon={Layers}
-          title={<>Your studio runs on <span className="lp-gradient">seven tabs</span>.</>}
+          title={<>Your business runs on <span className="lp-gradient">seven tabs</span>.</>}
           sub="Every tool holds one piece of the client and none of them talk. The client is whole; your software is not — so you become the integration layer."
         />
 
@@ -500,15 +511,16 @@ function Problem() {
         ) : (
           <div className="lp-unified">
             <div className="lp-unified-mark"><Zap size={26} fill="currentColor" /></div>
-            <h3 className="lp-split-h" style={{ marginBottom: 10 }}>One system. One client record.</h3>
+            <h3 className="lp-split-h" style={{ marginBottom: 10 }}>One CRM at the core. One client record.</h3>
             <p className="lp-section-sub" style={{ maxWidth: 520, margin: '0 auto' }}>
-              Inbox, CRM, contracts, invoices, bookings, galleries, print sales and AI —
-              sharing one database, one client and one timeline.
+              Clients, conversations and pipeline in the middle — contracts, bookings,
+              invoices, portals and galleries as modules around them, sharing one
+              database and one timeline.
             </p>
             <div className="lp-unified-list">
-              <span>Shared inbox</span><span>CRM &amp; pipeline</span><span>Contracts Studio</span>
-              <span>Media Studio</span><span>Booking</span><span>Invoicing &amp; ledger</span>
-              <span>Client portal</span><span>Print store</span><span>Portfolio</span><span>AI</span>
+              <span>CRM &amp; pipeline</span><span>Shared inbox</span><span>AI</span>
+              <span>Contracts Studio</span><span>Booking</span><span>Invoicing &amp; ledger</span>
+              <span>Client portal</span><span>Media Studio</span><span>Print store</span><span>Portfolio</span>
             </div>
             <div className="lp-cost-row">
               <span>From <b>$29/month</b></span>
@@ -565,19 +577,19 @@ const SPINE = [
     n: 'Chain',
     sub: 'One signature, four records',
     h: 'The signature is what starts the work',
-    p: 'This is the part that does not exist when your tools are separate. A signed contract raises the invoice on its own terms, opens the shoot, holds the dates and unlocks the client portal — all linked back to each other and to the lead.',
+    p: 'This is the part that does not exist when your tools are separate. A signed contract raises the invoice on its own terms, opens the project, holds the dates and unlocks the client portal — all linked back to each other and to the lead.',
     items: [
       { t: 'Invoice from contract terms', b: 'Deposit and balance as signed, not as remembered.' },
-      { t: 'Shoot created and staffed', b: 'A real project the crew can work from.' },
+      { t: 'Project created and staffed', b: 'A real piece of work your team can run from.' },
       { t: 'Dates held', b: 'Availability enforced server-side, clashes refused.' },
       { t: 'Portal unlocked', b: 'One branded link the client keeps for the whole job.' },
     ],
   },
   {
     n: 'Produce',
-    sub: 'Cull, proof, deliver',
-    h: 'From ten thousand frames to the gallery they love',
-    p: 'Media Studio handles the volume: AI-assisted culling and hero-shot picks, touch-friendly review, collections and story sections, client proofing, expiring galleries and a print store that bills through the same ledger as everything else.',
+    sub: 'The right module for the work',
+    h: 'Where a specialist module carries the load',
+    p: 'Delivery looks different in every business, so it belongs to a module. For creative work that module is Media Studio: AI-assisted culling and hero-shot picks, client proofing, collections, expiring galleries and a print store that bills through the same ledger. Whichever module does the work, it writes back to the same client.',
     items: [
       { t: 'AI culling & scoring', b: 'Faces, smiles, sharpness — the obvious rejects, gone.' },
       { t: 'Client proofing', b: 'Favourites and comments land on the project.' },
@@ -613,7 +625,7 @@ function Spine() {
         />
 
         <div className="lp-spine">
-          <div className="lp-spine-nav" role="tablist" aria-label="Stages of a studio job" aria-orientation="vertical">
+          <div className="lp-spine-nav" role="tablist" aria-label="Stages of a client relationship" aria-orientation="vertical">
             {SPINE.map((x, n) => (
               <button
                 key={x.n}
@@ -657,17 +669,35 @@ function Spine() {
 
 /* ═════════════════════════════ MODULE GRID ═══════════════════════════════ */
 
-const MODULES = [
+// The core — what WappFlow *is*, whatever the business sells; everything in
+// MODULES below plugs into it. Cards describe the platform at full capability;
+// tier placement (what is Creator vs Studio vs up) is disclosed in the pricing
+// table, so don't headline these as universal per-plan claims.
+const CORE = [
   {
-    icon: Inbox, title: 'Shared Inbox', pill: null,
-    body: 'WhatsApp, Instagram, Facebook, email and website enquiries in one place, worked by your whole team.',
+    icon: TrendingUp, title: 'CRM & Pipeline', pill: null,
+    body: 'The system of record. Enquiry to won to delivered, with the conversation attached to every card — every module below reads and writes this.',
+    list: ['Multi-pipeline and saved views', 'Safe client merge', 'Source and revenue reporting', 'Clients, not just leads'],
+  },
+  {
+    icon: Inbox, title: 'Conversations', pill: null,
+    body: 'WhatsApp, Instagram, Facebook, email and website enquiries in one shared inbox, worked by your whole team.',
     list: ['Assignment, tags and snoozing', 'Voice notes transcribed', 'Templates and quick replies', 'Broadcasts and groups'],
   },
   {
-    icon: TrendingUp, title: 'CRM & Pipeline', pill: null,
-    body: 'A pipeline built for studios: enquiry to booked to delivered, with the conversation attached to every card.',
-    list: ['Multi-pipeline and saved views', 'Safe client merge', 'Source and revenue reporting', 'Clients, not just leads'],
+    icon: ScrollText, title: 'Timeline, AI & automation', pill: null,
+    body: 'One activity spine per client, AI that scores leads and drafts replies, and automations that keep the next step moving.',
+    list: ['Universal client timeline', 'Lead scoring and reply drafts', 'Next best actions', 'Auto-replies and workflows'],
   },
+  {
+    icon: Users, title: 'Team & workspace', pill: null,
+    body: 'Everyone works the same record without stepping on each other — and you can always see who did what.',
+    list: ['Roles and permissions', 'Shared assignment', 'One login, every module', 'Full data export'],
+  },
+];
+
+// The modules — each one optional, all of them writing to the core above.
+const MODULES = [
   {
     icon: FileText, title: 'Contracts Studio', pill: null,
     body: 'Draft, negotiate and sign real contracts over WhatsApp and email — with the audit trail to back them up.',
@@ -680,8 +710,8 @@ const MODULES = [
   },
   {
     icon: Calendar, title: 'Booking', pill: null,
-    body: 'A branded booking page that respects your real hours, buffers, blackout dates and existing shoots.',
-    list: ['Server-enforced availability', 'Two-way Google Calendar sync', 'Real studio timezone handling', 'Turns into a shoot and invoice'],
+    body: 'A branded booking page that respects your real hours, buffers, blackout dates and existing commitments.',
+    list: ['Server-enforced availability', 'Two-way Google Calendar sync', 'Real business-timezone handling', 'Turns into a project and invoice'],
   },
   {
     icon: CreditCard, title: 'Invoicing & Payments', pill: null,
@@ -691,7 +721,7 @@ const MODULES = [
   {
     icon: Globe2, title: 'Client Portal', pill: null,
     body: 'One branded link where the client finds their contract, invoice, booking and gallery. No account, no app.',
-    list: ['Your logo, colour and domain', 'Everything for the job in one place', 'Works on any phone', 'Nothing to install'],
+    list: ['Your logo, colour and name', 'Everything for the job in one place', 'Works on any phone', 'Nothing to install'],
   },
   {
     icon: ShoppingBag, title: 'Print Store', pill: null,
@@ -705,12 +735,12 @@ const MODULES = [
   },
   {
     icon: Video, title: 'Video Huddles', pill: 'WEB',
-    body: 'Jump on a call with a client or the crew without a third-party meeting link.',
+    body: 'Jump on a call with a client or your team without a third-party meeting link.',
     list: ['Browser-based, nothing to install', 'Share the link in the thread', 'Attached to the client record'],
   },
   {
     icon: Monitor, title: 'Desktop App', pill: 'BETA',
-    body: 'A desktop shell for studios with heavy local libraries and a local AI engine for on-machine scoring.',
+    body: 'A desktop shell for teams with heavy local libraries, and a local AI engine for on-machine scoring.',
     list: ['One login, same workspace', 'Local AI scoring on your hardware', 'Built for large media volumes'],
   },
   {
@@ -727,36 +757,46 @@ function Modules() {
     e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`);
   }, []);
 
+  const card = (m, n) => (
+    <Reveal key={m.title} delay={(n % 3) * 70}>
+      <div className="lp-mod" onMouseMove={onMove}>
+        <span className="lp-mod-icon"><m.icon size={21} /></span>
+        <h3 className="lp-mod-title">
+          {m.title}
+          {m.pill && (
+            <span className={`lp-mini-pill ${m.pill === 'BETA' ? 'lp-mini-pill-beta' : ''}`}>{m.pill}</span>
+          )}
+        </h3>
+        <p className="lp-mod-body">{m.body}</p>
+        <div className="lp-mod-list">
+          {m.list.map((l) => (
+            <span key={l}><Check size={13} className="lp-check" /> {l}</span>
+          ))}
+        </div>
+      </div>
+    </Reveal>
+  );
+
   return (
     <section className="lp-section" id="modules">
       <div className="lp-container">
         <SectionHead
           eyebrow="The platform" icon={Layers}
-          title={<>Twelve modules. <span className="lp-gradient">One workspace</span>.</>}
-          sub="Every one of these shares the same clients, the same billing and the same timeline. Turn on what you need — nothing has to be wired together."
+          title={<>Start with the CRM. <span className="lp-gradient">Add what you need</span>.</>}
+          sub="The core is a CRM any business can run on. Around it, modules — each one optional, every one sharing the same clients, the same billing and the same timeline. Nothing to wire together."
         />
 
-        <div className="lp-mods">
-          {MODULES.map((m, n) => (
-            <Reveal key={m.title} delay={(n % 3) * 70}>
-              <div className="lp-mod" onMouseMove={onMove}>
-                <span className="lp-mod-icon"><m.icon size={21} /></span>
-                <h3 className="lp-mod-title">
-                  {m.title}
-                  {m.pill && (
-                    <span className={`lp-mini-pill ${m.pill === 'BETA' ? 'lp-mini-pill-beta' : ''}`}>{m.pill}</span>
-                  )}
-                </h3>
-                <p className="lp-mod-body">{m.body}</p>
-                <div className="lp-mod-list">
-                  {m.list.map((l) => (
-                    <span key={l}><Check size={13} className="lp-check" /> {l}</span>
-                  ))}
-                </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
+        <Reveal><div className="lp-fire-h" style={{ marginBottom: 14 }}>The core — what every module plugs into</div></Reveal>
+        <div className="lp-mods">{CORE.map(card)}</div>
+
+        <Reveal><div className="lp-fire-h" style={{ marginTop: 38, marginBottom: 14 }}>The modules — add what fits your business</div></Reveal>
+        <div className="lp-mods">{MODULES.map(card)}</div>
+
+        <Reveal>
+          <p className="lp-limits" style={{ marginTop: 30 }}>
+            New modules land on the same core — the platform grows without your CRM ever changing shape.
+          </p>
+        </Reveal>
       </div>
     </section>
   );
@@ -780,7 +820,7 @@ const AI_TABS = [
   {
     icon: Aperture, t: 'Culling & hero shots',
     h: 'Four thousand frames, sorted before coffee',
-    p: 'Studio AI scores frames on faces, smiles, eyes and sharpness, throws out the obvious rejects and proposes the hero shot for the gallery cover. You keep the final say on every pick.',
+    p: 'Inside the Media Studio module, AI scores frames on faces, smiles, eyes and sharpness, throws out the obvious rejects and proposes the hero shot for the gallery cover. You keep the final say on every pick.',
     demo: 'cull',
   },
   {
@@ -792,7 +832,7 @@ const AI_TABS = [
   {
     icon: Wand2, t: 'Studio brain',
     h: 'Your packages, policies and past answers',
-    p: 'Feed it your pricing, FAQs and the way you talk about your work. Everything the AI writes comes back sounding like your studio instead of a chatbot.',
+    p: 'Feed it your pricing, FAQs and the way you talk about your work. Everything the AI writes comes back sounding like your business instead of a chatbot.',
     demo: 'brain',
   },
 ];
@@ -870,7 +910,7 @@ function AiDemo({ kind }) {
         {[
           { t: 'Packages & pricing', b: 'Wedding, corporate, portrait — what each includes and what it costs' },
           { t: 'Policies', b: 'Deposits, rescheduling, travel, turnaround times' },
-          { t: 'Voice', b: 'How your studio actually talks to clients' },
+          { t: 'Voice', b: 'How your business actually talks to clients' },
           { t: 'Past answers', b: 'The replies that worked, reused' },
         ].map((r) => (
           <div key={r.t} className="lp-ai-row">
@@ -914,8 +954,8 @@ function Ai() {
       <div className="lp-container">
         <SectionHead
           eyebrow="Artificial intelligence" icon={Sparkles}
-          title={<>AI that does the <span className="lp-gradient">studio work</span>.</>}
-          sub="Not a chatbot bolted to the corner of the screen. AI that reads your conversations, scores your leads, sorts your frames and drafts in your voice — always leaving the decision with you."
+          title={<>AI that does the <span className="lp-gradient">actual work</span>.</>}
+          sub="Not a chatbot bolted to the corner of the screen. AI that reads your conversations, scores your leads and drafts in your voice — and, inside the Media Studio module, sorts thousands of frames. Always leaving the decision with you."
         />
 
         <div className="lp-ai-wrap">
@@ -941,6 +981,10 @@ function Ai() {
             <h3 className="lp-ai-panel-h">{t.h}</h3>
             <p className="lp-ai-panel-p">{t.p}</p>
             <AiDemo kind={t.demo} />
+            <p style={{ fontSize: 12, color: 'var(--lp-text-muted)', margin: '10px 0 0', lineHeight: 1.6 }}>
+              The demos continue the photography-studio example from above — the AI reads
+              whatever your business actually talks about.
+            </p>
             <p className="lp-byok">
               <KeyRound size={14} style={{ verticalAlign: -2, marginRight: 6, color: 'var(--lp-accent-2)' }} />
               <strong>Bring your own key.</strong> Enterprise workspaces can run every AI feature on
@@ -990,7 +1034,7 @@ function Contracts() {
         <SectionHead
           eyebrow="Contracts Studio" icon={FileText}
           title={<>Sign the deal <span className="lp-gradient">in the chat</span>.</>}
-          sub="Have a go — choose a package, add what you like, then sign. Watch what a signature is supposed to set off."
+          sub="Have a go — choose a package, add what you like, then sign. The example continues the same fictional photography studio; your contracts carry your services and your prices. Watch what a signature is supposed to set off."
         />
 
         <div className="lp-cfg">
@@ -1108,12 +1152,13 @@ function MediaStudio() {
       <div className="lp-container lp-split">
         <Reveal>
           <div>
-            <div className="lp-section-eyebrow"><Aperture size={13} /> Media Studio</div>
+            <div className="lp-section-eyebrow"><Aperture size={13} /> Module spotlight — Media Studio</div>
             <h2 className="lp-split-h">Four thousand frames in. One gallery out.</h2>
             <p className="lp-split-p">
-              The part of the job that actually eats your week. Media Studio is built for
-              volume: score and cull with AI, review by touch, arrange the story, and deliver
-              a gallery that carries your name instead of somebody else’s.
+              One module, shown in depth. If the work you sell is creative, Media Studio
+              takes the heaviest part of the job: score and cull with AI, review by touch,
+              arrange the story, and deliver a gallery that carries your name instead of
+              somebody else’s — all of it written back to the same client record.
             </p>
             <div className="lp-feat-list">
               {[
@@ -1176,7 +1221,7 @@ function ClientSide() {
         <SectionHead
           eyebrow="What your client sees" icon={BadgeCheck}
           title={<>Eight public pages. <span className="lp-gradient">All of them yours</span>.</>}
-          sub="Booking page, contract, invoice, payment link, gallery, proofing, print store and client portal — every one carries your studio’s name, logo and colour. Your client never learns what software you use."
+          sub="Booking page, contract, invoice, payment link, gallery, proofing, print store and client portal — every one carries your business’s name, logo and colour. Your client never learns what software you use."
         />
 
         <div className="lp-sec-grid">
@@ -1186,7 +1231,7 @@ function ClientSide() {
             { i: Smartphone, t: 'Built for a phone', b: 'Every client-facing page works down to 375px. Most of your clients will only ever see it on a phone.' },
             { i: Lock, t: 'No account required', b: 'No signup wall between your client and their own contract. Secure links, nothing to install.' },
             { i: Share2, t: 'Delivered where they already are', b: 'Links go out over WhatsApp and email — the channels they actually read.' },
-            { i: Crown, t: 'White label', b: 'On Studio+ and above, remove every trace of WappFlow. The whole experience reads as your studio.' },
+            { i: Crown, t: 'White label', b: 'On Studio+ and above, remove every trace of WappFlow. The whole experience reads as your business.' },
           ].map((c, n) => (
             <Reveal key={c.t} delay={(n % 3) * 70}>
               <div className="lp-sec-card">
@@ -1218,7 +1263,7 @@ function Security() {
 
         <div className="lp-sec-grid">
           {[
-            { i: Shield, t: 'Tenant isolation, tested continuously', b: 'An automated suite discovers every authenticated route in the codebase and tries to reach one studio’s data as another. A route added this month is tested the day it lands.' },
+            { i: Shield, t: 'Tenant isolation, tested continuously', b: 'An automated suite discovers every authenticated route in the codebase and tries to reach one workspace’s data as another. A route added this month is tested the day it lands.' },
             { i: KeyRound, t: 'Sessions that expire and revoke', b: 'Tokens carry a real expiry, travel in headers rather than URLs, and every session can be invalidated at once when a password changes.' },
             { i: HardDrive, t: 'Verified backups, not hopeful copies', b: 'Backups are taken through SQLite’s online-backup API, then re-opened and row-counted to prove they restore. A backup that fails its own check is deleted rather than kept.' },
             { i: ScrollText, t: 'Audit log', b: 'Who changed what, and when — across contracts, invoices, bookings and client records.' },
@@ -1246,9 +1291,9 @@ function Security() {
 const PLANS = [
   {
     key: 'creator', name: 'Creator', price: 29, founding: 14,
-    for: 'Solo photographers running everything themselves.',
+    for: 'Solo operators running the whole business themselves.',
     feats: [
-      'Everything a solo studio needs, end to end',
+      'The CRM core plus every module, end to end',
       'CRM, Contracts Studio, Media Studio, Booking',
       'Client portal, print store and portfolio',
       'WhatsApp inbox with voice-note transcription',
@@ -1257,12 +1302,12 @@ const PLANS = [
   },
   {
     key: 'studio', name: 'Studio', price: 59, founding: 29, popular: true,
-    for: 'Working studios with a team and a full calendar.',
+    for: 'Growing teams with a full calendar.',
     feats: [
       'Everything in Creator, plus',
       'Instagram, Facebook and website capture',
       'Team collaboration, permissions and multi-pipeline',
-      'Full AI: lead intelligence, culling, hero shots, next best actions',
+      'Full AI: lead intelligence and next best actions, plus Media Studio culling and hero shots',
       'Contract depth: clause library, redlines, approvals, bulk send',
       'Analytics, reports and Google Calendar sync',
       '5 seats · 500 leads · 250 GB · desktop app (beta)',
@@ -1270,19 +1315,19 @@ const PLANS = [
   },
   {
     key: 'studio_plus', name: 'Studio+', price: 119, founding: 59,
-    for: 'Established studios that want it all under their own name.',
+    for: 'Established businesses that want it all under their own name.',
     feats: [
       'Everything in Studio, plus',
       'White label — remove every trace of WappFlow',
       'Desktop sync and the local AI engine',
-      'Style profiles, story engine and AI editing',
+      'Media Studio depth: style profiles and the story engine',
       'Priority support',
       '15 seats · 5,000 leads · 1 TB',
     ],
   },
   {
     key: 'enterprise', name: 'Enterprise', price: null, founding: null,
-    for: 'Groups, franchises and studios with their own rules.',
+    for: 'Groups, franchises and businesses with their own rules.',
     feats: [
       'Everything in Studio+, plus',
       'API access and custom integrations',
@@ -1340,7 +1385,7 @@ function Pricing({ authed, currentPlan }) {
               <span className="lp-found-banner">
                 <Crown size={15} />
                 <span>
-                  <strong>Founding 100</strong> — the first 100 studios keep 50% off, permanently.
+                  <strong>Founding 100</strong> — the first 100 businesses keep 50% off, permanently.
                   {founding.remaining != null && <> {founding.remaining} of {founding.slots} left.</>}
                 </span>
               </span>
@@ -1435,8 +1480,9 @@ function Pricing({ authed, currentPlan }) {
 
         <Reveal>
           <p className="lp-limits">
-            Prices in {currency}, billed monthly. Every plan includes the shared inbox, CRM,
-            Contracts Studio, Media Studio, booking, client portal, print store and portfolio.
+            Prices in {currency}, billed monthly. Every plan includes the CRM core — inbox,
+            pipeline, timeline — plus every module: Contracts Studio, Media Studio, booking,
+            client portal, print store and portfolio.
             <br />
             Cancel any time and export everything you have put in.
           </p>
@@ -1450,20 +1496,24 @@ function Pricing({ authed, currentPlan }) {
 
 const FAQS = [
   {
+    q: 'Is WappFlow only for photographers?',
+    a: 'No. The core is an industry-agnostic CRM — leads, conversations, pipeline, one timeline per client — and everything else is a module on top of it. Media Studio is the module for businesses that ship creative work; if that is not you, you simply lean on the others: contracts, booking, invoicing, portals. New modules land on the same core, so the platform grows without the CRM ever changing shape.',
+  },
+  {
     q: 'Do I need a new phone number for WhatsApp?',
     a: 'No. WappFlow connects to the number your clients already message. Your history stays intact and your clients notice nothing except that you reply faster.',
   },
   {
     q: 'What actually happens when a contract is signed?',
-    a: 'The invoice is raised on the terms in the signed contract, the shoot is created and linked to the client, the dates are held on the studio calendar, and the client portal opens. All four link back to the lead and write to one timeline. That chain is the reason the product exists — try it in the Contracts section above.',
+    a: 'The invoice is raised on the terms in the signed contract, the project is created and linked to the client, the dates are held on your calendar, and the client portal opens. All four link back to the lead and write to one timeline. That chain is the reason the product exists — try it in the Contracts section above.',
   },
   {
     q: 'Does the AI message my clients on its own?',
-    a: 'No. It drafts, scores and suggests — you approve. Nothing leaves your studio without a person pressing send. If you would rather run the AI on your own provider account, Enterprise workspaces can bring their own keys.',
+    a: 'No. It drafts, scores and suggests — you approve. Nothing leaves your workspace without a person pressing send. If you would rather run the AI on your own provider account, Enterprise workspaces can bring their own keys.',
   },
   {
     q: 'Will my clients know I use WappFlow?',
-    a: 'Only if you want them to. Every public page — booking, contract, invoice, gallery, portal, store — carries your studio’s name, logo and colour. On Studio+ and above, white label removes every remaining trace.',
+    a: 'Only if you want them to. Every public page — booking, contract, invoice, gallery, portal, store — carries your business’s name, logo and colour. On Studio+ and above, white label removes every remaining trace.',
   },
   {
     q: 'Can I move off it later?',
@@ -1471,14 +1521,14 @@ const FAQS = [
   },
   {
     q: 'Do you handle timezones properly?',
-    a: 'Yes — and it is a real problem, not a checkbox. Bookings are stored against your studio’s actual timezone, so a 9am shoot stays 9am for your client regardless of where the server is or when the clocks change.',
+    a: 'Yes — and it is a real problem, not a checkbox. Bookings are stored against your business’s actual timezone, so a 9am booking stays 9am for your client regardless of where the server is or when the clocks change.',
   },
   {
     q: 'Can my whole team use it?',
-    a: 'From the Studio plan up. Shared inbox with assignment, role-based permissions, team collaboration on projects, and an audit log so you can see who did what.',
+    a: 'From the Studio plan up. Shared inbox with assignment, role-based permissions and team collaboration on projects — everyone working the same client record without stepping on each other.',
   },
   {
-    q: 'What about really large shoots?',
+    q: 'We ship creative work — what about really large shoots?',
     a: 'Media Studio is built for volume — bulk culling, scoring, collections and expiring galleries. Studios with heavy local libraries can add the desktop app (in beta) to run AI scoring on their own hardware.',
   },
 ];
@@ -1530,8 +1580,8 @@ function FinalCta({ authed }) {
               Stop being the integration<br />between your own tools.
             </h2>
             <p className="lp-final-p">
-              Bring one client through WappFlow end to end — enquiry, contract, shoot,
-              gallery — and you will not want to go back to seven tabs.
+              Bring one client through WappFlow end to end — enquiry, contract, invoice,
+              delivery — and you will not want to go back to seven tabs.
             </p>
             <div className="lp-hero-cta">
               {authed ? (
@@ -1572,8 +1622,9 @@ function Footer() {
               WappFlow
             </Link>
             <p className="lp-footer-about">
-              The operating system for photo and video studios. One conversation, one client
-              record, one timeline — from the first message to the delivered gallery.
+              One CRM at the core of your business, with the modules you need connected
+              around it. One client record, one timeline — from the first message to the
+              final delivery.
             </p>
           </div>
 
@@ -1671,8 +1722,9 @@ export default function Landing() {
         <Hero authed={authed} />
         <Strip />
         <Problem />
-        <Spine />
+        {/* What it IS (core + modules) before HOW it works — the hierarchy is the message. */}
         <Modules />
+        <Spine />
         <Ai />
         <Contracts />
         <MediaStudio />

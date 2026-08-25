@@ -6,21 +6,21 @@ export const metadata = {
     default: 'WappFlow',
     template: '%s · WappFlow',
   },
-  description: 'The operating system for photo and video studios. Shared inbox, CRM, contracts, bookings, galleries, invoices and AI — one client record from the first message to the delivered gallery.',
+  description: 'A CRM-centric business platform. Conversations, pipeline, clients and AI at the core — contracts, booking, invoicing, portals, galleries and more as modules around it. One client record, one timeline.',
   applicationName: 'WappFlow',
   authors: [{ name: 'RemoteOps' }],
   metadataBase: new URL('https://wappflow.remoteops.co'),
   openGraph: {
-    title: 'WappFlow — the operating system for photo & video studios',
-    description: 'One conversation, one client record, one timeline. Contracts, invoices, shoots and bookings that create each other.',
+    title: 'WappFlow — the CRM your whole business runs on',
+    description: 'One CRM at the core, business modules connected around it. One customer record, one timeline — end to end.',
     url: 'https://wappflow.remoteops.co',
     siteName: 'WappFlow',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'WappFlow — the operating system for photo & video studios',
-    description: 'One conversation, one client record, one timeline. Contracts, invoices, shoots and bookings that create each other.',
+    title: 'WappFlow — the CRM your whole business runs on',
+    description: 'One CRM at the core, business modules connected around it. One customer record, one timeline — end to end.',
   },
 }
 

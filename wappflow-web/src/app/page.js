@@ -10,11 +10,11 @@
 
 import Landing from '@/components/landing/Landing';
 
-const TITLE = 'WappFlow — the operating system for photo & video studios';
+const TITLE = 'WappFlow — the CRM your whole business runs on';
 const DESCRIPTION =
-  'Run your whole studio from one conversation. WhatsApp inbox, CRM, contracts, '
-  + 'bookings, galleries, invoices and AI in one place — where a signed contract '
-  + 'raises the invoice, creates the shoot and holds the dates on its own.';
+  'One CRM. Every client. Everything connected. Leads, conversations, pipeline '
+  + 'and AI at the core — with contracts, booking, invoicing, client portals, '
+  + 'galleries and more as modules around it. One customer record, end to end.';
 
 export const metadata = {
   title: TITLE,
