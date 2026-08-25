@@ -107,6 +107,16 @@ export default function BookingsPage() {
 
   if (!settings) return <><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></>;
 
+  // The API returns every booking, newest-first, with no date filter — so a page
+  // headed "Upcoming" was listing appointments that already happened, with the
+  // genuinely-next one buried mid-list. Split them, and put the soonest first.
+  const nowMs = Date.now();
+  const startMs = (b) => { const t = Date.parse(b.start_at); return Number.isNaN(t) ? 0 : t; };
+  const bookingSections = [
+    ['Upcoming', bookings.filter((b) => startMs(b) >= nowMs).sort((a, b) => startMs(a) - startMs(b))],
+    ['Past',     bookings.filter((b) => startMs(b) <  nowMs).sort((a, b) => startMs(b) - startMs(a))],
+  ];
+
   return (
     <>
       <div style={{ maxWidth: 820, margin: '0 auto', padding: '24px 20px 60px' }}>
@@ -246,15 +256,16 @@ export default function BookingsPage() {
           </div>
         )}
 
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '28px 0 12px' }}>Upcoming</h2>
         {err && (
           <div role="alert" style={{ marginBottom: 10, padding: '9px 12px', borderRadius: 10, background: 'var(--danger-bg, rgba(239,68,68,0.1))', color: 'var(--danger-fg, #b91c1c)', fontSize: 13 }}>
             {err}
           </div>
         )}
-        {bookings.length === 0 ? <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>No bookings yet — share your link to get started.</p> : (
+        {bookings.length === 0 ? <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>No bookings yet — share your link to get started.</p> : bookingSections.map(([sectionLabel, sectionRows]) => sectionRows.length === 0 ? null : (
+          <div key={sectionLabel}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: '28px 0 12px' }}>{sectionLabel}</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {bookings.map(b => (
+            {sectionRows.map(b => (
               <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{b.name} · {b.service}</div>
@@ -294,7 +305,8 @@ export default function BookingsPage() {
               </div>
             ))}
           </div>
-        )}
+          </div>
+        ))}
       </div>
     </>
   );
