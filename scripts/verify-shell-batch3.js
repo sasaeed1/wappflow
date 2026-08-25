@@ -53,6 +53,18 @@ check('D8 preserved: content still renders inside the .ms-root token-remap scope
     'shell does not apply the dialect class to the page container');
   assert(/'wf-page'|`wf-page/.test(tag[0]), 'the page container lost .wf-page');
 });
+check('module FABs render inside the dialect token scope', () => {
+  // Studio Copilot sits outside <main>, where .ms-root lives. Without the scope
+  // every --ms-* token is undefined, so its panel background resolved to
+  // transparent and the text rendered straight onto the photo behind it.
+  const tag = shell.match(/mod\.fabs[\s\S]{0,500}/);
+  assert(tag, 'FABs are no longer rendered by the shell');
+  assert(/wf-fab-scope/.test(tag[0]), 'FABs are not wrapped in the dialect token scope');
+  assert(/mod\.dialectClass/.test(tag[0]), 'the FAB wrapper does not apply the dialect class');
+  const css = fs.readFileSync(path.join(WEB, 'app', 'globals.css'), 'utf8');
+  assert(/\.wf-fab-scope\s*\{[^}]*display:\s*contents/.test(css),
+    '.wf-fab-scope must be display:contents — .ms-root would otherwise paint its 100vh backdrop over the page');
+});
 check('theme switcher survived as a module action, with its retired-id migration', () => {
   assert(/actions: StudioThemeSwitch/.test(modules), 'theme switch not declared as a module action');
   assert(/mod\.actions && <mod\.actions \/>/.test(shell), 'shell does not render module actions');

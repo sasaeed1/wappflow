@@ -545,6 +545,15 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
   outline-offset: 2px;
 }
 
+/* ── Dialect token scope for floating assistants ──────────────────────────────
+   AppShell renders module FABs outside <main>, which is where the dialect class
+   lives — so a Studio-dialect component mounted there had NO --ms-* tokens and
+   `background: var(--ms-panel-bg)` resolved to transparent. Wrapping them in the
+   dialect class fixes the tokens, but .ms-root also carries min-height:100vh and
+   a backdrop, which would paint over the page. display:contents removes the box
+   entirely while custom properties still cascade to the children. */
+.wf-fab-scope { display: contents; }
+
 /* ── Short-viewport density ───────────────────────────────────────────────────
    A 1920×1080 screen at Windows' default 150% scaling is 1280×720 CSS px, and
    Chrome's own chrome takes ~177px of it — so the viewport is 503px tall with

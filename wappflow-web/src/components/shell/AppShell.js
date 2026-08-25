@@ -39,7 +39,10 @@ import { clickable } from '@/lib/a11y';
 // down their right edge instead of protecting anything. Card/list pages, where row
 // actions sit on the right edge and the FABs were genuinely swallowing clicks, keep
 // the gutter.
-const BLEED_ROUTES = [/^\/chat/, /^\/leads\/[^/]+$/, /^\/studio\//, /^\/contracts\/[^/]+$/];
+// `(\/|$)` matters: /^\/studio\// missed the module index itself, so the Studio
+// landing page — a full-bleed cinematic hero — got the gutter and showed a pale
+// strip of its own backdrop down the right edge.
+const BLEED_ROUTES = [/^\/chat(\/|$)/, /^\/leads\/[^/]+$/, /^\/studio(\/|$)/, /^\/contracts\/[^/]+$/];
 const isBleedRoute = (pathname) => !!pathname && BLEED_ROUTES.some((re) => re.test(pathname));
 
 export default function AppShell({ module: moduleKey, children, actions, subHeader }) {
@@ -217,8 +220,19 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
       </main>
 
       {/* Module-scoped floating assistants. These used to be mounted by NavBar, which
-          meant they existed only on CRM pages by accident of which shell a page picked. */}
-      {mod.fabs?.map((Fab, i) => <Fab key={i} />)}
+          meant they existed only on CRM pages by accident of which shell a page picked.
+
+          They must render INSIDE the module's dialect scope. The dialect class is a
+          token scope (.ms-root defines every --ms-*), and these sit outside <main>,
+          so Studio Copilot's `background: var(--ms-panel-bg)` resolved to nothing —
+          a fully transparent panel with its text laid straight over the photograph
+          behind it. .wf-fab-scope is display:contents, so the tokens cascade while
+          .ms-root's own min-height/backdrop paint nothing. */}
+      {mod.fabs?.length > 0 && (
+        <div className={mod.dialectClass ? `wf-fab-scope ${mod.dialectClass}` : undefined}>
+          {mod.fabs.map((Fab, i) => <Fab key={i} />)}
+        </div>
+      )}
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} title={mod.label}>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }} aria-label={`${mod.label} navigation`}>
