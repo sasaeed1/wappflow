@@ -201,6 +201,11 @@ export default function LandingStyles() {
       }
       .lp-flow-step:hover { border-color: var(--lp-border-strong); transform: translateY(-2px); }
       .lp-flow-step svg { color: var(--lp-accent); margin-bottom: 4px; }
+      /* The capture step shows the channels it covers. WhatsApp leads — it is the
+         sharpest version of the pain — but it is deliberately not the only one. */
+      .lp-flow-icons { display: inline-flex; align-items: center; gap: 6px; }
+      .lp-flow-icons svg:first-child { color: var(--lp-emerald); }
+      .lp-flow-icons svg:not(:first-child) { color: var(--lp-text-muted); }
       .lp-flow-step b { font-size: 13.5px; font-weight: 700; color: var(--lp-text); }
       .lp-flow-step em { font-size: 12px; font-style: normal; color: var(--lp-text-muted); line-height: 1.45; }
       /* The CRM is the core, so it is the one that is lit. */
