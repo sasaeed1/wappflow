@@ -538,7 +538,7 @@ function Problem() {
           <div className="lp-unified">
             <div className="lp-unified-mark"><Zap size={26} fill="currentColor" /></div>
             <h3 className="lp-split-h" style={{ marginBottom: 10 }}>
-              One CRM. Every client. Everything connected.
+              Captured on arrival. Connected from then on.
             </h3>
             <p className="lp-section-sub" style={{ maxWidth: 540, margin: '0 auto' }}>
               The WhatsApp message becomes a lead the second it arrives. From there it is
@@ -811,8 +811,8 @@ function Modules() {
       <div className="lp-container">
         <SectionHead
           eyebrow="The platform" icon={Layers}
-          title={<>Start with the CRM. <span className="lp-gradient">Add what you need</span>.</>}
-          sub="The core is a CRM any business can run on. Around it, modules — each one optional, every one sharing the same clients, the same billing and the same timeline. Nothing to wire together."
+          title={<>One CRM. <span className="lp-gradient">Every client.</span> Everything connected.</>}
+          sub="Start with the CRM every business runs on — leads, conversations, pipeline, one timeline per client. Then add the modules you need around it: each optional, all of them sharing the same clients, the same billing and the same history. Nothing to wire together."
         />
 
         <Reveal><div className="lp-fire-h" style={{ marginBottom: 14 }}>The core — what every module plugs into</div></Reveal>
