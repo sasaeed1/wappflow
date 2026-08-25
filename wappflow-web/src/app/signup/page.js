@@ -105,7 +105,7 @@ function SignupContent() {
             <Feature icon={<Rocket size={16} />} title="5-minute setup" desc="Scan a QR — no Meta paperwork, no API approval" />
             <Feature icon={<Brain size={16} />} title="AI does the heavy lifting" desc="Score, sentiment, intent, and 3 suggested replies per lead" />
             <Feature icon={<MessageCircle size={16} />} title="Unified inbox" desc="WA · IG · FB · Web · Email — one thread per lead" />
-            <Feature icon={<ShieldCheck size={16} />} title="Self-hosted" desc="Your data on your server. HTTPS. Zero third parties." />
+            <Feature icon={<ShieldCheck size={16} />} title="Your data stays yours" desc="TLS everywhere. Full export. No lock-in." />
           </div>
 
           <div className="auth-testimonial">
@@ -230,7 +230,7 @@ function SignupContent() {
             <div className="auth-checks">
               <SmallCheck text="Set up in under 5 minutes" />
               <SmallCheck text="No credit card · cancel anytime" />
-              <SmallCheck text="Your data stays on your server" />
+              <SmallCheck text="Export your data any time" />
             </div>
 
             <button type="submit" disabled={loading} className="auth-submit">

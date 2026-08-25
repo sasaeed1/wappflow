@@ -94,22 +94,24 @@ function LoginContent() {
         <div className="auth-promo-content">
           <div className="auth-promo-badge">
             <Sparkles size={13} />
-            <span>The AI-native WhatsApp CRM</span>
+            <span>Never lose a lead again</span>
           </div>
 
           <h1 className="auth-promo-title">
             Welcome back to your <span className="auth-grad">unified inbox</span>.
           </h1>
           <p className="auth-promo-sub">
-            Every WhatsApp, Instagram, and Facebook conversation in one timeline —
-            scored, summarized, and ready to reply with one click.
+            Every WhatsApp, Instagram, Facebook and website enquiry in one timeline —
+            captured as a lead, scored, and ready to reply with one click.
           </p>
 
           <div className="auth-promo-features">
-            <Feature icon={<MessageCircle size={16} />} title="Unified inbox" desc="WhatsApp + IG + FB + Web — one thread per lead" />
-            <Feature icon={<Brain size={16} />} title="AI sales brain" desc="Score, sentiment, and 3 ready-to-send replies" />
-            <Feature icon={<Users size={16} />} title="Built for teams" desc="9 permissions · audit logs · round-robin" />
-            <Feature icon={<ShieldCheck size={16} />} title="Your data, your server" desc="Self-hosted · HTTPS · no third parties" />
+            <Feature icon={<MessageCircle size={16} />} title="Every channel, one inbox" desc="WhatsApp + IG + FB + Web — one thread per lead" />
+            <Feature icon={<Brain size={16} />} title="AI sales brain" desc="Score, sentiment, and ready-to-send replies" />
+            <Feature icon={<Users size={16} />} title="Built for teams" desc="Role-based permissions · audit log · assignment" />
+            {/* Was "Your data, your server — Self-hosted · no third parties". WappFlow is
+                hosted SaaS; that claim was simply untrue, on the page every user sees. */}
+            <Feature icon={<ShieldCheck size={16} />} title="Your data stays yours" desc="TLS everywhere · full export · no lock-in" />
           </div>
 
           <div className="auth-testimonial">
