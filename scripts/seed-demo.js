@@ -32,7 +32,7 @@ const WS = ws.id, UID = user.id;
 
 // Tables the seeder touches, in dependency order for cleanup (children first).
 const TABLES = [
-  'ms_print_orders', 'ms_gallery_assets', 'ms_galleries', 'ms_projects',
+  'ms_print_orders', 'ms_gallery_assets', 'ms_portfolio_items', 'ms_galleries', 'ms_projects',
   'knowledge_documents', 'ms_print_products', 'bookings', 'payments',
   'cs_documents', 'invoices', 'messages', 'leads',
 ];
@@ -49,6 +49,21 @@ function clean() {
       if (r.changes) { console.log(`  − ${String(r.changes).padStart(3)}  ${t}`); total += r.changes; }
     } catch (e) { console.log(`  !  ${t}: ${e.message.slice(0, 60)}`); }
   }
+  // Rows the APP created while the demo data was being exercised — a store
+  // checkout raises a real order, invoice and payment with server-generated ids,
+  // so "demo-%" alone would strand them. They are reachable from the demo
+  // gallery, which is how we find them.
+  try {
+    const orders = db.prepare("SELECT id, invoice_id, payment_id FROM ms_print_orders WHERE gallery_id LIKE 'demo-%' AND id NOT LIKE 'demo-%'").all();
+    for (const o of orders) {
+      if (o.payment_id) db.prepare('DELETE FROM payments WHERE id = ?').run(o.payment_id);
+      if (o.invoice_id) db.prepare('DELETE FROM invoices WHERE id = ?').run(o.invoice_id);
+      db.prepare('DELETE FROM ms_print_orders WHERE id = ?').run(o.id);
+      console.log(`  − order ${o.id.slice(0, 8)} (+ its invoice and payment) raised by the demo store`);
+      total += 1;
+    }
+  } catch (e) { console.log('  !  store-generated rows: ' + e.message.slice(0, 60)); }
+
   // The portfolio is shared with real data — only undo the flag we set.
   try {
     const r = db.prepare("UPDATE ms_portfolios SET is_public = 0 WHERE id IN (SELECT id FROM ms_portfolios WHERE workspace_id = ?)").run(WS);
@@ -270,14 +285,29 @@ function seed() {
   });
   bump('knowledge docs');
 
-  // ── PORTFOLIO — publish it so /folio/<handle> renders ─────────────────────
+  // ── PORTFOLIO — publish it AND give it work to show ───────────────────────
+  // Publishing alone rendered "Coming soon.", because the portfolio had no items
+  // and so proved nothing about how the page actually looks with a body of work.
   try {
     const pf = db.prepare('SELECT id, handle FROM ms_portfolios WHERE workspace_id = ? LIMIT 1').get(WS);
     if (pf) {
       db.prepare('UPDATE ms_portfolios SET is_public = 1 WHERE id = ?').run(pf.id);
-      console.log(`  ↑ portfolio /folio/${pf.handle} published for the audit`);
+      const shots = db.prepare("SELECT id, storage_key, variants FROM ms_assets WHERE type = 'photo' AND deleted_at IS NULL LIMIT 9").all();
+      shots.forEach((a, i) => {
+        insert('ms_portfolio_items', {
+          id: `demo-pfi-${String(i + 1).padStart(2, '0')}`,
+          workspace_id: WS, portfolio_id: pf.id, asset_id: a.id,
+          storage_key: a.storage_key, variants: a.variants,
+          kind: 'photo', source: 'manual', gallery_id: 'demo-gal-01',
+          title: `DEMO · Selected work ${i + 1}`,
+          caption: 'Demo portfolio item — safe to delete.',
+          featured: i === 0 ? 1 : 0, sort_order: i, created_at: stamp(-10),
+        });
+        bump('portfolio items');
+      });
+      console.log(`  ↑ portfolio /folio/${pf.handle} published with ${shots.length} item(s)`);
     }
-  } catch {}
+  } catch (e) { console.log('  !  portfolio: ' + e.message.slice(0, 70)); }
 
   console.log('\nSeeded:');
   for (const [k, v] of Object.entries(made)) console.log(`  + ${String(v).padStart(3)}  ${k}`);

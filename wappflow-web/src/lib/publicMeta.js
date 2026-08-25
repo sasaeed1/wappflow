@@ -57,7 +57,11 @@ export async function studioMetadata({ path, title, description, fallbackTitle }
   }
 
   const pageTitle = (title ? title(data) : fallbackTitle) || fallbackTitle;
-  const full = studio ? `${pageTitle} · ${studio}` : pageTitle;
+  // Don't append the studio name to a title that already carries it. A portfolio
+  // is usually titled after the studio, which produced "Sami Saeed · Sami Saeed"
+  // in the browser tab and in every shared link preview.
+  const already = studio && pageTitle.toLowerCase().includes(studio.toLowerCase());
+  const full = (studio && !already) ? `${pageTitle} · ${studio}` : pageTitle;
   const desc = (description ? description(data, studio) : null) || undefined;
   const image = brand?.logo || undefined;
 

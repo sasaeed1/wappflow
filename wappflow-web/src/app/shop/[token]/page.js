@@ -98,7 +98,7 @@ export default function ShopPage() {
           <div style={{ maxWidth: 620, margin: '0 auto' }}>
             {!checkout ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: '#8a8a93', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{cart.reduce((s, c) => s + c.qty, 0)} items</div><div style={{ fontSize: 22, fontWeight: 800, color: '#16161a' }}>{sym}{total.toLocaleString()}</div></div>
+                <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: '#8a8a93', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{(n => `${n} ${n === 1 ? 'item' : 'items'}`)(cart.reduce((s, c) => s + c.qty, 0))}</div><div style={{ fontSize: 22, fontWeight: 800, color: '#16161a' }}>{sym}{total.toLocaleString()}</div></div>
                 <button onClick={() => setCheckout(true)} style={{ padding: '13px 26px', borderRadius: 12, border: 'none', cursor: 'pointer', background: '#16161a', color: '#fff', fontWeight: 800, fontSize: 15 }}>Checkout →</button>
               </div>
             ) : (
