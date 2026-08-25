@@ -582,8 +582,10 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
     padding-top: 8px !important;
     padding-bottom: 8px !important;
   }
+  /* 96px still left the New Lead form 8px over on a 503px viewport — measured,
+     not guessed. 80px clears it and is still four comfortable lines of text. */
   .wf-modal-card textarea,
-  [role="dialog"] textarea { max-height: 96px !important; }
+  [role="dialog"] textarea { max-height: 80px !important; }
 
   /* Field labels carry an inline margin-bottom, so this needs the override. */
   .wf-modal-card label,

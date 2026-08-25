@@ -1098,6 +1098,48 @@ class WhatsAppService {
     }
   }
 
+  // Download one message's media, with a re-hydration retry.
+  //
+  // Message objects from chat.fetchMessages() can come back "thin": whatsapp-web.js
+  // builds them from whatever the page's message store holds, and for older entries
+  // that can be missing the media keys downloadMedia() needs. The throw crosses the
+  // puppeteer boundary as a minified FBLOGGER object, so Node sees `e.message === 'r'`
+  // and nothing else — see wa-errors.js. getMessageById() re-reads the message from
+  // the store with its full payload, which is usually enough to make the second
+  // attempt succeed.
+  //
+  // Returns a media URL, or null when the media is genuinely unavailable (WhatsApp
+  // expires media server-side, so old threads legitimately have unrecoverable files).
+  async _downloadMediaFor(message, waKey, mediaType) {
+    const attempt = async (msg) => persistWaMedia(await msg.downloadMedia(), mediaType);
+
+    try {
+      const url = await attempt(message);
+      if (url) return url;
+    } catch (e) {
+      this._lastMediaError = e;
+    }
+
+    if (!waKey) return null;
+    try {
+      const full = await this.client.getMessageById(waKey);
+      if (full) {
+        const url = await attempt(full);
+        if (url) return url;
+      }
+    } catch (e) {
+      this._lastMediaError = e;
+    }
+
+    // Log ONE readable diagnosis per sync rather than a wall of ": r".
+    if (!this._mediaFailuresThisRun) this._mediaFailuresThisRun = 0;
+    this._mediaFailuresThisRun++;
+    if (this._mediaFailuresThisRun === 1 && this._lastMediaError) {
+      console.log(`⚠️ Media download failed [${mediaType}] — first failure this run:\n${describeWaError(this._lastMediaError)}`);
+    }
+    return null;
+  }
+
   async fetchHistory(phone, limit = 200) {
     if (!this.isReady) throw new Error('WhatsApp not connected');
     let chatId;
@@ -1139,6 +1181,7 @@ class WhatsAppService {
       }
     } catch { /* no db handle or column — fall through and just download */ }
 
+    this._mediaFailuresThisRun = 0;
     const out = [];
     for (const m of messages) {
       const waKey = WhatsAppService.waMessageKey(m.id);
@@ -1148,11 +1191,7 @@ class WhatsAppService {
       // Without this the row lands with media_type but no media_url, and the
       // thread renders the literal "[Image]" instead of the photo.
       if (m.hasMedia && !known.has(waKey)) {
-        try {
-          mediaUrl = persistWaMedia(await m.downloadMedia(), mediaType);
-        } catch (e) {
-          console.log(`⚠️ History media download failed [${mediaType}]: ${e.message}`);
-        }
+        mediaUrl = await this._downloadMediaFor(m, waKey, mediaType);
       }
 
       out.push({
@@ -1165,7 +1204,10 @@ class WhatsAppService {
       });
     }
     const withMedia = out.filter(o => o.media_url).length;
-    if (withMedia) console.log(`📎 Downloaded ${withMedia} media file(s) from history`);
+    const failed = this._mediaFailuresThisRun || 0;
+    if (withMedia || failed) {
+      console.log(`📎 History media: ${withMedia} downloaded, ${failed} unavailable`);
+    }
     return out;
   }
 

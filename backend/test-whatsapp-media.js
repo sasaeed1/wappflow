@@ -104,11 +104,27 @@ check('every INSERT INTO messages that stores media_type also stores media_url',
     `${bad.length} INSERT(s) store media_type but drop media_url:\n   ` + bad.join('\n   '));
 });
 
-check('fetchHistory downloads media and returns media_url', () => {
+check('fetchHistory obtains media and returns media_url', () => {
   const fn = waSrc.slice(waSrc.indexOf('async fetchHistory'), waSrc.indexOf('_collectMissedFromPage'));
-  assert(/downloadMedia\(\)/.test(fn), 'fetchHistory never downloads media');
-  assert(/persistWaMedia/.test(fn), 'fetchHistory does not persist what it downloads');
   assert(/media_url:/.test(fn), 'fetchHistory does not return media_url');
+  // Don't care WHERE the download happens — only that fetchHistory reaches a
+  // downloader for media messages. (An earlier version of this check asserted
+  // downloadMedia() appeared literally inside fetchHistory, and broke the moment
+  // the call moved into a helper, with nothing actually regressing.)
+  assert(/_downloadMediaFor|downloadMedia\(\)/.test(fn),
+    'fetchHistory never reaches a media downloader');
+});
+
+check('the downloader retries a thin message before giving up', () => {
+  // fetchMessages() can return messages without the keys downloadMedia() needs;
+  // the retry through getMessageById is what makes history media recoverable.
+  const fn = waSrc.slice(waSrc.indexOf('async _downloadMediaFor'), waSrc.indexOf('async fetchHistory'));
+  assert(fn.length > 100, '_downloadMediaFor not found');
+  assert(/downloadMedia\(\)/.test(fn), 'the downloader never calls downloadMedia');
+  assert(/persistWaMedia/.test(fn), 'the downloader does not persist what it downloads');
+  assert(/getMessageById/.test(fn), 'no re-hydration retry — thin messages will always fail');
+  assert(/describeWaError/.test(fn),
+    'failures log the minified page-side message ("r") instead of a readable diagnosis');
 });
 
 check('the missed-message sync re-fetches the message to get its media', () => {
