@@ -1131,13 +1131,106 @@ class WhatsAppService {
       this._lastMediaError = e;
     }
 
+    // Last resort: run the download inside the page and catch it THERE.
+    // whatsapp-web.js lets a page-side throw cross the puppeteer boundary, where
+    // it arrives as the minified stub "r" with no detail (see wa-errors.js). Doing
+    // the work ourselves lets us return the failure as data — the media stage, the
+    // HTTP status, the real message — which is both a diagnosis and, for the
+    // stages that just need re-resolving, a second chance at the bytes.
+    try {
+      const res = await this._downloadMediaInPage(waKey);
+      if (res && res.ok) {
+        const url = persistWaMedia(
+          { data: res.data, mimetype: res.mimetype, filename: res.filename },
+          mediaType
+        );
+        if (url) return url;
+      } else if (res) {
+        this._lastMediaReason = res;
+      }
+    } catch (e) {
+      this._lastMediaError = e;
+    }
+
     // Log ONE readable diagnosis per sync rather than a wall of ": r".
     if (!this._mediaFailuresThisRun) this._mediaFailuresThisRun = 0;
     this._mediaFailuresThisRun++;
-    if (this._mediaFailuresThisRun === 1 && this._lastMediaError) {
-      console.log(`⚠️ Media download failed [${mediaType}] — first failure this run:\n${describeWaError(this._lastMediaError)}`);
+    if (this._mediaFailuresThisRun === 1) {
+      if (this._lastMediaReason) {
+        const r = this._lastMediaReason;
+        console.log(`⚠️ Media download failed [${mediaType}] — in-page reason: ${r.reason}` +
+          `${r.stage ? ` (mediaStage=${r.stage})` : ''}${r.status ? ` status=${r.status}` : ''}` +
+          `${r.detail ? ` — ${r.detail}` : ''}`);
+      } else if (this._lastMediaError) {
+        console.log(`⚠️ Media download failed [${mediaType}] — first failure this run:\n${describeWaError(this._lastMediaError)}`);
+      }
     }
     return null;
+  }
+
+  // Replicates whatsapp-web.js's Message.downloadMedia, but every failure path
+  // returns serializable data instead of throwing across the puppeteer boundary.
+  // Keep in step with node_modules/whatsapp-web.js/src/structures/Message.js.
+  async _downloadMediaInPage(waKey) {
+    if (!this.client?.pupPage) return { ok: false, reason: 'no-page' };
+    return this.client.pupPage.evaluate(async (msgId) => {
+      const say = (e) => {
+        if (!e) return '';
+        if (typeof e === 'string') return e.slice(0, 300);
+        const bits = [];
+        for (const k of ['name', 'message', 'status', 'code', 'errorName', 'reason']) {
+          try { if (e[k] != null && typeof e[k] !== 'function') bits.push(`${k}=${String(e[k]).slice(0, 120)}`); } catch {}
+        }
+        return bits.join(' ');
+      };
+      try {
+        const C = window.require('WAWebCollections');
+        const msg = C.Msg.get(msgId) || (await C.Msg.getMessagesById([msgId]))?.messages?.[0];
+        if (!msg) return { ok: false, reason: 'message-not-in-store' };
+        if (!msg.mediaData) return { ok: false, reason: 'no-mediaData' };
+
+        const stage0 = msg.mediaData.mediaStage;
+        if (stage0 === 'REUPLOADING') return { ok: false, reason: 'reuploading', stage: stage0 };
+
+        if (stage0 !== 'RESOLVED') {
+          try {
+            await msg.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1 });
+          } catch (e) {
+            return { ok: false, reason: 'resolve-threw', stage: stage0, detail: say(e) };
+          }
+        }
+        const stage = msg.mediaData.mediaStage;
+        if (String(stage).includes('ERROR') || stage === 'FETCHING') {
+          return { ok: false, reason: 'unresolvable-stage', stage };
+        }
+
+        const mockQpl = { addAnnotations() { return this; }, addPoint() { return this; } };
+        let decrypted;
+        try {
+          decrypted = await window.require('WAWebDownloadManager').downloadManager.downloadAndMaybeDecrypt({
+            directPath: msg.directPath,
+            encFilehash: msg.encFilehash,
+            filehash: msg.filehash,
+            mediaKey: msg.mediaKey,
+            mediaKeyTimestamp: msg.mediaKeyTimestamp,
+            type: msg.type,
+            signal: new AbortController().signal,
+            downloadQpl: mockQpl,
+          });
+        } catch (e) {
+          return {
+            ok: false, reason: 'download-threw', stage,
+            status: e && e.status, detail: say(e),
+            hasKey: !!msg.mediaKey, hasPath: !!msg.directPath,
+          };
+        }
+
+        const data = await window.WWebJS.arrayBufferToBase64Async(decrypted);
+        return { ok: true, data, mimetype: msg.mimetype, filename: msg.filename, filesize: msg.size };
+      } catch (e) {
+        return { ok: false, reason: 'outer-threw', detail: say(e) };
+      }
+    }, waKey);
   }
 
   async fetchHistory(phone, limit = 200) {
