@@ -49,6 +49,13 @@ function clean() {
       if (r.changes) { console.log(`  − ${String(r.changes).padStart(3)}  ${t}`); total += r.changes; }
     } catch (e) { console.log(`  !  ${t}: ${e.message.slice(0, 60)}`); }
   }
+  // booking_settings is keyed on workspace_id, not an id — only remove the slug
+  // this seeder published, never a real one the studio configured itself.
+  try {
+    const r = db.prepare("DELETE FROM booking_settings WHERE workspace_id = ? AND slug = 'demo-studio'").run(WS);
+    if (r.changes) { console.log(`  −   ${r.changes}  booking_settings (demo-studio)`); total += r.changes; }
+  } catch {}
+
   // Rows the APP created while the demo data was being exercised — a store
   // checkout raises a real order, invoice and payment with server-generated ids,
   // so "demo-%" alone would strand them. They are reachable from the demo
@@ -182,7 +189,7 @@ function seed() {
   // ── CONTRACTS — draft / sent / signed ─────────────────────────────────────
   const blocks = (title, amount) => JSON.stringify([
     { type: 'heading', data: { text: title } },
-    { type: 'paragraph', data: { text: 'This is DEMO content for visual QA. It is not a real agreement and carries no legal effect.' } },
+    { type: 'text', data: { text: 'This is DEMO content for visual QA. It is not a real agreement and carries no legal effect.' } },
     { type: 'pricing_table', data: { currency: 'USD', rows: [{ name: 'Coverage', price: amount }] } },
   ]);
   const DOCS = [
@@ -285,6 +292,25 @@ function seed() {
   });
   bump('knowledge docs');
 
+  // ── BOOKING PAGE — publish a slug so /book/<slug> can be audited ──────────
+  try {
+    insert('booking_settings', {
+      workspace_id: WS, slug: 'demo-studio',
+      settings: JSON.stringify({
+        services: [
+          // The public page reads `duration` (book/[slug] renders `{s.duration} min`);
+          // `duration_min` rendered a bare "min" with no number.
+          { name: 'DEMO · Consultation', duration: 30, price: 0, is_shoot: false },
+          { name: 'DEMO · Portrait session', duration: 90, price: 150, is_shoot: true },
+        ],
+        hours: { mon: [9, 17], tue: [9, 17], wed: [9, 17], thu: [9, 17], fri: [9, 17] },
+        buffer_min: 15, timezone: 'Asia/Karachi',
+      }),
+      updated_at: stamp(0),
+    });
+    bump('booking page');
+  } catch (e) { console.log('  !  booking_settings: ' + e.message.slice(0, 70)); }
+
   // ── PORTFOLIO — publish it AND give it work to show ───────────────────────
   // Publishing alone rendered "Coming soon.", because the portfolio had no items
   // and so proved nothing about how the page actually looks with a body of work.
@@ -324,7 +350,8 @@ function urls() {
   if (g) console.log(`  shop      ${BASE}/shop/${g.share_token}`);
   if (p) console.log(`  payment   ${BASE}/pay/${p.public_token}`);
   if (d) console.log(`  contract  ${BASE}/d/${d.token}`);
-  if (b) console.log(`  booking   ${BASE}/b/${b.token}`);
+  if (b) console.log(`  booking-manage ${BASE}/booking/manage/${b.token}`);
+  console.log(`  booking-page   ${BASE}/book/demo-studio`);
   if (pf) console.log(`  portfolio ${BASE}/folio/${pf.handle}`);
 }
 
