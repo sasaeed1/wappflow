@@ -1165,7 +1165,8 @@ class WhatsAppService {
     }
     if (!chat) throw new Error('Chat not found — the contact may not have messaged this WhatsApp number yet');
     const messages = await chat.fetchMessages({ limit });
-    console.log(`📜 Fetched ${messages.length} historical messages for ${phone}`);
+    const mediaCount = messages.filter(m => m.hasMedia).length;
+    console.log(`📜 Fetched ${messages.length} historical messages for ${phone} (${mediaCount} with media)`);
 
     // Which of these do we not already have? Downloading media is the expensive
     // part of this call, so only pay it for messages that are actually about to
