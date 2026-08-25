@@ -61,7 +61,13 @@ check('there is a way to skip the navigation', () => {
 });
 
 check('page content is a landmark screen readers can jump to', () => {
-  assert(/<main id="wf-main"/.test(R('components/shell/AppShell.js')), 'the page body is not a <main>');
+  // Match the <main> and its id independently of attribute order/wrapping — the
+  // capability is "content is a named main landmark", not "these two tokens are
+  // adjacent on one line", which broke the moment the className grew a third term.
+  const shell = R('components/shell/AppShell.js');
+  const tag = shell.match(/<main\b[\s\S]{0,400}?>/);
+  assert(tag, 'the page body is not a <main>');
+  assert(/id="wf-main"/.test(tag[0]), 'the <main> is not the skip-link target #wf-main');
 });
 
 check('the shared keyboard helper exists and handles both activation keys', () => {

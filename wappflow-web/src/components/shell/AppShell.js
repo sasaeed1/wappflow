@@ -33,6 +33,15 @@ import { clickable } from '@/lib/a11y';
 // working exactly as ratified. Height is published as --shell-h because pages depend
 // on it (chat computes calc(100vh - 60px); the Studio canvases pin top:58).
 
+// Routes whose content is a full-height app surface rather than a scrolling page
+// of cards — chat panes, the lead conversation, the Studio canvases. Those own the
+// whole viewport, so the desktop FAB gutter (globals.css) would leave a dead strip
+// down their right edge instead of protecting anything. Card/list pages, where row
+// actions sit on the right edge and the FABs were genuinely swallowing clicks, keep
+// the gutter.
+const BLEED_ROUTES = [/^\/chat/, /^\/leads\/[^/]+$/, /^\/studio\//, /^\/contracts\/[^/]+$/];
+const isBleedRoute = (pathname) => !!pathname && BLEED_ROUTES.some((re) => re.test(pathname));
+
 export default function AppShell({ module: moduleKey, children, actions, subHeader }) {
   const mod = MODULES[moduleKey];
   const router = useRouter();
@@ -193,8 +202,19 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
 
       {subHeader}
 
-      {/* .wf-page is load-bearing: the mobile rules in globals.css key off it. */}
-      <main id="wf-main" className={mod.dialectClass ? `wf-page ${mod.dialectClass}` : 'wf-page'}>{children}</main>
+      {/* .wf-page is load-bearing: the mobile rules in globals.css key off it, as
+          does the desktop FAB gutter. .wf-bleed opts a route out of that gutter —
+          see isBleedRoute above. */}
+      <main
+        id="wf-main"
+        className={[
+          'wf-page',
+          mod.dialectClass || '',
+          isBleedRoute(pathname) ? 'wf-bleed' : '',
+        ].filter(Boolean).join(' ')}
+      >
+        {children}
+      </main>
 
       {/* Module-scoped floating assistants. These used to be mounted by NavBar, which
           meant they existed only on CRM pages by accident of which shell a page picked. */}

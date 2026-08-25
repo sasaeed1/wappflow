@@ -604,9 +604,13 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
    scrolls beneath it. Reserving the right gutter is what actually fixes it.
 
    Scoped to the widths where the FABs are docked bottom-right at full size —
-   the mobile block re-pins and rescales them, and pads .wf-page instead. */
+   the mobile block re-pins and rescales them, and pads .wf-page instead.
+
+   .wf-bleed opts out (AppShell): full-height surfaces like the chat pane and the
+   lead conversation own the whole viewport, and a gutter there is just a dead
+   strip down the right edge protecting nothing. */
 @media (min-width: 861px) {
-  .wf-page { padding-right: 76px; }
+  .wf-page:not(.wf-bleed) { padding-right: 76px; }
 }
 
 /* On a short viewport the FAB stack eats a disproportionate share of the height

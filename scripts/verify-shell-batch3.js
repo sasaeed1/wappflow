@@ -44,7 +44,14 @@ check('every Studio page is unwrapped — including the alias trap', () => {
 });
 check('D8 preserved: content still renders inside the .ms-root token-remap scope', () => {
   assert(/dialectClass: 'ms-root'/.test(modules), 'Studio dialect class lost');
-  assert(/mod\.dialectClass \? `wf-page \$\{mod\.dialectClass\}`/.test(shell), 'shell does not apply the dialect class');
+  // Assert the dialect class reaches the <main>, not one particular way of
+  // composing that className — this used to pin the exact template literal and
+  // broke when a third class (.wf-bleed) joined it, with nothing regressing.
+  const tag = shell.match(/<main\b[\s\S]{0,400}?>/);
+  assert(tag, 'no <main> in the shell');
+  assert(/mod\.dialectClass/.test(tag[0]),
+    'shell does not apply the dialect class to the page container');
+  assert(/'wf-page'|`wf-page/.test(tag[0]), 'the page container lost .wf-page');
 });
 check('theme switcher survived as a module action, with its retired-id migration', () => {
   assert(/actions: StudioThemeSwitch/.test(modules), 'theme switch not declared as a module action');
