@@ -5,6 +5,61 @@ const { execSync, execFile } = require('child_process');
 const qrcode = require('qrcode');
 const { describeWaError, isPageContextGone } = require('./wa-errors');
 
+// Write a downloaded WhatsApp media payload to disk and return the URL the app
+// serves it from (`/uploads/<subdir>/<file>`, matching the express.static mount
+// in server.js), or null if there was nothing to write.
+//
+// This exists because the media download used to live inline in the live message
+// handler only. The two SYNC importers wrote `media_type` but no `media_url`, so
+// an imported photo rendered as the literal text "[Image]" — and since the live
+// handler skips anything whose wa_message_id it has already seen, the media-less
+// row could never be repaired afterwards. Both importers now call this too.
+function persistWaMedia(media, mediaType) {
+  if (!media || !media.data) return null;
+  const uploadsBase = path.join(
+    process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : __dirname),
+    'uploads'
+  );
+  const ts = Date.now();
+  const rand = Math.random().toString(36).slice(2, 8); // history imports land in the same millisecond
+  const mime = media.mimetype || '';
+  let subDir, filename;
+
+  if (mediaType === 'voice') {
+    const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'mp4' : mime.includes('mpeg') ? 'mp3' : 'ogg';
+    subDir = 'voices';
+    filename = `voice-${ts}-${rand}.${ext}`;
+  } else if (mediaType === 'image') {
+    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+    subDir = 'images';
+    filename = `img-${ts}-${rand}.${ext}`;
+  } else if (mediaType === 'video') {
+    const ext = mime.includes('webm') ? 'webm' : 'mp4';
+    subDir = 'videos';
+    filename = `video-${ts}-${rand}.${ext}`;
+  } else {
+    const origName = media.filename || `file-${ts}`;
+    const ext = origName.includes('.') ? origName.split('.').pop() : 'bin';
+    const safeName = origName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+    subDir = 'files';
+    filename = `${ts}-${rand}-${safeName}`;
+    if (!filename.includes('.')) filename += `.${ext}`;
+  }
+
+  const dir = path.join(uploadsBase, subDir);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, filename), Buffer.from(media.data, 'base64'));
+  return `/uploads/${subDir}/${filename}`;
+}
+
+// The media kind we store, derived from whatsapp-web.js's message type.
+function waMediaType(type) {
+  if (type === 'ptt' || type === 'audio') return 'voice';
+  if (type === 'image' || type === 'sticker') return 'image';
+  if (type === 'video') return 'video';
+  return 'media';
+}
+
 class WhatsAppService {
   constructor(db, broadcastToUser, accountId = null, sessionName = undefined, broadcastToWorkspace = null, notify = null) {
     this.db = db;
@@ -408,56 +463,30 @@ class WhatsAppService {
               mediaType = 'media';
             }
 
-            // Download and save all media types
+            // Download and save all media types (shared with both sync importers)
             try {
-              const media = await message.downloadMedia();
-              if (media && media.data) {
-                const uploadsBase = path.join(process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : __dirname), 'uploads');
-                const ts = Date.now();
-                let subDir, filename;
-                if (mediaType === 'voice') {
-                  const ext = media.mimetype?.includes('ogg') ? 'ogg'
-                            : media.mimetype?.includes('mp4') ? 'mp4'
-                            : media.mimetype?.includes('mpeg') ? 'mp3'
-                            : 'ogg';
-                  subDir = 'voices';
-                  filename = `voice-${ts}.${ext}`;
-                } else if (mediaType === 'image') {
-                  const ext = media.mimetype?.includes('png') ? 'png'
-                            : media.mimetype?.includes('webp') ? 'webp'
-                            : media.mimetype?.includes('gif') ? 'gif'
-                            : 'jpg';
-                  subDir = 'images';
-                  filename = `img-${ts}.${ext}`;
-                } else if (mediaType === 'video') {
-                  const ext = media.mimetype?.includes('mp4') ? 'mp4'
-                            : media.mimetype?.includes('webm') ? 'webm'
-                            : 'mp4';
-                  subDir = 'videos';
-                  filename = `video-${ts}.${ext}`;
-                } else {
-                  // document / sticker / other
-                  const origName = media.filename || `file-${ts}`;
-                  const ext = origName.includes('.') ? origName.split('.').pop() : 'bin';
-                  const safeName = origName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
-                  subDir = 'files';
-                  filename = `${ts}-${safeName}`;
-                  if (!filename.includes('.')) filename += `.${ext}`;
-                }
-                const dir = path.join(uploadsBase, subDir);
-                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-                fs.writeFileSync(path.join(dir, filename), Buffer.from(media.data, 'base64'));
-                mediaUrl = `/uploads/${subDir}/${filename}`;
-                console.log(`📎 Media saved [${mediaType}]: ${filename}`);
-              }
+              mediaUrl = persistWaMedia(await message.downloadMedia(), mediaType);
+              if (mediaUrl) console.log(`📎 Media saved [${mediaType}]: ${mediaUrl}`);
             } catch (dlErr) {
               console.log(`⚠️ Could not download media [${mediaType}]:`, dlErr.message);
             }
           }
 
           if (waId) {
-            const dup = this.db.prepare('SELECT id FROM messages WHERE wa_message_id = ?').get(waId);
-            if (dup) return;
+            const dup = this.db.prepare('SELECT id, media_url FROM messages WHERE wa_message_id = ?').get(waId);
+            if (dup) {
+              // A sync importer may have inserted this row first without media. We
+              // have just downloaded the real file, so upgrade the row rather than
+              // dropping what we fetched — otherwise the photo is lost for good and
+              // the thread keeps showing "[Image]".
+              if (mediaUrl && !dup.media_url) {
+                this.db.prepare(
+                  'UPDATE messages SET media_url = ?, media_type = COALESCE(media_type, ?) WHERE id = ?'
+                ).run(mediaUrl, mediaType, dup.id);
+                console.log(`📎 Backfilled media on existing message ${dup.id}`);
+              }
+              return;
+            }
           }
           const fallbackBody = mediaType === 'voice' ? '[Voice Note]'
             : mediaType === 'image' ? '[Image]'
@@ -1095,17 +1124,49 @@ class WhatsAppService {
     if (!chat) throw new Error('Chat not found — the contact may not have messaged this WhatsApp number yet');
     const messages = await chat.fetchMessages({ limit });
     console.log(`📜 Fetched ${messages.length} historical messages for ${phone}`);
-    return messages.map(m => ({
-      wa_id: WhatsAppService.waMessageKey(m.id),
-      body: m.body || (m.hasMedia ? '[Media]' : ''),
-      from_me: m.fromMe ? 1 : 0,
-      ts: m.timestamp,
-      media_type: m.hasMedia
-        ? (m.type === 'image' || m.type === 'sticker' ? 'image'
-          : (m.type === 'ptt' || m.type === 'audio') ? 'voice'
-          : 'media')
-        : null,
-    }));
+
+    // Which of these do we not already have? Downloading media is the expensive
+    // part of this call, so only pay it for messages that are actually about to
+    // be inserted — re-opening a lead must not re-download the whole thread.
+    let known = new Set();
+    try {
+      const ids = messages.map(m => WhatsAppService.waMessageKey(m.id)).filter(Boolean);
+      if (ids.length) {
+        const rows = this.db.prepare(
+          `SELECT wa_message_id FROM messages WHERE media_url IS NOT NULL AND wa_message_id IN (${ids.map(() => '?').join(',')})`
+        ).all(...ids);
+        known = new Set(rows.map(r => r.wa_message_id));
+      }
+    } catch { /* no db handle or column — fall through and just download */ }
+
+    const out = [];
+    for (const m of messages) {
+      const waKey = WhatsAppService.waMessageKey(m.id);
+      const mediaType = m.hasMedia ? waMediaType(m.type) : null;
+      let mediaUrl = null;
+
+      // Without this the row lands with media_type but no media_url, and the
+      // thread renders the literal "[Image]" instead of the photo.
+      if (m.hasMedia && !known.has(waKey)) {
+        try {
+          mediaUrl = persistWaMedia(await m.downloadMedia(), mediaType);
+        } catch (e) {
+          console.log(`⚠️ History media download failed [${mediaType}]: ${e.message}`);
+        }
+      }
+
+      out.push({
+        wa_id: waKey,
+        body: m.body || (m.hasMedia ? '[Media]' : ''),
+        from_me: m.fromMe ? 1 : 0,
+        ts: m.timestamp,
+        media_type: mediaType,
+        media_url: mediaUrl,
+      });
+    }
+    const withMedia = out.filter(o => o.media_url).length;
+    if (withMedia) console.log(`📎 Downloaded ${withMedia} media file(s) from history`);
+    return out;
   }
 
   // Read the chats that saw inbound activity since `sinceSec`, straight out of the page.
@@ -1299,10 +1360,25 @@ class WhatsAppService {
               else if (m.type === 'video') { mediaType = 'video'; bodyFallback = '[Video]'; }
               else { mediaType = 'media'; bodyFallback = '[File]'; }
             }
+
+            // _collectMissedFromPage can only hand back a serializable `hasMedia`
+            // flag from the browser context, so the actual file has to be fetched
+            // here in Node. Without this the row gets media_type but no media_url
+            // and the thread shows "[Image]" where the photo should be.
+            let mediaUrl = null;
+            if (mediaType && waId) {
+              try {
+                const full = await this.client.getMessageById(waId);
+                if (full) mediaUrl = persistWaMedia(await full.downloadMedia(), mediaType);
+              } catch (e) {
+                console.log(`⚠️ Missed-sync media download failed [${mediaType}]: ${e.message}`);
+              }
+            }
+
             this.db.prepare(
-              `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, timestamp, wa_message_id, platform, platform_account_id)
-               VALUES (?, ?, ?, ?, 0, ?, ?, ?, 'whatsapp', ?)`
-            ).run(this.generateId(), lead.id, user.id, m.body || bodyFallback, mediaType, ts, waId, this.accountId || null);
+              `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id, platform, platform_account_id)
+               VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 'whatsapp', ?)`
+            ).run(this.generateId(), lead.id, user.id, m.body || bodyFallback, mediaType, mediaUrl, ts, waId, this.accountId || null);
             msgCount++;
           }
 
@@ -1579,4 +1655,5 @@ class WhatsAppManager {
   }
 }
 
-module.exports = { WhatsAppService, WhatsAppManager };
+// persistWaMedia/waMediaType are exported for the media regression test.
+module.exports = { WhatsAppService, WhatsAppManager, persistWaMedia, waMediaType };

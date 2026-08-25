@@ -2022,15 +2022,23 @@ app.post('/api/leads/:leadId/messages/sync', auth, async (req, res) => {
     let imported = 0;
     const doSync = db.transaction((msgs) => {
       for (const m of msgs) {
-        // Skip if already stored by WA message ID
+        // Skip if already stored by WA message ID — but if the stored copy came
+        // from an import that predates media support, backfill it now rather than
+        // leaving the thread showing "[Image]" forever.
         if (m.wa_id) {
-          const dup = db.prepare('SELECT id FROM messages WHERE wa_message_id = ?').get(m.wa_id);
-          if (dup) continue;
+          const dup = db.prepare('SELECT id, media_url FROM messages WHERE wa_message_id = ?').get(m.wa_id);
+          if (dup) {
+            if (m.media_url && !dup.media_url) {
+              db.prepare('UPDATE messages SET media_url = ?, media_type = COALESCE(media_type, ?) WHERE id = ?')
+                .run(m.media_url, m.media_type, dup.id);
+            }
+            continue;
+          }
         }
         db.prepare(
-          `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, timestamp, wa_message_id)
-           VALUES (?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'), ?)`
-        ).run(generateId(), leadId, lead.user_id, m.body, m.from_me, m.media_type, String(m.ts), m.wa_id || null);
+          `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'), ?)`
+        ).run(generateId(), leadId, lead.user_id, m.body, m.from_me, m.media_type, m.media_url || null, String(m.ts), m.wa_id || null);
         imported++;
       }
     });

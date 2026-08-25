@@ -544,3 +544,74 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
+
+/* ── Short-viewport density ───────────────────────────────────────────────────
+   A 1920×1080 screen at Windows' default 150% scaling is 1280×720 CSS px, and
+   Chrome's own chrome takes ~177px of it — so the viewport is 503px tall with
+   the window ALREADY MAXIMISED. There is no zoom setting the user can change to
+   win that space back; the app has to fit. Measured on that exact setup, the
+   New Lead dialog was 464px of content in a 382px box: an internal scrollbar
+   between the user and the dialog's own submit button.
+
+   Below 760px of height we tighten dialog chrome and the controls inside it.
+   Deliberately scoped to dialogs — the page layouts are fine at this height,
+   and compacting every input app-wide would trade one problem for a worse one.
+
+   !important is required and follows the precedent set by the legacy-input
+   block above: most dialogs here are hand-rolled with inline styles, and the
+   Modal primitive injects its own <style> after this file in document order. */
+@media (max-height: 760px) {
+  /* The Modal primitive (components/ui/Modal.js) */
+  .wf-modal-backdrop { padding: 10px !important; }
+  .wf-modal-card     { max-height: 94vh !important; }
+  .wf-modal-head     { padding-top: 14px !important; }
+  .wf-modal-body     { padding-top: 10px !important; padding-bottom: 10px !important; }
+  .wf-modal-foot     { padding-bottom: 14px !important; }
+
+  /* Hand-rolled dialogs that declare themselves properly */
+  [role="dialog"] { max-height: 94vh !important; }
+
+  /* Controls inside any dialog: ~20% less vertical padding, and cap the
+     free-text boxes that are the usual reason a form overflows at all. */
+  .wf-modal-card input:not([type="checkbox"]):not([type="radio"]),
+  .wf-modal-card select,
+  .wf-modal-card textarea,
+  [role="dialog"] input:not([type="checkbox"]):not([type="radio"]),
+  [role="dialog"] select,
+  [role="dialog"] textarea {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+  .wf-modal-card textarea,
+  [role="dialog"] textarea { max-height: 96px !important; }
+
+  /* Field labels carry an inline margin-bottom, so this needs the override. */
+  .wf-modal-card label,
+  [role="dialog"] label { margin-bottom: 4px !important; }
+}
+
+/* ── Floating action buttons must not sit on top of controls ──────────────────
+   The AI and chat FABs are position:fixed at right:24 with a 52px body, so they
+   occupy the rightmost 76px of the viewport at every scroll position. Page
+   content runs edge to edge underneath them, and row actions live on that right
+   edge — measured live, the FABs were intercepting the "Reply →" buttons on two
+   leads in the Next-best-actions list. Those buttons could not be clicked at all.
+
+   The mobile rules below already reserve BOTTOM space for this reason, but
+   bottom padding only rescues the last row: a fixed element covers whatever
+   scrolls beneath it. Reserving the right gutter is what actually fixes it.
+
+   Scoped to the widths where the FABs are docked bottom-right at full size —
+   the mobile block re-pins and rescales them, and pads .wf-page instead. */
+@media (min-width: 861px) {
+  .wf-page { padding-right: 76px; }
+}
+
+/* On a short viewport the FAB stack eats a disproportionate share of the height
+   (two 52px buttons plus gaps is ~20% of a 503px screen), so tighten it. */
+@media (max-height: 760px) {
+  .wf-fab-ai   { bottom: 76px !important; }
+  .wf-fab-chat { bottom: 18px !important; }
+  .wf-fab > button,
+  .wf-fab > a { width: 46px !important; height: 46px !important; }
+}
