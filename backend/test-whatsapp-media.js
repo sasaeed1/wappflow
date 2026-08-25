@@ -115,16 +115,44 @@ check('fetchHistory obtains media and returns media_url', () => {
     'fetchHistory never reaches a media downloader');
 });
 
-check('the downloader retries a thin message before giving up', () => {
-  // fetchMessages() can return messages without the keys downloadMedia() needs;
-  // the retry through getMessageById is what makes history media recoverable.
-  const fn = waSrc.slice(waSrc.indexOf('async _downloadMediaFor'), waSrc.indexOf('async fetchHistory'));
+check('the downloader has more than one way to get the bytes', () => {
+  const fn = waSrc.slice(waSrc.indexOf('async _downloadMediaFor'), waSrc.indexOf('async _downloadMediaInPage'));
   assert(fn.length > 100, '_downloadMediaFor not found');
-  assert(/downloadMedia\(\)/.test(fn), 'the downloader never calls downloadMedia');
+  assert(/_downloadMediaInPage/.test(fn), 'no in-page download — the only path that works on this account');
+  assert(/downloadMedia\(\)/.test(fn), 'no library fallback if the in-page shape breaks');
   assert(/persistWaMedia/.test(fn), 'the downloader does not persist what it downloads');
-  assert(/getMessageById/.test(fn), 'no re-hydration retry — thin messages will always fail');
-  assert(/describeWaError/.test(fn),
+  assert(/describeWaError|_lastMediaReason/.test(fn),
     'failures log the minified page-side message ("r") instead of a readable diagnosis');
+});
+
+check('a message missing from the page store is re-hydrated before giving up', () => {
+  // fetchMessages() can hand back entries the media download cannot use. The
+  // recovery is getMessagesById — it lives INSIDE the page evaluate now, which is
+  // why this checks the capability rather than a particular call site.
+  const fn = waSrc.slice(waSrc.indexOf('async _downloadMediaInPage'));
+  assert(/Msg\.get\(/.test(fn) && /getMessagesById/.test(fn),
+    'no re-hydration path — a message absent from Msg.get will always fail');
+});
+
+check('every in-page failure returns data instead of throwing across the boundary', () => {
+  const fn = waSrc.slice(waSrc.indexOf('async _downloadMediaInPage'), waSrc.indexOf('async fetchHistory'));
+  // A bare `throw` inside the evaluate would arrive in Node as the minified "r".
+  assert(!/^\s*throw /m.test(fn), 'an in-page throw would cross the boundary and lose all detail');
+  for (const reason of ['message-not-in-store', 'download-threw', 'unresolvable-stage']) {
+    assert(fn.includes(reason), `missing the '${reason}' diagnosis`);
+  }
+});
+
+check('the LIVE handler uses the same downloader, not the broken library call', () => {
+  // The live path failed too — a new voice note produced the same minified "r".
+  // If this regresses to message.downloadMedia(), newly received photos break
+  // again while history keeps working, which is a confusing half-fixed state.
+  const i = waSrc.indexOf("client.on('message'");
+  assert(i > -1, "could not find the live message handler");
+  const fn = waSrc.slice(i, i + 9000);
+  assert(/_downloadMediaFor\(/.test(fn), 'live handler does not use the shared downloader');
+  assert(!/persistWaMedia\(await message\.downloadMedia\(\)/.test(fn),
+    'live handler is back on the library call that fails on this account');
 });
 
 check('the missed-message sync re-fetches the message to get its media', () => {

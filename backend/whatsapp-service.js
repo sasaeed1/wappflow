@@ -463,13 +463,13 @@ class WhatsAppService {
               mediaType = 'media';
             }
 
-            // Download and save all media types (shared with both sync importers)
-            try {
-              mediaUrl = persistWaMedia(await message.downloadMedia(), mediaType);
-              if (mediaUrl) console.log(`📎 Media saved [${mediaType}]: ${mediaUrl}`);
-            } catch (dlErr) {
-              console.log(`⚠️ Could not download media [${mediaType}]:`, dlErr.message);
-            }
+            // Same downloader as both sync importers. It must be this one and not
+            // message.downloadMedia(): on this account the library call fails for
+            // live messages too — a brand-new voice note failed with the minified
+            // "r" while the in-page path recovered 31 of 31 historical files.
+            this._mediaFailuresThisRun = 0;
+            mediaUrl = await this._downloadMediaFor(message, waId, mediaType);
+            if (mediaUrl) console.log(`📎 Media saved [${mediaType}]: ${mediaUrl}`);
           }
 
           if (waId) {
@@ -1111,43 +1111,34 @@ class WhatsAppService {
   // Returns a media URL, or null when the media is genuinely unavailable (WhatsApp
   // expires media server-side, so old threads legitimately have unrecoverable files).
   async _downloadMediaFor(message, waKey, mediaType) {
-    const attempt = async (msg) => persistWaMedia(await msg.downloadMedia(), mediaType);
+    // In-page FIRST, deliberately. Measured on this account: the library's own
+    // Message.downloadMedia() failed on all 49 media messages across two threads,
+    // while doing the same work inside the page succeeded on 31 of 31. Trying the
+    // library path first meant two guaranteed-failed attempts per file, which is
+    // what pushed a 31-file sync past 45 seconds.
+    if (waKey) {
+      try {
+        const res = await this._downloadMediaInPage(waKey);
+        if (res && res.ok) {
+          const url = persistWaMedia(
+            { data: res.data, mimetype: res.mimetype, filename: res.filename },
+            mediaType
+          );
+          if (url) return url;
+        } else if (res) {
+          this._lastMediaReason = res;
+        }
+      } catch (e) {
+        this._lastMediaError = e;
+      }
+    }
 
+    // Fall back to the library, in case a future WhatsApp Web build breaks the
+    // in-page shape above but leaves whatsapp-web.js working.
+    const attempt = async (msg) => persistWaMedia(await msg.downloadMedia(), mediaType);
     try {
       const url = await attempt(message);
       if (url) return url;
-    } catch (e) {
-      this._lastMediaError = e;
-    }
-
-    if (!waKey) return null;
-    try {
-      const full = await this.client.getMessageById(waKey);
-      if (full) {
-        const url = await attempt(full);
-        if (url) return url;
-      }
-    } catch (e) {
-      this._lastMediaError = e;
-    }
-
-    // Last resort: run the download inside the page and catch it THERE.
-    // whatsapp-web.js lets a page-side throw cross the puppeteer boundary, where
-    // it arrives as the minified stub "r" with no detail (see wa-errors.js). Doing
-    // the work ourselves lets us return the failure as data — the media stage, the
-    // HTTP status, the real message — which is both a diagnosis and, for the
-    // stages that just need re-resolving, a second chance at the bytes.
-    try {
-      const res = await this._downloadMediaInPage(waKey);
-      if (res && res.ok) {
-        const url = persistWaMedia(
-          { data: res.data, mimetype: res.mimetype, filename: res.filename },
-          mediaType
-        );
-        if (url) return url;
-      } else if (res) {
-        this._lastMediaReason = res;
-      }
     } catch (e) {
       this._lastMediaError = e;
     }
