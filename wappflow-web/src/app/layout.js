@@ -6,21 +6,21 @@ export const metadata = {
     default: 'WappFlow',
     template: '%s · WappFlow',
   },
-  description: 'A CRM-centric business platform. Conversations, pipeline, clients and AI at the core — contracts, booking, invoicing, portals, galleries and more as modules around it. One client record, one timeline.',
+  description: 'Never lose a lead in WhatsApp again. WappFlow captures every WhatsApp enquiry as a CRM lead automatically — then connects contracts, booking, invoicing, portals and more as modules around that one client record.',
   applicationName: 'WappFlow',
   authors: [{ name: 'RemoteOps' }],
   metadataBase: new URL('https://wappflow.remoteops.co'),
   openGraph: {
-    title: 'WappFlow — the CRM your whole business runs on',
-    description: 'One CRM at the core, business modules connected around it. One customer record, one timeline — end to end.',
+    title: 'WappFlow — never lose a lead in WhatsApp again',
+    description: 'Every WhatsApp enquiry becomes a tracked CRM lead automatically. One CRM at the core, business modules connected around it.',
     url: 'https://wappflow.remoteops.co',
     siteName: 'WappFlow',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'WappFlow — the CRM your whole business runs on',
-    description: 'One CRM at the core, business modules connected around it. One customer record, one timeline — end to end.',
+    title: 'WappFlow — never lose a lead in WhatsApp again',
+    description: 'Every WhatsApp enquiry becomes a tracked CRM lead automatically. One CRM at the core, business modules connected around it.',
   },
 }
 

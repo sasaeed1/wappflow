@@ -279,8 +279,9 @@ function ChainDemo() {
   return (
     <div className="lp-chain" id="chain">
       <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--lp-text-muted)', margin: '0 0 18px', lineHeight: 1.6 }}>
-        One client, end to end. This example follows a photography studio — the same
-        chain runs for whatever your business sells.
+        From one WhatsApp message to a delivered job — the whole relationship, without
+        leaving the thread. This example follows a photography studio; the same chain
+        runs for whatever your business sells.
       </p>
       <div className="lp-chain-rail" role="tablist" aria-label="Walk through one client, end to end">
         {STAGES.map((s, n) => (
@@ -370,24 +371,24 @@ function Hero({ authed }) {
         <div className="lp-hero-head">
           <Reveal>
             <span className="lp-badge">
-              <span className="lp-badge-pill">MODULAR</span>
-              Start with the CRM. Add the modules your business needs.
+              <span className="lp-badge-pill">WHATSAPP CRM</span>
+              Every WhatsApp enquiry becomes a tracked lead — automatically
             </span>
           </Reveal>
 
           <Reveal delay={60}>
             <h1 className="lp-h1">
-              One CRM. <span className="lp-gradient">Every client.</span>{' '}
-              Everything connected.
+              Never lose a lead in{' '}
+              <span className="lp-gradient">WhatsApp</span> again.
             </h1>
           </Reveal>
 
           <Reveal delay={120}>
             <p className="lp-lead">
-              WappFlow puts a conversation-native CRM at the core of your business — leads,
-              pipeline, clients, AI — and connects the modules you need around it: contracts,
-              booking, invoicing, client portals, galleries and more. One customer record,
-              from the first message to the final delivery.
+              Your buyers are already messaging you — and the enquiries are already getting
+              buried in the scroll. WappFlow turns every WhatsApp conversation into an
+              organised CRM lead the moment it lands, then keeps the whole relationship
+              connected: pipeline, contracts, booking, invoices and delivery.
             </p>
           </Reveal>
 
@@ -415,6 +416,31 @@ function Hero({ authed }) {
               <span><Check size={14} /> Set up in an afternoon</span>
             </div>
           </Reveal>
+
+          {/* The one-line version of the whole product: the WhatsApp wedge, the CRM
+              it feeds, and the modules around it. Sits directly under the hero so a
+              visitor gets the hierarchy before they scroll anywhere. */}
+          <Reveal delay={280}>
+            <div className="lp-flow">
+              <span className="lp-flow-step">
+                <MessageCircle size={15} />
+                <b>A WhatsApp message arrives</b>
+                <em>Instagram, Facebook, email and web too</em>
+              </span>
+              <ArrowRight size={16} className="lp-flow-arrow" aria-hidden="true" />
+              <span className="lp-flow-step lp-flow-step-core">
+                <TrendingUp size={15} />
+                <b>It becomes a CRM lead</b>
+                <em>Captured, scored and on the pipeline</em>
+              </span>
+              <ArrowRight size={16} className="lp-flow-arrow" aria-hidden="true" />
+              <span className="lp-flow-step">
+                <Layers size={15} />
+                <b>Modules take it from there</b>
+                <em>Contracts, booking, invoices, delivery</em>
+              </span>
+            </div>
+          </Reveal>
         </div>
 
         <Reveal delay={120}><ChainDemo /></Reveal>
@@ -440,7 +466,7 @@ function Strip() {
   return (
     <section className="lp-strip">
       <div className="lp-container">
-        <p className="lp-strip-label">Every channel your clients already use</p>
+        <p className="lp-strip-label">WhatsApp first — and every other channel they use</p>
         <div className="lp-strip-row">
           {STRIP.map((s, n) => (
             <Reveal key={s.label} delay={n * 45}>
@@ -471,9 +497,9 @@ function Problem() {
     <section className="lp-section">
       <div className="lp-container">
         <SectionHead
-          eyebrow="The problem" icon={Layers}
-          title={<>Your business runs on <span className="lp-gradient">seven tabs</span>.</>}
-          sub="Every tool holds one piece of the client and none of them talk. The client is whole; your software is not — so you become the integration layer."
+          eyebrow="The problem" icon={MessageSquare}
+          title={<>Enquiries die in the <span className="lp-gradient">scroll</span>.</>}
+          sub="A buyer messages you on WhatsApp at 11pm. By morning it is forty messages up the thread, in the same inbox as your family and your suppliers. Nothing captured it, nothing chased it, and nobody knows it existed — because the rest of your business lives in other tabs entirely."
         />
 
         <div className="lp-switch-wrap">
@@ -481,7 +507,7 @@ function Problem() {
             <div className="lp-switch" role="group" aria-label="Compare a scattered stack with WappFlow">
               <button type="button" className={`lp-switch-btn ${mode === 'before' ? 'active' : ''}`}
                       aria-pressed={mode === 'before'} onClick={() => setMode('before')}>
-                Seven tools
+                WhatsApp + six tools
               </button>
               <button type="button" className={`lp-switch-btn ${mode === 'after' ? 'active' : ''}`}
                       aria-pressed={mode === 'after'} onClick={() => setMode('after')}>
@@ -511,10 +537,13 @@ function Problem() {
         ) : (
           <div className="lp-unified">
             <div className="lp-unified-mark"><Zap size={26} fill="currentColor" /></div>
-            <h3 className="lp-split-h" style={{ marginBottom: 10 }}>One CRM at the core. One client record.</h3>
-            <p className="lp-section-sub" style={{ maxWidth: 520, margin: '0 auto' }}>
-              Clients, conversations and pipeline in the middle — contracts, bookings,
-              invoices, portals and galleries as modules around them, sharing one
+            <h3 className="lp-split-h" style={{ marginBottom: 10 }}>
+              One CRM. Every client. Everything connected.
+            </h3>
+            <p className="lp-section-sub" style={{ maxWidth: 540, margin: '0 auto' }}>
+              The WhatsApp message becomes a lead the second it arrives. From there it is
+              one client record — conversations and pipeline at the core, with contracts,
+              bookings, invoices, portals and galleries as modules around them, sharing one
               database and one timeline.
             </p>
             <div className="lp-unified-list">
@@ -539,9 +568,9 @@ function Problem() {
 const SPINE = [
   {
     n: 'Capture',
-    sub: 'Every channel into one inbox',
+    sub: 'WhatsApp enquiries become leads',
     h: 'Nothing arrives without becoming a record',
-    p: 'WhatsApp, Instagram, Facebook, email and your website all land in one shared inbox. A new conversation creates a lead automatically, tagged with where it came from, so your pipeline fills itself.',
+    p: 'This is the part that stops the bleeding. A WhatsApp message creates a lead the moment it lands — no forms, no copying, no remembering. Instagram, Facebook, email and your website feed the same inbox, each tagged with where it came from, so your pipeline fills itself instead of waiting on you.',
     items: [
       { t: 'Shared team inbox', b: 'Assign, tag, snooze and reply together without stepping on each other.' },
       { t: 'Voice notes, transcribed', b: 'Long client voice messages become searchable text.' },
@@ -1496,6 +1525,10 @@ function Pricing({ authed, currentPlan }) {
 
 const FAQS = [
   {
+    q: 'How does a WhatsApp message actually become a lead?',
+    a: 'WappFlow connects to the WhatsApp number your clients already message. When someone new writes to you, a lead is created from that conversation on arrival — name, number, channel and the message itself — and lands on your pipeline. You do not fill in a form or copy anything across; the thread IS the record, and it stays attached to that client through contracts, invoices, bookings and delivery.',
+  },
+  {
     q: 'Is WappFlow only for photographers?',
     a: 'No. The core is an industry-agnostic CRM — leads, conversations, pipeline, one timeline per client — and everything else is a module on top of it. Media Studio is the module for businesses that ship creative work; if that is not you, you simply lean on the others: contracts, booking, invoicing, portals. New modules land on the same core, so the platform grows without the CRM ever changing shape.',
   },
@@ -1577,11 +1610,12 @@ function FinalCta({ authed }) {
         <Reveal>
           <div className="lp-final">
             <h2 className="lp-final-h">
-              Stop being the integration<br />between your own tools.
+              How many leads did<br />WhatsApp swallow last month?
             </h2>
             <p className="lp-final-p">
-              Bring one client through WappFlow end to end — enquiry, contract, invoice,
-              delivery — and you will not want to go back to seven tabs.
+              Connect your number, watch the next enquiry land as a tracked lead, and take
+              that one client all the way through — contract, invoice, delivery. You will
+              not want to go back to the scroll.
             </p>
             <div className="lp-hero-cta">
               {authed ? (

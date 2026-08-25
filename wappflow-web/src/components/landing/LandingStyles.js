@@ -186,6 +186,35 @@ export default function LandingStyles() {
       }
       .lp-hero-note span { display: inline-flex; align-items: center; gap: 6px; }
 
+      /* The WhatsApp → CRM → modules flow, directly under the hero. Uses the same
+         glass-chip language as .lp-strip-chip so it reads as part of the hero. */
+      .lp-flow {
+        display: flex; align-items: stretch; justify-content: center;
+        gap: 10px; flex-wrap: wrap; margin-top: 30px;
+      }
+      .lp-flow-step {
+        display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+        padding: 13px 16px; border-radius: 13px; text-align: left;
+        background: rgba(255,255,255,0.03); border: 1px solid var(--lp-border);
+        min-width: 190px; flex: 1 1 190px; max-width: 260px;
+        transition: border-color 0.25s var(--lp-ease), transform 0.25s var(--lp-ease);
+      }
+      .lp-flow-step:hover { border-color: var(--lp-border-strong); transform: translateY(-2px); }
+      .lp-flow-step svg { color: var(--lp-accent); margin-bottom: 4px; }
+      .lp-flow-step b { font-size: 13.5px; font-weight: 700; color: var(--lp-text); }
+      .lp-flow-step em { font-size: 12px; font-style: normal; color: var(--lp-text-muted); line-height: 1.45; }
+      /* The CRM is the core, so it is the one that is lit. */
+      .lp-flow-step-core {
+        background: rgba(129,140,248,0.10);
+        border-color: rgba(129,140,248,0.34);
+      }
+      .lp-flow-step-core svg { color: var(--lp-accent-2); }
+      .lp-flow-arrow { color: var(--lp-text-muted); align-self: center; flex-shrink: 0; }
+      @media (max-width: 720px) {
+        .lp-flow-arrow { transform: rotate(90deg); }
+        .lp-flow-step { max-width: none; }
+      }
+
       /* ══════════════ HERO — THE CHAIN DEMO ══════════════ */
       .lp-chain { margin-top: 64px; }
       .lp-chain-rail {
