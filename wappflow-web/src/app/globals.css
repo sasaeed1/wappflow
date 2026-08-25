@@ -611,6 +611,11 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
    strip down the right edge protecting nothing. */
 @media (min-width: 861px) {
   .wf-page:not(.wf-bleed) { padding-right: 76px; }
+
+  /* Team Chat is a bleed route, so it has no page gutter — and its Send button
+     sits at the bottom-right corner, exactly under the chat FAB. Hit-testing
+     confirmed the FAB, not Send, received the click. Pad the action row instead. */
+  .wf-chat-actions { padding-right: 84px !important; }
 }
 
 /* On a short viewport the FAB stack eats a disproportionate share of the height

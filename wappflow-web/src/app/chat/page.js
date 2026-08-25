@@ -1171,8 +1171,10 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {/* Bottom action row inside the input box */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', borderRadius: '0 0 12px 12px' }}>
+              {/* Bottom action row inside the input box. The class is load-bearing:
+                  Send sits at the far right of a full-bleed page, directly under the
+                  floating assistants, so globals.css pads it clear of them. */}
+              <div className="wf-chat-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', borderRadius: '0 0 12px 12px' }}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button onMouseDown={e => e.preventDefault()} onClick={() => fileInputRef.current?.click()}
                     title="Attach file"
