@@ -74,7 +74,13 @@ check('internal module switching is IN-APP — no _blank on CRM/Studio/Contracts
   const marker = code.indexOf('href={FLUX_PARKED');
   assert(marker !== -1, 'Flux link not found');
   assert(!/target="_blank"/.test(code.slice(0, marker)), 'an internal module still opens a new tab');
-  assert(/router\.push\(m\.home\)/.test(code), 'not a client-side navigation');
+  // Client-side navigation, by whichever mechanism. This used to demand
+  // `router.push(m.home)` literally, and broke when the items became <Link
+  // href={m.home}> — which is still client-side AND additionally gives the
+  // browser a real href, so ⌘/Ctrl-click and "Open in new tab" finally work.
+  const internal = code.slice(0, marker);
+  assert(/router\.push\(m\.home\)/.test(internal) || /<Link[\s\S]{0,200}href=\{m\.home\}/.test(internal),
+    'module switching is neither a router.push nor a Link — it may be a full page load');
   // Flux is genuinely external and parked — the one legitimate _blank
   assert(/target="_blank"/.test(code.slice(marker)), 'Flux link changed unexpectedly');
 });

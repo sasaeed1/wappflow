@@ -564,7 +564,11 @@ function LeadStudioSection({ leadId }) {
     return () => { on = false; };
   }, [leadId]);
   if (!shoots || shoots.length === 0) return null;
-  const open = (path) => window.open(path, '_blank', 'noopener,noreferrer');
+  // noopener only. 'noreferrer' also strips document.referrer, and the session
+  // boot script used to read that to decide whether a tab inherits the session —
+  // so opening a shoot here logged the user out of every tab. Same-origin links
+  // gain nothing from noreferrer anyway; noopener already severs window.opener.
+  const open = (path) => window.open(path, '_blank', 'noopener');
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 16, marginTop: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>

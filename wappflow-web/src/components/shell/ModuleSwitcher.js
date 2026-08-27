@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { LayoutGrid, Check, Zap } from 'lucide-react';
 import Dropdown from '@/components/ui/Dropdown';
 import { MODULES, MODULE_ORDER } from './modules';
@@ -21,7 +21,6 @@ const FLUX_URL = process.env.NEXT_PUBLIC_FLUX_URL || 'http://localhost:3000';
 // with different markup and different targets.
 
 export default function ModuleSwitcher({ current }) {
-  const router = useRouter();
 
   return (
     <Dropdown
@@ -49,21 +48,32 @@ export default function ModuleSwitcher({ current }) {
             Switch app
           </div>
 
+          {/* Real links, not buttons. A <button> + router.push() gives the browser
+              no href, so "Open link in new tab", middle-click and ⌘/Ctrl-click all
+              did nothing — the menu looked like navigation but could not be treated
+              like it. Link keeps plain clicks client-side and hands modified clicks
+              to the browser, so a module can be opened in its own tab. */}
           {MODULE_ORDER.map((key) => {
             const m = MODULES[key];
             const Icon = m.icon;
             const isCurrent = key === current;
             return (
-              <button
+              <Link
                 key={key}
-                onClick={() => { close(); if (!isCurrent) router.push(m.home); }}
-                aria-current={isCurrent ? 'true' : undefined}
+                href={m.home}
+                onClick={(e) => {
+                  // Let the browser own ⌘/Ctrl/Shift/Alt and middle clicks.
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  if (isCurrent) e.preventDefault();
+                  close();
+                }}
+                aria-current={isCurrent ? 'page' : undefined}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '9px 10px', borderRadius: 'var(--radius-sm)', border: 'none',
+                  padding: '9px 10px', borderRadius: 'var(--radius-sm)',
                   background: isCurrent ? 'var(--accent-bg)' : 'transparent',
                   color: 'var(--text)', fontFamily: 'inherit',
-                  fontSize: 'var(--fs-body-sm)', textAlign: 'left',
+                  fontSize: 'var(--fs-body-sm)', textAlign: 'left', textDecoration: 'none',
                   cursor: isCurrent ? 'default' : 'pointer',
                 }}
               >
@@ -72,7 +82,7 @@ export default function ModuleSwitcher({ current }) {
                 </span>
                 <span style={{ flex: 1 }}>{m.label}</span>
                 {isCurrent && <Check size={15} aria-hidden="true" style={{ color: 'var(--accent-fg)' }} />}
-              </button>
+              </Link>
             );
           })}
 

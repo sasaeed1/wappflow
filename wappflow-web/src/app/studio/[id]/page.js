@@ -443,7 +443,7 @@ export default function ProjectPage() {
                   </button>
                   {g.status === 'published'
                     ? <>
-                        <button onClick={() => g.share_url ? window.open(g.share_url, '_blank', 'noopener,noreferrer') : setBanner({ type: 'error', msg: 'Share link not ready — the API needs a restart (pm2 restart wappflow-api), then refresh.' })} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Eye size={13} /> Open</button>
+                        <button onClick={() => g.share_url ? window.open(g.share_url, '_blank', 'noopener') : setBanner({ type: 'error', msg: 'Share link not ready — the API needs a restart (pm2 restart wappflow-api), then refresh.' })} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Eye size={13} /> Open</button>
                         <button onClick={() => copy(g.share_url)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Copy size={13} /> Copy link</button>
                       </>
                     : <button onClick={() => publish(g)} disabled={(g.asset_count || 0) === 0} className="ms-btn-ink" style={{ padding: '8px 15px', fontSize: 12.5 }}><Share2 size={13} /> Publish &amp; send</button>}

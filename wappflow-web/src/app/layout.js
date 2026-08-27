@@ -44,16 +44,34 @@ export default function RootLayout({ children }) {
             document.documentElement.classList.toggle('light', t === 'light');
           } catch(e) {}
           try {
-            // A new tab opened FROM the app (same-origin referrer) inherits the session —
-            // only genuinely fresh visits (typed URL / external / browser restart) clear it.
-            var sameOrigin = document.referrer && document.referrer.indexOf(location.origin) === 0;
-            if (!sameOrigin && localStorage.getItem('wf_persist') === 'session' && !sessionStorage.getItem('wf_alive')) {
+            // "Session" persistence: sign out when the BROWSER closes, not when a
+            // tab opens.
+            //
+            // This used to key off document.referrer, on the assumption that a tab
+            // opened from the app always carries a same-origin one. It does not:
+            // window.open(url, '_blank', 'noopener,noreferrer') strips the referrer
+            // deliberately, so opening a shoot or a contract in a new tab looked
+            // like a fresh external visit and wiped the token — logging out every
+            // tab, including the one you were working in.
+            //
+            // A heartbeat is the honest signal. Any open tab refreshes wf_beat; if a
+            // recent beat exists, the browser session is still alive and this new tab
+            // inherits it. Only a genuinely cold start (every tab gone long enough
+            // for the beat to go stale) clears the session.
+            var BEAT = 'wf_beat', STALE = 90000;
+            var last = parseInt(localStorage.getItem(BEAT) || '0', 10);
+            var alive = sessionStorage.getItem('wf_alive') || (last && (Date.now() - last) < STALE);
+            if (!alive && localStorage.getItem('wf_persist') === 'session') {
               localStorage.removeItem('token');
               localStorage.removeItem('user');
               localStorage.removeItem('workspace');
               localStorage.removeItem('wf_persist');
             }
             sessionStorage.setItem('wf_alive', '1');
+            var beat = function () { try { localStorage.setItem(BEAT, String(Date.now())); } catch (e) {} };
+            beat();
+            setInterval(beat, 30000);
+            document.addEventListener('visibilitychange', function () { if (!document.hidden) beat(); });
           } catch(e) {}
           try { if ('serviceWorker' in navigator) window.addEventListener('load', function(){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }); } catch(e) {}
         ` }} />

@@ -734,7 +734,15 @@ export default function LeadsListPage() {
   const [toast, setToast] = useState(null);
   const [views, setViews] = useState([]);
   const [activeView, setActiveView] = useState(null);
-  const [showActionQueue, setShowActionQueue] = useState(true);
+  // Collapsed by default — the queue is a prompt, not the page. Expanded it
+  // pushed the pipeline and the leads table below the fold on every visit.
+  // The choice is remembered, so opening it once keeps it open.
+  const [showActionQueue, setShowActionQueue] = useState(() => {
+    try { return localStorage.getItem('wf_nba_open') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('wf_nba_open', showActionQueue ? '1' : '0'); } catch {}
+  }, [showActionQueue]);
   const [showDupModal, setShowDupModal] = useState(false);
   const showToast = (msg, type = 'success') => { setToast({ msg, type, ts: Date.now() }); setTimeout(() => setToast(t => (t && t.ts) ? null : t), 3500); };
   // Auto-clear toast
