@@ -13,6 +13,7 @@ import {
 const kindOf = (a) => (a?.type === 'video' ? 'video' : 'photo');
 const fmtDur = (ms) => { if (!ms) return null; const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 import { mediaAPI, mediaUrl, studioAiAPI, videoAiAPI } from '../../../lib/api';
+import { startUpload } from '@/lib/uploads';
 import RoomPanel from '@/components/RoomPanel';
 import { clickable } from '@/lib/a11y';
 
@@ -286,16 +287,27 @@ export default function ProjectPage() {
     setUploading(true);
     const fd = new FormData();
     files.forEach(f => fd.append('files', f));
+    const bytes = files.reduce((n, f) => n + (f.size || 0), 0);
     try {
-      await mediaAPI.uploadAssets(id, fd);
-      await refreshAssets();
-      let tries = 0;
-      const poll = setInterval(async () => {
-        const a = await refreshAssets();
-        tries++;
-        const pending = a.some(x => !x.variants?.thumb);
-        if (!pending || tries >= 6) clearInterval(poll);
-      }, 2500);
+      // Handed to the app-wide manager rather than awaited here: it reports
+      // percent/speed/ETA in the tray and keeps going if you navigate away,
+      // instead of dying with this component.
+      startUpload({
+        url: `/media/projects/${id}/assets`,
+        formData: fd,
+        label: `${files.length} file${files.length === 1 ? '' : 's'}`,
+        bytes,
+        onDone: () => {
+          refreshAssets();
+          let tries = 0;
+          const poll = setInterval(async () => {
+            const a = await refreshAssets();
+            tries++;
+            const pending = a.some(x => !x.variants?.thumb);
+            if (!pending || tries >= 6) clearInterval(poll);
+          }, 2500);
+        },
+      });
     } catch (err) {
       setBanner({ type: 'error', msg: err.response?.data?.error || 'Upload failed' });
     } finally {

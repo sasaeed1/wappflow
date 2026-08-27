@@ -8,6 +8,7 @@ import { RealtimeProvider } from '@/components/shell/realtime';
 import { PlanLockStyles } from '@/components/PlanLock';
 import UsageWarnings from '@/components/UsageWarnings';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
+import UploadTray from '@/components/UploadTray';
 
 export default function Providers({ children }) {
   return (
@@ -22,6 +23,10 @@ export default function Providers({ children }) {
             <UsageWarnings />
             <ImpersonationBanner />
             <ToastViewport />
+            {/* Above the router: an upload keeps running and keeps reporting
+                while you navigate. Mounted here for the same reason the SSE
+                stream is — the shell remounts per route, this must not. */}
+            <UploadTray />
             {children}
           </RealtimeProvider>
         </PlanProvider>
