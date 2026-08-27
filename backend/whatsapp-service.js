@@ -168,6 +168,24 @@ class WhatsAppService {
     return null;
   }
 
+  // Mirror the live connection state onto platform_accounts.
+  //
+  // Nothing wrote this column except a manual PUT, so it kept whatever it was
+  // created with — both accounts read "disconnected" while both phones were
+  // demonstrably connected and sending. Anything that trusts it (a settings
+  // screen, an admin view, a "which numbers are live?" check) was reading
+  // fiction. The service knows the truth, so the service records it.
+  _persistStatus(status) {
+    if (!this.accountId) return; // legacy session has no row to update
+    try {
+      this.db.prepare(
+        'UPDATE platform_accounts SET status = ?, account_handle = COALESCE(?, account_handle) WHERE id = ?'
+      ).run(status, this.phoneNumber || null, this.accountId);
+    } catch (e) {
+      console.log('⚠️ Could not persist account status:', e.message);
+    }
+  }
+
   _resolveOwner() {
     if (this.accountId) {
       try {
@@ -313,6 +331,7 @@ class WhatsAppService {
     this.client.on('qr', async (qr) => {
       console.log('📱 QR Code received! Scan with WhatsApp mobile app.');
       this.status = 'qr_ready';
+      this._persistStatus('qr_ready');
       this._stopInitWatchdog(); // QR appeared — initialize succeeded
       try {
         this.qrCode = await qrcode.toDataURL(qr);
@@ -339,6 +358,7 @@ class WhatsAppService {
       this.heartbeatFailCount = 0;
       this.userLoggedOut = false;
       console.log(`📞 Connected as: ${this.phoneNumber}`);
+      this._persistStatus('connected');
       this._startHeartbeat();
       // Auto-sync any messages missed during downtime (wait 4s for connection to stabilise)
       setTimeout(() => this.syncMissedMessages(), 4000);
@@ -353,12 +373,14 @@ class WhatsAppService {
       console.error('❌ Authentication failed:', msg);
       this.status = 'auth_failed';
       this.isReady = false;
+      this._persistStatus('auth_failed');
     });
 
     this.client.on('disconnected', (reason) => {
       console.log('⚠️ WhatsApp disconnected:', reason);
       this.status = 'disconnected';
       this.isReady = false;
+      this._persistStatus('disconnected');
       this.qrCode = null;
       this._stopHeartbeat();
       // Skip auto-reconnect when user logged out from the phone (LOGOUT/NAVIGATION) — that's intentional
