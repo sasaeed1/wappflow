@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  ArrowLeft, Play, Pause, Scissors, Trash2, Copy, Download, Image as ImageIcon, Film,
+  ArrowLeft, Play, Pause, Scissors, Trash2, Copy, Download, Image as ImageIcon, Film, Maximize, Minimize,
   Check, Loader, X, ChevronDown, Wand2, ArrowLeftRight, ZoomIn, ZoomOut, Type, Snowflake,
   Music, Upload, Volume2,
 } from 'lucide-react';
@@ -126,16 +126,43 @@ export default function VideoEditor() {
     return nd;
   });
 
-  // stage sizing — fit the aspect box into the available stage area
+  // Stage sizing — fit the aspect box into the available stage area.
+  //
+  // This used to set the size ONLY from inside the ResizeObserver callback. That
+  // callback fires as soon as observation starts, which on first paint can be
+  // before the stage has laid out: width 0 → aspectBox(aspect, -24, -24) returns
+  // NEGATIVE dimensions, and because the element never resizes afterwards nothing
+  // corrects it. The preview therefore opened at the wrong shape and only became
+  // 9:16 once you changed the aspect, which re-ran this effect against a
+  // laid-out element. Measure directly as well, and ignore degenerate boxes.
   useEffect(() => {
     const el = stageWrapRef.current; if (!el || !doc) return;
-    const ro = new ResizeObserver(() => {
+    const measure = () => {
       const r = el.getBoundingClientRect();
-      setStageSize(aspectBox(doc.aspect, r.width - 24, r.height - 24));
-    });
+      const w = r.width - 24, h = r.height - 24;
+      if (w <= 0 || h <= 0) return; // not laid out yet — a later frame will size it
+      setStageSize(aspectBox(doc.aspect, w, h));
+    };
+    measure();
+    // One more after paint, for the case where the first measure ran too early.
+    const raf = requestAnimationFrame(measure);
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [doc?.aspect]);
+
+  // ── fullscreen preview ──────────────────────────────────────────────────────
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const toggleFullscreen = useCallback(() => {
+    const el = stageWrapRef.current; if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else el.requestFullscreen?.().catch(() => {});
+  }, []);
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
 
   // ── playback ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -296,6 +323,7 @@ export default function VideoEditor() {
     const onKey = (e) => {
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
       if (e.key === ' ') { e.preventDefault(); setPlaying(p => !p); }
+      if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
       else if (e.key.toLowerCase() === 's') { e.preventDefault(); splitAtPlayhead(); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && selId) { e.preventDefault(); removeClip(selId); }
       else if (e.key === 'ArrowRight') setPlayhead(p => clamp(p + 100, 0, duration));
@@ -399,6 +427,13 @@ export default function VideoEditor() {
             <div className="ms-ve-transport">
               <button onClick={() => setPlaying(p => !p)} className="ms-ve-play">{playing ? <Pause size={17} /> : <Play size={17} />}</button>
               <span className="ms-ve-clock">{fmtClock(playhead)} <span style={{ opacity: 0.5 }}>/ {fmtClock(duration)}</span></span>
+              {/* Watch the cut at full size without leaving the editor. The stage
+                  re-measures itself on resize, so the frame keeps its aspect. */}
+              <button onClick={toggleFullscreen} className="ms-ve-fs"
+                      title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Preview fullscreen (F)'}
+                      aria-label={isFullscreen ? 'Exit fullscreen' : 'Preview fullscreen'}>
+                {isFullscreen ? <Minimize size={15} /> : <Maximize size={15} />}
+              </button>
             </div>
             {musicAsset && <audio ref={audioRef} key={musicClip.id} src={mediaUrl(musicAsset.url)} preload="auto" />}
           </div>

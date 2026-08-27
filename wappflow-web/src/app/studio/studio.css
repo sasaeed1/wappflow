@@ -544,11 +544,15 @@ html[data-ms-theme="editorial"] .ms-ve { top: 64px; }
 .ms-ve-pill:hover { border-color: var(--ms-ink-3); }
 
 .ms-ve-body { flex: 1; display: flex; min-height: 0; }
-.ms-ve-rail { width: 220px; flex-shrink: 0; border-right: 1px solid var(--ms-line); display: flex; flex-direction: column; min-height: 0; }
+.ms-ve-rail { width: 264px; flex-shrink: 0; border-right: 1px solid var(--ms-line); display: flex; flex-direction: column; min-height: 0; }
 .ms-ve-rail-h { padding: 12px 14px 8px; font-family: var(--ms-font-label); font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ms-ink-3); display: flex; justify-content: space-between; }
 .ms-ve-rail-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 0 10px 12px; align-content: start; }
-.ms-ve-tile { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid var(--ms-line); background: var(--ms-surface-2); cursor: pointer; padding: 0; }
-.ms-ve-tile img { width: 100%; height: 100%; object-fit: cover; }
+/* Portrait-friendly and UNCROPPED. These were square with object-fit:cover, so a
+   9:16 wedding frame showed only a narrow band through its middle — you could not
+   tell two shots apart, which is the whole job of this rail. `contain` letterboxes
+   instead of hiding, and 3:4 wastes less space than a square on portrait work. */
+.ms-ve-tile { position: relative; aspect-ratio: 3 / 4; border-radius: 8px; overflow: hidden; border: 1px solid var(--ms-line); background: var(--ms-ink-soft); cursor: pointer; padding: 0; }
+.ms-ve-tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .ms-ve-tile:hover { border-color: var(--ms-accent); }
 .ms-ve-tile-badge { position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; border-radius: 5px; background: rgba(0,0,0,0.6); color: #fff; display: flex; align-items: center; justify-content: center; }
 .ms-ve-tile-add { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 300; color: #fff; background: rgba(12,12,16,0.45); opacity: 0; transition: opacity .15s; }
@@ -687,3 +691,11 @@ html[data-ms-theme="editorial"] .ms-wall-head { flex-direction: column; align-it
   .ms-workgrid { grid-template-columns: 1fr; }
   .ms-workmain, .ms-workaside { grid-column: 1; grid-row: auto; position: static; }
 }
+
+/* Fullscreen preview (the F key / the stage button). :fullscreen paints its own
+   black backdrop, and the stage keeps centring the aspect box inside it — the
+   ResizeObserver in the editor re-measures on entry and exit. */
+.ms-ve-stage:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ms-ve-stage:fullscreen .ms-ve-transport { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(12,12,16,0.72); backdrop-filter: blur(8px); border-radius: 999px; padding: 8px 16px; }
+.ms-ve-fs { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--ms-line); background: transparent; color: var(--ms-ink-2); cursor: pointer; margin-left: 8px; }
+.ms-ve-fs:hover { color: var(--ms-ink); border-color: var(--ms-accent); }
