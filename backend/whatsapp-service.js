@@ -180,7 +180,22 @@ class WhatsAppService {
         }
       } catch (e) { console.log('⚠️ _resolveOwner lookup failed:', e.message); }
     }
-    // Legacy session (no accountId) — fall back to the first user's workspace.
+    // Legacy session (no accountId). Attributing to "the oldest user" is only
+    // correct in a single-tenant install — the moment a second workspace exists,
+    // that rule files EVERY inbound message into the first signup's CRM,
+    // whichever number actually received it. Refuse instead of guessing wrong.
+    const workspaces = this.db.prepare('SELECT id FROM workspaces LIMIT 2').all();
+    if (workspaces.length > 1) {
+      if (!this._warnedNoOwner) {
+        this._warnedNoOwner = true;
+        console.error(
+          '❌ WhatsApp session has no platform_account and this install has multiple workspaces — ' +
+          'refusing to attribute inbound messages, which would file them under the wrong studio. ' +
+          'Connect this number through Settings so it gets a platform_accounts row.'
+        );
+      }
+      return null;
+    }
     return this.db.prepare(
       `SELECT u.id, u.workspace_id FROM users u WHERE u.workspace_id IS NOT NULL ORDER BY u.created_at ASC LIMIT 1`
     ).get() || null;
@@ -1664,34 +1679,100 @@ class WhatsAppManager {
     if (service) await service.disconnect().catch(() => {});
   }
 
-  getReadyService(accountId = null) {
+  // Which workspace owns a running instance. '__legacy__' predates
+  // platform_accounts and belongs to the only workspace that can exist in a
+  // single-tenant install; with more than one workspace it belongs to nobody and
+  // must never be handed out.
+  _workspaceOfInstance(key) {
+    if (key === '__legacy__') {
+      const rows = this.db.prepare('SELECT id FROM workspaces LIMIT 2').all();
+      return rows.length === 1 ? rows[0].id : null;
+    }
+    if (!this._wsCache) this._wsCache = new Map();
+    if (this._wsCache.has(key)) return this._wsCache.get(key);
+    let ws = null;
+    try {
+      const row = this.db.prepare('SELECT workspace_id FROM platform_accounts WHERE id = ?').get(key);
+      ws = row ? row.workspace_id : null;
+    } catch { ws = null; }
+    this._wsCache.set(key, ws);
+    return ws;
+  }
+
+  /**
+   * Resolve the WhatsApp client a request may use — WITHIN ITS OWN WORKSPACE.
+   *
+   * This used to fall back to "the first ready instance" with no tenancy check
+   * at all, so when one workspace's client was not ready its messages went out
+   * over ANOTHER WORKSPACE'S WHATSAPP NUMBER. That is exactly what happened in
+   * production: a second studio signed up, connected her own number, sent a
+   * message from her account, and it was delivered from the first studio's
+   * number — putting her conversation in a stranger's phone.
+   *
+   * There is no safe cross-workspace fallback. A caller that cannot be resolved
+   * inside its own workspace gets null, and the operation fails loudly.
+   *
+   * `workspaceId` is required for anything user-triggered. It is optional only
+   * for system callers (startup sweeps) that legitimately iterate every account.
+   */
+  getReadyService(accountId = null, workspaceId = null) {
+    const usable = (key, svc) => {
+      if (!svc?.isReady) return false;
+      if (!workspaceId) return true; // system caller — see doc comment
+      return this._workspaceOfInstance(key) === workspaceId;
+    };
+
     if (accountId) {
       const s = this.instances.get(accountId);
-      if (s?.isReady) return s;
+      if (usable(accountId, s)) return s;
+      // An explicit account that is not ours is a hard no — never silently
+      // substitute a different one.
+      if (s && workspaceId && this._workspaceOfInstance(accountId) !== workspaceId) return null;
     }
+
     const legacy = this.instances.get('__legacy__');
-    if (legacy?.isReady) return legacy;
-    for (const service of this.instances.values()) {
-      if (service.isReady) return service;
+    if (usable('__legacy__', legacy)) return legacy;
+
+    for (const [key, service] of this.instances.entries()) {
+      if (usable(key, service)) return service;
     }
     return null;
   }
 
+  // Is ANY client ready? Callers that care about a specific workspace must pass
+  // it; the bare getter is only meaningful for system/status use.
   get isReady() {
     return !!this.getReadyService();
   }
 
-  async sendMessage(phone, message, accountId = null) {
-    const service = this.getReadyService(accountId);
-    if (!service) throw new Error('WhatsApp not connected');
-    return service.sendMessage(phone, message);
+  isReadyForWorkspace(workspaceId) {
+    return !!this.getReadyService(null, workspaceId);
   }
 
-  saveOutgoingMessage(leadId, userId, body) {
-    const service = this.getReadyService() || this.instances.values().next().value;
+  // Every send below is workspace-scoped. `notConnected()` deliberately says the
+  // workspace has no connected number rather than "WhatsApp not connected",
+  // because the old message was true globally while being false for the caller.
+  _requireService(accountId, workspaceId) {
+    const service = this.getReadyService(accountId, workspaceId);
+    if (!service) {
+      throw new Error(workspaceId
+        ? 'No WhatsApp number is connected for this workspace'
+        : 'WhatsApp not connected');
+    }
+    return service;
+  }
+
+  async sendMessage(phone, message, accountId = null, workspaceId = null) {
+    return this._requireService(accountId, workspaceId).sendMessage(phone, message);
+  }
+
+  saveOutgoingMessage(leadId, userId, body, workspaceId = null) {
+    const service = this.getReadyService(null, workspaceId);
     if (service) {
       service.saveOutgoingMessage(leadId, userId, body);
     } else {
+      // No client for this workspace — still record what we sent, but never
+      // borrow another workspace's instance to do it.
       try {
         const id = this._generateId();
         this.db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp, platform) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, 'whatsapp')`).run(id, leadId, userId, body);
@@ -1699,22 +1780,16 @@ class WhatsAppManager {
     }
   }
 
-  async sendVoiceNote(phone, filePath, mimetype, accountId = null) {
-    const service = this.getReadyService(accountId);
-    if (!service) throw new Error('WhatsApp not connected');
-    return service.sendVoiceNote(phone, filePath, mimetype);
+  async sendVoiceNote(phone, filePath, mimetype, accountId = null, workspaceId = null) {
+    return this._requireService(accountId, workspaceId).sendVoiceNote(phone, filePath, mimetype);
   }
 
-  async fetchHistory(phone, limit = 200, accountId = null) {
-    const service = this.getReadyService(accountId);
-    if (!service) throw new Error('WhatsApp not connected');
-    return service.fetchHistory(phone, limit);
+  async fetchHistory(phone, limit = 200, accountId = null, workspaceId = null) {
+    return this._requireService(accountId, workspaceId).fetchHistory(phone, limit);
   }
 
-  async sendMedia(phone, filePath, mimetype, filename, caption = '', accountId = null) {
-    const service = this.getReadyService(accountId);
-    if (!service) throw new Error('WhatsApp not connected');
-    return service.sendMedia(phone, filePath, mimetype, filename, caption);
+  async sendMedia(phone, filePath, mimetype, filename, caption = '', accountId = null, workspaceId = null) {
+    return this._requireService(accountId, workspaceId).sendMedia(phone, filePath, mimetype, filename, caption);
   }
 
   async syncMissedMessages() {
@@ -1734,27 +1809,23 @@ class WhatsAppManager {
   }
 
   // ── Group proxies ──────────────────────────────────────────
-  async createGroup(name, phones, description, accountId = null) {
-    const service = this.getReadyService(accountId);
-    if (!service) throw new Error('WhatsApp not connected');
+  async createGroup(name, phones, description, accountId = null, workspaceId = null) {
+    const service = this._requireService(accountId, workspaceId);
     return service.createGroup(name, phones, description);
   }
 
-  async setGroupSubject(groupId, name, accountId = null) {
-    const service = this.getReadyService(accountId);
-    if (!service) throw new Error('WhatsApp not connected');
+  async setGroupSubject(groupId, name, accountId = null, workspaceId = null) {
+    const service = this._requireService(accountId, workspaceId);
     return service.setGroupSubject(groupId, name);
   }
 
-  async setGroupDescription(groupId, description, accountId = null) {
-    const service = this.getReadyService(accountId);
-    if (!service) throw new Error('WhatsApp not connected');
+  async setGroupDescription(groupId, description, accountId = null, workspaceId = null) {
+    const service = this._requireService(accountId, workspaceId);
     return service.setGroupDescription(groupId, description);
   }
 
-  async setGroupPicture(groupId, filePath, mimetype, accountId = null) {
-    const service = this.getReadyService(accountId);
-    if (!service) throw new Error('WhatsApp not connected');
+  async setGroupPicture(groupId, filePath, mimetype, accountId = null, workspaceId = null) {
+    const service = this._requireService(accountId, workspaceId);
     return service.setGroupPicture(groupId, filePath, mimetype);
   }
 

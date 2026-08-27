@@ -1939,7 +1939,7 @@ app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
     // locally so the user sees their draft in the chat history, but flag that delivery is pending.
     let delivered = false;
     if (targetPlatform === 'whatsapp') {
-      await whatsappService.sendMessage(lead.customer_phone, body);
+      await whatsappService.sendMessage(lead.customer_phone, body, null, lead.workspace_id);
       delivered = true;
     }
 
@@ -1975,7 +1975,7 @@ app.post('/api/leads/:leadId/messages/voice', auth, (req, res) => {
 
       if (platform === 'whatsapp') {
         try {
-          await whatsappService.sendVoiceNote(lead.customer_phone, req.file.path, req.file.mimetype);
+          await whatsappService.sendVoiceNote(lead.customer_phone, req.file.path, req.file.mimetype, null, lead.workspace_id);
           delivered = true;
         } catch (sendErr) {
           // Was logging the raw error, which puppeteer had already reduced to a
@@ -2017,7 +2017,7 @@ app.post('/api/leads/:leadId/messages/sync', auth, async (req, res) => {
     }
     syncCooldowns.set(leadId, Date.now());
 
-    const history = await whatsappService.fetchHistory(lead.customer_phone, 200);
+    const history = await whatsappService.fetchHistory(lead.customer_phone, 200, null, lead.workspace_id);
 
     let imported = 0;
     const doSync = db.transaction((msgs) => {
@@ -2569,7 +2569,7 @@ app.post('/api/leads/:leadId/messages/media', auth, (req, res) => {
       let delivered = false;
       if (platform === 'whatsapp') {
         try {
-          await whatsappService.sendMedia(lead.customer_phone, req.file.path, req.file.mimetype, req.file.originalname, caption);
+          await whatsappService.sendMedia(lead.customer_phone, req.file.path, req.file.mimetype, req.file.originalname, caption, null, lead.workspace_id);
           delivered = true;
         } catch (sendErr) {
           console.error('Media send via WhatsApp failed:', sendErr);
@@ -3239,7 +3239,10 @@ app.post('/api/whatsapp/sync-missed', auth, async (req, res) => {
 app.post('/api/whatsapp/send', auth, async (req, res) => {
   try {
     const { phone, message } = req.body;
-    await whatsappService.sendMessage(phone, message);
+    // Scoped to the caller's workspace: unscoped, this endpoint would send from
+    // whichever number happened to be connected, which is how one studio's
+    // message went out over another studio's WhatsApp.
+    await whatsappService.sendMessage(phone, message, null, req.workspaceId);
     res.json({ message: 'Sent' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -5035,8 +5038,8 @@ app.post('/api/leads/:id/vertical-action', auth, async (req, res) => {
     const message = custom_message || action.message;
 
     // Send via WhatsApp
-    await whatsappService.sendMessage(lead.customer_phone, message);
-    whatsappService.saveOutgoingMessage(lead.id, req.userId, message);
+    await whatsappService.sendMessage(lead.customer_phone, message, null, lead.workspace_id);
+    whatsappService.saveOutgoingMessage(lead.id, req.userId, message, lead.workspace_id);
     db.prepare('UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?').run(lead.id);
     addContactHistory(lead.id, req.userId, 'message', `Vertical action: ${action.label}`);
 
@@ -5756,7 +5759,7 @@ app.post('/api/whatsapp/groups', auth, async (req, res) => {
     }
 
     const phones = usableLeads.map(l => l.customer_phone);
-    const result = await whatsappService.createGroup(name.trim(), phones, description || null, account_id || null);
+    const result = await whatsappService.createGroup(name.trim(), phones, description || null, account_id || null, req.workspaceId);
 
     // Persist the group for future reference (sending broadcasts to it, naming it, etc.)
     try {
@@ -5833,9 +5836,9 @@ app.patch('/api/whatsapp/groups/:groupId', auth, (req, res) => {
         }
       };
 
-      if (name) await applyField('name', () => whatsappService.setGroupSubject(groupId, trimmedName, account_id || null));
-      if (typeof description === 'string') await applyField('description', () => whatsappService.setGroupDescription(groupId, description, account_id || null));
-      if (req.file) await applyField('icon', () => whatsappService.setGroupPicture(groupId, req.file.path, req.file.mimetype, account_id || null));
+      if (name) await applyField('name', () => whatsappService.setGroupSubject(groupId, trimmedName, account_id || null, req.workspaceId));
+      if (typeof description === 'string') await applyField('description', () => whatsappService.setGroupDescription(groupId, description, account_id || null, req.workspaceId));
+      if (req.file) await applyField('icon', () => whatsappService.setGroupPicture(groupId, req.file.path, req.file.mimetype, account_id || null, req.workspaceId));
 
       // Update our local mirror — but ONLY for the fields WhatsApp actually accepted,
       // so the mirror can never show a name or description the real group does not have.
@@ -6394,8 +6397,8 @@ const mediaStudioApi = require('./media-studio')(app, db, {
   // normal conversation thread (and is saved like any other outgoing message).
   sendClientMessage: async ({ lead, userId, text }) => {
     if (!lead || !lead.customer_phone) return { skipped: true };
-    await whatsappService.sendMessage(lead.customer_phone, text);
-    try { whatsappService.saveOutgoingMessage(lead.id, userId, text); } catch {}
+    await whatsappService.sendMessage(lead.customer_phone, text, null, lead.workspace_id);
+    try { whatsappService.saveOutgoingMessage(lead.id, userId, text, lead.workspace_id); } catch {}
     return { sent: true };
   },
 });
@@ -6508,8 +6511,8 @@ app.get('/api/client-portal/public/:token', (req, res) => {
 
 const bookingSend = async ({ lead, userId, text }) => {
   if (!lead || !lead.customer_phone) return { skipped: true };
-  await whatsappService.sendMessage(lead.customer_phone, text);
-  try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text); } catch {}
+  await whatsappService.sendMessage(lead.customer_phone, text, null, lead.workspace_id);
+  try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text, lead.workspace_id); } catch {}
   return { sent: true };
 };
 require('./booking')(app, db, {
@@ -6551,8 +6554,8 @@ require('./contracts-studio')(app, db, {
   clientBaseUrl: process.env.FRONTEND_URL || '',
   sendClientMessage: async ({ lead, userId, text }) => {
     if (!lead || !lead.customer_phone) return { skipped: true };
-    await whatsappService.sendMessage(lead.customer_phone, text);
-    try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text); } catch {}
+    await whatsappService.sendMessage(lead.customer_phone, text, null, lead.workspace_id);
+    try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text, lead.workspace_id); } catch {}
     return { sent: true };
   },
   sendEmail: async ({ workspaceOwnerId, to, subject, html, text }) => {
