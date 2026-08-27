@@ -113,6 +113,86 @@ function CreateGalleryModal({ onClose, onCreate }) {
   );
 }
 
+
+// Gallery contents — the missing half of "edit a gallery".
+//
+// You could rename a gallery, change who opens it and set an expiry, but its
+// PHOTOS were write-once: assets could be added from the shoot grid and never
+// taken out again, and there was nowhere to see what a gallery actually
+// contained. This is one grid of every asset in the shoot with a tick on the
+// ones that are in — click to include, click again to exclude. Each toggle
+// saves immediately, because a "Save" button here would invite half-applied
+// state on a slow connection.
+function GalleryPhotosModal({ gallery, assets, onClose, onChanged, setBanner }) {
+  const [memberIds, setMemberIds] = useState(null);   // null = still loading
+  const [busy, setBusy] = useState(null);             // asset id currently toggling
+
+  useEffect(() => {
+    let on = true;
+    mediaAPI.getGallery(gallery.id)
+      .then((r) => { if (on) setMemberIds(new Set((r.data.assets || []).map((a) => a.id))); })
+      .catch(() => { if (on) setMemberIds(new Set()); });
+    return () => { on = false; };
+  }, [gallery.id]);
+
+  const toggle = async (asset) => {
+    if (!memberIds || busy) return;
+    const inGallery = memberIds.has(asset.id);
+    setBusy(asset.id);
+    // Optimistic: the grid is the feedback, so it must not lag behind the click.
+    setMemberIds((prev) => { const n = new Set(prev); inGallery ? n.delete(asset.id) : n.add(asset.id); return n; });
+    try {
+      if (inGallery) await mediaAPI.removeGalleryAsset(gallery.id, asset.id);
+      else await mediaAPI.addGalleryAssets(gallery.id, [asset.id]);
+      onChanged?.();
+    } catch (e) {
+      setMemberIds((prev) => { const n = new Set(prev); inGallery ? n.add(asset.id) : n.delete(asset.id); return n; });
+      setBanner?.({ type: 'error', msg: e.response?.data?.error || 'Could not update the gallery' });
+    } finally { setBusy(null); }
+  };
+
+  const count = memberIds ? memberIds.size : 0;
+
+  return (
+    <div className="ms-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="ms-modal" style={{ maxWidth: 880, width: '92vw' }} onClick={(e) => e.stopPropagation()}
+           role="dialog" aria-modal="true" aria-label="Gallery photos">
+        <h2 style={{ fontFamily: 'var(--ms-serif)', fontSize: 20, margin: '0 0 4px', color: 'var(--ms-ink)' }}>Photos in “{gallery.title}”</h2>
+        <p className="ms-modal-sub" style={{ marginBottom: 16 }}>
+          Click a photo to include or exclude it. {memberIds === null ? 'Loading…' : `${count} of ${assets.length} in this gallery.`}
+        </p>
+
+        {memberIds === null ? (
+          <div style={{ padding: 40, textAlign: 'center' }}><Loader size={22} className="ms-spin" color="var(--ms-accent)" /></div>
+        ) : assets.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--ms-ink-3)', padding: 20, textAlign: 'center' }}>This shoot has no media yet.</p>
+        ) : (
+          <div className="ms-gp-grid">
+            {assets.map((a) => {
+              const inGallery = memberIds.has(a.id);
+              const poster = a.type === 'video' ? (a.poster_url || a.thumb_url) : (a.variants?.thumb || a.thumb_url || a.url);
+              return (
+                <button key={a.id} onClick={() => toggle(a)} disabled={busy === a.id}
+                        className={`ms-gp-tile${inGallery ? ' in' : ''}`}
+                        aria-pressed={inGallery}
+                        title={`${inGallery ? 'Remove from' : 'Add to'} gallery — ${a.filename}`}>
+                  <img src={mediaUrl(poster)} alt="" loading="lazy" />
+                  <span className="ms-gp-mark">{inGallery ? <Check size={14} /> : <Plus size={14} />}</span>
+                  {a.type === 'video' && <span className="ms-gp-vid"><Film size={11} /></span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
+          <button onClick={onClose} className="ms-btn-ink" style={{ padding: '9px 18px' }}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProofingRequestModal({ gallery, onClose, onCreate }) {
   const [title, setTitle] = useState('');
   const [quota, setQuota] = useState('');
@@ -160,6 +240,7 @@ export default function ProjectPage() {
   const [viewSize, setViewSize] = useState('c'); // collage (natural sizes) is the default — gallery feel
   const [mediaTab, setMediaTab] = useState('all'); // all | photo | video — works like a filter, reads like sections
   const [aiHints, setAiHints] = useState(true);    // Settings → Defaults: show advisory AI badges
+  const [photosFor, setPhotosFor] = useState(null); // gallery whose CONTENTS are being curated
   const [editing, setEditing] = useState(null);    // the gallery being edited — there was no way to change one after creation
   const [savingGallery, setSavingGallery] = useState(false);
   const [lightbox, setLightbox] = useState(null); // index into the SHOWN list
@@ -437,9 +518,12 @@ export default function ProjectPage() {
                 )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {selected.size > 0 && <button onClick={() => addSelected(g.id)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Plus size={13} /> Add {selected.size}</button>}
+                  <button onClick={() => setPhotosFor(g)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}>
+                    <ImageIcon size={13} /> Photos{g.asset_count ? ` (${g.asset_count})` : ''}
+                  </button>
                   <button onClick={() => setEditing({ id: g.id, title: g.title, visibility: g.visibility, expires_at: (g.expires_at || '').slice(0, 10), password: '' })}
                           className="ms-btn-ghost" style={{ padding: '7px 13px' }}>
-                    <Settings size={13} /> Edit
+                    <Settings size={13} /> Settings
                   </button>
                   {g.status === 'published'
                     ? <>
@@ -578,6 +662,10 @@ export default function ProjectPage() {
           onAdvance={() => setLightbox(i => (i + 1) % shown.length)}
           onDelete={deleteOne}
           onToggleSelect={toggle} />
+      )}
+      {photosFor && (
+        <GalleryPhotosModal gallery={photosFor} assets={assets} setBanner={setBanner}
+                            onClose={() => setPhotosFor(null)} onChanged={refreshGalleries} />
       )}
       {showNewGallery && <CreateGalleryModal onClose={() => setShowNewGallery(false)} onCreate={createGallery} />}
       {proofingFor && <ProofingRequestModal gallery={proofingFor} onClose={() => setProofingFor(null)} onCreate={createProof} />}

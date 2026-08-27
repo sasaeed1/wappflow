@@ -404,6 +404,11 @@ export const mediaAPI = {
   getGallery:      (id)          => api.get(`/media/galleries/${id}`),
   updateGallery:   (id, data)    => api.put(`/media/galleries/${id}`, data),
   addGalleryAssets:(id, asset_ids) => api.post(`/media/galleries/${id}/assets`, { asset_ids }),
+  // Removing and reordering existed on the server from the start but were never
+  // bound here, so a gallery's contents could only ever be added to — never
+  // curated after the fact.
+  removeGalleryAsset: (id, assetId) => api.delete(`/media/galleries/${id}/assets/${assetId}`),
+  reorderGalleryAssets: (id, asset_ids) => api.put(`/media/galleries/${id}/assets/order`, { asset_ids }),
   publishGallery:  (id, data)    => api.post(`/media/galleries/${id}/publish`, data || {}),
   unpublishGallery:(id)          => api.post(`/media/galleries/${id}/unpublish`),
   exportGallery:   (id, variant) => api.post(`/media/galleries/${id}/export`, { variant }),
