@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Play, Pause, Scissors, Trash2, Copy, Download, Image as ImageIcon, Film, Maximize, Minimize,
   Check, Loader, X, ChevronDown, Wand2, ArrowLeftRight, ZoomIn, ZoomOut, Type, Snowflake,
-  Music, Upload, Volume2,
+  Music, Upload, Volume2, Plus, Layers, VolumeX, Move,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
 import {
@@ -55,6 +55,43 @@ function repack(clips) { // sort by start, lay contiguous from 0, refresh end
   return s.map(c => { const n = { ...c, start: t, end: t + c.duration }; t += c.duration; return n; });
 }
 
+// ── Tracks ───────────────────────────────────────────────────────────────────
+//
+// The RENDERER has always taken up to 12 tracks of video/audio/text/overlay and
+// already flattens the clips of EVERY text track (backend/video-engine.js). The
+// editor drew three hardcoded lanes — one video, one text, one audio clip — so
+// the capability existed and was simply unreachable from the UI. Nothing about
+// the document shape changes here; the timeline just stops pretending there are
+// only ever three.
+//
+// TRACK_H also fixes the reason the text and audio lanes appeared "not visible":
+// the timeline was a fixed 168px tall with overflow-y:hidden, while 76 + 38 + 36
+// of lanes plus 32 of padding needs ~182px. The lanes were being clipped off the
+// bottom of the panel. Heights now drive the panel instead of the other way round.
+const TRACK_META = {
+  video:   { label: 'Media',   height: 72, tint: '#3a3d52' },
+  overlay: { label: 'Overlay', height: 34, tint: '#7c5cff' },
+  text:    { label: 'Text',    height: 32, tint: '#6366f1' },
+  audio:   { label: 'Audio',   height: 30, tint: '#2f9e6e' },
+};
+// Stacking order, top to bottom: the video spine reads as the base layer, and
+// audio sits at the bottom the way it does in every editor anyone has used.
+const TRACK_ORDER = ['video', 'overlay', 'text', 'audio'];
+const trackH = (type) => (TRACK_META[type] || TRACK_META.video).height;
+const TRACK_GAP = 6;
+const HEAD_W = 104;
+
+/** Document order is arbitrary; presentation order is not. Stable within a type. */
+function orderTracks(tracks) {
+  return tracks
+    .map((t, i) => [t, i])
+    .sort(([a, ai], [b, bi]) => {
+      const d = TRACK_ORDER.indexOf(a.type) - TRACK_ORDER.indexOf(b.type);
+      return d !== 0 ? d : ai - bi;
+    })
+    .map(([t]) => t);
+}
+
 export default function VideoEditor() {
   const router = useRouter();
   const { id, timelineId } = useParams();
@@ -71,6 +108,16 @@ export default function VideoEditor() {
   const [scale, setScale] = useState(PX_PER_MS);
   const [saveState, setSaveState] = useState('saved'); // saved | saving | dirty
   const [aspectMenu, setAspectMenu] = useState(false);
+  const [trackMenu, setTrackMenu] = useState(false);
+  // The timeline panel is draggable-tall and remembers itself. It used to be a
+  // hard 168px, which on a short viewport is not enough for even three lanes —
+  // and the lanes it could not fit were simply clipped away with no scrollbar.
+  const [tlHeight, setTlHeight] = useState(() => {
+    if (typeof window === 'undefined') return 210;
+    const saved = parseInt(localStorage.getItem('wf_ve_tl_h') || '0', 10);
+    return saved >= 140 && saved <= 640 ? saved : 210;
+  });
+  useEffect(() => { try { localStorage.setItem('wf_ve_tl_h', String(tlHeight)); } catch {} }, [tlHeight]);
   const [showExport, setShowExport] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 360, height: 640 });
 
@@ -109,7 +156,21 @@ export default function VideoEditor() {
   const musicClip = audioTrack?.clips[0] || null;
   const musicAsset = musicClip ? audioAssets.find(a => a.id === musicClip.assetId) : null;
   const selected = doc ? (doc.tracks.flatMap(tr => tr.clips).find(c => c.id === selId) || null) : null;
-  const activeTexts = textTrack ? textTrack.clips.filter(c => playhead >= c.start && playhead < c.end) : [];
+  // Every text track, not just the first. The renderer already composites all of
+  // them; the preview was only ever showing one, so a second text track exported
+  // captions the editor had never drawn.
+  const activeTexts = doc
+    ? doc.tracks.filter(t => t.type === 'text' && !t.muted).flatMap(t => t.clips).filter(c => playhead >= c.start && playhead < c.end)
+    : [];
+  const tracks = doc ? orderTracks(doc.tracks) : [];
+  const tracksHeight = tracks.reduce((h, t) => h + trackH(t.type) + TRACK_GAP, 0);
+  // Wide enough for the longest clip on ANY track, not just the video spine —
+  // a caption or a music bed running past the last shot used to be unscrollable.
+  const laneW = Math.max(
+    (doc ? doc.tracks.flatMap(t => t.clips).reduce((m, c) => Math.max(m, c.end || 0), 0) : 0) * scale + 40,
+    duration * scale + 40,
+    600,
+  );
 
   // autosave (debounced) on doc/name change
   const markDirty = useCallback(() => {
@@ -284,6 +345,28 @@ export default function VideoEditor() {
     setSelId(clip.id);
   };
 
+  // ── track management ───────────────────────────────────────────────────────
+  // The renderer caps at 12 tracks, so the UI refuses the 13th rather than
+  // letting someone build a timeline that silently loses a layer on export.
+  const MAX_TRACKS = 12;
+  const addTrack = (type) => {
+    setDoc(d => (d.tracks.length >= MAX_TRACKS ? d : { ...d, tracks: [...d.tracks, { id: uid('t'), type, clips: [] }] }));
+    setTrackMenu(false);
+  };
+  const removeTrack = (tid) => setDoc(d => {
+    const tr = d.tracks.find(t => t.id === tid);
+    // The video spine is the timeline's backbone — duration is measured from it
+    // and every other lane is positioned against it. Removing it would leave a
+    // document with nothing to render against, so it is emptied, not deleted.
+    if (tr?.type === 'video' && d.tracks.filter(t => t.type === 'video').length === 1) {
+      return { ...d, tracks: d.tracks.map(t => t.id === tid ? { ...t, clips: [] } : t) };
+    }
+    return { ...d, tracks: d.tracks.filter(t => t.id !== tid) };
+  });
+  // Muting is presentation-only and belongs on the document so it survives a
+  // save — the renderer skips a muted track's clips the same way the preview does.
+  const toggleTrackMute = (tid) => setDoc(d => ({ ...d, tracks: d.tracks.map(t => t.id === tid ? { ...t, muted: !t.muted } : t) }));
+
   const changeAspect = (aspect) => { setDoc(d => ({ ...d, aspect })); setAspectMenu(false); };
   const uploadLut = async (file) => { try { const r = await mediaAPI.uploadLut(file, file.name); setLuts(ls => [...ls, r.data]); } catch {} };
 
@@ -317,6 +400,57 @@ export default function VideoEditor() {
     }) }));
   };
   const onDragUp = () => { drag.current = null; window.removeEventListener('pointermove', onDragMove); window.removeEventListener('pointerup', onDragUp); };
+
+  // ── timeline panel resize ──────────────────────────────────────────────────
+  const tlResize = useRef(null);
+  const onTlResizeDown = (e) => {
+    e.preventDefault();
+    tlResize.current = { startY: e.clientY, startH: tlHeight };
+    const move = (ev) => {
+      const r = tlResize.current; if (!r) return;
+      // Dragging UP grows the timeline, so the delta is inverted.
+      setTlHeight(clamp(r.startH - (ev.clientY - r.startY), 140, Math.min(640, window.innerHeight - 220)));
+    };
+    const up = () => { tlResize.current = null; window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  // ── drag the media inside the frame (position + scale) ─────────────────────
+  //
+  // The renderer has always honoured a per-clip `transform` {x, y, scale} — the
+  // editor only exposed it as number fields in the inspector, which is not how
+  // anybody frames a shot. Dragging the preview writes the same transform, and
+  // the wheel scales it, so what you drag is exactly what exports.
+  //
+  // x/y are normalised to -1..1 of the FRAME, matching the renderer's contract,
+  // so the gesture stays correct at any preview size or aspect.
+  const frameDrag = useRef(null);
+  const canPose = selected && (selected.kind === 'photo' || selected.kind === 'video' || selected.kind === 'text' || selected.kind === 'overlay');
+  const onFramePointerDown = (e) => {
+    if (!canPose) return;
+    e.preventDefault();
+    const t = selected.transform || { x: 0, y: 0, scale: 1 };
+    frameDrag.current = { id: selected.id, startX: e.clientX, startY: e.clientY, x: t.x || 0, y: t.y || 0 };
+    const move = (ev) => {
+      const f = frameDrag.current; if (!f) return;
+      patchClip(f.id, { transform: {
+        x: clamp(f.x + ((ev.clientX - f.startX) / stageSize.width) * 2, -1, 1),
+        y: clamp(f.y + ((ev.clientY - f.startY) / stageSize.height) * 2, -1, 1),
+      } });
+    };
+    const up = () => { frameDrag.current = null; window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const onFrameWheel = (e) => {
+    if (!canPose) return;
+    const t = selected.transform || { scale: 1 };
+    // Text scales down to 0.1 and media only to 1: a photo scaled below 1 would
+    // expose the empty frame behind it, which the renderer letterboxes to black.
+    const lo = selected.kind === 'text' || selected.kind === 'overlay' ? 0.1 : 1;
+    patchClip(selected.id, { transform: { scale: clamp((t.scale || 1) * (e.deltaY < 0 ? 1.06 : 1 / 1.06), lo, 4) } });
+  };
 
   const scrubTo = (e) => {
     const track = e.currentTarget.getBoundingClientRect();
@@ -403,7 +537,11 @@ export default function VideoEditor() {
 
           {/* stage */}
           <div className="ms-ve-stage" ref={attachStage}>
-            <div className="ms-ve-frame" style={{ width: stageSize.width, height: stageSize.height }}>
+            <div className={`ms-ve-frame${canPose ? ' is-posable' : ''}`}
+                 style={{ width: stageSize.width, height: stageSize.height }}
+                 onPointerDown={onFramePointerDown}
+                 onWheel={onFrameWheel}
+                 title={canPose ? 'Drag to reposition · scroll to scale' : undefined}>
               {!activeClip && <div className="ms-ve-frame-empty"><Film size={26} /><span>Add media to begin</span></div>}
               {activeClip && activeAsset && activeClip.kind === 'video' && (
                 <video ref={videoRef} key={activeClip.id} src={mediaUrl(activeAsset.proxy_url || activeAsset.url)} muted playsInline style={mediaStyle} />
@@ -461,11 +599,37 @@ export default function VideoEditor() {
         </div>
 
         {/* timeline */}
-        <div className="ms-ve-timeline">
+        <div className="ms-ve-timeline" style={{ height: tlHeight }}>
+          {/* Drag to make room. A fixed-height timeline is what clipped the text
+              and audio lanes out of sight in the first place. */}
+          <div className="ms-ve-tl-grip" onPointerDown={onTlResizeDown}
+               role="separator" aria-label="Resize timeline" title="Drag to resize the timeline" />
           <div className="ms-ve-tl-tools">
             <button onClick={splitAtPlayhead} disabled={!activeClip} className="ms-ve-tool" title="Split (S)"><Scissors size={14} /> Split</button>
             <button onClick={addText} className="ms-ve-tool" title="Add text"><Type size={14} /> Text</button>
             <button onClick={() => setShowMusic(true)} className="ms-ve-tool" title="Music"><Music size={14} /> Music</button>
+
+            {/* Add a track. The renderer always accepted up to 12; there was
+                simply no way to ask for one. */}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setTrackMenu(v => !v)} className="ms-ve-tool"
+                      disabled={doc.tracks.length >= MAX_TRACKS}
+                      title={doc.tracks.length >= MAX_TRACKS ? `The renderer supports ${MAX_TRACKS} tracks` : 'Add a track'}
+                      aria-expanded={trackMenu}>
+                <Plus size={14} /> Track
+              </button>
+              {trackMenu && (
+                <div className="ms-ve-menu" role="menu">
+                  {['text', 'audio', 'overlay', 'video'].map(t => (
+                    <button key={t} role="menuitem" onClick={() => addTrack(t)}>
+                      <span className="ms-ve-tl-dot" style={{ background: TRACK_META[t].tint }} />
+                      {TRACK_META[t].label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button onClick={() => selId && duplicateClip(selId)} disabled={!selId} className="ms-ve-tool" title="Duplicate"><Copy size={14} /></button>
             <button onClick={() => selId && removeClip(selId)} disabled={!selId} className="ms-ve-tool" title="Delete (Del)"><Trash2 size={14} /></button>
             <div style={{ flex: 1 }} />
@@ -473,49 +637,98 @@ export default function VideoEditor() {
             <button aria-label="Zoom in" onClick={() => setScale(s => clamp(s * 1.3, 0.012, 0.4))} className="ms-ve-tool"><ZoomIn size={14} /></button>
           </div>
           <div className="ms-ve-tl-scroll">
-            <div style={{ position: 'relative', width: Math.max(duration * scale + 40, 600) }} onPointerDown={scrubTo}>
-              <div className="ms-ve-tl-track">
-                {spine.clips.map(c => {
-                  const a = assetMap[c.assetId];
-                  return (
-                    <div key={c.id} onPointerDown={(e) => onClipPointerDown(e, c, 'move')}
-                      className={`ms-ve-clip${selId === c.id ? ' is-sel' : ''}`}
-                      style={{ left: c.start * scale, width: Math.max(c.duration * scale, 18) }}>
-                      {a && <img src={mediaUrl(a.type === 'video' ? (a.poster_url || a.thumb_url) : (a.thumb_url || a.url))} alt="" />}
-                      <span className="ms-ve-clip-label">{c.kind === 'video' ? <Film size={10} /> : <ImageIcon size={10} />}{c.freeze ? ' ❄' : c.speed !== 1 ? ` ${c.speed}×` : ''}</span>
-                      {c.motionKeys && c.motionKeys.map((k, j) => (
-                        <span key={j} style={{ position: 'absolute', top: 3, left: `calc(${k.t * 100}% - 3px)`, width: 6, height: 6, background: '#fff', transform: 'rotate(45deg)', boxShadow: '0 0 2px rgba(0,0,0,0.6)', pointerEvents: 'none' }} />
-                      ))}
-                      <span className="ms-ve-handle l" onPointerDown={(e) => onClipPointerDown(e, c, 'trimL')} />
-                      <span className="ms-ve-handle r" onPointerDown={(e) => onClipPointerDown(e, c, 'trimR')} />
+            {/* One row per track, each with a sticky header. Replaces three
+                hardcoded lanes that could not show a second text track, could
+                not label what a lane was, and could not be added to. */}
+            <div className="ms-ve-tl-rows" style={{ width: HEAD_W + laneW }}>
+              {tracks.map((tr) => {
+                const meta = TRACK_META[tr.type] || TRACK_META.video;
+                const isSpine = tr.type === 'video';
+                return (
+                  <div key={tr.id} className="ms-ve-tl-row" style={{ height: trackH(tr.type), marginBottom: TRACK_GAP }}>
+                    <div className={`ms-ve-tl-head${tr.muted ? ' is-muted' : ''}`} style={{ width: HEAD_W }}>
+                      <span className="ms-ve-tl-dot" style={{ background: meta.tint }} />
+                      <span className="ms-ve-tl-name">{meta.label}</span>
+                      <button className="ms-ve-tl-hbtn" title={tr.muted ? 'Unmute track' : 'Mute track'}
+                              aria-label={`${tr.muted ? 'Unmute' : 'Mute'} ${meta.label} track`}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={() => toggleTrackMute(tr.id)}>
+                        {tr.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      </button>
+                      <button className="ms-ve-tl-hbtn" title={isSpine ? 'Clear this track' : 'Delete this track'}
+                              aria-label={`${isSpine ? 'Clear' : 'Delete'} ${meta.label} track`}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={() => removeTrack(tr.id)}>
+                        <Trash2 size={12} />
+                      </button>
                     </div>
-                  );
-                })}
-                {spine.clips.length === 0 && <div className="ms-ve-tl-empty">Click media above to build your reel →</div>}
-              </div>
-              {textTrack && textTrack.clips.length > 0 && (
-                <div className="ms-ve-tl-track ms-ve-tl-text">
-                  {textTrack.clips.map(c => (
-                    <div key={c.id} onPointerDown={(e) => onClipPointerDown(e, c, 'move')}
-                      className={`ms-ve-clip ms-ve-clip-txt${selId === c.id ? ' is-sel' : ''}`}
-                      style={{ left: c.start * scale, width: Math.max(c.duration * scale, 18) }}>
-                      <span className="ms-ve-clip-tlabel"><Type size={9} /> {c.text?.content || 'Text'}</span>
-                      <span className="ms-ve-handle l" onPointerDown={(e) => onClipPointerDown(e, c, 'trimL')} />
-                      <span className="ms-ve-handle r" onPointerDown={(e) => onClipPointerDown(e, c, 'trimR')} />
+
+                    <div className="ms-ve-tl-lane" style={{ width: laneW }} onPointerDown={scrubTo}>
+                      {tr.clips.length === 0 && (
+                        <div className="ms-ve-tl-empty">
+                          {isSpine ? 'Click media on the left to build your reel' : `Empty ${meta.label.toLowerCase()} track`}
+                        </div>
+                      )}
+                      {tr.clips.map(c => {
+                        const a = assetMap[c.assetId];
+                        const isSel = selId === c.id;
+                        const w = Math.max(c.duration * scale, 18);
+                        return (
+                          <div key={c.id} onPointerDown={(e) => onClipPointerDown(e, c, 'move')}
+                            className={`ms-ve-clip ms-ve-clip-${tr.type}${isSel ? ' is-sel' : ''}${tr.muted ? ' is-mutedclip' : ''}`}
+                            style={{ left: c.start * scale, width: w, height: trackH(tr.type), background: tr.type === 'video' ? undefined : meta.tint }}>
+
+                            {tr.type === 'video' && a && (
+                              <img src={mediaUrl(a.type === 'video' ? (a.poster_url || a.thumb_url) : (a.thumb_url || a.url))} alt="" />
+                            )}
+
+                            {tr.type === 'video' ? (
+                              <span className="ms-ve-clip-label">
+                                {c.kind === 'video' ? <Film size={10} /> : <ImageIcon size={10} />}
+                                {c.freeze ? ' ❄' : c.speed !== 1 ? ` ${c.speed}×` : ''}
+                              </span>
+                            ) : (
+                              <span className="ms-ve-clip-tlabel">
+                                {tr.type === 'text' ? <Type size={9} /> : tr.type === 'audio' ? <Music size={9} /> : <Layers size={9} />}
+                                {tr.type === 'text' ? (c.text?.content || 'Text')
+                                  : tr.type === 'audio' ? ((audioAssets.find(x => x.id === c.assetId)?.filename) || 'Music') + (c.audio?.mute ? ' (muted)' : '')
+                                  : (a?.filename || 'Overlay')}
+                              </span>
+                            )}
+
+                            {c.motionKeys && c.motionKeys.map((k, j) => (
+                              <span key={j} className="ms-ve-kf" style={{ left: `calc(${k.t * 100}% - 3px)` }} />
+                            ))}
+
+                            {/* Transitions, ON the bar. They were only reachable
+                                through the inspector, so you could not see that a
+                                clip had one, which edge it was on, or how long it
+                                ran — the timeline is where that belongs. Width is
+                                the real duration, so a 400ms dissolve looks like
+                                400ms at the current zoom. */}
+                            {c.transitionIn && c.transitionIn.type !== 'none' && (
+                              <span className="ms-ve-trans l"
+                                    style={{ width: Math.min(Math.max(c.transitionIn.duration * scale, 6), w / 2) }}
+                                    title={`In: ${c.transitionIn.type} · ${c.transitionIn.duration}ms`} />
+                            )}
+                            {c.transitionOut && c.transitionOut.type !== 'none' && (
+                              <span className="ms-ve-trans r"
+                                    style={{ width: Math.min(Math.max(c.transitionOut.duration * scale, 6), w / 2) }}
+                                    title={`Out: ${c.transitionOut.type} · ${c.transitionOut.duration}ms`} />
+                            )}
+
+                            <span className="ms-ve-handle l" onPointerDown={(e) => onClipPointerDown(e, c, 'trimL')} />
+                            <span className="ms-ve-handle r" onPointerDown={(e) => onClipPointerDown(e, c, 'trimR')} />
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              )}
-              {musicClip && (
-                <div className="ms-ve-tl-track ms-ve-tl-audio">
-                  <div onPointerDown={(e) => { e.stopPropagation(); setSelId(musicClip.id); setPlaying(false); }}
-                    className={`ms-ve-clip ms-ve-clip-audio${selId === musicClip.id ? ' is-sel' : ''}`}
-                    style={{ left: 0, width: Math.max(duration * scale, 60) }}>
-                    <span className="ms-ve-clip-tlabel"><Music size={9} /> {musicAsset?.filename || 'Music'}{musicClip.audio?.mute ? ' (muted)' : ''}</span>
                   </div>
-                </div>
-              )}
-              <div className="ms-ve-playhead" style={{ left: playhead * scale, height: 92 + (textTrack?.clips.length ? 38 : 0) + (musicClip ? 30 : 0) }} />
+                );
+              })}
+              {/* Height is derived now. It used to be `92 + (text ? 38 : 0) + …`,
+                  a hand-maintained sum that could not know about a fourth track. */}
+              <div className="ms-ve-playhead" style={{ left: HEAD_W + playhead * scale, height: Math.max(tracksHeight, 40) }} />
             </div>
           </div>
         </div>

@@ -579,12 +579,64 @@ html[data-ms-theme="editorial"] .ms-ve { top: 64px; }
 
 .ms-ve-insp { width: 256px; flex-shrink: 0; border-left: 1px solid var(--ms-line); display: flex; flex-direction: column; min-height: 0; }
 
-.ms-ve-timeline { flex-shrink: 0; border-top: 1px solid var(--ms-line); background: var(--ms-surface); height: 168px; display: flex; flex-direction: column; }
+/* Height is set inline from state now (drag the grip; remembered per browser).
+   The old hard 168px could not fit even three lanes, and overflow-y:hidden meant
+   the ones that did not fit were clipped away rather than scrolled to. */
+.ms-ve-timeline { flex-shrink: 0; border-top: 1px solid var(--ms-line); background: var(--ms-surface); display: flex; flex-direction: column; min-height: 140px; }
 .ms-ve-tl-tools { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--ms-line); }
 .ms-ve-tool { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--ms-line); background: var(--ms-surface); color: var(--ms-ink-2); font-size: 12px; font-weight: 500; cursor: pointer; }
 .ms-ve-tool:hover:not(:disabled) { color: var(--ms-ink); border-color: var(--ms-ink-3); }
 .ms-ve-tool:disabled { opacity: 0.4; cursor: default; }
-.ms-ve-tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; padding: 16px 12px; }
+/* overflow-y is AUTO, not hidden. Hidden is what silently clipped the text and
+   audio lanes off the bottom of a fixed 168px panel — the "text bar is not
+   visible" report. Lanes that do not fit now scroll instead of vanishing. */
+.ms-ve-tl-scroll { flex: 1; overflow: auto; padding: 12px 12px 14px; }
+.ms-ve-tl-rows { position: relative; }
+.ms-ve-tl-row { position: relative; display: flex; align-items: stretch; }
+
+/* Track header. Sticky so the labels stay put while the lanes scroll sideways —
+   without it you lose track of which lane you are looking at the moment you
+   scroll, which is most of why the old bars "felt" bad. */
+.ms-ve-tl-head {
+  position: sticky; left: 0; z-index: 3; flex-shrink: 0;
+  display: flex; align-items: center; gap: 5px; padding: 0 6px 0 8px;
+  background: var(--ms-surface); border-right: 1px solid var(--ms-line);
+  border-radius: 6px 0 0 6px;
+}
+.ms-ve-tl-head.is-muted { opacity: 0.45; }
+.ms-ve-tl-dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+.ms-ve-tl-name { flex: 1; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; color: var(--ms-ink-2); text-transform: uppercase; white-space: nowrap; overflow: hidden; }
+.ms-ve-tl-hbtn {
+  width: 20px; height: 20px; display: grid; place-items: center; flex-shrink: 0;
+  background: none; border: none; border-radius: 5px; color: var(--ms-ink-3); cursor: pointer;
+  opacity: 0; transition: opacity .12s;
+}
+.ms-ve-tl-row:hover .ms-ve-tl-hbtn, .ms-ve-tl-hbtn:focus-visible { opacity: 1; }
+.ms-ve-tl-hbtn:hover { background: var(--ms-surface-2); color: var(--ms-ink); }
+
+.ms-ve-tl-lane { position: relative; flex-shrink: 0; background: rgba(255,255,255,0.025); border-radius: 0 6px 6px 0; }
+
+/* The add-track menu. */
+.ms-ve-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 150px; padding: 5px;
+  background: var(--ms-surface); border: 1px solid var(--ms-line); border-radius: 10px;
+  box-shadow: 0 18px 44px rgba(0,0,0,0.5);
+}
+.ms-ve-menu button {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+  background: none; border: none; border-radius: 6px; cursor: pointer;
+  color: var(--ms-ink); font-family: inherit; font-size: 12.5px; text-align: left;
+}
+.ms-ve-menu button:hover { background: var(--ms-surface-2); }
+
+/* Drag-to-resize the whole panel. */
+.ms-ve-tl-grip { height: 7px; flex-shrink: 0; cursor: ns-resize; background: transparent; position: relative; }
+.ms-ve-tl-grip::after {
+  content: ''; position: absolute; left: 50%; top: 2px; width: 44px; height: 3px; margin-left: -22px;
+  border-radius: 999px; background: var(--ms-line); transition: background .12s;
+}
+.ms-ve-tl-grip:hover::after { background: var(--ms-accent); }
+
 .ms-ve-tl-track { position: relative; height: 76px; min-width: 100%; }
 .ms-ve-clip { position: absolute; top: 0; height: 76px; border-radius: 8px; overflow: hidden; cursor: grab; border: 2px solid transparent; background: var(--ms-surface-2); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
 .ms-ve-clip img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
@@ -593,7 +645,30 @@ html[data-ms-theme="editorial"] .ms-ve { top: 64px; }
 .ms-ve-handle { position: absolute; top: 0; bottom: 0; width: 12px; cursor: ew-resize; background: linear-gradient(var(--ms-accent), var(--ms-accent)) center/3px 24px no-repeat; opacity: 0; transition: opacity .12s; }
 .ms-ve-clip:hover .ms-ve-handle, .ms-ve-clip.is-sel .ms-ve-handle { opacity: 0.9; }
 .ms-ve-handle.l { left: 0; } .ms-ve-handle.r { right: 0; }
-.ms-ve-tl-empty { position: absolute; top: 28px; left: 8px; color: var(--ms-ink-3); font-size: 12.5px; }
+.ms-ve-tl-empty { position: absolute; top: 50%; transform: translateY(-50%); left: 10px; color: var(--ms-ink-3); font-size: 11.5px; pointer-events: none; }
+
+/* Clip variants per track type. The bar is coloured from TRACK_META so a lane
+   and its clips read as one thing. */
+.ms-ve-clip-text, .ms-ve-clip-audio, .ms-ve-clip-overlay {
+  display: flex; align-items: center; box-shadow: none;
+}
+.ms-ve-clip-text.is-sel, .ms-ve-clip-audio.is-sel, .ms-ve-clip-overlay.is-sel { border-color: #fff; }
+.ms-ve-clip-text .ms-ve-clip-tlabel, .ms-ve-clip-audio .ms-ve-clip-tlabel, .ms-ve-clip-overlay .ms-ve-clip-tlabel { color: #fff; }
+.ms-ve-clip.is-mutedclip { opacity: 0.4; }
+
+/* Motion keyframe pips. */
+.ms-ve-kf { position: absolute; top: 3px; width: 6px; height: 6px; background: #fff; transform: rotate(45deg); box-shadow: 0 0 2px rgba(0,0,0,0.6); pointer-events: none; }
+
+/* Transitions drawn ON the bar, at their real duration. They were previously
+   only visible in the inspector, so you could not tell which clips had one,
+   which edge it sat on, or how long it ran. */
+.ms-ve-trans { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+.ms-ve-trans.l { left: 0; background: linear-gradient(to right, rgba(255,255,255,0.55), rgba(255,255,255,0)); border-left: 2px solid rgba(255,255,255,0.85); border-radius: 6px 0 0 6px; }
+.ms-ve-trans.r { right: 0; background: linear-gradient(to left, rgba(255,255,255,0.55), rgba(255,255,255,0)); border-right: 2px solid rgba(255,255,255,0.85); border-radius: 0 6px 6px 0; }
+
+/* Posable preview: the frame accepts a drag to reposition the selected clip. */
+.ms-ve-frame.is-posable { cursor: grab; }
+.ms-ve-frame.is-posable:active { cursor: grabbing; }
 .ms-ve-tl-text { position: relative; height: 30px; margin-top: 8px; }
 .ms-ve-clip-txt { height: 30px; background: var(--ms-accent); display: flex; align-items: center; box-shadow: none; }
 .ms-ve-clip-txt.is-sel { border-color: var(--ms-ink); }
@@ -613,7 +688,11 @@ html[data-ms-theme="editorial"] .ms-ve { top: 64px; }
   .ms-ve-body { flex-direction: column; min-height: 0; }
   .ms-ve-rail, .ms-ve-insp { width: 100%; flex-shrink: 0; max-height: 34vh; border-right: none; border-left: none; border-bottom: 1px solid var(--ms-line); }
   .ms-ve-rail-grid { grid-template-columns: repeat(3, 1fr); }
-  .ms-ve-timeline { height: 200px; }
+  /* !important because the panel height is an inline style from the resize
+     state; on a narrow screen the stacked layout needs the fixed budget back. */
+  .ms-ve-timeline { height: 200px !important; }
+  /* No hover on touch, so track controls have to be permanently visible. */
+  .ms-ve-tl-hbtn { opacity: 1; }
 }
 
 /* ═══ IMMERSIVE HOME — full-bleed cinematic stage → edge-to-edge wall ═══════ */
