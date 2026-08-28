@@ -115,8 +115,8 @@ export const MODULE_SECTIONS = [
     color: '#f43f5e',
     description: 'What each plan includes',
     articles: [
-      { title: 'Every plan has every feature', body: 'Plans differ by quantity, not by capability. Nothing is locked behind a higher tier — you get the whole product on every plan, including Free. You upgrade when you run out of room, never to unlock something.' },
-      { title: 'What the limits are', body: 'Each plan sets how many new leads a month, team seats, WhatsApp numbers, gigabytes of storage and contract sends you get. Free is 20 new leads a month, one WhatsApp number and one of everything else. Settings → Plan & Billing shows your current usage against each.' },
+      { title: 'The plans', body: 'Creator, Studio, Studio+ and Enterprise. Creator covers the core modules for a solo operator; Studio adds the extra lead-capture channels, team collaboration, analytics, the deeper AI and contract features and automation; Studio+ adds white-label, the local AI engine and the creative engines; Enterprise adds API access, SSO, audit logs and custom integrations.' },
+      { title: 'Limits as well as features', body: 'Each plan also sets how many new leads a month, team seats, WhatsApp numbers, gigabytes of storage and contract sends you get. Settings → Plan & Billing shows your current usage against each.' },
       { title: 'What happens at a limit', body: 'You are warned as you approach a limit, and blocked from creating more of that one thing once you reach it. Nothing already created is removed or hidden, and every other part of the product keeps working.' },
     ],
   },

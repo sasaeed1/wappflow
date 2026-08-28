@@ -14,101 +14,114 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════════════════
-//  PLAN CATALOG — Free → Creator → Studio → Studio+ → Enterprise.
-//  This is the seed + fallback for the data-driven plan_* tables. Tiers differ by
-//  QUANTITY ONLY: every plan carries every feature (see ALL_FEATURES below).
-//  Everything still resolves through the plan_* tables at runtime, so Command
-//  Center can edit any of it without code changes.
+//  PLAN CATALOG — spec 2026-06-21 (PKR). Creator → Studio → Studio+ → Enterprise.
+//  This is the seed + fallback for the data-driven plan_* tables. Feature sets use
+//  inheritance (each tier spreads the one below + its additions) so the catalog
+//  stays maintainable; everything still resolves through the plan_* tables at
+//  runtime, so Command Center can edit any of it without code changes.
 //  Limit convention: -1 = unlimited. leads = NEW leads per calendar month;
 //  contract_sends = contracts/proposals/quotes sent per month; storage_gb = GB.
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── FEATURES ARE NOT A TIER ──────────────────────────────────────────────────
-//
-// OWNER DECISION: every plan gets every feature. Plans differ ONLY by QUANTITY —
-// how many leads, seats, WhatsApp numbers, gigabytes, contract sends.
-//
-// This file previously gated features across four tiers: Creator had no
-// Instagram, no team, no analytics, no AI suggestions, no automations, no
-// knowledge base. That is not the product that was agreed, and it is the wrong
-// shape for this one — someone on the smallest plan running a real business
-// should hit a CEILING, not a wall. A ceiling says "you have outgrown this";
-// a wall says "we built something and you cannot have it".
-//
-// Keep the keys. Everything downstream (the resolver, Command Center, the
-// per-workspace overrides, the UI's LockBadge) reads feature keys, so removing
-// the vocabulary would break all of it. They are simply all true now, and a plan
-// that wants to withhold one can still do it per-workspace through an override.
-const ALL_FEATURE_KEYS = [
-  // Core modules
-  'crm', 'contracts_studio', 'booking', 'media_studio', 'portfolio', 'client_portal', 'print_store',
+// CREATOR — solo creators/freelancers. Core modules on; growth/AI/team/contract
+// depth off. (Modules: CRM, Contracts Studio, Booking, Media Studio, Portfolio,
+// Client Portal, Print Store.)
+const CREATOR_FEATURES = {
+  // Core modules (included)
+  crm: true, contracts_studio: true, booking: true, media_studio: true,
+  portfolio: true, client_portal: true, print_store: true,
   // CRM essentials
-  'whatsapp', 'basic_inbox', 'basic_crm', 'shared_inbox', 'voice_notes',
-  'email', 'email_integration', 'email_templates', 'email_sending', 'email_receiving', 'basic_ai',
-  // Lead capture
-  'instagram', 'facebook', 'website_capture', 'lead_source_tracking',
-  // Team / reporting / knowledge
-  'team_collaboration', 'team_permissions',
-  'analytics', 'reports', 'advanced_reporting', 'multi_pipeline', 'knowledge_base',
-  // AI depth
-  'ai_reply_suggestions', 'ai_lead_intelligence', 'next_best_actions',
-  'studio_brain', 'ai_asset_scoring', 'ai_hero_shot', 'ai_culling', 'ai_project_intelligence',
-  // Contracts depth
-  'clause_library', 'version_history', 'redline_comparison', 'approval_workflows', 'bulk_send',
-  // Gallery / studio depth
-  'gallery_collections', 'story_sections', 'advanced_proofing', 'portfolio_management',
-  // Automation / integrations
-  'auto_reply', 'automations', 'workflows', 'advanced_automation', 'google_calendar', 'calendly',
-  // Platform
-  'white_label', 'desktop_access', 'desktop_sync', 'local_ai',
-  'style_profiles', 'story_engine', 'reel_engine', 'ai_editing',
-  'api_access', 'byok', 'sso', 'audit_logs', 'custom_integrations', 'custom_branding',
-  'flux',
-  // SUPPORT TIERS are a commercial commitment, not software. They stay per-plan
-  // below rather than being switched on for everyone, because turning them on
-  // here would promise a human response the business has not agreed to give.
-];
+  whatsapp: true, basic_inbox: true, basic_crm: true, shared_inbox: true, voice_notes: true,
+  email: true, email_integration: true, email_templates: true, email_sending: true, email_receiving: true,
+  basic_ai: true,
+  // Extra lead-capture channels — EXCLUDED on Creator
+  instagram: false, facebook: false, website_capture: false, lead_source_tracking: false,
+  // Team / reporting / knowledge — EXCLUDED
+  team_collaboration: false, team_permissions: false,
+  analytics: false, reports: false, advanced_reporting: false, multi_pipeline: false,
+  knowledge_base: false,
+  // AI depth — EXCLUDED
+  ai_reply_suggestions: false, ai_lead_intelligence: false, next_best_actions: false,
+  studio_brain: false, ai_asset_scoring: false, ai_hero_shot: false, ai_culling: false, ai_project_intelligence: false,
+  // Contracts depth — EXCLUDED
+  clause_library: false, version_history: false, redline_comparison: false, approval_workflows: false, bulk_send: false,
+  // Gallery / studio depth — EXCLUDED
+  gallery_collections: false, story_sections: false, advanced_proofing: false, portfolio_management: false,
+  // Automation / integrations — EXCLUDED
+  auto_reply: false, automations: false, workflows: false, advanced_automation: false,
+  google_calendar: false, calendly: false,
+  // Premium / platform — EXCLUDED
+  white_label: false, priority_support: false,
+  desktop_access: false, desktop_sync: false, local_ai: false,
+  style_profiles: false, story_engine: false, reel_engine: false, ai_editing: false,
+  // Enterprise — EXCLUDED
+  api_access: false, byok: false, sso: false, audit_logs: false, dedicated_support: false,
+  custom_integrations: false, custom_branding: false,
+  flux: false,
+};
 
-const ALL_FEATURES = Object.fromEntries(ALL_FEATURE_KEYS.map((k) => [k, true]));
+// STUDIO — growing studios/teams. Everything in Creator + growth/AI/team/contract/
+// gallery depth + advanced automation + Desktop Beta.
+const STUDIO_ADD = {
+  instagram: true, facebook: true, website_capture: true, lead_source_tracking: true,
+  team_collaboration: true, team_permissions: true,
+  analytics: true, reports: true, advanced_reporting: true, multi_pipeline: true,
+  knowledge_base: true,
+  ai_reply_suggestions: true, ai_lead_intelligence: true, next_best_actions: true,
+  studio_brain: true, ai_asset_scoring: true, ai_hero_shot: true, ai_culling: true, ai_project_intelligence: true,
+  clause_library: true, version_history: true, redline_comparison: true, approval_workflows: true, bulk_send: true,
+  gallery_collections: true, story_sections: true, advanced_proofing: true, portfolio_management: true,
+  auto_reply: true, automations: true, workflows: true, advanced_automation: true,
+  google_calendar: true, calendly: true,
+  desktop_access: true, // Desktop Beta
+};
+
+// STUDIO+ — established studios at scale. Everything in Studio + white-label,
+// priority support, desktop (incl. sync) + future creative engines.
+const STUDIO_PLUS_ADD = {
+  white_label: true, priority_support: true,
+  desktop_sync: true, local_ai: true,
+  style_profiles: true, story_engine: true, reel_engine: true, ai_editing: true,
+  flux: true,
+};
+
+// ENTERPRISE — custom. Everything + integrations/SLAs/branding/support.
+const ENTERPRISE_ADD = {
+  api_access: true, byok: true, sso: true, audit_logs: true, dedicated_support: true,
+  custom_integrations: true, custom_branding: true,
+};
 
 const PLAN_DEFINITIONS = {
-  // FREE — a real free tier, not a trial. Everything works; you simply run out
-  // of room. 1 of each connected thing, 20 new leads a month.
-  free: {
-    name: 'Free',
-    features: { ...ALL_FEATURES, priority_support: false, dedicated_support: false },
-    limits: { users: 1, leads: 20, whatsapp_accounts: 1, storage_gb: 1, contract_sends: 1, ig_accounts: 1, facebook_accounts: 1 },
-  },
   creator: {
     name: 'Creator',
-    features: { ...ALL_FEATURES, priority_support: false, dedicated_support: false },
-    limits: { users: 1, leads: 200, whatsapp_accounts: 1, storage_gb: 50, contract_sends: 25, ig_accounts: 1, facebook_accounts: 1 },
+    features: { ...CREATOR_FEATURES },
+    limits: { users: 1, leads: 200, whatsapp_accounts: 1, storage_gb: 50, contract_sends: 25, ig_accounts: 0, facebook_accounts: 0 },
   },
   studio: {
     name: 'Studio',
-    features: { ...ALL_FEATURES, priority_support: true, dedicated_support: false },
+    features: { ...CREATOR_FEATURES, ...STUDIO_ADD },
     limits: { users: 5, leads: 500, whatsapp_accounts: 2, storage_gb: 250, contract_sends: 100, ig_accounts: -1, facebook_accounts: -1 },
   },
   studio_plus: {
     name: 'Studio+',
-    features: { ...ALL_FEATURES, priority_support: true, dedicated_support: false },
+    features: { ...CREATOR_FEATURES, ...STUDIO_ADD, ...STUDIO_PLUS_ADD },
     limits: { users: 15, leads: 5000, whatsapp_accounts: 5, storage_gb: 1024, contract_sends: 500, ig_accounts: -1, facebook_accounts: -1 },
   },
   enterprise: {
     name: 'Enterprise',
-    features: { ...ALL_FEATURES, priority_support: true, dedicated_support: true },
+    features: { ...CREATOR_FEATURES, ...STUDIO_ADD, ...STUDIO_PLUS_ADD, ...ENTERPRISE_ADD },
     // -1 means unlimited (matches usePlan's interpretation)
     limits: { users: -1, leads: -1, whatsapp_accounts: -1, storage_gb: -1, contract_sends: -1, ig_accounts: -1, facebook_accounts: -1 },
   },
 };
 
 // Standard monthly list price (PKR). enterprise = custom (null).
-const PLAN_MONTHLY_PRICE = { free: 0, creator: 29, studio: 59, studio_plus: 119, enterprise: null };
+const PLAN_MONTHLY_PRICE = { creator: 29, studio: 59, studio_plus: 119, enterprise: null };
 // Founding 100 price (USD) — 50% off, locked permanently for the first 100 paying
 // customers. Stored as is_founding rows in plan_prices.
-const PLAN_FOUNDING_PRICE = { free: 0, creator: 14, studio: 29, studio_plus: 59, enterprise: null };
+const PLAN_FOUNDING_PRICE = { creator: 14, studio: 29, studio_plus: 59, enterprise: null };
 const PLAN_CURRENCY = 'USD';
-const DEFAULT_PLAN = 'free'; // entry plan for new workspaces / unknown tiers
+const DEFAULT_PLAN = 'creator'; // entry plan for new workspaces / unknown tiers
 
 // ── Sold-but-unbuilt guard ───────────────────────────────────────────────────
 // These features are advertised on higher tiers but have NO working implementation
@@ -203,12 +216,17 @@ function ensureSchema(db) {
 // alone never reaches a box that has already booted — the same trap that made a
 // currency change silently do nothing (see repriceCurrency below).
 //
-// This runs ONCE per catalog version, recorded in plan_meta. It upserts features
-// and limits for the plans it knows about and never deletes a plan, so
-// per-workspace assignments survive. It is deliberately not run on every boot:
-// Command Center edits these tables as config-as-data, and re-applying constantly
+// HISTORY, so the version numbers mean something:
+//   v2 — features ungated (every plan got every feature) + a Free plan, made
+//        default. REVERTED at the owner's request: there is no Free plan, and
+//        the tiered feature sets are the intended model.
+//   v3 — restores v1: tiered features, no Free plan, Creator as default.
+//
+// Runs ONCE per version, recorded in plan_meta. It upserts and never deletes a
+// plan that workspaces might reference, and it is not run on every boot because
+// Command Center edits these tables as config-as-data — re-applying constantly
 // would silently undo a deliberate change made there.
-const CATALOG_VERSION = 2;   // 2 = features ungated; quantity-only tiers + free plan
+const CATALOG_VERSION = 3;
 
 function applyCatalogVersion(db) {
   try {
@@ -225,14 +243,32 @@ function applyCatalogVersion(db) {
       let order = 0;
       for (const [key, def] of Object.entries(PLAN_DEFINITIONS)) {
         insPlan.run('pl-' + Math.random().toString(36).slice(2, 10), key, def.name, 'active', 'public', order++, 0);
+        // REPLACE, so a feature the previous catalog switched ON is switched back
+        // OFF here. An upsert that only added would leave v2's ungating in place.
         for (const [k, v] of Object.entries(def.limits)) insLimit.run(key, k, v);
         for (const [k, v] of Object.entries(def.features)) insFeat.run(key, k, JSON.stringify(v));
       }
       setDefault.run(DEFAULT_PLAN);
+
+      // Retire any plan the catalog no longer defines (the v2 'free' plan).
+      // Guarded: a plan a workspace is actually on is never removed, because
+      // that workspace would resolve to no entitlements at all.
+      const known = new Set(Object.keys(PLAN_DEFINITIONS));
+      for (const row of db.prepare('SELECT key FROM plans').all()) {
+        if (known.has(row.key)) continue;
+        const inUse = db.prepare('SELECT COUNT(*) n FROM workspace_plan WHERE plan = ?').get(row.key).n;
+        if (inUse > 0) { console.warn(`Plan "${row.key}" is no longer defined but ${inUse} workspace(s) use it — left in place.`); continue; }
+        db.prepare('DELETE FROM plan_features WHERE plan_key = ?').run(row.key);
+        db.prepare('DELETE FROM plan_limits WHERE plan_key = ?').run(row.key);
+        db.prepare('DELETE FROM plan_prices WHERE plan_key = ?').run(row.key);
+        db.prepare('DELETE FROM plans WHERE key = ?').run(row.key);
+        console.log(`✓ Retired plan "${row.key}" (no workspaces on it)`);
+      }
+
       db.prepare("INSERT OR REPLACE INTO plan_meta (key, value) VALUES ('catalog_version', ?)").run(String(CATALOG_VERSION));
     });
     run();
-    console.log(`✓ Plan catalog updated to v${CATALOG_VERSION} (features ungated; quantity-only tiers)`);
+    console.log(`✓ Plan catalog restored to v${CATALOG_VERSION} (tiered features, no Free plan, default=${DEFAULT_PLAN})`);
   } catch (e) {
     console.error('Plan catalog migration failed:', e.message);
   }
