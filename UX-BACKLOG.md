@@ -59,21 +59,19 @@ capability was there and unreachable.
 | 13 | Transitions on the bars | Reachable only via the inspector, so you could not see which clips had one, which edge, or how long. Now drawn on the clip at real duration — a 400ms dissolve is 400ms wide at the current zoom | Live: 24 transition markers rendering |
 | 9 | Click-drag to scale/position media | The renderer always honoured `transform`; the editor exposed it only as inspector number fields. Drag the preview, wheel to scale, normalised to −1..1 of the frame | Live: drag → persisted `x: 0.988` → reload → preview `translate(83.24px)` on an 81px frame |
 | 6 | Templates "very basic" | Every clip the same length, the same transition on every cut, one title card, nothing else — a slideshow with a colour grade. A pack now describes a STRUCTURE: named rhythms, a hook that opens short and an outro that holds, cycled transitions, per-shot motion variation, and a closing CTA on its own track | 16 tests; control run fails 7 against the old builder. Live 30s draft: exactly 30000ms, 6 distinct beat lengths, opens 1142ms → closes 3945ms, 3 transition types, 2 text tracks with the CTA at 27250ms |
+| 8 | Auto reel should detect faces/scenes and frame accordingly | **Could not be built as written**: this server has no face detector (desktop ONNX has it; the server pass hardcodes `faces: 0`, and prod has zero face scores — `rankMedia`'s faceWeight branch has never fired). But `vision-cpu.js` already computed the edge-energy centroid of every image and threw it away. Kept as `subject_point` and used to offset the crop, since a 9:16 reel discards ~62% of a 3:2 frame and centres what is left. Ken Burns is anchored to the framed point so the pan cannot walk the subject back out. Seamed: a real face centre lands in the same field | 21 tests; backfilled 25 prod assets; live 15s reel framed 5 of 6 clips, the 6th correctly untouched (subject already centred) |
 | 7 | Auto-reel should ask personalising questions first | "AI reel" meant picking one of twelve style names with no way to say what the reel was FOR — the same shoot produced the same reel whether it was going to a couple or to Instagram. Now asks what it is made of, how it should feel, what it is for, how long | Live: 4 questions, styles hidden until answered; Elegant → 3 of 12, + Wedding → 2 of 12 |
 
 Also fixed by generalising the timeline: the preview only ever composited the
 **first** text track, so a second one exported captions the editor had never
 drawn — which the new templates rely on, since title and CTA are separate tracks.
 
-**#8 (face/scene-aware framing) is the one remaining reel item**, and it is a
-vision-engine job rather than an editor one: the framing target has to come from
-detection, and the transform it would write is the same field #9 now exposes.
+**The reel cluster is fully closed** — #6, #7, #8, #9, #11, #12, #13.
 
 Other projects:
 
 | # | Item | Why it is a project |
 |---|------|---------------------|
-| 8 | Auto AI reel detects faces/scenes and frames accordingly | Needs the vision engine |
 | 20 | Rebuild ALL client-facing pages from scratch, premium/high-end | Agree the shape first |
 | 22 | Desktop app — finalise, downloadable from landing + settings | Build/sign/distribute pipeline |
 
