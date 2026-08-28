@@ -40,9 +40,9 @@ Status legend: `DONE` (deployed + verified live) · `NEXT` (tractable, queued) �
 
 ---
 
-## The reel editor — foundation DONE, templates remain
+## The reel editor — CLOSED
 
-**#9, #11, #12, #13 are done and verified live.** Treating them as one project
+**#6, #7, #9, #11, #12, #13 are done and verified live.** Treating them as one project
 was right, but for an unexpected reason: **most of it already existed.** The
 renderer (`backend/video-engine.js`) has always taken up to 12 tracks of
 video/audio/text/overlay, already flattens the clips of *every* text track, and
@@ -57,14 +57,16 @@ capability was there and unreachable.
 | 13 | Transitions on the bars | Reachable only via the inspector, so you could not see which clips had one, which edge, or how long. Now drawn on the clip at real duration — a 400ms dissolve is 400ms wide at the current zoom | Live: 24 transition markers rendering |
 | 9 | Click-drag to scale/position media | The renderer always honoured `transform`; the editor exposed it only as inspector number fields. Drag the preview, wheel to scale, normalised to −1..1 of the frame | Live: drag → persisted `x: 0.988` → reload → preview `translate(83.24px)` on an 81px frame |
 
-Also fixed by generalising: the preview only ever composited the **first** text
-track, so a second one exported captions the editor had never drawn.
-
 | 6 | Templates "very basic" | Every clip the same length, the same transition on every cut, one title card, nothing else — a slideshow with a colour grade. A pack now describes a STRUCTURE: named rhythms, a hook that opens short and an outro that holds, cycled transitions, per-shot motion variation, and a closing CTA on its own track | 16 tests; control run fails 7 against the old builder. Live 30s draft: exactly 30000ms, 6 distinct beat lengths, opens 1142ms → closes 3945ms, 3 transition types, 2 text tracks with the CTA at 27250ms |
 | 7 | Auto-reel should ask personalising questions first | "AI reel" meant picking one of twelve style names with no way to say what the reel was FOR — the same shoot produced the same reel whether it was going to a couple or to Instagram. Now asks what it is made of, how it should feel, what it is for, how long | Live: 4 questions, styles hidden until answered; Elegant → 3 of 12, + Wedding → 2 of 12 |
 
-**The reel cluster is closed.** #8 (face/scene-aware framing) is the remaining
-reel item and is a vision-engine job, not an editor one.
+Also fixed by generalising the timeline: the preview only ever composited the
+**first** text track, so a second one exported captions the editor had never
+drawn — which the new templates rely on, since title and CTA are separate tracks.
+
+**#8 (face/scene-aware framing) is the one remaining reel item**, and it is a
+vision-engine job rather than an editor one: the framing target has to come from
+detection, and the transform it would write is the same field #9 now exposes.
 
 Other projects:
 
