@@ -192,11 +192,18 @@ export default function FloatingChat() {
   return (
     <div style={{
       position: 'fixed', bottom: 24, right: 24, zIndex: 9000,
-      width: 340, background: 'var(--surface)', borderRadius: 20,
+      // A fixed 340×520 anchored 24px off the bottom needs 544px of window. The
+      // owner's viewport is 503px tall (1080p at 150% Windows scaling), so this
+      // panel ran off the top of the screen and slid under the fixed nav — the
+      // "AI float has no gap from the nav" complaint, exactly. StudioCopilot
+      // already clamps itself this way; this one never did.
+      width: 'min(340px, calc(100vw - 32px))',
+      background: 'var(--surface)', borderRadius: 20,
       boxShadow: '0 24px 80px rgba(0,0,0,0.2)',
       border: '1.5px solid var(--border)',
       display: 'flex', flexDirection: 'column',
-      height: minimized ? 'auto' : 520,
+      height: minimized ? 'auto' : 'min(520px, calc(100vh - var(--shell-h, 58px) - 46px))',
+      maxHeight: 'calc(100vh - var(--shell-h, 58px) - 46px)',
       transition: 'height 0.2s ease',
       overflow: 'hidden',
       fontFamily: 'system-ui, -apple-system, sans-serif'

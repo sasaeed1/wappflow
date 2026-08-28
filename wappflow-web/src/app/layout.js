@@ -61,7 +61,16 @@ export default function RootLayout({ children }) {
             var BEAT = 'wf_beat', STALE = 90000;
             var last = parseInt(localStorage.getItem(BEAT) || '0', 10);
             var alive = sessionStorage.getItem('wf_alive') || (last && (Date.now() - last) < STALE);
-            if (!alive && localStorage.getItem('wf_persist') === 'session') {
+            // An INSTALLED app is never treated as a dead browser session. Closing
+            // an app from the home screen looks exactly like every tab going away,
+            // so without this a session-scoped login is wiped every time the app is
+            // closed — which is the "mobile app logs me out" complaint.
+            var standalone = false;
+            try {
+              standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+                || window.navigator.standalone === true;
+            } catch (e) {}
+            if (!alive && !standalone && localStorage.getItem('wf_persist') === 'session') {
               localStorage.removeItem('token');
               localStorage.removeItem('user');
               localStorage.removeItem('workspace');

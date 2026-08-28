@@ -27,14 +27,29 @@ function LoginContent() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
-  const [remember, setRemember] = useState(false);
+  // Checked by default. Unchecked, the session is cleared once every tab has
+  // been gone long enough for the heartbeat to go stale — which on a phone is
+  // simply "you closed the app", so the default silently logged people out every
+  // single time. Staying signed in is what people expect; a shared device is the
+  // exception, and the exception is the one that should need a deliberate click.
+  const [remember, setRemember] = useState(true);
 
   const saveAuthData = (data, remember) => {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     if (data.workspace) localStorage.setItem('workspace', JSON.stringify(data.workspace));
-    // "Remember me": persist forever, otherwise clear when the browser session ends
-    localStorage.setItem('wf_persist', remember ? 'forever' : 'session');
+    // "Remember me": persist forever, otherwise clear when the browser session ends.
+    //
+    // An INSTALLED app always persists, whatever the box says. Closing an app
+    // from the home screen is not the gesture that ends a browser session, and
+    // no installed app on any platform signs you out because you closed it. The
+    // checkbox still means what it says in a browser tab.
+    const standalone = (() => {
+      try {
+        return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      } catch { return false; }
+    })();
+    localStorage.setItem('wf_persist', (remember || standalone) ? 'forever' : 'session');
     try { sessionStorage.setItem('wf_alive', '1'); } catch {}
     // Triggers the per-tier welcome modal on the next page after login
     try { sessionStorage.setItem('wf_just_logged_in', '1'); } catch {}

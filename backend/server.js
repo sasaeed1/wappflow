@@ -703,6 +703,8 @@ const pagination = require('./pagination');
 // Phase 4 — saved views move out of per-browser localStorage into the DB.
 const savedViews = require('./saved-views');
 savedViews.installSchema(db);
+const leadPins = require('./lead-pins');
+leadPins.installSchema(db);
 // Won leads can be promoted to "clients": hidden from the Leads list (but kept
 // in chat + analytics). Additive flag — never deletes, fully reversible.
 safeAlter('ALTER TABLE leads ADD COLUMN is_client INTEGER DEFAULT 0');
@@ -2369,6 +2371,11 @@ app.delete('/api/leads/:id/permanent', auth, (req, res) => {
     db.prepare('DELETE FROM reminders WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM messages WHERE lead_id = ?').run(req.params.id);
     db.prepare('DELETE FROM contact_history WHERE lead_id = ?').run(req.params.id);
+    // Every teammate's pin on this lead, not just the caller's — the lead is
+    // gone for good, so a pin pointing at it can only be a dangling id. Soft
+    // delete deliberately does NOT do this: restoring a lead should bring its
+    // pins back with it.
+    leadPins.prunePinsForLead(db, { workspaceId: req.workspaceId, leadId: req.params.id });
     db.prepare('DELETE FROM leads WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
     logAudit(req.workspaceId, req.userId, 'permanent_delete', 'leads', req.params.id, {});
     res.json({ message: 'Permanently deleted' });
@@ -5993,6 +6000,34 @@ app.delete('/api/views/:id', auth, (req, res) => {
     if (!removed) return res.status(404).json({ error: 'view not found' });
     logAudit(req.workspaceId, req.userId, 'view_deleted', 'saved_view', String(req.params.id), {});
     res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  PINNED LEADS — the handful you are working right now
+// ════════════════════════════════════════════════════════════
+
+// GET /api/lead-pins — this user's pinned lead ids in this workspace
+app.get('/api/lead-pins', auth, (req, res) => {
+  try {
+    res.json({
+      pins: leadPins.listPins(db, { workspaceId: req.workspaceId, userId: req.userId }),
+      warnAfter: leadPins.CLUTTER_WARN_AFTER,
+    });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// POST /api/lead-pins/:leadId — idempotent; pinning twice is not an error
+app.post('/api/lead-pins/:leadId', auth, (req, res) => {
+  try {
+    res.json({ pins: leadPins.pin(db, { workspaceId: req.workspaceId, userId: req.userId, leadId: req.params.leadId }) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// DELETE /api/lead-pins/:leadId — owner-scoped; the WHERE clause is the authorization
+app.delete('/api/lead-pins/:leadId', auth, (req, res) => {
+  try {
+    res.json({ pins: leadPins.unpin(db, { workspaceId: req.workspaceId, userId: req.userId, leadId: req.params.leadId }) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 

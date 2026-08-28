@@ -719,4 +719,13 @@ export const viewsAPI = {
   remove: (id) => api.delete(`/views/${id}`),
 };
 
+// Pinned leads. Server-side and per-user, so a pin follows you to your phone —
+// which is the point of pinning something. Every call returns the full list, so
+// the caller never has to reason about what its local copy should now contain.
+export const pinsAPI = {
+  list: () => api.get('/lead-pins'),
+  pin: (leadId) => api.post(`/lead-pins/${leadId}`),
+  unpin: (leadId) => api.delete(`/lead-pins/${leadId}`),
+};
+
 export default api;

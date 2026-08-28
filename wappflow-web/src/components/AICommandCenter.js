@@ -129,7 +129,12 @@ export default function AICommandCenter({ enabled = true }) {
       {open && (
         <div className="r-panel" style={{
           position: 'fixed', bottom: 155, right: 24, zIndex: 999,
-          width: 420, maxHeight: '70vh',
+          // 70vh measured from 155px off the bottom needs 507px of window on a
+          // 503px-tall viewport, so the panel pushed up under the fixed nav with
+          // no gap. Measure the space that actually exists instead: everything
+          // between the nav and the panel's own offset, less a real gutter.
+          width: 'min(420px, calc(100vw - 32px))',
+          maxHeight: 'min(70vh, calc(100vh - var(--shell-h, 58px) - 155px - 14px))',
           background: 'var(--glass)', backdropFilter: 'blur(20px)',
           border: '1.5px solid rgba(99,102,241,0.2)',
           borderRadius: 24, boxShadow: '0 32px 80px rgba(0,0,0,0.2)',

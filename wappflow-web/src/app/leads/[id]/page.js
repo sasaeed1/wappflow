@@ -13,7 +13,7 @@ import {
   ChevronRight, Activity, Receipt, Workflow, RefreshCw,
   Layers, Link2, GitMerge, Network, Lock, MessageCircle,
   Camera, MonitorSmartphone, Video,
-  FileSignature, Banknote, ShoppingBag, Film
+  FileSignature, Banknote, ShoppingBag, Film, Eye
 } from 'lucide-react';
 import {
   leadsAPI, presetsAPI, tagsAPI, emailTemplatesAPI,
@@ -24,6 +24,7 @@ import {
 import { formatSmart, formatDateTime, formatRelative, formatFull, formatDate, formatTime } from '../../../lib/datetime';
 import { markLeadSeen } from '../../../lib/unread';
 import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
+import SendInvoiceModal from '@/components/SendInvoiceModal';
 import ContactActions from '@/components/ContactActions';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
@@ -289,12 +290,21 @@ function LostModal({ name, onConfirm, onCancel, loading }) {
 }
 
 // ── Invoice Modal ─────────────────────────────────────────────────────────────
-function InvoiceModal({ lead, company, onClose, onSaved }) {
+// `invoice` present = editing an existing one. The create and edit forms were
+// never going to differ — same fields, same totals, same preview — and keeping
+// one component is what stops the edit form drifting away from the create form
+// the first time either gains a field.
+function InvoiceModal({ lead, company, invoice, onClose, onSaved }) {
   const confirm = useConfirm();
-  const [items, setItems] = useState([{ description: '', qty: 1, rate: 0 }]);
-  const [notes, setNotes] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [taxRate, setTaxRate] = useState(company?.tax_rate || 0);
+  const editing = !!invoice;
+  const [items, setItems] = useState(() => (
+    invoice?.items?.length
+      ? invoice.items.map((it) => ({ description: it.description || '', qty: it.qty ?? 1, rate: it.rate ?? 0 }))
+      : [{ description: '', qty: 1, rate: 0 }]
+  ));
+  const [notes, setNotes] = useState(invoice?.notes || '');
+  const [dueDate, setDueDate] = useState(String(invoice?.due_date || '').slice(0, 10));
+  const [taxRate, setTaxRate] = useState(invoice?.tax_rate ?? company?.tax_rate ?? 0);
   const [saving, setSaving] = useState(false);
 
   const sym = company?.currency_symbol || '$';
@@ -318,12 +328,17 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
         customer_phone: displayPhone(lead.customer_phone, lead.platform_source),
         items: items.map(it => ({ ...it, amount: (parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0) })),
         subtotal, tax_rate: taxRate, tax_amount: taxAmount, total,
-        due_date: dueDate, notes, status: 'draft'
+        due_date: dueDate, notes,
+        // Editing must not silently reset a sent invoice back to draft. (The
+        // route refuses a direct flip TO paid regardless — that goes through the
+        // payments ledger — so echoing the current status back is safe.)
+        status: editing ? invoice.status : 'draft',
       };
-      await invoicesAPI.create(payload);
+      if (editing) await invoicesAPI.update(invoice.id, payload);
+      else await invoicesAPI.create(payload);
       onSaved();
       onClose();
-    } catch (e) { await confirm({ title: 'Could not create invoice', message: e.message, alertOnly: true, tone: 'danger' }); } finally { setSaving(false); }
+    } catch (e) { await confirm({ title: editing ? 'Could not save invoice' : 'Could not create invoice', message: e.message, alertOnly: true, tone: 'danger' }); } finally { setSaving(false); }
   };
 
   // Phase 6: this used to hand-roll its own invoice HTML and interpolate the
@@ -334,7 +349,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
   // invoice instead of a stripped-down table with no branding or invoice number.
   const handlePrint = () => {
     const draft = {
-      invoice_number: '',                       // unsaved: the template falls back gracefully
+      invoice_number: invoice?.invoice_number || '',  // unsaved: the template falls back gracefully
       customer_name: lead.customer_name,
       customer_phone: lead.customer_phone,
       customer_email: lead.email,
@@ -367,7 +382,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
               <Receipt size={22} color="#f59e0b" />
             </div>
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Create Invoice</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>{editing ? `Edit ${invoice.invoice_number || 'Invoice'}` : 'Create Invoice'}</h2>
               <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>For {lead.customer_name}</p>
             </div>
           </div>
@@ -467,7 +482,7 @@ function InvoiceModal({ lead, company, onClose, onSaved }) {
             background: saving ? '#9ca3af' : 'linear-gradient(135deg, #f59e0b, #d97706)',
             color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 14
           }}>
-            {saving ? 'Saving...' : 'Save Invoice'}
+            {saving ? 'Saving...' : editing ? 'Save changes' : 'Save Invoice'}
           </button>
         </div>
       </div>
@@ -599,6 +614,7 @@ function LeadStudioSection({ leadId }) {
 
 export default function LeadDetailPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const params = useParams();
   const leadId = params.id;
   const messagesEndRef = useRef(null);
@@ -678,6 +694,12 @@ const [aiError, setAiError] = useState('');
   const [aiToolLoading, setAiToolLoading] = useState(null); // 'rewrite-pro' | 'translate-en' | ...
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  // The invoices tab used to be a read-only list: you could see that an invoice
+  // existed and do nothing about it, on the one page where you are actually
+  // talking to the customer. These drive preview / send / edit / delete inline.
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [sendingInvoice, setSendingInvoice] = useState(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [viewImage, setViewImage] = useState(null);   // full-size image lightbox URL
   const [syncingHistory, setSyncingHistory] = useState(false);
@@ -885,6 +907,51 @@ const [aiError, setAiError] = useState('');
 
   // Mark this lead as seen so its unread badge clears across the lead views (item 4)
   useEffect(() => { if (leadId) markLeadSeen(leadId); }, [leadId, messages]);
+
+  // ── Invoice actions ────────────────────────────────────────────────────────
+  // A list row can come from a fetch that did not include line items, and a
+  // preview or an edit form built from half a document is worse than a moment's
+  // wait — so both re-read the invoice before they open.
+  const withFullInvoice = async (inv) => {
+    if (Array.isArray(inv.items) && inv.items.length) return inv;
+    try { return (await invoicesAPI.getById(inv.id)).data.invoice || inv; } catch { return inv; }
+  };
+
+  const previewInvoice = async (inv) => {
+    setInvoiceBusy(inv.id);
+    try {
+      const full = await withFullInvoice(inv);
+      // Same escaped, branded document the customer is emailed — a preview that
+      // does not match what gets sent is not a preview.
+      const win = window.open('', '_blank');
+      if (!win) return;                       // popup blocked; nothing to clean up
+      win.document.write(buildInvoiceHTML(full, company, BASE_URL));
+      win.document.close();
+    } finally { setInvoiceBusy(null); }
+  };
+
+  const openInvoiceEditor = async (inv) => {
+    setInvoiceBusy(inv.id);
+    try { setEditingInvoice(await withFullInvoice(inv)); }
+    finally { setInvoiceBusy(null); }
+  };
+
+  const removeInvoice = async (inv) => {
+    const ok = await confirm({
+      title: `Delete ${inv.invoice_number || 'this invoice'}?`,
+      // Say what actually happens. The route soft-deletes to a bin the retention
+      // sweep deliberately skips, so this is reversible — and a scarier warning
+      // than the truth makes people avoid a safe action.
+      message: 'It moves to the invoice bin, where it can be restored. Nothing is destroyed.',
+      confirmText: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setInvoiceBusy(inv.id);
+    try { await invoicesAPI.delete(inv.id); await fetchAll(); }
+    catch (e) { await confirm({ title: 'Could not delete', message: e.response?.data?.error || e.message, alertOnly: true, tone: 'danger' }); }
+    finally { setInvoiceBusy(null); }
+  };
 
   const handleSaveEdit = async () => {
     try {
@@ -1252,6 +1319,15 @@ useEffect(() => {
       {showWonModal && <WonModal name={lead.customer_name} onConfirm={handleWonConfirm} onCancel={() => setShowWonModal(false)} loading={actionLoading} currencySymbol={sym} />}
       {showLostModal && <LostModal name={lead.customer_name} onConfirm={handleLostConfirm} onCancel={() => setShowLostModal(false)} loading={actionLoading} />}
       {showInvoiceModal && <InvoiceModal lead={lead} company={company} onClose={() => setShowInvoiceModal(false)} onSaved={fetchAll} />}
+      {editingInvoice && (
+        <InvoiceModal lead={lead} company={company} invoice={editingInvoice}
+                      onClose={() => setEditingInvoice(null)} onSaved={fetchAll} />
+      )}
+      {sendingInvoice && (
+        <SendInvoiceModal invoice={sendingInvoice} company={company}
+                          onClose={() => setSendingInvoice(null)}
+                          onSent={() => { setSendingInvoice(null); fetchAll(); }} />
+      )}
       {showEmailModal && <EmailWorkflowModal lead={lead} templates={emailTemplates} onClose={() => setShowEmailModal(false)} onSaved={fetchAll} />}
       <ScheduleMeetingModal
         open={showScheduleModal}
@@ -2175,6 +2251,31 @@ useEffect(() => {
                         <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>{formatDate(inv.created_at)}{inv.due_date ? ` · Due ${formatDate(inv.due_date)}` : ''}</p>
                       </div>
                       <p style={{ fontSize: 18, fontWeight: 900, color: '#10b981', margin: 0 }}>{sym}{parseFloat(inv.total).toLocaleString()}</p>
+                      {/* Preview / Send / Edit / Delete. A paid invoice is a
+                          settled financial record, so it can be looked at and
+                          sent but not edited or binned from here. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                        {[
+                          { key: 'preview', Icon: Eye,    label: 'Preview',      onClick: () => previewInvoice(inv),    show: true },
+                          { key: 'send',    Icon: Send,   label: 'Email to client', onClick: () => setSendingInvoice(inv), show: true },
+                          { key: 'edit',    Icon: Edit2,  label: 'Edit',         onClick: () => openInvoiceEditor(inv), show: inv.status !== 'paid' },
+                          { key: 'delete',  Icon: Trash2, label: 'Delete',       onClick: () => removeInvoice(inv),     show: inv.status !== 'paid', danger: true },
+                        ].filter(a => a.show).map(({ key, Icon, label, onClick, danger }) => (
+                          <button key={key} onClick={onClick} disabled={invoiceBusy === inv.id}
+                            title={label} aria-label={`${label} ${inv.invoice_number || 'invoice'}`}
+                            style={{
+                              width: 30, height: 30, display: 'grid', placeItems: 'center',
+                              background: 'none', border: 'none', borderRadius: 8,
+                              cursor: invoiceBusy === inv.id ? 'wait' : 'pointer',
+                              opacity: invoiceBusy === inv.id ? 0.45 : 1,
+                              color: danger ? '#dc2626' : 'var(--text-muted)',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.14)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}>
+                            <Icon size={14} />
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>

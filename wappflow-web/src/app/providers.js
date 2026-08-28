@@ -9,6 +9,7 @@ import { PlanLockStyles } from '@/components/PlanLock';
 import UsageWarnings from '@/components/UsageWarnings';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
 import UploadTray from '@/components/UploadTray';
+import InstallAppBanner from '@/components/InstallAppBanner';
 
 export default function Providers({ children }) {
   return (
@@ -27,6 +28,10 @@ export default function Providers({ children }) {
                 while you navigate. Mounted here for the same reason the SSE
                 stream is — the shell remounts per route, this must not. */}
             <UploadTray />
+            {/* beforeinstallprompt fires once, early, and is lost if nothing
+                captures it — so the listener has to be mounted app-wide from the
+                start, not inside whichever page happens to offer the install. */}
+            <InstallAppBanner />
             {children}
           </RealtimeProvider>
         </PlanProvider>

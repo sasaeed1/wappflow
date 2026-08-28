@@ -41,6 +41,7 @@ import {
 
 import LandingStyles from '@/components/landing/LandingStyles';
 import { FLUX_PARKED } from '@/lib/flux';
+import InstallAppLink from '@/components/InstallAppLink';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -1693,6 +1694,9 @@ function Footer() {
             <div className="lp-footer-col">
               <Link href="/login">Sign in</Link>
               <Link href="/signup">Start free</Link>
+              {/* Only rendered once the browser has confirmed the app is
+                  installable, so this is never a link that does nothing. */}
+              <InstallAppLink />
               <Link href="/privacy">Privacy</Link>
               <Link href="/terms">Terms</Link>
             </div>

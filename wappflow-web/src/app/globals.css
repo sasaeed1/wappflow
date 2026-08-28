@@ -331,6 +331,19 @@ select:-webkit-autofill {
    background inline and would blow a class-level tint away on mouse-out. */
 .wf-lead-unread { box-shadow: inset 3px 0 0 #ef4444; }
 
+/* Pinned wins the marker when a row is both — "I chose this one" outranks
+   "something happened here", and two stacked bars in 3px is just mud. */
+.wf-lead-pinned { box-shadow: inset 3px 0 0 #6366f1; }
+
+/* The pin control is quiet until you go looking for it: shown always once a row
+   IS pinned (it is state, not a control, at that point), otherwise revealed on
+   hover or keyboard focus. Without the focus rule the button would be reachable
+   by Tab but invisible while focused. */
+.wf-pin-btn { transition: opacity .12s ease, background .12s ease; }
+.wf-lead-row:hover .wf-pin-btn,
+.wf-pin-btn:focus-visible { opacity: 1 !important; }
+.wf-pin-btn:hover { background: var(--surface2); color: var(--text) !important; }
+
 .spin { animation: spin 0.8s linear infinite; }
 
 /* Dark mode: warning/info boxes — swap yellow-on-white to amber-on-dark */

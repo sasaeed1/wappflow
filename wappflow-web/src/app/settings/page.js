@@ -20,6 +20,7 @@ import { Field, Input as UIInput } from '@/components/ui/Field';
 import { useSound, SOUND_KINDS } from '@/lib/sounds';
 import { usePlan, nextPlanLabel, formatMoney } from '@/lib/plan';
 import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
+import InstallAppCard from '@/components/InstallAppCard';
 
 // Map of settings tab → required feature flag + required plan name.
 // If the user's plan doesn't have the feature, the tab is shown locked.
@@ -852,6 +853,13 @@ function NotificationsTab({ showToast }) {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Install the app. Sits above notifications on purpose: on a phone,
+              installing is what makes push notifications actually useful — a
+              browser tab the user closed does not deliver anything. The banner
+              on mobile is one-shot and dismissible, so this is the permanent
+              home for the action. */}
+          <InstallAppCard />
+
           {/* Status card */}
           <div style={{ background: subscribed ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', border: `1.5px solid ${subscribed ? '#a7f3d0' : 'var(--border)'}`, borderRadius: 14, padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ width: 44, height: 44, borderRadius: 13, background: subscribed ? '#10b981' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

@@ -8,9 +8,9 @@ import {
   DollarSign, ArrowUpDown, X, CheckSquare, Square,
   UserCheck, ChevronDown, Tag as TagIcon, RotateCcw,
   MessageCircle, Camera, Globe, MonitorSmartphone, Layers,
-  Trash2, UsersRound, Image as ImageIcon, AlertTriangle
+  Trash2, UsersRound, Image as ImageIcon, AlertTriangle, Pin
 } from 'lucide-react';
-import { leadsAPI, tagsAPI, workspaceAPI, viewsAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI } from '../../lib/api';
+import { leadsAPI, tagsAPI, workspaceAPI, viewsAPI, pinsAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI } from '../../lib/api';
 import { isLeadUnread } from '../../lib/unread';
 import { formatDate } from '../../lib/datetime';
 import { TagChip, TagPicker } from '../../components/TagPicker';
@@ -47,6 +47,11 @@ const SORT_OPTIONS = [
 
 // ── Saved views (per-browser; survives reloads) ──────────────────────────────
 const VIEWS_KEY = 'wf_lead_views';
+
+// Past this many pins the list says so. A nudge, not a rule — the server accepts
+// any number on purpose, because a cap enforced there could not be undone
+// without a migration. Mirrors CLUTTER_WARN_AFTER in backend/lead-pins.js.
+const PIN_WARN_AFTER = 3;
 const readViews = () => { if (typeof window === 'undefined') return []; try { return JSON.parse(localStorage.getItem(VIEWS_KEY) || '[]'); } catch { return []; } };
 const writeViews = (v) => { try { localStorage.setItem(VIEWS_KEY, JSON.stringify(v)); } catch {} };
 
@@ -734,6 +739,11 @@ export default function LeadsListPage() {
   const [toast, setToast] = useState(null);
   const [views, setViews] = useState([]);
   const [activeView, setActiveView] = useState(null);
+  // Pins are server-side and per-user, so they follow you to another machine.
+  // Kept as an array (not a Set) because it is the shape the API returns and the
+  // shape React can compare cheaply in a dependency list.
+  const [pins, setPins] = useState([]);
+  const [pinNotice, setPinNotice] = useState('');
   // Collapsed by default — the queue is a prompt, not the page. Expanded it
   // pushed the pipeline and the leads table below the fold on every visit.
   // The choice is remembered, so opening it once keeps it open.
@@ -759,9 +769,14 @@ export default function LeadsListPage() {
     loadViews();
     fetchAll(pf, ac);
     platformAccountsAPI.getAll().then(r => setPlatformAccounts(r.data.accounts || [])).catch(() => {});
+    // Failing softly: an older API without this route should cost you pinning,
+    // not the leads list.
+    pinsAPI.list().then(r => setPins(r.data.pins || [])).catch(() => {});
   }, []);
 
-  useEffect(() => { applyFilters(); }, [search, statusFilter, tagFilter, sortBy, assignedFilter, dateFrom, dateTo, allLeads]);
+  // `pins` belongs in here: the sort reads it, so without it a freshly pinned
+  // lead would not move until some other filter happened to change.
+  useEffect(() => { applyFilters(); }, [search, statusFilter, tagFilter, sortBy, assignedFilter, dateFrom, dateTo, allLeads, pins]);
 
   const fetchAll = async (pf, ac) => {
     try {
@@ -812,6 +827,13 @@ export default function LeadsListPage() {
       filtered = filtered.filter(l => l.customer_name?.toLowerCase().includes(q) || l.customer_phone?.includes(q) || l.status?.toLowerCase().includes(q));
     }
     filtered.sort((a, b) => {
+      // Pins outrank every sort. A pinned lead that sinks below the fold because
+      // three other people messaged you is exactly the thing pinning exists to
+      // prevent, so this cannot be just another `case` — it has to come first
+      // and apply to all of them. Within the pinned block the chosen sort still
+      // decides the order.
+      const pa = pins.indexOf(a.id) > -1, pb = pins.indexOf(b.id) > -1;
+      if (pa !== pb) return pa ? -1 : 1;
       switch (sortBy) {
         case 'created_at_asc':  return new Date(a.created_at) - new Date(b.created_at);
         case 'created_at_desc': return new Date(b.created_at) - new Date(a.created_at);
@@ -821,6 +843,29 @@ export default function LeadsListPage() {
       }
     });
     setLeads(filtered);
+  };
+
+  // ── Pinned leads ───────────────────────────────────────────────────────────
+  // Optimistic, because the pin icon IS the feedback and a round trip would make
+  // it feel broken. Every endpoint returns the whole list, so a reconcile is a
+  // straight assignment rather than a merge — and a failure restores exactly
+  // what was there before instead of guessing.
+  const togglePin = async (leadId, e) => {
+    e?.stopPropagation?.();
+    const wasPinned = pins.includes(leadId);
+    const before = pins;
+    const next = wasPinned ? pins.filter((p) => p !== leadId) : [leadId, ...pins];
+    setPins(next);
+    if (!wasPinned && next.length === PIN_WARN_AFTER + 1) {
+      setPinNotice('Pinning a lot of leads makes the pin useless — it stops meaning "work this now".');
+      setTimeout(() => setPinNotice(''), 6000);
+    }
+    try {
+      const r = wasPinned ? await pinsAPI.unpin(leadId) : await pinsAPI.pin(leadId);
+      setPins(r.data.pins || []);
+    } catch {
+      setPins(before);
+    }
   };
 
   // ── Saved views ────────────────────────────────────────────────────────────
@@ -1213,6 +1258,17 @@ export default function LeadsListPage() {
           </button>
         </div>
 
+        {/* Clutter nudge. Deliberately transient and non-blocking: the owner
+            asked for unlimited pins, so this says the thing once and gets out of
+            the way rather than standing between you and a fourth pin. */}
+        {pinNotice && (
+          <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 14px', padding: '9px 13px', borderRadius: 10, background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.28)', fontSize: 12.5, color: 'var(--text-muted)' }}>
+            <Pin size={13} color="#6366f1" style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{pinNotice}</span>
+            <button onClick={() => setPinNotice('')} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>×</button>
+          </div>
+        )}
+
         {/* Status tabs */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           {ALL_STATUSES.map(s => {
@@ -1232,7 +1288,7 @@ export default function LeadsListPage() {
         <div className="r-scroll-x" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
 
           {/* Table header */}
-          <div className="r-tw" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
+          <div className="r-tw" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
             <div {...clickable(toggleAll)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {selected.size === leads.length && leads.length > 0
                 ? <CheckSquare size={16} color="#6366f1" />
@@ -1277,8 +1333,9 @@ export default function LeadsListPage() {
             const assignedMember = lead.assigned_to ? memberById(lead.assigned_to) : null;
             const assignedName = assignedMember ? (assignedMember.full_name || assignedMember.invite_email || 'Member') : null;
             const unread = isLeadUnread(lead);
+            const isPinned = pins.includes(lead.id);
             return (
-              <div key={lead.id} className={`r-tw${unread ? ' wf-lead-unread' : ''}`} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--surface)', transition: 'background 0.1s', cursor: 'pointer' }}
+              <div key={lead.id} className={`r-tw wf-lead-row${unread ? ' wf-lead-unread' : ''}${isPinned ? ' wf-lead-pinned' : ''}`} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--surface)', transition: 'background 0.1s', cursor: 'pointer' }}
                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background='var(--surface2)'; }}
                 onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background='var(--surface)'; }}
                 onClick={() => router.push(`/leads/${lead.id}`)}
@@ -1379,12 +1436,32 @@ export default function LeadsListPage() {
                   {value ? `Rs ${value.toLocaleString()}` : '—'}
                 </span>
 
-                {unread && (
-                  <div className="wf-unread-bell" title="New / unread messages" style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <MessageSquare size={12} color="#ef4444" />
-                  </div>
-                )}
-                <ChevronRight size={15} color="#d1d5db" />
+                {/* One cell, not three. The grid has nine columns and this row
+                    was emitting a tenth child whenever a lead was unread, which
+                    silently pushed the chevron onto an implicit second row. */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                  <button
+                    onClick={(e) => togglePin(lead.id, e)}
+                    title={isPinned ? 'Unpin' : 'Pin to the top of the list'}
+                    aria-label={isPinned ? `Unpin ${lead.customer_name || 'lead'}` : `Pin ${lead.customer_name || 'lead'}`}
+                    aria-pressed={isPinned}
+                    className="wf-pin-btn"
+                    style={{
+                      width: 26, height: 26, display: 'grid', placeItems: 'center', flexShrink: 0,
+                      background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer',
+                      color: isPinned ? '#6366f1' : 'var(--text-dim)',
+                      opacity: isPinned ? 1 : 0,   // revealed on row hover, see .wf-pin-btn in globals.css
+                    }}
+                  >
+                    <Pin size={14} fill={isPinned ? '#6366f1' : 'none'} />
+                  </button>
+                  {unread && (
+                    <div className="wf-unread-bell" title="New / unread messages" style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <MessageSquare size={12} color="#ef4444" />
+                    </div>
+                  )}
+                  <ChevronRight size={15} color="#d1d5db" style={{ flexShrink: 0 }} />
+                </div>
               </div>
             );
           }} />
