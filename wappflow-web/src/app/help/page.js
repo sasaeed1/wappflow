@@ -10,6 +10,13 @@ import {
   RefreshCw, Volume2, Calendar, Layers
 } from 'lucide-react';
 
+import { MODULE_SECTIONS } from './sections-modules';
+
+// The module sections live in their own file: this page was written when the
+// product was a WhatsApp CRM, and everything built since — Media Studio,
+// Contracts Studio, Booking, the client portal and print store, the reel
+// editor, the apps, the plan model — was undocumented. Spliced in before
+// Shortcuts so the reference material stays last.
 const SECTIONS = [
   {
     id: 'getting-started',
@@ -147,6 +154,7 @@ const SECTIONS = [
       { title: 'Email templates', body: 'Go to Settings → Email Templates. Create reusable email templates for follow-up sequences. Use variables: {name}, {phone}, {email}, {company} for personalization. Activate templates as email workflows on lead profiles.' },
     ]
   },
+  ...MODULE_SECTIONS,
   {
     id: 'shortcuts',
     label: 'Keyboard Shortcuts & Tips',
