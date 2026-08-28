@@ -68,25 +68,30 @@ drawn — which the new templates rely on, since title and CTA are separate trac
 
 **The reel cluster is fully closed** — #6, #7, #8, #9, #11, #12, #13.
 
-### #20 — client-facing rebuild (in progress)
+### #20 — client-facing rebuild — DONE
 
 Brief, from the owner: *"premium means it shouldn't look like an outdated 2000's
 website page. it needs to be state of the art, should follow the corresponding
 wappflow and its module themes, but better visuals and ui than that would be a
 plus."*
 
-Surveyed all six before touching any. **The gallery `/g/[token]` is already
-strong** — dark, Fraunces serif, gold accent — so this is not a blind rebuild of
-everything; it is bringing the others up to it and past it.
+**Surveyed all six before touching any, and half did not need rebuilding.** The
+gallery already set a strong language (dark `#0b0b0f`, Fraunces, gold `#c2a878`);
+the portfolio and the contract were already good in their own right. Rebuilding
+those would have been change for its own sake.
 
-| Surface | State | Notes |
+| Surface | Verdict | Notes |
 |---|---|---|
-| `/g/[token]` gallery | **Good already** | Sets the language the others follow: `#0b0b0f`, `#c2a878`, Fraunces |
-| `/shop/[token]` print shop | **REBUILT** | Was the 2000s page — flat grey, white cards, and a shop selling prints of photographs that showed *no photographs*. Also fixed a functional gap: orders recorded no `asset_id`, so the studio could not know which image to print |
-| `/d/[token]` contract | Not yet | Has its own three themes; needs judging against them, not replacing |
-| `/book/[slug]` booking | Not yet | |
-| `/folio/[handle]` portfolio | Not yet | |
-| `/client/[token]` portal | Not yet | |
+| `/g/[token]` gallery | **Left alone** | Already strong; it *defines* the language the others now follow |
+| `/folio/[handle]` portfolio | **Left alone** | Full-bleed hero, serif display, gold kicker — already state of the art |
+| `/d/[token]` contract | **Left alone** | White paper on soft grey is *correct* for a legal document. Dark would be worse, not better |
+| `/shop/[token]` print shop | **Rebuilt** | The 2000s page. Also a functional gap: a shop selling prints of photographs showed none, and orders carried no `asset_id` so the studio could not know which image to print |
+| `/book/[slug]` booking | **Rebuilt** | Four equal grey cards → one numbered flow; confirm button states the actual slot. Also: required intake questions were marked only in a *placeholder* and never validated |
+| `/client/[token]` portal | **Rebuilt** | Was ordered by MODULE, not by attention — an unsigned contract and an unpaid invoice now surface first as "needs you". Emoji icons replaced (they carried the OS vendor's art direction, not the studio's) |
+
+`app/public-theme.css` holds the language once; the three rebuilt surfaces
+consume the tokens rather than each keeping a private palette, so they cannot
+drift apart the way three hand-rolled grey pages already had.
 
 Other projects:
 
