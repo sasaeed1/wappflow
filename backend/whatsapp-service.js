@@ -23,17 +23,22 @@ function persistWaMedia(media, mediaType) {
   const ts = Date.now();
   const rand = Math.random().toString(36).slice(2, 8); // history imports land in the same millisecond
   const mime = media.mimetype || '';
+  // The declared type is the generic 'media' for anything whatsapp-web.js does
+  // not name — stickers on the live path, video notes, whatever ships next. Let
+  // the bytes decide in that case, so the file gets the right folder and
+  // extension instead of landing as a nameless .bin nobody can open.
+  const kind = waEffectiveType(mediaType, mime);
   let subDir, filename;
 
-  if (mediaType === 'voice') {
+  if (kind === 'voice') {
     const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'mp4' : mime.includes('mpeg') ? 'mp3' : 'ogg';
     subDir = 'voices';
     filename = `voice-${ts}-${rand}.${ext}`;
-  } else if (mediaType === 'image') {
+  } else if (kind === 'image') {
     const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
     subDir = 'images';
     filename = `img-${ts}-${rand}.${ext}`;
-  } else if (mediaType === 'video') {
+  } else if (kind === 'video') {
     const ext = mime.includes('webm') ? 'webm' : 'mp4';
     subDir = 'videos';
     filename = `video-${ts}-${rand}.${ext}`;
@@ -53,11 +58,42 @@ function persistWaMedia(media, mediaType) {
 }
 
 // The media kind we store, derived from whatsapp-web.js's message type.
+// 'ptv' is a round video note and 'gif' is an mp4 WhatsApp flags as a gif. Both
+// are video and both used to fall through to the generic 'media', which is why
+// three mp4s were sitting in /uploads/files as nameless .bin attachments.
 function waMediaType(type) {
   if (type === 'ptt' || type === 'audio') return 'voice';
   if (type === 'image' || type === 'sticker') return 'image';
-  if (type === 'video') return 'video';
+  if (type === 'video' || type === 'ptv' || type === 'gif') return 'video';
   return 'media';
+}
+
+// WhatsApp keeps adding message types, and every one we fail to recognise lands
+// as a nameless .bin "attachment" the thread can only offer as a download. The
+// bytes always know what they are, so when the declared type tells us nothing,
+// ask the mimetype instead. This is what lets an unrecognised FUTURE type still
+// render as the picture or clip it actually is, with no code change.
+function waTypeFromMime(mime) {
+  const m = String(mime || '').toLowerCase();
+  if (m.startsWith('image/')) return 'image';
+  if (m.startsWith('video/')) return 'video';
+  if (m.startsWith('audio/')) return 'voice';
+  return 'media';
+}
+
+// The type we actually store: whatever the message declared, unless that was the
+// generic 'media', in which case the bytes get the final say.
+function waEffectiveType(declared, mime) {
+  return (!declared || declared === 'media') ? waTypeFromMime(mime) : declared;
+}
+
+// The placeholder body a media message gets when WhatsApp sent no caption.
+function waBodyFallback(mediaType) {
+  return mediaType === 'voice' ? '[Voice Note]'
+    : mediaType === 'image' ? '[Image]'
+    : mediaType === 'video' ? '[Video]'
+    : mediaType === 'media' ? '[File]'
+    : '[Media]';
 }
 
 class WhatsAppService {
@@ -490,23 +526,25 @@ class WhatsAppService {
           let mediaType = null;
           let mediaUrl = null;
           if (message.hasMedia) {
-            if (msgType === 'ptt' || msgType === 'audio') {
-              mediaType = 'voice';
-            } else if (msgType === 'image') {
-              mediaType = 'image';
-            } else if (msgType === 'video') {
-              mediaType = 'video';
-            } else {
-              mediaType = 'media';
-            }
+            // waMediaType, NOT a second inline copy of the same mapping. This path
+            // used to hand-roll it and the two drifted: waMediaType maps 'sticker'
+            // to 'image', the copy here had no sticker case at all, so it fell
+            // through to 'media'. A sticker imported from history therefore
+            // rendered as a picture while the SAME sticker arriving live rendered
+            // as a "📎 Attachment" link. One mapping, one behaviour.
+            mediaType = waMediaType(msgType);
 
             // Same downloader as both sync importers. It must be this one and not
             // message.downloadMedia(): on this account the library call fails for
             // live messages too — a brand-new voice note failed with the minified
             // "r" while the in-page path recovered 31 of 31 historical files.
             this._mediaFailuresThisRun = 0;
-            mediaUrl = await this._downloadMediaFor(message, waId, mediaType);
-            if (mediaUrl) console.log(`📎 Media saved [${mediaType}]: ${mediaUrl}`);
+            const got = await this._downloadMediaFor(message, waId, mediaType);
+            if (got) {
+              mediaUrl = got.url;
+              mediaType = got.type;   // may have been resolved from the mimetype
+              console.log(`📎 Media saved [${mediaType}]: ${mediaUrl}`);
+            }
           }
 
           if (waId) {
@@ -525,11 +563,7 @@ class WhatsAppService {
               return;
             }
           }
-          const fallbackBody = mediaType === 'voice' ? '[Voice Note]'
-            : mediaType === 'image' ? '[Image]'
-            : mediaType === 'video' ? '[Video]'
-            : mediaType === 'media' ? '[File]'
-            : '[Media]';
+          const fallbackBody = waBodyFallback(mediaType);
           this.db.prepare(
             `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id, platform, platform_account_id) VALUES (?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP, ?, 'whatsapp', ?)`
           ).run(msgId, lead.id, user.id, message.body || fallbackBody, mediaType, mediaUrl, waId, this.accountId || null);
@@ -1161,7 +1195,11 @@ class WhatsAppService {
             { data: res.data, mimetype: res.mimetype, filename: res.filename },
             mediaType
           );
-          if (url) return url;
+          // Return the RESOLVED type too. persistWaMedia may have upgraded a
+          // generic 'media' to image/video/voice from the mimetype, and the row
+          // has to be stored with the same kind the file was written as —
+          // otherwise the thread still renders a picture as an attachment link.
+          if (url) return { url, type: waEffectiveType(mediaType, res.mimetype) };
         } else if (res) {
           this._lastMediaReason = res;
         }
@@ -1172,10 +1210,14 @@ class WhatsAppService {
 
     // Fall back to the library, in case a future WhatsApp Web build breaks the
     // in-page shape above but leaves whatsapp-web.js working.
-    const attempt = async (msg) => persistWaMedia(await msg.downloadMedia(), mediaType);
+    const attempt = async (msg) => {
+      const m = await msg.downloadMedia();
+      const url = persistWaMedia(m, mediaType);
+      return url ? { url, type: waEffectiveType(mediaType, m && m.mimetype) } : null;
+    };
     try {
-      const url = await attempt(message);
-      if (url) return url;
+      const got = await attempt(message);
+      if (got) return got;
     } catch (e) {
       this._lastMediaError = e;
     }
@@ -1307,13 +1349,14 @@ class WhatsAppService {
     const out = [];
     for (const m of messages) {
       const waKey = WhatsAppService.waMessageKey(m.id);
-      const mediaType = m.hasMedia ? waMediaType(m.type) : null;
+      let mediaType = m.hasMedia ? waMediaType(m.type) : null;
       let mediaUrl = null;
 
       // Without this the row lands with media_type but no media_url, and the
       // thread renders the literal "[Image]" instead of the photo.
       if (m.hasMedia && !known.has(waKey)) {
-        mediaUrl = await this._downloadMediaFor(m, waKey, mediaType);
+        const got = await this._downloadMediaFor(m, waKey, mediaType);
+        if (got) { mediaUrl = got.url; mediaType = got.type; }
       }
 
       out.push({
@@ -1516,14 +1559,10 @@ class WhatsAppService {
               if (dup) continue;
             }
             const ts = new Date(m.ts * 1000).toISOString().replace('T', ' ').slice(0, 19);
-            let mediaType = null;
-            let bodyFallback = '[Media]';
-            if (m.hasMedia) {
-              if (m.type === 'ptt' || m.type === 'audio') { mediaType = 'voice'; bodyFallback = '[Voice Note]'; }
-              else if (m.type === 'image' || m.type === 'sticker') { mediaType = 'image'; bodyFallback = '[Image]'; }
-              else if (m.type === 'video') { mediaType = 'video'; bodyFallback = '[Video]'; }
-              else { mediaType = 'media'; bodyFallback = '[File]'; }
-            }
+            // waMediaType — this was the THIRD hand-rolled copy of the same
+            // mapping in this file, and each copy knew a different set of types.
+            let mediaType = m.hasMedia ? waMediaType(m.type) : null;
+            let bodyFallback = waBodyFallback(mediaType);
 
             // _collectMissedFromPage can only hand back a serializable `hasMedia`
             // flag from the browser context, so the actual file has to be fetched
@@ -1533,7 +1572,13 @@ class WhatsAppService {
             if (mediaType && waId) {
               try {
                 const full = await this.client.getMessageById(waId);
-                if (full) mediaUrl = persistWaMedia(await full.downloadMedia(), mediaType);
+                if (full) {
+                  const m2 = await full.downloadMedia();
+                  mediaUrl = persistWaMedia(m2, mediaType);
+                  // Same resolution as the other two download paths, so a sticker
+                  // recovered by missed-sync is stored as an image like everywhere else.
+                  if (mediaUrl) mediaType = waEffectiveType(mediaType, m2 && m2.mimetype);
+                }
               } catch (e) {
                 console.log(`⚠️ Missed-sync media download failed [${mediaType}]: ${e.message}`);
               }
@@ -1876,4 +1921,4 @@ class WhatsAppManager {
 }
 
 // persistWaMedia/waMediaType are exported for the media regression test.
-module.exports = { WhatsAppService, WhatsAppManager, persistWaMedia, waMediaType };
+module.exports = { WhatsAppService, WhatsAppManager, persistWaMedia, waMediaType, waTypeFromMime, waEffectiveType };

@@ -25,7 +25,7 @@ const os = require('os');
 const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-media-'));
 process.env.DATA_DIR = SCRATCH;
 
-const { persistWaMedia, waMediaType } = require('./whatsapp-service.js');
+const { persistWaMedia, waMediaType, waEffectiveType } = require('./whatsapp-service.js');
 
 let pass = 0, fail = 0;
 const check = (n, fn) => {
@@ -175,6 +175,75 @@ check('the sync endpoint backfills a duplicate too', () => {
   assert(i > -1, 'sync endpoint does not check the stored media_url');
   const block = srvSrc.slice(i, i + 700);
   assert(/UPDATE messages SET media_url/.test(block), 'sync endpoint still skips without repairing');
+});
+
+// ── Every media kind WhatsApp can send, not just the four we first thought of ──
+//
+// The bug: three separate hand-rolled copies of the type mapping lived in this
+// file, and each knew a different set of types. A sticker imported from history
+// became an image; the SAME sticker arriving live had no case at all, fell
+// through to the generic 'media', and rendered as a "📎 Attachment" link. Round
+// video notes and gifs did the same — prod had a RIFF/WEBP sticker and three
+// ftypmp42 mp4s sitting in /uploads/files as nameless .bin downloads.
+//
+// Asserts CAPABILITY: that each wire type resolves to the kind the thread can
+// render, and that an UNRECOGNISED type still resolves correctly from its bytes.
+console.log('\n[5] every media kind resolves to something the thread can render');
+
+check('stickers, video notes and gifs are not generic attachments', () => {
+  assert.strictEqual(waMediaType('sticker'), 'image', 'sticker must render as a picture');
+  assert.strictEqual(waMediaType('ptv'), 'video', 'round video note must render as video');
+  assert.strictEqual(waMediaType('gif'), 'video', 'gif must render as video');
+  assert.strictEqual(waMediaType('ptt'), 'voice');
+  assert.strictEqual(waMediaType('document'), 'media', 'a real document is still a file');
+});
+
+check('an UNKNOWN future type is resolved from its bytes, not dropped to a .bin', () => {
+  // Whatever WhatsApp ships next arrives with a type we have never heard of.
+  assert.strictEqual(waEffectiveType(waMediaType('some_future_type'), 'image/webp'), 'image');
+  assert.strictEqual(waEffectiveType(waMediaType('whatever'), 'video/mp4'), 'video');
+  assert.strictEqual(waEffectiveType(waMediaType('nonsense'), 'audio/ogg'), 'voice');
+  // A genuine document must NOT be second-guessed into media it isn't.
+  assert.strictEqual(waEffectiveType('media', 'application/pdf'), 'media');
+  // An explicitly declared kind is never overridden by the mimetype.
+  assert.strictEqual(waEffectiveType('image', 'application/octet-stream'), 'image');
+});
+
+check('a mistyped sticker is written as a real .webp image, not a nameless .bin', () => {
+  // This is the exact shape prod had: declared 'media', bytes are WebP.
+  const url = persistWaMedia({ data: PNG, mimetype: 'image/webp' }, 'media');
+  assert(/^\/uploads\/images\/img-.*\.webp$/.test(url), `sticker still lands as a file: ${url}`);
+  assert(onDisk(url), 'file was not written');
+});
+
+check('a mistyped video note is written as a playable .mp4', () => {
+  const url = persistWaMedia({ data: PNG, mimetype: 'video/mp4' }, 'media');
+  assert(/^\/uploads\/videos\/video-.*\.mp4$/.test(url), `video note still lands as a file: ${url}`);
+});
+
+check('a real document is still stored as a file', () => {
+  const url = persistWaMedia({ data: PNG, mimetype: 'application/pdf', filename: 'report.pdf' }, 'media');
+  assert(/^\/uploads\/files\//.test(url), `document was misfiled: ${url}`);
+});
+
+check('all three download paths store the RESOLVED type, not the declared one', () => {
+  // Otherwise the file is written as an image while the row still says 'media',
+  // and the thread renders an attachment link pointing at a picture.
+  const fn = waSrc;
+  const paths = [...fn.matchAll(/waEffectiveType\(/g)];
+  assert(paths.length >= 4,
+    `expected the resolved type on every download path, found ${paths.length} uses`);
+  // and the live handler must actually assign it back before the INSERT
+  const live = fn.indexOf('_downloadMediaFor(message, waId, mediaType)');
+  assert(live > -1, 'live download call site moved');
+  assert(/mediaType = got\.type/.test(fn.slice(live, live + 400)),
+    'live handler downloads the resolved type and then stores the declared one');
+});
+
+check('the type mapping is defined ONCE — no more hand-rolled copies', () => {
+  // Three copies is what let history and live disagree about the same sticker.
+  const copies = [...waSrc.matchAll(/===\s*'sticker'/g)].length;
+  assert.strictEqual(copies, 1, `the sticker case appears in ${copies} places — it must live in waMediaType alone`);
 });
 
 try { fs.rmSync(SCRATCH, { recursive: true, force: true }); } catch {}
