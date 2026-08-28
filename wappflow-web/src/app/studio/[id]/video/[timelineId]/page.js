@@ -79,7 +79,11 @@ const TRACK_META = {
 const TRACK_ORDER = ['video', 'overlay', 'text', 'audio'];
 const trackH = (type) => (TRACK_META[type] || TRACK_META.video).height;
 const TRACK_GAP = 6;
-const HEAD_W = 104;
+// Wide enough for the longest label AND the two controls. The controls fade in
+// on hover but still occupy their 20px, so sizing the header for the visible
+// state alone truncated "Media" to "MEDI" — measured 27px available against 35px
+// wanted. Collapsing the buttons instead would shift the label on every hover.
+const HEAD_W = 140;
 
 /** Document order is arbitrary; presentation order is not. Stable within a type. */
 function orderTracks(tracks) {
@@ -115,7 +119,10 @@ export default function VideoEditor() {
   const [tlHeight, setTlHeight] = useState(() => {
     if (typeof window === 'undefined') return 210;
     const saved = parseInt(localStorage.getItem('wf_ve_tl_h') || '0', 10);
-    return saved >= 140 && saved <= 640 ? saved : 210;
+    if (saved >= 140 && saved <= 640) return saved;
+    // On a short window the preview and the timeline are in direct competition,
+    // so the default never takes more than ~40% and the grip settles the rest.
+    return Math.round(clamp(window.innerHeight * 0.4, 150, 210));
   });
   useEffect(() => { try { localStorage.setItem('wf_ve_tl_h', String(tlHeight)); } catch {} }, [tlHeight]);
   const [showExport, setShowExport] = useState(false);
