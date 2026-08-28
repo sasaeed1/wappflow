@@ -115,6 +115,9 @@ app.use(cors({
 // the stream). type:()=>true so charset-suffixed content-types can't slip through to
 // express.json and silently break verification. DO NOT reorder below express.json.
 app.use('/api/payments/webhook', express.raw({ type: () => true, limit: '1mb' }));
+// Meta signs its webhooks over the RAW bytes too (X-Hub-Signature-256), so the
+// same ordering rule applies: parse raw here, JSON afterwards in the handler.
+app.use(['/api/webhooks/instagram', '/api/webhooks/facebook'], express.raw({ type: () => true, limit: '2mb' }));
 app.use(express.json({ limit: '50mb' }));
 // Static uploads — add an explicit Access-Control-Allow-Origin so cross-origin <img> tags work.
 app.use('/uploads', (req, res, next) => {
@@ -234,6 +237,40 @@ const bearerOf = (req) => {
   if (header) return header;
   return SSE_PATHS.has(req.path) ? req.query.token : undefined;
 };
+
+// ── Meta webhook authenticity ────────────────────────────────────────────────
+//
+// Instagram and Facebook webhooks accepted ANY POST: no signature check at all,
+// so anyone who found the URL could inject messages and leads into the CRM.
+//
+// Meta signs the raw body with the app secret as X-Hub-Signature-256. Verifying
+// it is the only thing that makes these endpoints trustworthy.
+//
+// FAILING CLOSED IS DELIBERATE: with no META_APP_SECRET configured we REFUSE
+// rather than accept. An unauthenticated write path into customer records is not
+// something to leave open for convenience — and nothing is connected to these
+// endpoints today, so refusing costs nothing and prevents a silent hole.
+const META_APP_SECRET = process.env.META_APP_SECRET || '';
+
+function verifyMetaSignature(req) {
+  if (!META_APP_SECRET) return { ok: false, why: 'META_APP_SECRET is not configured' };
+  const header = req.header('X-Hub-Signature-256') || '';
+  const m = /^sha256=([0-9a-f]{64})$/i.exec(header.trim());
+  if (!m) return { ok: false, why: 'missing or malformed X-Hub-Signature-256' };
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+  const expected = crypto.createHmac('sha256', META_APP_SECRET).update(raw).digest();
+  let got;
+  try { got = Buffer.from(m[1], 'hex'); } catch { return { ok: false, why: 'bad signature encoding' }; }
+  // timingSafeEqual throws on a length mismatch, so check first.
+  if (got.length !== expected.length || !crypto.timingSafeEqual(got, expected)) return { ok: false, why: 'signature mismatch' };
+  return { ok: true };
+}
+
+// The raw parser above hands these handlers a Buffer, not an object.
+function metaBody(req) {
+  try { return Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString('utf8')) : (req.body || {}); }
+  catch { return {}; }
+}
 
 const auth = (req, res, next) => {
   try {
@@ -4572,6 +4609,27 @@ app.get('/api/memories', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Capability URLs must never become "knowledge" ────────────────────────────
+//
+// The learner reads staff replies and stores what looks like a durable fact. But
+// staff replies routinely contain the links we generate — a contract signing URL,
+// a gallery share link, a client portal link, a pay link. Those are BEARER
+// CREDENTIALS: whoever holds one can sign the contract or open the gallery.
+//
+// Stored as a memory they are (a) shown in the Knowledge UI, (b) fed into every
+// AI prompt as memory context, and therefore (c) sent to the model provider on
+// every call — for a link that never expires. Found in production: a live
+// contract signing link and a gallery share link, both learned from chat.
+//
+// A fact about the business survives redaction ("the gallery link is <link>"
+// still records that a gallery was sent). A token does not need to be kept to
+// make the sentence useful.
+const CAPABILITY_URL = /https?:\/\/[^\s"'<>]*\/(?:d|g|shop|client|book|folio|pay|desktop)\/[^\s"'<>]+/gi;
+const redactCapabilityUrls = (text) =>
+  String(text == null ? '' : text).replace(CAPABILITY_URL, (m) => {
+    try { return new URL(m).origin + '/… [link removed]'; } catch { return '[link removed]'; }
+  });
+
 // POST /api/memories — manually add a memory
 app.post('/api/memories', auth, (req, res) => {
   try {
@@ -4581,7 +4639,7 @@ app.post('/api/memories', auth, (req, res) => {
     db.prepare(`
       INSERT INTO ai_memories (id, workspace_id, memory_type, key, value, confidence, source)
       VALUES (?, ?, ?, ?, ?, ?, 'manual')
-    `).run(id, req.workspaceId, memory_type || 'other', key, value, confidence || 90);
+    `).run(id, req.workspaceId, memory_type || 'other', redactCapabilityUrls(key), redactCapabilityUrls(value), confidence || 90);
     res.status(201).json(db.prepare('SELECT * FROM ai_memories WHERE id = ?').get(id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4658,7 +4716,8 @@ app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (r
         const insertAll = db.transaction((mems) => {
           mems.forEach(m => {
             if (m.key && m.value) {
-              insertMemory.run(generateId(), req.workspaceId, m.memory_type || 'other', m.key, m.value, m.confidence || 80, docId);
+              insertMemory.run(generateId(), req.workspaceId, m.memory_type || 'other',
+            redactCapabilityUrls(m.key), redactCapabilityUrls(m.value), m.confidence || 80, docId);
             }
           });
         });
@@ -4737,7 +4796,10 @@ app.post('/api/knowledge/learn-from-messages', auth, async (req, res) => {
     const insertAll = db.transaction((mems) => {
       mems.forEach(m => {
         if (m.key && m.value) {
-          insertMemory.run(generateId(), req.workspaceId, m.memory_type || 'other', m.key, m.value, m.confidence || 70);
+          // Redacted before storage, not before display: a token already written
+          // to the row would still reach the model and the Knowledge screen.
+          insertMemory.run(generateId(), req.workspaceId, m.memory_type || 'other',
+            redactCapabilityUrls(m.key), redactCapabilityUrls(m.value), m.confidence || 70);
           learned++;
         }
       });
@@ -5232,14 +5294,27 @@ app.get('/api/webhooks/instagram', (req, res) => {
 
 app.post('/api/webhooks/instagram', (req, res) => {
   try {
-    const body = req.body;
+    const sig = verifyMetaSignature(req);
+    if (!sig.ok) {
+      console.warn(`⚠️ Rejected unsigned instagram webhook: ${sig.why}`);
+      return res.sendStatus(403);
+    }
+    const body = metaBody(req);
     if (body.object !== 'instagram') return res.sendStatus(404);
 
     (body.entry || []).forEach(entry => {
       const pageId = entry.id;
       const account = db.prepare("SELECT * FROM platform_accounts WHERE platform = 'instagram' AND account_handle = ?").get(pageId)
-        || db.prepare("SELECT * FROM platform_accounts WHERE platform = 'instagram' ORDER BY created_at ASC LIMIT 1").get();
-      if (!account) return;
+;
+      // NO cross-workspace fallback. This used to drop back to the FIRST
+      // instagram account in the whole database when the page id did not
+      // match — so a crafted payload landed in an arbitrary tenant's CRM. Same
+      // class of bug as the WhatsApp _resolveOwner leak: when we cannot tell
+      // whose data this is, the answer is to ignore it, never to guess.
+      if (!account) {
+        console.warn(`⚠️ instagram webhook for unknown page ${pageId} — ignored`);
+        return;
+      }
 
       (entry.messaging || []).forEach(event => {
         if (!event.message || event.message.is_echo) return;
@@ -5294,14 +5369,27 @@ app.get('/api/webhooks/facebook', (req, res) => {
 
 app.post('/api/webhooks/facebook', (req, res) => {
   try {
-    const body = req.body;
+    const sig = verifyMetaSignature(req);
+    if (!sig.ok) {
+      console.warn(`⚠️ Rejected unsigned facebook webhook: ${sig.why}`);
+      return res.sendStatus(403);
+    }
+    const body = metaBody(req);
     if (body.object !== 'page') return res.sendStatus(404);
 
     (body.entry || []).forEach(entry => {
       const pageId = entry.id;
       const account = db.prepare("SELECT * FROM platform_accounts WHERE platform = 'facebook' AND account_handle = ?").get(pageId)
-        || db.prepare("SELECT * FROM platform_accounts WHERE platform = 'facebook' ORDER BY created_at ASC LIMIT 1").get();
-      if (!account) return;
+;
+      // NO cross-workspace fallback. This used to drop back to the FIRST
+      // facebook account in the whole database when the page id did not
+      // match — so a crafted payload landed in an arbitrary tenant's CRM. Same
+      // class of bug as the WhatsApp _resolveOwner leak: when we cannot tell
+      // whose data this is, the answer is to ignore it, never to guess.
+      if (!account) {
+        console.warn(`⚠️ facebook webhook for unknown page ${pageId} — ignored`);
+        return;
+      }
 
       (entry.messaging || []).forEach(event => {
         if (!event.message || event.message.is_echo) return;

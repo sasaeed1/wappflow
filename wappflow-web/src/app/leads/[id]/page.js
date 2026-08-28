@@ -26,6 +26,7 @@ import { markLeadSeen } from '../../../lib/unread';
 import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
 import SendInvoiceModal from '@/components/SendInvoiceModal';
 import LeadAssistStrip from '@/components/LeadAssistStrip';
+import { sanitizeHtml } from '@/lib/sanitizeHtml';
 import ContactActions from '@/components/ContactActions';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
@@ -146,7 +147,11 @@ function EmailBodyRow({ em }) {
       {open && (
         <div style={{ padding: '8px 16px 14px' }}>
           <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.7 }}
-            dangerouslySetInnerHTML={{ __html: em.body || '' }} />
+            /* Inbound email is attacker-controlled: anyone who knows the
+               connected address can send HTML here. Rendered raw, an <img
+               onerror> would run in an authenticated CRM session and could read
+               the session token straight out of localStorage. */
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(em.body || '') }} />
         </div>
       )}
     </div>

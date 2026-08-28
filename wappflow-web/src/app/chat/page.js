@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { sanitizeHtml } from '@/lib/sanitizeHtml';
 import { useRouter } from 'next/navigation';
 import {
   Hash, Plus, Send, Paperclip, Smile, X, Trash2,
@@ -43,41 +44,9 @@ const FORMAT_BUTTONS = [
   { cmd: 'formatBlock|<pre>', label: 'Code Block', icon: Code },
 ];
 
-// Strict allowlist sanitizer — keeps formatting tags, strips scripts/event handlers/styles
-const ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'BR', 'P', 'DIV', 'SPAN', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'CODE', 'A']);
-function sanitizeHtml(html) {
-  if (typeof window === 'undefined') return html;
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  const walk = (node) => {
-    const children = Array.from(node.childNodes);
-    for (const child of children) {
-      if (child.nodeType === 1) { // ELEMENT
-        if (!ALLOWED_TAGS.has(child.tagName)) {
-          // Replace disallowed elements with their text content
-          const text = document.createTextNode(child.textContent || '');
-          node.replaceChild(text, child);
-          continue;
-        }
-        // Strip all attributes except href on <a>
-        const attrs = Array.from(child.attributes || []);
-        for (const attr of attrs) {
-          if (child.tagName === 'A' && attr.name === 'href' && /^https?:|^mailto:/i.test(attr.value)) continue;
-          child.removeAttribute(attr.name);
-        }
-        if (child.tagName === 'A') {
-          child.setAttribute('target', '_blank');
-          child.setAttribute('rel', 'noreferrer noopener');
-        }
-        walk(child);
-      } else if (child.nodeType !== 3) { // not TEXT
-        node.removeChild(child);
-      }
-    }
-  };
-  walk(tmp);
-  return tmp.innerHTML;
-}
+// The sanitiser moved to lib/sanitizeHtml.js so the lead page could use the
+// same one. It had been correct here and absent there, which is how inbound
+// email came to be rendered raw.
 
 // Render message body — supports new HTML format and legacy *markdown*
 function FormattedText({ text }) {

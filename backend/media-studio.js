@@ -1798,11 +1798,36 @@ Only suggest actions that make sense for the question. If none make sense, retur
       .run(generateId(), gallery.workspace_id, gallery.project_id, JSON.stringify({ export_id: id, watermark: wmText }));
     return id;
   }
+  // ── Export download links are signed and expiring ───────────────────────────
+  //
+  // The route below had NO authentication, NO tenancy check and NO expiry: the
+  // export id alone was the capability, forever. The id is a random UUID so it
+  // cannot be guessed, but an id is not a secret in practice — it travels in
+  // logs, Referer headers, browser history and shared screenshots, and once out
+  // it granted permanent access to a complete gallery ZIP belonging to whichever
+  // workspace produced it.
+  //
+  // The link is now signed with the server secret over (id, expiry). It cannot be
+  // forged without the secret, and it stops working on its own. The signature is
+  // added HERE, where the URL is built, so the browser's plain <a download> link
+  // keeps working with no frontend change — which is why the route was
+  // unauthenticated in the first place (an <a> cannot send a bearer token).
+  const EXPORT_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const exportSecret = () => process.env.JWT_SECRET || 'wappflow-export-fallback';
+  function signExport(id, expiresAt) {
+    return crypto.createHmac('sha256', exportSecret())
+      .update(`${id}.${expiresAt}`).digest('base64url').slice(0, 32);
+  }
+  function exportLink(exp) {
+    const e = Date.now() + EXPORT_LINK_TTL_MS;
+    return `/api/media/exports/${exp.id}/file?e=${e}&t=${signExport(exp.id, e)}`;
+  }
+
   function shapeExport(exp) {
     return {
       id: exp.id, gallery_id: exp.gallery_id, variant: exp.variant, status: exp.status,
       file_count: exp.file_count, size_bytes: exp.size_bytes, watermark: !!exp.watermark,
-      download_url: (exp.status === 'ready' && exp.storage_key) ? `/api/media/exports/${exp.id}/file` : null,
+      download_url: (exp.status === 'ready' && exp.storage_key) ? exportLink(exp) : null,
       error: exp.error_message || undefined,
     };
   }
@@ -1813,6 +1838,15 @@ Only suggest actions that make sense for the question. If none make sense, retur
   // (on disk) and new ones (in R2) both download transparently.
   app.get('/api/media/exports/:id/file', async (req, res) => {
     try {
+      // Signature first: an unsigned or expired link must never reach the file,
+      // and must not reveal whether the id exists.
+      const e = Number(req.query.e || 0);
+      const t = String(req.query.t || '');
+      if (!e || !t || Date.now() > e) return res.status(403).json({ error: 'This download link has expired — reopen the shoot for a fresh one.' });
+      const want = signExport(req.params.id, e);
+      const a = Buffer.from(t), b = Buffer.from(want);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(403).json({ error: 'Invalid download link' });
+
       const exp = db.prepare("SELECT * FROM ms_exports WHERE id = ? AND status = 'ready'").get(req.params.id);
       if (!exp || !exp.storage_key) return res.status(404).json({ error: 'Export not found' });
       const local = path.join(uploadsDir, exp.storage_key);
