@@ -104,6 +104,27 @@ export default function DownloadClient() {
           })}
         </div>
 
+        {/* Everything now links here, including from a phone — so this page has
+            to answer "how do I get the app" for a phone too, not just a laptop.
+            The mobile app is the same web app installed to a home screen; there
+            is no separate store listing, and saying so plainly is better than
+            letting someone hunt for one that does not exist. */}
+        <section className="dl-note">
+          <h3 className="dl-note-h">On your phone</h3>
+          <p>
+            There is no App Store or Play Store listing — WappFlow installs straight from the browser,
+            which means no review delays and no separate account. It behaves like any other app once
+            installed: its own icon, full screen, and push notifications.
+          </p>
+          <ul>
+            <li><b>Android / Chrome:</b> open WappFlow, then menu (⋮) → <b>Add to Home screen</b> — or tap Install when the app offers it.</li>
+            <li><b>iPhone / Safari:</b> open WappFlow, tap <b>Share</b>, then <b>Add to Home Screen</b>. Notifications need iOS 16.4 or later, and only work once it is on the home screen.</li>
+          </ul>
+          <p className="dl-quiet">
+            Already signed in on this device? Settings → Apps &amp; Devices has the same options.
+          </p>
+        </section>
+
         {/* Said before they click, not after. */}
         <section className="dl-note">
           <h3 className="dl-note-h">A note on the install warning</h3>

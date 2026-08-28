@@ -8,7 +8,7 @@ import {
   Settings, Zap, Users, FileText, Bell, BellOff, Bot, ChevronRight,
   Upload, Eye, EyeOff, RefreshCw, Sparkles, Shield, Hash, Clock,
   ToggleLeft, ToggleRight, AlertCircle, Info, Palette, Lock,
-  MessageCircle, Camera, Globe as GlobeIcon, MonitorSmartphone,
+  MessageCircle, Camera, Globe as GlobeIcon, MonitorSmartphone, Smartphone, Monitor,
   Link, Unlink, Copy, Wifi, WifiOff, Layers, QrCode, Key,
   Plug, Calendar, Video, Volume2, Play
 } from 'lucide-react';
@@ -54,6 +54,9 @@ const CURRENCIES = [
 
 const TABS = [
   { id: 'connections', label: 'Connections', icon: Layers, color: '#6366f1' },
+  // Near the top on purpose: "how do I get the app" was previously answerable
+  // only by scrolling to Notifications, which nobody would think to open.
+  { id: 'apps', label: 'Apps & Devices', icon: Smartphone, color: '#0ea5e9' },
   { id: 'plan', label: 'Plan & Billing', icon: Zap, color: '#8b5cf6' },
   { id: 'appearance', label: 'Appearance', icon: Palette, color: '#6366f1' },
   { id: 'company', label: 'Company Profile', icon: Building2, color: '#6366f1' },
@@ -747,6 +750,41 @@ function TagsTab({ showToast }) {
 }
 
 // ── Notifications Tab ─────────────────────────────────────────────────────────
+function AppsTab() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px' }}>Apps & Devices</h2>
+        <p style={{ fontSize: 13.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+          WappFlow runs in the browser, on your phone, and as a desktop app. Same account, same data.
+        </p>
+      </div>
+
+      <InstallAppCard />
+
+      {/* The desktop app is a different thing from installing this page to a home
+          screen, and both belong here — "how do I get the app" is one question in
+          a user's head, not two. */}
+      <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, padding: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ width: 44, height: 44, borderRadius: 13, background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <Monitor size={20} color="white" />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', margin: '0 0 2px' }}>Desktop app</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+            For heavy local libraries: AI scoring on your own hardware, watched folders, and work that
+            continues when the connection does not.
+          </p>
+        </div>
+        <a href="/download" target="_blank" rel="noreferrer"
+           style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', borderRadius: 10, fontSize: 13, fontWeight: 700, color: 'white', textDecoration: 'none', flexShrink: 0 }}>
+          Download
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function NotificationsTab({ showToast }) {
   const sound = useSound();
   const [supported, setSupported] = useState(false);
@@ -853,12 +891,14 @@ function NotificationsTab({ showToast }) {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Install the app. Sits above notifications on purpose: on a phone,
-              installing is what makes push notifications actually useful — a
-              browser tab the user closed does not deliver anything. The banner
-              on mobile is one-shot and dismissible, so this is the permanent
-              home for the action. */}
-          <InstallAppCard />
+          {/* A pointer, not a second copy of the card — the card lives in
+              Apps & Devices. Installing still belongs in this conversation
+              because on a phone it is what makes push useful at all: a browser
+              tab the user closed does not deliver anything. */}
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+            On a phone, notifications only arrive reliably once WappFlow is installed to your home
+            screen — <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('wf-settings-tab', { detail: 'apps' })); }} style={{ color: 'var(--accent-fg, #6366f1)', fontWeight: 600 }}>install it from Apps &amp; Devices</a>.
+          </p>
 
           {/* Status card */}
           <div style={{ background: subscribed ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', border: `1.5px solid ${subscribed ? '#a7f3d0' : 'var(--border)'}`, borderRadius: 14, padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -2440,6 +2480,7 @@ export default function SettingsPage() {
               {activeTab === 'autoreply' && <AutoReplyTab showToast={showToast} />}
               {activeTab === 'tags' && <TagsTab showToast={showToast} />}
               {activeTab === 'lost-reasons' && <LostReasonsTab showToast={showToast} />}
+              {activeTab === 'apps' && <AppsTab />}
               {activeTab === 'notifications' && <NotificationsTab showToast={showToast} />}
               {activeTab === 'integrations' && <IntegrationsTab showToast={showToast} />}
               {activeTab === 'workspace' && <WorkspaceTab showToast={showToast} router={router} />}

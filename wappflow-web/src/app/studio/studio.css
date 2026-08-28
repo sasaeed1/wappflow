@@ -61,6 +61,12 @@
   --bg: var(--ms-paper); --surface: var(--ms-surface); --surface2: var(--ms-surface-2);
   --text: var(--ms-ink); --text-muted: var(--ms-ink-3); --text-dim: var(--ms-ink-3);
   --border: var(--ms-line); --accent: var(--ms-accent); --accent-light: var(--ms-ink-soft);
+  /* --on-accent was MISSING from this remap, and that is a real bug rather than
+     an omission: one Studio theme sets --ms-accent to #f2f0ec (near-white), so a
+     button doing `background: var(--accent)` with a hardcoded `color:#fff` —
+     which is what legacy inline styles do — rendered white on white. Mapping the
+     pair means the next such button inherits readable text instead of guessing. */
+  --on-accent: var(--ms-on-accent);
 
   min-height: 100vh; background: var(--ms-backdrop); background-attachment: fixed;
   color: var(--ms-ink); font-family: var(--ms-font-ui);

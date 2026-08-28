@@ -10,6 +10,7 @@ import UsageWarnings from '@/components/UsageWarnings';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
 import UploadTray from '@/components/UploadTray';
 import InstallAppBanner from '@/components/InstallAppBanner';
+import PushEnroll from '@/components/PushEnroll';
 
 export default function Providers({ children }) {
   return (
@@ -32,6 +33,12 @@ export default function Providers({ children }) {
                 captures it — so the listener has to be mounted app-wide from the
                 start, not inside whichever page happens to offer the install. */}
             <InstallAppBanner />
+            {/* Silently re-syncs an already-granted subscription on every load —
+                which is what makes notifications "already on" for a returning
+                user, and what repairs a browser/server desync that would
+                otherwise persist silently forever. Only ASKS after install, once,
+                from a tap. */}
+            <PushEnroll />
             {children}
           </RealtimeProvider>
         </PlanProvider>

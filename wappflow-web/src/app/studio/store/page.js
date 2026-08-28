@@ -71,7 +71,7 @@ export default function StudioStorePage() {
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: 0 }}>Products</h2>
-          <button onClick={addProduct} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700 }}><Plus size={14} /> Add product</button>
+          <button onClick={addProduct} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: 'var(--on-accent, #fff)', fontSize: 13, fontWeight: 700 }}><Plus size={14} /> Add product</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 32 }}>
@@ -96,7 +96,7 @@ export default function StudioStorePage() {
               </div>
               <button onClick={() => addOpt(i)} style={{ marginTop: 8, fontSize: 12.5, fontWeight: 600, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>+ Add option</button>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button onClick={() => saveProduct(p)} style={{ padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer', background: savedId === p.id ? '#10b981' : 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>{savedId === p.id ? <><Check size={14} /> Saved</> : 'Save'}</button>
+                <button onClick={() => saveProduct(p)} style={{ padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer', background: savedId === p.id ? '#10b981' : 'var(--accent)', color: savedId === p.id ? '#fff' : 'var(--on-accent, #fff)', fontSize: 13, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>{savedId === p.id ? <><Check size={14} /> Saved</> : 'Save'}</button>
                 <button onClick={() => delProduct(p.id)} style={{ padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', cursor: 'pointer', background: 'transparent', color: '#ef4444', fontSize: 13, fontWeight: 600 }}>Delete</button>
               </div>
             </div>

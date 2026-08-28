@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { syncPushSubscription } from '@/lib/push';
 import { BASE_URL } from '../lib/api';
 
 function urlBase64ToUint8Array(base64String) {
@@ -29,12 +30,21 @@ export default function usePushNotifications() {
     }
   }, []);
 
+  // Asking the BROWSER alone is what produced a live lie: this browser held a
+  // valid subscription while the server's table had zero rows, so Settings read
+  // "Notifications Active" and nothing could ever be delivered. A subscription
+  // only counts once the server has it, so confirm the round trip.
   const checkExistingSubscription = async () => {
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
-      setSubscribed(!!sub);
-    } catch {}
+      if (!sub) { setSubscribed(false); return; }
+      // syncPushSubscription re-registers the endpoint (a no-op server-side when
+      // already known), so a desync repairs itself instead of being reported as
+      // healthy.
+      const state = await syncPushSubscription();
+      setSubscribed(state === 'synced');
+    } catch { setSubscribed(false); }
   };
 
   const subscribe = useCallback(async () => {

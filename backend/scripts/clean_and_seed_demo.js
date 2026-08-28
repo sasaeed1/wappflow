@@ -3,14 +3,20 @@
 /**
  * WappFlow DB cleanup + demo seed.
  *
- *   - KEEPS the single user `wappflow@aitech.edu.pk` and their workspace +
- *     all the workspace-scoped data (leads, messages, settings, etc.).
+ *   - KEEPS one nominated user and their workspace + all the workspace-scoped
+ *     data (leads, messages, settings, etc.).
  *   - DELETES every other user, workspace, and the data scoped to them.
- *   - SEEDS three demo accounts (free / starter / growth) so the tier
- *     gates can be exercised without changing the AI Tech workspace.
+ *   - SEEDS three demo accounts (free / starter / growth) so the tier gates can
+ *     be exercised without touching the kept workspace.
  *
- * Run from the wappflow backend dir:
- *   node scripts/clean_and_seed_demo.js
+ * The address to keep MUST be given explicitly:
+ *   KEEP_EMAIL=you@example.com node scripts/clean_and_seed_demo.js
+ *   node scripts/clean_and_seed_demo.js --keep=you@example.com
+ *
+ * It used to be hardcoded. That is a bad default for a script whose job is to
+ * DELETE EVERY OTHER USER: pointed at any deployment where that address does not
+ * exist, it matches nobody and wipes everyone. Refusing to run without one is
+ * the only safe behaviour.
  *
  * Always backs up the DB to /tmp/wappflow.db.bak-<timestamp> before touching
  * anything. Use --dry-run to print counts without deleting.
@@ -22,9 +28,21 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 
 const DB_PATH = process.env.WAPPFLOW_DB || '/data/wappflow.db';
-const KEEP_EMAIL = 'wappflow@aitech.edu.pk';
+const keepArg = (process.argv.find(a => a.startsWith('--keep=')) || '').split('=')[1];
+const KEEP_EMAIL = (process.env.KEEP_EMAIL || keepArg || '').trim().toLowerCase();
 const DRY_RUN = process.argv.includes('--dry-run');
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'Demo1234!';
+
+// Refuse rather than guess. There is no safe default for "which single account
+// survives" in a script that deletes all the others.
+if (!KEEP_EMAIL || !KEEP_EMAIL.includes('@')) {
+  console.error([
+    'Refusing to run: no account nominated to keep.',
+    '  KEEP_EMAIL=you@example.com node scripts/clean_and_seed_demo.js',
+    '  node scripts/clean_and_seed_demo.js --keep=you@example.com',
+  ].join('\n'));
+  process.exit(1);
+}
 
 if (!fs.existsSync(DB_PATH)) {
   console.error(`DB not found at ${DB_PATH}`);

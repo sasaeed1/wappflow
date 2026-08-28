@@ -17,17 +17,25 @@ export default function InstallAppLink() {
 
   useEffect(() => { initInstallPrompt(); }, []);
 
-  if (installed) return null;
-  if (!canInstall && !iosManual) return null;
-
+  // ALWAYS rendered. This used to hide itself unless the browser had confirmed
+  // the app was installable — which meant that on a browser that had not fired
+  // the event yet, or where it was already installed, the footer offered no way
+  // to find the apps at all. A link nobody can find is worse than one that
+  // sometimes explains itself, so it now always points at /download, which
+  // handles every platform and every state honestly.
   if (iosHelp) {
     return <span style={{ opacity: 0.75 }}>Share → Add to Home Screen</span>;
   }
 
   return (
     <a
-      href="#install"
-      onClick={(e) => { e.preventDefault(); if (iosManual) setIosHelp(true); else prompt(); }}
+      href="/download"
+      onClick={(e) => {
+        // If this very browser can install right now, do that instead of sending
+        // them to a page to read about it.
+        if (canInstall && !installed) { e.preventDefault(); prompt(); }
+        else if (iosManual) { e.preventDefault(); setIosHelp(true); }
+      }}
     >
       Get the app
     </a>
