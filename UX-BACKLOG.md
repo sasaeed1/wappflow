@@ -24,6 +24,11 @@ Status legend: `DONE` (deployed + verified live) · `NEXT` (tractable, queued) �
 | 24 | Recent activity labels old leads "new lead" | Dashboard imported no datetime helpers — parsed UTC-naive timestamps with bare `new Date()`; bare date beside a status chip read as recency | Relative time live |
 | 25 | Chat bubble should only animate for unread | Gate was already correct; the animation was `infinite` on 20 of 25 rows at once | Live: `animationIterationCount: 3` |
 | 27 | Recent activity sorts to top, unread highlighted | Sorting was already the default; the marker was missing | Live: 21 rows with `inset 3px 0 0 #ef4444` |
+| 26 | Pin leads (unlimited, warn past 3) | Server-side + per-user so a pin follows you to your phone. Pins outrank every sort. No server cap — the nudge is UI-only. `pin()` verifies workspace ownership before writing, because the list is read back joined against leads | 12 tests; live: pinned 3rd lead → 1st with indigo marker, unpin restored the original order |
+| 2 | Invoice preview + send + edit + delete from the lead page | Tab was read-only — you could see an invoice existed and do nothing about it, on the page where you talk to the customer. `SendInvoiceModal` extracted to `components/` so both pages mount one copy | Live: paid invoice shows Preview+Email only; unpaid shows all four; editor opens prefilled with real line items |
+| 19 | Popups not centred / no gap from nav / "glitchy" | The PRIMITIVES were wrong, not each popup. `Dropdown` had no viewport awareness at all — no max-height, no flip-up, no clamp. `FloatingChat` (340×520 at bottom:24 = 544px needed) and `AICommandCenter` (70vh from bottom:155 = 507px) both overflowed a 503px viewport | Live: dropdown capped at 425px with `overflow-y: auto`, fits viewport |
+| 21 | PWA install prompt + settings + landing | The manifest was SVG-only, so Chrome never considered the app installable and `beforeinstallprompt` never fired — an install prompt would have been dead code. PNGs generated from the same mark via `ImageResponse` | Live: `/pwa-icon-192.png` and `/pwa-icon-512.png` serve real PNGs; manifest lists both |
+| 23 | Mobile session retention *(partial — see below)* | "Remember me" defaulted to UNCHECKED, and unchecked clears the session once every tab is gone — on a phone that is just "you closed the app". Now checked by default, and an installed app always persists regardless | Build + deploy; needs a real device to confirm |
 
 ---
 
@@ -31,11 +36,7 @@ Status legend: `DONE` (deployed + verified live) · `NEXT` (tractable, queued) �
 
 | # | Item | Notes |
 |---|------|-------|
-| 26 | Pin leads (unlimited, warn about clutter after 3) | Small. Per-user, like the unread store. |
-| 2 | Invoice preview + send + edit + delete from the lead page | Medium, self-contained. |
-| 19 | Popups not centred, no gap from nav/footer, "glitchy" — incl. AI floats and copilots | Medium but broad: one shared overlay geometry, not per-popup patches. |
-| 21 | Mobile PWA install prompt (once per user) + link in settings + on landing | Small-medium. |
-| 23 | Mobile app: session retention, permission prompts, active push | Medium. Session retention first — logging out on close is the worst of it. |
+| 23b | Mobile: permission prompts + **verify push actually delivers** | Session retention is done. Push infrastructure already existed (`usePushNotifications`, service worker, settings toggle) but has NOT been verified end to end on a real device — do not mark done until a notification actually arrives. |
 
 ---
 
