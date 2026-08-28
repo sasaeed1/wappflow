@@ -2312,10 +2312,27 @@ Only suggest actions that make sense for the question. If none make sense, retur
       const ranked = videoAiDrafts.rankMedia(scoredProjectMedia(project.id), { faceWeight: videoAiDrafts.styleFaceWeight(style.id) });
       if (ranked.length < 2) return res.status(400).json({ error: 'Not enough usable media yet — upload more, or cull a few keepers first.' });
 
-      const media = videoAiDrafts.selectForStyle(ranked, style);
+      // "Photos, clips, or both?" from the personalise flow. Filtered AFTER
+      // ranking so the choice narrows the pool rather than changing how anything
+      // in it is scored — and refused rather than silently ignored when the
+      // filter would leave nothing to cut, because a reel built from the media
+      // you explicitly excluded is worse than an error.
+      const kind = ['photos', 'videos'].includes(req.body.media_kind) ? req.body.media_kind : 'both';
+      const pool = kind === 'both' ? ranked : ranked.filter(m => m.type === (kind === 'videos' ? 'video' : 'photo'));
+      if (pool.length < 2) {
+        return res.status(400).json({
+          error: kind === 'videos'
+            ? 'This shoot has fewer than two video clips. Choose "Photos" or "Both".'
+            : 'This shoot has fewer than two photographs. Choose "Video" or "Both".',
+        });
+      }
+
+      const media = videoAiDrafts.selectForStyle(pool, style);
       const aspect = videoEngine.ASPECTS[req.body.aspect] ? req.body.aspect : style.aspect;
       const durationSec = videoTemplates.DURATIONS.includes(req.body.duration_sec) ? req.body.duration_sec : videoTemplates.DEFAULT_DURATION;
-      const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, { aspect, durationSec, title: project.title }));
+      // An explicit '' suppresses the CTA; undefined keeps the pack's own line.
+      const cta = typeof req.body.cta === 'string' ? req.body.cta : undefined;
+      const doc = videoEngine.sanitizeTimeline(videoAiDrafts.buildDraft(style, media, { aspect, durationSec, title: project.title, cta }));
       const id = generateId();
       db.prepare(`INSERT INTO ms_timelines (id, workspace_id, project_id, name, source, aspect_ratio, width, height, fps, duration_ms, document, ai_style, ai_signature, ai_stale, created_by)
         VALUES (?, ?, ?, ?, 'ai_draft', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`)

@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X, LayoutTemplate, Loader, RefreshCw, Wand2 } from 'lucide-react';
+import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X, LayoutTemplate, Loader, RefreshCw, Wand2, Image as ImageIcon, Layers, ChevronRight, ChevronLeft } from 'lucide-react';
 import { mediaAPI, reelAPI } from '../../../../lib/api';
 import { ASPECTS, ASPECT_LABELS } from '../../video-constants';
 import { clickable } from '@/lib/a11y';
@@ -152,11 +152,65 @@ export default function ReelListPage() {
   );
 }
 
+// The three questions the draft actually needs answering, and what each answer
+// changes. Asking them is not a form for its own sake: before this, "AI reel"
+// meant picking one of twelve style names with no way to say what the reel was
+// FOR, and the same shoot produced the same reel whether it was going to a
+// couple or to Instagram.
+function AskRow({ label, children }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ms-ink-3)', marginBottom: 8 }}>{label}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{children}</div>
+    </div>
+  );
+}
+
+function ChoiceCard({ active, onClick, Icon, label, hint }) {
+  return (
+    <button onClick={onClick} aria-pressed={active}
+      style={{
+        flex: '1 1 150px', minWidth: 150, textAlign: 'left', cursor: 'pointer',
+        padding: '11px 13px', borderRadius: 11,
+        border: `1px solid ${active ? 'var(--ms-accent)' : 'var(--ms-line)'}`,
+        background: active ? 'color-mix(in srgb, var(--ms-accent) 12%, transparent)' : 'var(--ms-surface)',
+      }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
+        {Icon && <Icon size={14} color={active ? 'var(--ms-accent)' : 'var(--ms-ink-3)'} />}
+        <b style={{ fontSize: 13, color: 'var(--ms-ink)' }}>{label}</b>
+      </span>
+      <span style={{ display: 'block', fontSize: 11, color: 'var(--ms-ink-3)', lineHeight: 1.45 }}>{hint}</span>
+    </button>
+  );
+}
+
+const MEDIA_KINDS = [
+  { id: 'both',   label: 'Photos & video', hint: 'Use everything in the shoot', Icon: Layers },
+  { id: 'photos', label: 'Photos only',    hint: 'Stills, with camera motion',  Icon: ImageIcon },
+  { id: 'videos', label: 'Video only',     hint: 'Clips only, no stills',       Icon: Film },
+];
+// Maps to the pack's `energy`, which drives beat length and rhythm server-side.
+const MOODS = [
+  { id: 'punchy',   label: 'Flashy',       hint: 'Fast cuts, high energy, made to stop a scroll' },
+  { id: 'calm',     label: 'Elegant',      hint: 'Long holds, soft transitions, room to breathe' },
+  { id: 'balanced', label: 'Professional', hint: 'Even pacing, restrained, on-message' },
+];
+
 function AiDraftModal({ projectId, hasMedia, onClose }) {
   const router = useRouter();
   const [data, setData] = useState(null);
   const [generating, setGenerating] = useState(null);
   const [err, setErr] = useState('');
+
+  // Answers first, styles second. The list stays hidden until the shoot has been
+  // described, because a shortlist of three is a decision and a grid of twelve is
+  // a shrug.
+  const [step, setStep] = useState('ask');           // 'ask' | 'pick'
+  const [mediaKind, setMediaKind] = useState('both');
+  const [mood, setMood] = useState(null);
+  const [niche, setNiche] = useState('All');
+  const [duration, setDuration] = useState(30);
+  const [cta, setCta] = useState(null);              // null = keep the pack's own line
 
   useEffect(() => { mediaAPI.aiDraftStyles(projectId).then(r => setData(r.data)).catch(() => setData({ styles: [], recommended: [] })); }, [projectId]);
 
@@ -164,13 +218,29 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
     if (generating) return;
     setGenerating(styleId); setErr('');
     try {
-      const r = await mediaAPI.generateAiDraft(projectId, { style: styleId });
+      const r = await mediaAPI.generateAiDraft(projectId, {
+        style: styleId,
+        duration_sec: duration,
+        media_kind: mediaKind,
+        ...(cta !== null ? { cta } : {}),
+      });
       router.push(`/studio/${projectId}/video/${r.data.id}`);
     } catch (e) { setErr(e.response?.data?.error || 'Could not generate a draft'); setGenerating(null); }
   };
 
   const recSet = new Set(data?.recommended || []);
-  const ordered = (data?.styles || []).slice().sort((a, b) => (recSet.has(b.id) ? 1 : 0) - (recSet.has(a.id) ? 1 : 0));
+  const allStyles = data?.styles || [];
+  const niches = ['All', ...Array.from(new Set(allStyles.map(s => s.category)))];
+
+  // Narrow by the answers, then rank suggestions first. Falling back to the full
+  // list when a combination matches nothing is deliberate — an empty result here
+  // would be a dead end with no way out but starting over.
+  const matched = allStyles.filter(s =>
+    (niche === 'All' || s.category === niche) && (!mood || s.energy === mood));
+  const ordered = (matched.length ? matched : allStyles)
+    .slice()
+    .sort((a, b) => (recSet.has(b.id) ? 1 : 0) - (recSet.has(a.id) ? 1 : 0));
+  const narrowed = matched.length > 0 && matched.length < allStyles.length;
 
   return (
     <div {...clickable(onClose)} className="ms-modal-overlay">
@@ -180,7 +250,11 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
             <span style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--ms-accent)', color: 'var(--ms-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Sparkles size={18} /></span>
             <div>
               <h2>AI reel drafts</h2>
-              <p className="ms-modal-sub">Pick a style — AI builds a draft from your best shots. You edit &amp; export it.</p>
+              <p className="ms-modal-sub">
+                {step === 'ask'
+                  ? 'Three questions, then AI drafts it from your best shots. You edit & export it.'
+                  : 'Pick a look — AI builds the draft. You edit & export it.'}
+              </p>
             </div>
           </div>
           <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ms-ink-3)', padding: 4 }}><X size={20} /></button>
@@ -189,8 +263,75 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
         {!hasMedia && <p style={{ fontSize: 12.5, color: '#d39a3e', margin: '10px 0 0' }}>Upload photos or clips first — AI drafts from your shoot’s media.</p>}
         {err && <p style={{ fontSize: 12.5, color: '#d4564a', margin: '10px 0 0' }}>{err}</p>}
 
-        {data === null ? <p className="ms-loading" style={{ marginTop: 16 }}>Analyzing your shoot…</p> : (
+        {step === 'ask' ? (
+          <div style={{ marginTop: 16, maxHeight: '58vh', overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <AskRow label="What should it be made of?">
+              {MEDIA_KINDS.map(k => (
+                <ChoiceCard key={k.id} active={mediaKind === k.id} onClick={() => setMediaKind(k.id)}
+                            Icon={k.Icon} label={k.label} hint={k.hint} />
+              ))}
+            </AskRow>
+
+            <AskRow label="How should it feel?">
+              {MOODS.map(m => (
+                <ChoiceCard key={m.id} active={mood === m.id} onClick={() => setMood(m.id)}
+                            label={m.label} hint={m.hint} />
+              ))}
+            </AskRow>
+
+            <AskRow label="What's it for?">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                {niches.map(n => (
+                  <button key={n} onClick={() => setNiche(n)}
+                    style={{
+                      padding: '6px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer',
+                      border: `1px solid ${niche === n ? 'var(--ms-accent)' : 'var(--ms-line)'}`,
+                      background: niche === n ? 'var(--ms-accent)' : 'transparent',
+                      color: niche === n ? 'var(--ms-on-accent)' : 'var(--ms-ink-2)',
+                    }}>{n}</button>
+                ))}
+              </div>
+            </AskRow>
+
+            <AskRow label="How long?">
+              <div className="ms-seg" style={{ padding: 3, display: 'inline-flex' }}>
+                {[15, 30, 45, 60].map(d => (
+                  <button key={d} onClick={() => setDuration(d)} className={duration === d ? 'is-active' : ''}
+                          style={{ padding: '6px 12px', fontSize: 12 }}>{d}s</button>
+                ))}
+              </div>
+            </AskRow>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
+              <span style={{ flex: 1, fontSize: 11.5, color: 'var(--ms-ink-3)' }}>
+                {mood || niche !== 'All'
+                  ? `${matched.length} of ${allStyles.length} looks match`
+                  : 'Answer to narrow the looks — or skip straight through.'}
+              </span>
+              <button onClick={() => setStep('pick')} disabled={!hasMedia} className="ms-btn-ink"
+                      style={{ padding: '9px 18px', fontSize: 13, opacity: hasMedia ? 1 : 0.5 }}>
+                Show my looks <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        ) : data === null ? <p className="ms-loading" style={{ marginTop: 16 }}>Analyzing your shoot…</p> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 16, maxHeight: '54vh', overflowY: 'auto', paddingRight: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
+              <button onClick={() => setStep('ask')} className="ms-btn-text" style={{ fontSize: 12 }}>
+                <ChevronLeft size={13} /> Change answers
+              </button>
+              <span style={{ fontSize: 11.5, color: 'var(--ms-ink-3)' }}>
+                {[MEDIA_KINDS.find(k => k.id === mediaKind)?.label,
+                  MOODS.find(m => m.id === mood)?.label,
+                  niche !== 'All' ? niche : null,
+                  `${duration}s`].filter(Boolean).join(' · ')}
+              </span>
+            </div>
+            {!narrowed && (mood || niche !== 'All') && (
+              <p style={{ fontSize: 11.5, color: '#d39a3e', margin: '0 0 4px' }}>
+                Nothing matched that exact combination, so every look is shown.
+              </p>
+            )}
             {ordered.map(s => (
               <button key={s.id} onClick={() => generate(s.id)} disabled={!hasMedia || !!generating}
                 style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 12, borderRadius: 12, border: '1px solid var(--ms-line)', background: 'var(--ms-surface)', cursor: hasMedia ? 'pointer' : 'default', textAlign: 'left', opacity: !hasMedia ? 0.5 : 1 }}>

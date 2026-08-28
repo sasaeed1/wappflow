@@ -30,7 +30,10 @@ const STORY_CATS = new Set(['Wedding', 'Travel', 'Real Estate', 'Education']);
 function recommendStyles(projectType) { return REC[projectType] || ['social_premium', 'agency_portfolio', 'travel_story']; }
 function getStyle(id) { return videoTemplates.get(id); }
 function styleList() {
-  return videoTemplates.list().map(p => ({ id: p.id, name: p.name, desc: p.mood, category: p.category, style: p.style, aspect: p.aspect, lut: p.lut, palette: p.palette }));
+  // energy + cta ride along so the personalise flow can narrow packs by how the
+  // reel should FEEL, not just what it is of. Without them the client would have
+  // to keep its own copy of that mapping, which is how two catalogues drift.
+  return videoTemplates.list().map(p => ({ id: p.id, name: p.name, desc: p.mood, category: p.category, style: p.style, aspect: p.aspect, lut: p.lut, palette: p.palette, energy: p.energy, cta: p.cta }));
 }
 function styleFaceWeight(id) { const p = videoTemplates.get(id); return p ? (FACE_WEIGHT_BY_CAT[p.category] != null ? FACE_WEIGHT_BY_CAT[p.category] : 0.2) : 0.2; }
 
