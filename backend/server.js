@@ -4309,6 +4309,36 @@ app.post('/api/leads/:id/ai/analyze', auth, async (req, res) => {
 });
 
 
+// POST /api/leads/:id/ai/assist — what should I DO about this conversation?
+//
+// The other AI routes describe the lead. This one proposes actions, each of
+// which maps to something the app can already do (a reminder, an invoice, a
+// field write, a question to send). Nothing is applied here: the user accepts a
+// proposal, and every proposal carries the evidence it came from.
+app.post('/api/leads/:id/ai/assist', auth, async (req, res) => {
+  try {
+    const lead = getScopedLead(req, req.params.id);
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY timestamp ASC LIMIT 40').all(req.params.id);
+    // Nothing to read means nothing to propose — and an LLM call with no
+    // conversation in it still costs the workspace a metered request.
+    if (!messages.length) return res.json({ proposals: [] });
+
+    const memories = db.prepare('SELECT memory_type, key, value FROM ai_memories WHERE workspace_id = ? ORDER BY confidence DESC LIMIT 20').all(req.workspaceId);
+    const profile = db.prepare('SELECT * FROM workspace_ai_profile WHERE workspace_id = ?').get(req.workspaceId);
+    const company = db.prepare('SELECT currency_symbol FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId) || {};
+
+    const proposals = await aiEngine.assistProposals(messages, lead, {
+      currency: company.currency_symbol || '',
+      memoryContext: aiEngine.formatMemoryContext(memories) + aiEngine.formatProfileContext(profile),
+    });
+    res.json({ proposals });
+  } catch (e) {
+    console.error('AI assist error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/ai/rewrite — rewrite a message in a given tone (professional|friendly|casual|formal|empathetic)
 // Falls back to the workspace's preferred tone if no tone supplied.
 app.post('/api/ai/rewrite', auth, async (req, res) => {

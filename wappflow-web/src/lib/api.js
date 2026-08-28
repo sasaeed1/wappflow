@@ -255,6 +255,9 @@ export const aiAPI = {
   shorten: (text) => api.post('/ai/shorten', { text }),
   getProfile: () => api.get('/ai/profile'),
   updateProfile: (data) => api.put('/ai/profile', data),
+  // "What should I DO about this conversation?" — returns proposals the user
+  // accepts, never changes anything itself.
+  assist: (leadId) => api.post(`/leads/${leadId}/ai/assist`),
 };
 
 export const chatAPI = {

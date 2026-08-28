@@ -425,6 +425,112 @@ ${context}
   };
 }
 
+// ── Assist: turn a conversation into things you can actually DO ──────────────
+//
+// Everything else in this file describes a lead (score, sentiment, a summary).
+// This proposes ACTIONS, which is a different contract: each one has to be
+// specific enough to accept with a single click, and every one carries the
+// evidence it came from so the user can disagree with it.
+//
+// DESIGN DECISIONS, stated:
+//   • FOUR types only — reminder, invoice, field, ask. Each maps to a real thing
+//     the app can already do. An "insight" with nothing to click is what the
+//     summary tab is for, and adding one here would turn a to-do list back into
+//     a wall of text.
+//   • WRITABLE FIELDS ARE PASSED IN, not guessed. The model is told exactly
+//     which columns exist and what is already on the lead, because a proposal to
+//     set `event_date` on a table with no such column is a dead button.
+//   • NOTHING IS APPLIED HERE. This returns proposals; the user accepts them.
+//     An assistant that silently edits the CRM from a chat message it
+//     misunderstood is worse than no assistant.
+//   • `why` is REQUIRED on every proposal and must quote the conversation. A
+//     suggestion you cannot audit is one you have to verify by hand anyway.
+const ASSIST_FIELDS = ['customer_name', 'email', 'address', 'estimated_value', 'date_of_birth', 'lead_source'];
+
+async function assistProposals(messages, lead, { currency = '', memoryContext = '' } = {}) {
+  if (!messages.length) return [];
+  const context = buildConversationContext(messages, lead);
+  const known = ASSIST_FIELDS
+    .map(f => `${f}: ${lead[f] === null || lead[f] === undefined || lead[f] === '' ? '(EMPTY)' : lead[f]}`)
+    .join('\n');
+
+  const prompt = `
+You are an assistant inside a CRM, reading one customer conversation. Propose only
+actions the staff member can take RIGHT NOW. Return a JSON array, newest need first.
+
+Allowed proposal shapes:
+{"type":"reminder","title":"<short imperative>","due_at":"<ISO 8601 datetime>","why":"<quote or paraphrase the message this came from>"}
+{"type":"invoice","amount":<number>,"description":"<what it is for>","why":"..."}
+{"type":"field","field":"<one of: ${ASSIST_FIELDS.join(', ')}>","value":"<the value found in the conversation>","why":"..."}
+{"type":"ask","field":"<one of: ${ASSIST_FIELDS.join(', ')}>","question":"<a short message to send the customer>","why":"..."}
+
+Rules:
+- At most 4 proposals. Fewer is better. Return [] if the conversation needs nothing.
+- "field" ONLY when the conversation clearly states a value that is EMPTY or DIFFERENT below.
+- "ask" ONLY for a field that is EMPTY and that this conversation actually needs.
+- "invoice" ONLY when a price or scope was actually agreed, not merely discussed.${currency ? ` Amounts are in ${currency}.` : ''}
+- "reminder" ONLY when something was promised or is waiting on a reply.
+- Never invent a value. Never propose a field that is already correct.
+- "why" must point at real evidence in the conversation.
+
+What is already on this lead:
+${known}
+${memoryContext}
+Today is ${new Date().toISOString().slice(0, 10)}.
+Return a JSON array only, no explanation, no markdown.
+
+${context}
+  `.trim();
+
+  const raw = await callLLM(prompt, { temperature: 0.15, maxTokens: 900 });
+  return validateProposals(extractJSON(raw, 'array'), lead);
+}
+
+/**
+ * The gate between a language model and the CRM.
+ *
+ * Exported and pure so it can be tested against the shapes a model actually
+ * produces — including the wrong ones — without a network call. Every failure
+ * mode it catches ends, unfiltered, as a button in the UI that either does
+ * nothing or does something wrong to a customer record.
+ */
+function validateProposals(parsed, lead = {}) {
+  if (!Array.isArray(parsed)) return [];
+  const out = [];
+  for (const p of parsed.slice(0, 8)) {
+    // No evidence, no proposal: a suggestion you cannot audit has to be checked
+    // by hand, which is slower than just doing the thing yourself.
+    if (!p || typeof p !== 'object' || !p.why) continue;
+    const why = String(p.why).slice(0, 240);
+
+    if (p.type === 'reminder' && p.title && p.due_at) {
+      const d = new Date(p.due_at);
+      if (isNaN(d.getTime())) continue;   // "next tuesday-ish" would become Invalid Date
+      out.push({ type: 'reminder', title: String(p.title).slice(0, 120), due_at: d.toISOString(), why });
+
+    } else if (p.type === 'invoice' && Number(p.amount) > 0) {
+      out.push({ type: 'invoice', amount: Number(p.amount), description: String(p.description || 'Agreed work').slice(0, 120), why });
+
+    } else if (p.type === 'field' && ASSIST_FIELDS.includes(p.field) && p.value != null && String(p.value).trim()) {
+      const value = String(p.value).trim().slice(0, 200);
+      // Never propose what is already there. The model drifts on this, and a
+      // "change" that changes nothing destroys trust in every other suggestion.
+      if (String(lead[p.field] ?? '').trim() === value) continue;
+      out.push({ type: 'field', field: p.field, value, current: lead[p.field] ?? null, why });
+
+    } else if (p.type === 'ask' && ASSIST_FIELDS.includes(p.field) && p.question) {
+      // Asking a customer for something already on file makes the studio look
+      // like it was not listening.
+      if (String(lead[p.field] ?? '').trim()) continue;
+      out.push({ type: 'ask', field: p.field, question: String(p.question).slice(0, 240), why });
+    }
+    // Anything else — an unknown type, a column the leads table does not have —
+    // is dropped rather than rendered as a button that fails.
+  }
+  // Capped so the strip can never bury the conversation it sits above.
+  return out.slice(0, 4);
+}
+
 // Quick single-message sentiment — cheap, used for inline UI hints.
 async function detectSentiment(text) {
   if (!text || text.trim().length < 3) return { sentiment: 'neutral', confidence: 0 };
@@ -530,6 +636,9 @@ module.exports = {
   formatMemoryContext,
   formatProfileContext,
   analyzeLeadIntelligence,
+  assistProposals,
+  validateProposals,
+  ASSIST_FIELDS,
   detectSentiment,
   summarizeConversation,
   suggestReplies,

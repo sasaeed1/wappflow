@@ -25,6 +25,7 @@ import { formatSmart, formatDateTime, formatRelative, formatFull, formatDate, fo
 import { markLeadSeen } from '../../../lib/unread';
 import ScheduleMeetingModal from '@/components/ScheduleMeetingModal';
 import SendInvoiceModal from '@/components/SendInvoiceModal';
+import LeadAssistStrip from '@/components/LeadAssistStrip';
 import ContactActions from '@/components/ContactActions';
 import { useConfirm } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
@@ -294,13 +295,19 @@ function LostModal({ name, onConfirm, onCancel, loading }) {
 // never going to differ — same fields, same totals, same preview — and keeping
 // one component is what stops the edit form drifting away from the create form
 // the first time either gains a field.
-function InvoiceModal({ lead, company, invoice, onClose, onSaved }) {
+// `invoice` = editing an existing one. `seed` = a brand-new invoice opened with
+// a line already filled in (the assistant found an agreed price in the chat).
+// Seeded, never auto-created: an amount lifted from a message wants a human eye
+// before it becomes a financial record.
+function InvoiceModal({ lead, company, invoice, seed, onClose, onSaved }) {
   const confirm = useConfirm();
   const editing = !!invoice;
   const [items, setItems] = useState(() => (
     invoice?.items?.length
       ? invoice.items.map((it) => ({ description: it.description || '', qty: it.qty ?? 1, rate: it.rate ?? 0 }))
-      : [{ description: '', qty: 1, rate: 0 }]
+      : seed
+        ? [{ description: seed.description || '', qty: 1, rate: Number(seed.amount) || 0 }]
+        : [{ description: '', qty: 1, rate: 0 }]
   ));
   const [notes, setNotes] = useState(invoice?.notes || '');
   const [dueDate, setDueDate] = useState(String(invoice?.due_date || '').slice(0, 10));
@@ -698,6 +705,10 @@ const [aiError, setAiError] = useState('');
   // existed and do nothing about it, on the one page where you are actually
   // talking to the customer. These drive preview / send / edit / delete inline.
   const [editingInvoice, setEditingInvoice] = useState(null);
+  // A price the assistant found in the conversation, waiting to be opened as a
+  // NEW invoice with that line already filled in. Seeded, not created: the
+  // amount came from a chat message and wants a human eye before it exists.
+  const [invoiceSeed, setInvoiceSeed] = useState(null);
   const [sendingInvoice, setSendingInvoice] = useState(null);
   const [invoiceBusy, setInvoiceBusy] = useState(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -1319,6 +1330,10 @@ useEffect(() => {
       {showWonModal && <WonModal name={lead.customer_name} onConfirm={handleWonConfirm} onCancel={() => setShowWonModal(false)} loading={actionLoading} currencySymbol={sym} />}
       {showLostModal && <LostModal name={lead.customer_name} onConfirm={handleLostConfirm} onCancel={() => setShowLostModal(false)} loading={actionLoading} />}
       {showInvoiceModal && <InvoiceModal lead={lead} company={company} onClose={() => setShowInvoiceModal(false)} onSaved={fetchAll} />}
+      {invoiceSeed && (
+        <InvoiceModal lead={lead} company={company} seed={invoiceSeed}
+                      onClose={() => setInvoiceSeed(null)} onSaved={fetchAll} />
+      )}
       {editingInvoice && (
         <InvoiceModal lead={lead} company={company} invoice={editingInvoice}
                       onClose={() => setEditingInvoice(null)} onSaved={fetchAll} />
@@ -1843,6 +1858,21 @@ useEffect(() => {
                 </div>
               );
             })()}
+
+            {/* The assistant sits IN the conversation column, directly above the
+                messages it is reading. Not a popup, not a floating bubble: a
+                suggestion about a message you are looking at should not require
+                opening anything, and an assistant you have to summon is one you
+                forget exists. It renders nothing when it has nothing to say. */}
+            <div style={{ padding: '0 16px' }}>
+              <LeadAssistStrip
+                lead={lead}
+                messageCount={messages.length}
+                onApplied={(msg) => { showToast(msg, 'success'); fetchAll(); }}
+                onDraftMessage={(text) => { setNewMessage(text); textareaRef.current?.focus(); }}
+                onDraftInvoice={(p) => setInvoiceSeed({ amount: p.amount, description: p.description })}
+              />
+            </div>
 
             {/* Messages area — fills available viewport height, internal scroll only */}
             <div style={{ position: 'relative' }}>
