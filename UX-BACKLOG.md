@@ -68,11 +68,30 @@ drawn — which the new templates rely on, since title and CTA are separate trac
 
 **The reel cluster is fully closed** — #6, #7, #8, #9, #11, #12, #13.
 
+### #20 — client-facing rebuild (in progress)
+
+Brief, from the owner: *"premium means it shouldn't look like an outdated 2000's
+website page. it needs to be state of the art, should follow the corresponding
+wappflow and its module themes, but better visuals and ui than that would be a
+plus."*
+
+Surveyed all six before touching any. **The gallery `/g/[token]` is already
+strong** — dark, Fraunces serif, gold accent — so this is not a blind rebuild of
+everything; it is bringing the others up to it and past it.
+
+| Surface | State | Notes |
+|---|---|---|
+| `/g/[token]` gallery | **Good already** | Sets the language the others follow: `#0b0b0f`, `#c2a878`, Fraunces |
+| `/shop/[token]` print shop | **REBUILT** | Was the 2000s page — flat grey, white cards, and a shop selling prints of photographs that showed *no photographs*. Also fixed a functional gap: orders recorded no `asset_id`, so the studio could not know which image to print |
+| `/d/[token]` contract | Not yet | Has its own three themes; needs judging against them, not replacing |
+| `/book/[slug]` booking | Not yet | |
+| `/folio/[handle]` portfolio | Not yet | |
+| `/client/[token]` portal | Not yet | |
+
 Other projects:
 
 | # | Item | Why it is a project |
 |---|------|---------------------|
-| 20 | Rebuild ALL client-facing pages from scratch, premium/high-end | Agree the shape first |
 | 22 | Desktop app — finalise, downloadable from landing + settings | Build/sign/distribute pipeline |
 
 ---
