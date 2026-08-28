@@ -40,18 +40,28 @@ Status legend: `DONE` (deployed + verified live) · `NEXT` (tractable, queued) �
 
 ---
 
-## Projects — build once, properly
+## The reel editor — foundation DONE, templates remain
 
-**The reel editor (#6, #9, #11, #12, #13) is ONE project, not five items.**
-Patched individually these produce five half-features. Together they are a real
-multi-track timeline:
+**#9, #11, #12, #13 are done and verified live.** Treating them as one project
+was right, but for an unexpected reason: **most of it already existed.** The
+renderer (`backend/video-engine.js`) has always taken up to 12 tracks of
+video/audio/text/overlay, already flattens the clips of *every* text track, and
+already honours per-clip `transform {x,y,scale}`, 9 transitions, motion/opacity
+keyframes and per-clip audio fades. The editor drew three hardcoded lanes, so the
+capability was there and unreachable.
 
-- 12 — separate text / audio / picture-video tracks with a `+` to add more
-- 11 — the bottom bars, incl. a text bar that is currently invisible
-- 13 — transitions and effects ON the bars: draggable, adjustable length,
-  frequency, volume
-- 9 — click-drag to scale/position media within the frame
-- 6 — CapCut-grade templates (rests on all of the above)
+| # | Item | What it actually was | Verified |
+|---|------|----------------------|----------|
+| 11 | Bottom bars poor, text bar not visible | It literally was not visible: a fixed 168px panel with `overflow-y: hidden`, while video (76) + text (38) + audio (36) + padding (32) needs ~182px. The lanes that did not fit were clipped off the bottom with no scrollbar | Live: panel drag-resizable + remembered; `scrollsWhenTall: true` with 3 tracks |
+| 12 | Separate tracks with a `+` | Timeline renders `doc.tracks` generically with sticky labelled headers (name, mute, delete), in presentation order independent of document order. Capped at the renderer's own 12 so the UI refuses the 13th rather than silently dropping a layer on export. Deleting the last video track empties it — duration is measured from the spine | Live: `+ Track` offers Text/Audio/Overlay/Media; added Audio → 3 lanes ordered Media→Text→Audio |
+| 13 | Transitions on the bars | Reachable only via the inspector, so you could not see which clips had one, which edge, or how long. Now drawn on the clip at real duration — a 400ms dissolve is 400ms wide at the current zoom | Live: 24 transition markers rendering |
+| 9 | Click-drag to scale/position media | The renderer always honoured `transform`; the editor exposed it only as inspector number fields. Drag the preview, wheel to scale, normalised to −1..1 of the frame | Live: drag → persisted `x: 0.988` → reload → preview `translate(83.24px)` on an 81px frame |
+
+Also fixed by generalising: the preview only ever composited the **first** text
+track, so a second one exported captions the editor had never drawn.
+
+**Still open here:** #6 (CapCut-grade templates) — now rests on a real
+multi-track foundation rather than needing one built first.
 
 Other projects:
 
