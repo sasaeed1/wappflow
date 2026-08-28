@@ -48,7 +48,7 @@ function rankMedia(rows, { faceWeight = 0 } = {}) {
     if (r.rating) score += r.rating * 0.08;
     if (r.sharpness != null && r.sharpness < 120) score -= 0.12;
     if (faceWeight) { if (r.faces) score += faceWeight; if (r.smile) score += r.smile * faceWeight * 0.6; }
-    scored.push({ id: r.id, type: r.type, score, dup: r.dup_group || null, when: r.capture_time || r.created_at || '' });
+    scored.push({ id: r.id, type: r.type, width: r.width, height: r.height, score, dup: r.dup_group || null, when: r.capture_time || r.created_at || '' });
   }
   scored.sort((a, b) => b.score - a.score);
   const seen = new Set();
@@ -62,7 +62,9 @@ function rankMedia(rows, { faceWeight = 0 } = {}) {
 function selectForStyle(ranked, pack) {
   const list = [...ranked];
   if (pack && STORY_CATS.has(pack.category)) list.sort((a, b) => String(a.when).localeCompare(String(b.when)));
-  return list.map(m => ({ id: m.id, type: m.type }));
+  // width/height ride along: the reel builder needs them to decide how much of
+  // each frame a 9:16 crop throws away, and therefore where to put the crop.
+  return list.map(m => ({ id: m.id, type: m.type, width: m.width, height: m.height }));
 }
 
 function signatureOf(media) {

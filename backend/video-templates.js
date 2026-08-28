@@ -33,6 +33,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+const framing = require('./reel-framing');
+
 const uid = (p = 'c') => p + '_' + Math.random().toString(16).slice(2, 10);
 
 const DURATIONS = [15, 30, 45, 60];
@@ -231,10 +233,17 @@ function buildTimeline(pack, media, opts = {}) {
     // shot is not a transition, it is the whole shot.
     const tMs = Math.max(120, Math.min(pack.transitionMs, Math.round(dur * 0.45)));
 
+    // Frame the crop around the subject instead of the middle of the file.
+    // A 9:16 reel throws away ~62% of a 3:2 photograph's width, and a centred
+    // crop of a composed shot — where the photographer deliberately put people
+    // off-centre, on the thirds — cuts them out. Only applied when the shapes
+    // actually differ enough to matter, so a square-ish frame is left alone.
+    const framed = framing.framingFor(m, aspect) || { x: 0, y: 0 };
+
     const clip = {
       id: uid(), kind: isVid ? 'video' : 'photo', assetId: m.id,
       start, duration: dur, end: start + dur, in: 0, out: dur, speed: 1, reverse: false,
-      transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1, fit: 'cover' },
+      transform: { scale: 1, x: framed.x, y: framed.y, rotation: 0, opacity: 1, fit: 'cover' },
       // Cycled, not one type for the whole reel. The hook always cuts hard on the
       // first frame — an opening that fades in has already lost the scroll.
       transitionIn: i === 0 ? null : { type: transitions[i % transitions.length], duration: tMs },
@@ -245,7 +254,17 @@ function buildTimeline(pack, media, opts = {}) {
     // Video in the hook runs slightly hot; the outro settles below 1. Photos have
     // no speed to ramp, so they get their pace from the beat length alone.
     if (isVid) clip.speed = inHook ? 1.15 : inOutro ? 0.92 : 1;
-    if (!isVid) clip.kenBurns = kenBurnsFor(motions[i % motions.length], i);
+    if (!isVid) {
+      // Anchor the move to the framed point. Ken Burns x/y are added to the
+      // transform at render time, so a pan that starts from 0 would drift the
+      // subject we just centred back out of shot over the length of the beat.
+      const kb = kenBurnsFor(motions[i % motions.length], i);
+      clip.kenBurns = {
+        ...kb,
+        fromX: +(kb.fromX + framed.x).toFixed(4), toX: +(kb.toX + framed.x).toFixed(4),
+        fromY: +(kb.fromY + framed.y).toFixed(4), toY: +(kb.toY + framed.y).toFixed(4),
+      };
+    }
     clips.push(clip);
     start += dur;
   }

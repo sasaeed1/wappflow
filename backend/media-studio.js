@@ -2254,16 +2254,17 @@ Only suggest actions that make sense for the question. If none make sense, retur
       let media;
       const ids = Array.isArray(req.body.asset_ids) ? req.body.asset_ids.slice(0, 60) : null;
       if (ids && ids.length) {
-        const sel = db.prepare("SELECT id, type FROM ms_assets WHERE id = ? AND project_id = ? AND type IN ('photo','video')");
+        const sel = db.prepare("SELECT id, type, width, height FROM ms_assets WHERE id = ? AND project_id = ? AND type IN ('photo','video')");
         media = ids.map(aid => sel.get(aid, project.id)).filter(Boolean);
       } else {
         // auto-pick: keepers first, then capture order
         media = db.prepare(`
-          SELECT a.id, a.type FROM ms_assets a LEFT JOIN ms_cull_decisions c ON c.asset_id = a.id
+          SELECT a.id, a.type, a.width, a.height FROM ms_assets a LEFT JOIN ms_cull_decisions c ON c.asset_id = a.id
           WHERE a.project_id = ? AND a.type IN ('photo','video')
           ORDER BY (c.decision = 'keep') DESC, a.capture_time IS NULL, a.capture_time, a.created_at
           LIMIT 40`).all(project.id);
       }
+      media = withSubjectPoints(media);
       if (!media.length) return res.status(400).json({ error: 'Add photos or clips to this shoot first.' });
 
       const aspect = videoEngine.ASPECTS[req.body.aspect] ? req.body.aspect : tpl.aspect;
@@ -2282,7 +2283,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
   // Reads the project's media with its advisory CV scores + cull decisions.
   function scoredProjectMedia(projectId) {
     return db.prepare(`
-      SELECT a.id, a.type, a.capture_time, a.created_at,
+      SELECT a.id, a.type, a.width, a.height, a.capture_time, a.created_at,
         (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'quality' LIMIT 1) AS quality,
         (SELECT value FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'sharpness' LIMIT 1) AS sharpness,
         (SELECT group_key FROM ms_asset_scores s WHERE s.asset_id = a.id AND s.score_type = 'duplicate_group' LIMIT 1) AS dup_group,
@@ -2292,6 +2293,24 @@ Only suggest actions that make sense for the question. If none make sense, retur
       FROM ms_assets a LEFT JOIN ms_cull_decisions c ON c.asset_id = a.id
       WHERE a.project_id = ? AND a.type IN ('photo','video')
     `).all(projectId);
+  }
+
+  // Attach each asset's subject point so the reel builder can frame the crop
+  // around it rather than around the middle of the file. One query for the whole
+  // set, not one per asset: a 60-shot template would otherwise be 60 round trips.
+  function withSubjectPoints(rows) {
+    if (!rows.length) return rows;
+    const marks = new Map();
+    const qs = rows.map(() => '?').join(',');
+    for (const r of db.prepare(
+      `SELECT asset_id, reasons FROM ms_asset_scores WHERE score_type = 'subject_point' AND asset_id IN (${qs})`
+    ).all(...rows.map(r => r.id))) {
+      try {
+        const j = JSON.parse(r.reasons || '{}');
+        if (typeof j.x === 'number' && typeof j.y === 'number') marks.set(r.asset_id, { x: j.x, y: j.y });
+      } catch { /* a malformed score must not break the build */ }
+    }
+    return rows.map(r => (marks.has(r.id) ? { ...r, subject: marks.get(r.id) } : r));
   }
 
   app.get('/api/media/projects/:id/ai-drafts/styles', auth, (req, res) => {
@@ -2327,7 +2346,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
         });
       }
 
-      const media = videoAiDrafts.selectForStyle(pool, style);
+      const media = withSubjectPoints(videoAiDrafts.selectForStyle(pool, style));
       const aspect = videoEngine.ASPECTS[req.body.aspect] ? req.body.aspect : style.aspect;
       const durationSec = videoTemplates.DURATIONS.includes(req.body.duration_sec) ? req.body.duration_sec : videoTemplates.DEFAULT_DURATION;
       // An explicit '' suppresses the CTA; undefined keeps the pack's own line.

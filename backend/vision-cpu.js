@@ -54,13 +54,20 @@ function cpuMetrics(img) {
   }
   const sharpness = lapN ? (lapSum2 / lapN - (lapSum / lapN) ** 2) : 0;
   let thirds = 0.5;
+  // The energy centroid was computed here, used for `thirds`, and thrown away.
+  // It is the only saliency signal this server has — detail clusters on subjects,
+  // not on empty sky or a plain wall — and reel framing needs exactly that point
+  // to decide where a 9:16 crop should sit. Kept, normalised, and named `subject`
+  // rather than `face`, because that is honestly what it is.
+  let subject = null;
   if (eTot > 0) {
     const cx = eX / eTot, cy = eY / eTot;
     const dx = Math.min(Math.abs(cx - W / 3), Math.abs(cx - 2 * W / 3)) / (W / 3);
     const dy = Math.min(Math.abs(cy - H / 3), Math.abs(cy - 2 * H / 3)) / (H / 3);
     thirds = clamp01(1 - 0.5 * (clamp01(dx) + clamp01(dy)));
+    subject = { x: +clamp01(cx / W).toFixed(4), y: +clamp01(cy / H).toFixed(4) };
   }
-  return { sharpness, meanL, stdL, colourfulness, thirds };
+  return { sharpness, meanL, stdL, colourfulness, thirds, subject };
 }
 
 // Coarse scene taxonomy (portrait/group/landscape/scene + indoor/outdoor). No model.
@@ -107,6 +114,15 @@ function computeVisionCpu(img, { faceCount = 0 } = {}) {
       contrast: +contrastN.toFixed(3), colourfulness: +colourN.toFixed(3), engine: 'server-cpu',
     } },
     sceneClass(img, faceCount),
+    // Where the picture is "about", for reel framing. A separate score_type so a
+    // desktop pass with a real face detector can overwrite it with a better
+    // point without touching composition/aesthetic, and so the reel builder has
+    // one field to read whichever produced it.
+    ...(m.subject ? [{
+      score_type: 'subject_point',
+      value: m.subject.x,                       // x in `value` so it is queryable
+      reasons: { x: m.subject.x, y: m.subject.y, method: 'edge-centroid', engine: 'server-cpu' },
+    }] : []),
   ];
 }
 
