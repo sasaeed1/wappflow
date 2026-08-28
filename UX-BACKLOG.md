@@ -60,15 +60,17 @@ capability was there and unreachable.
 Also fixed by generalising: the preview only ever composited the **first** text
 track, so a second one exported captions the editor had never drawn.
 
-**Still open here:** #6 (CapCut-grade templates) — now rests on a real
-multi-track foundation rather than needing one built first.
+| 6 | Templates "very basic" | Every clip the same length, the same transition on every cut, one title card, nothing else — a slideshow with a colour grade. A pack now describes a STRUCTURE: named rhythms, a hook that opens short and an outro that holds, cycled transitions, per-shot motion variation, and a closing CTA on its own track | 16 tests; control run fails 7 against the old builder. Live 30s draft: exactly 30000ms, 6 distinct beat lengths, opens 1142ms → closes 3945ms, 3 transition types, 2 text tracks with the CTA at 27250ms |
+| 7 | Auto-reel should ask personalising questions first | "AI reel" meant picking one of twelve style names with no way to say what the reel was FOR — the same shoot produced the same reel whether it was going to a couple or to Instagram. Now asks what it is made of, how it should feel, what it is for, how long | Live: 4 questions, styles hidden until answered; Elegant → 3 of 12, + Wedding → 2 of 12 |
+
+**The reel cluster is closed.** #8 (face/scene-aware framing) is the remaining
+reel item and is a vision-engine job, not an editor one.
 
 Other projects:
 
 | # | Item | Why it is a project |
 |---|------|---------------------|
 | 1 | Active AI assistant on the lead page — inline prompts, reads the lead profile, asks for missing details and writes them back, same for email | New surface + write-back contract |
-| 7 | Auto-reel asks personalising questions first (photos/video, flashy vs elegant vs professional, niche) | Depends on the editor project |
 | 8 | Auto AI reel detects faces/scenes and frames accordingly | Needs the vision engine |
 | 18 | Contracts Studio → DocuSign-grade: place signature/initial/field anchors before sending; client just clicks | Real placement UI + signing flow |
 | 20 | Rebuild ALL client-facing pages from scratch, premium/high-end | Agree the shape first |
