@@ -559,7 +559,11 @@ html[data-ms-theme="editorial"] .ms-ve { top: 64px; }
 .ms-ve-tile:hover .ms-ve-tile-add { opacity: 1; }
 
 .ms-ve-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #08080a; padding: 16px; gap: 12px; }
-.ms-ve-frame { position: relative; overflow: hidden; border-radius: 6px; background: #000; box-shadow: 0 24px 70px -24px rgba(0,0,0,0.8); }
+/* flex:none is load-bearing. .ms-ve-stage is a flex COLUMN, so the frame was a
+   flex item with the default flex-shrink:1 — its inline height (640px for 9:16)
+   was squashed to whatever was left in the stage (126px), which is why the
+   preview rendered landscape while the header correctly said 9:16. */
+.ms-ve-frame { position: relative; overflow: hidden; border-radius: 6px; background: #000; box-shadow: 0 24px 70px -24px rgba(0,0,0,0.8); flex: none; }
 .ms-ve-frame img, .ms-ve-frame video { display: block; }
 .ms-ve-frame-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: rgba(255,255,255,0.4); font-size: 12.5px; }
 .ms-ve-safe { position: absolute; border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px; pointer-events: none; }

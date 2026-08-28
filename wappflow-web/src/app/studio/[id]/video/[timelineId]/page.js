@@ -75,6 +75,8 @@ export default function VideoEditor() {
   const [stageSize, setStageSize] = useState({ width: 360, height: 640 });
 
   const stageWrapRef = useRef(null);
+  const [stageEl, setStageEl] = useState(null);
+  const attachStage = useCallback((el) => { stageWrapRef.current = el; setStageEl(el); }, []);
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const saveTimer = useRef(null);
@@ -135,21 +137,25 @@ export default function VideoEditor() {
   // corrects it. The preview therefore opened at the wrong shape and only became
   // 9:16 once you changed the aspect, which re-ran this effect against a
   // laid-out element. Measure directly as well, and ignore degenerate boxes.
+  // Depends on `stageEl` (a state-backed callback ref), not on a plain ref: a ref
+  // mutation does not re-run an effect, so when the stage mounted after this
+  // effect had already run the observer was never attached and stageSize stayed
+  // at its useState default of 360x640 forever. Keying on the element itself
+  // means the measurement happens exactly when there is something to measure.
   useEffect(() => {
-    const el = stageWrapRef.current; if (!el || !doc) return;
+    if (!stageEl || !doc) return;
     const measure = () => {
-      const r = el.getBoundingClientRect();
+      const r = stageEl.getBoundingClientRect();
       const w = r.width - 24, h = r.height - 24;
       if (w <= 0 || h <= 0) return; // not laid out yet — a later frame will size it
       setStageSize(aspectBox(doc.aspect, w, h));
     };
     measure();
-    // One more after paint, for the case where the first measure ran too early.
     const raf = requestAnimationFrame(measure);
     const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    ro.observe(stageEl);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, [doc?.aspect]);
+  }, [stageEl, doc?.aspect]);
 
   // ── fullscreen preview ──────────────────────────────────────────────────────
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -396,7 +402,7 @@ export default function VideoEditor() {
           </aside>
 
           {/* stage */}
-          <div className="ms-ve-stage" ref={stageWrapRef}>
+          <div className="ms-ve-stage" ref={attachStage}>
             <div className="ms-ve-frame" style={{ width: stageSize.width, height: stageSize.height }}>
               {!activeClip && <div className="ms-ve-frame-empty"><Film size={26} /><span>Add media to begin</span></div>}
               {activeClip && activeAsset && activeClip.kind === 'video' && (
