@@ -1676,6 +1676,9 @@ function Footer() {
               <a href="#ai">AI</a>
               <a href="#contracts">Contracts Studio</a>
               <a href="#studio">Media Studio</a>
+              {/* The page names the desktop app in a plan tier and in the FAQ.
+                  Until this link existed it was being sold with nowhere to get it. */}
+              <Link href="/download">Desktop app</Link>
             </div>
           </div>
 

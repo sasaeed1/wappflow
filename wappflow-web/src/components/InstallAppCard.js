@@ -9,7 +9,7 @@
 // is a settings row people think is broken.
 
 import { useEffect, useState } from 'react';
-import { Smartphone, Check, Share } from 'lucide-react';
+import { Smartphone, Check, Share, Monitor } from 'lucide-react';
 import { initInstallPrompt, useInstallPrompt, isStandalone } from '@/lib/installPrompt';
 
 export default function InstallAppCard() {
@@ -54,6 +54,14 @@ export default function InstallAppCard() {
           {iosManual ? 'Show me how' : 'Install'}
         </button>
       )}
+
+      {/* The DESKTOP app is a different thing from installing this page as a PWA,
+          and lives here beside it because "how do I get the app" is one question
+          in a user's head, not two. */}
+      <a href="/download" target="_blank" rel="noreferrer"
+         style={{ flexBasis: '100%', fontSize: 12.5, color: 'var(--accent-fg, #6366f1)', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <Monitor size={13} /> Looking for the desktop app? Download it here →
+      </a>
     </div>
   );
 }

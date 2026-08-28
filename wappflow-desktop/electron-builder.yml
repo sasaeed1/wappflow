@@ -22,6 +22,21 @@ publish:
 win:
   target: [nsis]
   artifactName: "WappFlow-Setup-${version}.${ext}"
+  # These builds are unsigned by decision (see /download, which explains the
+  # resulting SmartScreen warning to the user before they click).
+  #
+  # signAndEditExecutable:false ALSO stops electron-builder fetching its
+  # winCodeSign toolchain, which it cannot unpack on a stock Windows box: the
+  # archive contains macOS symlinks (libcrypto.dylib, libssl.dylib) and Windows
+  # refuses to create symlinks without elevation or Developer Mode. It retries
+  # into a NEW random cache directory each run, so pre-extracting cannot win.
+  # Since we are not signing, that whole toolchain is overhead.
+  #
+  # THE COST, stated: the .exe does not get its icon and version metadata
+  # stamped by rcedit. There is no custom icon configured today, so nothing is
+  # lost right now — but when a signing certificate is bought, set this back to
+  # true (the default) and both signing and stamping return together.
+  signAndEditExecutable: false
 mac:
   target: [dmg]
   category: public.app-category.business

@@ -8,3 +8,7 @@ src/main/ai/models/*
 /synthetic.jpg
 /face-test.jpg
 /*.test.jpg
+
+# Built installers. These are 150 MB+ each and are published to the release host
+# by scripts/publish.sh, not carried in the repository.
+dist/
