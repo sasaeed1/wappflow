@@ -36,9 +36,15 @@ import { fetchShop, createOrder, mediaUrl } from '../../../lib/api';
 import PublicBrandMark from '@/components/PublicBrandMark';
 import PublicNextSteps from '@/components/PublicNextSteps';
 import PublicFooter from '@/components/PublicFooter';
+import { PublicShell, AmbientWash } from '@/components/public/PublicShell';
 
-const INK = '#0b0b0f', SURFACE = '#15151b', LINE = '#2a2a33';
-const GOLD = '#c2a878', ON_GOLD = '#14120f', MUTED = '#9aa0aa', DIM = '#71717a';
+// The palette lives in app/public-theme.css and is consumed as custom
+// properties. These names are kept only so the inline styles below read
+// clearly — they resolve to the SAME tokens the booking page and the portal use,
+// so the three cannot drift apart.
+const INK = 'var(--pub-bg)', SURFACE = 'var(--pub-surface)', LINE = 'var(--pub-line)';
+const GOLD = 'var(--pub-accent)', ON_GOLD = 'var(--pub-on-accent)';
+const MUTED = 'var(--pub-ink-2)', DIM = 'var(--pub-ink-3)';
 
 export default function ShopPage() {
   const { token } = useParams();
@@ -305,26 +311,6 @@ export default function ShopPage() {
   );
 }
 
-/** The client's own photographs, blurred, as the only decoration on the page. */
-function AmbientWash({ photos }) {
-  const picks = (photos || []).slice(0, 3);
-  if (!picks.length) return null;
-  return (
-    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-      {picks.map((p, i) => (
-        <img key={p.id} src={mediaUrl(p.thumb)} alt=""
-          style={{
-            position: 'absolute', width: '46%', minWidth: 320, aspectRatio: '1 / 1', objectFit: 'cover',
-            left: `${i * 34 - 8}%`, top: i % 2 ? '-24%' : '-38%',
-            filter: 'blur(72px) saturate(1.25)', opacity: 0.34, transform: 'scale(1.25)',
-          }} />
-      ))}
-      {/* The wash has to sink behind the type or nothing is readable over it. */}
-      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(120% 90% at 50% 0%, rgba(11,11,15,0.35), ${INK} 72%)` }} />
-    </div>
-  );
-}
-
 function Step({ n, title, hint }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -358,11 +344,13 @@ function Splash() {
 
 function Shell({ children }) {
   return (
-    <div style={{ minHeight: '100vh', background: INK, color: '#fff' }}>
+    <PublicShell>
       {children}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&display=swap');
-        .sh-display { font-family: 'Fraunces', Georgia, serif; }
+        /* Type and the shared tokens come from app/public-theme.css. What is left
+           here is only what is specific to a SHOP: the photograph chooser, the
+           sticky preview, the cart drawer. */
+        .sh-display { font-family: var(--pub-display); font-weight: 400; letter-spacing: -0.02em; }
         .sh-spin { width: 26px; height: 26px; border: 2px solid ${LINE}; border-top-color: ${GOLD}; border-radius: 50%; animation: shspin .9s linear infinite; }
         @keyframes shspin { to { transform: rotate(360deg); } }
 
@@ -419,6 +407,6 @@ function Shell({ children }) {
         .sh-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         @media (max-width: 460px) { .sh-two { grid-template-columns: 1fr; } }
       `}</style>
-    </div>
+    </PublicShell>
   );
 }
