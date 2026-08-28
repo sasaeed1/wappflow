@@ -93,11 +93,42 @@ those would have been change for its own sake.
 consume the tokens rather than each keeping a private palette, so they cannot
 drift apart the way three hand-rolled grey pages already had.
 
+### #22 — desktop app — Windows DONE, other platforms blocked on this machine
+
+The app was already written; the update feed pointed at
+`wappflow.remoteops.co/desktop`, which **404'd**. Nothing was hosted, so
+auto-update failed silently and there was nowhere to get it — while the landing
+page named "desktop app (beta)" in a plan tier and in the FAQ. Sold, unobtainable.
+
+Owner's decisions: **unsigned**, hosted **on the OVH box**, **all three platforms**.
+
+| Platform | State | Verified |
+|---|---|---|
+| **Windows** | **Published** | 157 MB installer, first bytes `4d5a` ("MZ" — a real Windows executable), `206` on a range request so downloads resume, `Content-Length` matching the build exactly, `latest.yml` + `builds.json` both `200` |
+| Linux | Blocked | AppImage **requires** an icon symlink; Windows refuses without elevation. One setting away: Developer Mode. Not mine to change |
+| macOS | Blocked | Needs a Mac — no cross-compile path exists |
+
+Shipped: `/download` (reads `builds.json` at runtime, so an unbuilt platform says
+"coming soon" instead of 404ing), links from the landing footer and Settings, and
+`scripts/publish.sh` so releasing is repeatable. `RELEASING.md` documents the
+remaining path — both blockers, and exactly what to do about them.
+
+**Two things found the hard way**, both worth remembering:
+
+1. electron-builder could not build here at all: it fetches a code-signing
+   toolchain containing macOS symlinks, and retries into a NEW random cache
+   directory each run — so pre-extracting by hand cannot win. Since we ship
+   unsigned, `win.signAndEditExecutable: false` skips it entirely.
+2. My first nginx block nested `location ~ \.yml$` with its own `alias` pointing
+   at the DIRECTORY, so `/desktop/latest.yml` 301'd to a trailing slash and
+   404'd. That silently breaks auto-update, since `latest.yml` is exactly what
+   electron-updater fetches. Caught by verifying the URL, not by trusting the
+   reload.
+
 Other projects:
 
 | # | Item | Why it is a project |
 |---|------|---------------------|
-| 22 | Desktop app — finalise, downloadable from landing + settings | Build/sign/distribute pipeline |
 
 ---
 
