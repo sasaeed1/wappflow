@@ -28,6 +28,7 @@ Status legend: `DONE` (deployed + verified live) · `NEXT` (tractable, queued) �
 | 2 | Invoice preview + send + edit + delete from the lead page | Tab was read-only — you could see an invoice existed and do nothing about it, on the page where you talk to the customer. `SendInvoiceModal` extracted to `components/` so both pages mount one copy | Live: paid invoice shows Preview+Email only; unpaid shows all four; editor opens prefilled with real line items |
 | 19 | Popups not centred / no gap from nav / "glitchy" | The PRIMITIVES were wrong, not each popup. `Dropdown` had no viewport awareness at all — no max-height, no flip-up, no clamp. `FloatingChat` (340×520 at bottom:24 = 544px needed) and `AICommandCenter` (70vh from bottom:155 = 507px) both overflowed a 503px viewport | Live: dropdown capped at 425px with `overflow-y: auto`, fits viewport |
 | 21 | PWA install prompt + settings + landing | The manifest was SVG-only, so Chrome never considered the app installable and `beforeinstallprompt` never fired — an install prompt would have been dead code. PNGs generated from the same mark via `ImageResponse` | Live: `/pwa-icon-192.png` and `/pwa-icon-512.png` serve real PNGs; manifest lists both |
+| 1 | Active AI assistant on the lead page | Every other AI route DESCRIBES a lead; this proposes ACTIONS. Inline in the conversation column, above the messages it reads — never a popup. Four types: reminder (creates), invoice (SEEDS the modal, never creates — a number from a chat message wants a human eye), field (writes back), ask (drafts into the composer, never sends). `validateProposals` is the gate: drops fields with no column, "changes" equal to the current value, asks for data already on file, evidence-free proposals and unparseable dates | 15 tests driving the real validator; live on a demo chat: proposed a reminder with its evidence and a drafted question for the empty address, accept created the reminder |
 | 23 | Mobile session retention *(partial — see below)* | "Remember me" defaulted to UNCHECKED, and unchecked clears the session once every tab is gone — on a phone that is just "you closed the app". Now checked by default, and an installed app always persists regardless | Build + deploy; needs a real device to confirm |
 
 ---
@@ -71,7 +72,6 @@ Other projects:
 
 | # | Item | Why it is a project |
 |---|------|---------------------|
-| 1 | Active AI assistant on the lead page — inline prompts, reads the lead profile, asks for missing details and writes them back, same for email | New surface + write-back contract |
 | 8 | Auto AI reel detects faces/scenes and frames accordingly | Needs the vision engine |
 | 18 | Contracts Studio → DocuSign-grade: place signature/initial/field anchors before sending; client just clicks | Real placement UI + signing flow |
 | 20 | Rebuild ALL client-facing pages from scratch, premium/high-end | Agree the shape first |
