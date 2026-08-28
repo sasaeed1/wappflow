@@ -126,7 +126,27 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
       if (isGalleryExpired(g)) return res.status(410).json({ error: 'This gallery has expired.', expired: true });
       const { sym } = brandSym(g.workspace_id);
       const products = db.prepare('SELECT * FROM ms_print_products WHERE workspace_id = ? AND active = 1 ORDER BY sort_order, created_at').all(g.workspace_id).map(shape);
-      res.json({ brand: publicBrand(db, g.workspace_id, clientBaseUrl), currency_symbol: sym, gallery_title: g.title, products });
+      // The photographs. This is a shop that sells PRINTS OF PHOTOGRAPHS and it
+      // used to send none of them — the client picked "16×20 Fine art print" off
+      // a list with nothing to look at, and the studio received an order with no
+      // way to know which image to print. The shop hangs off the gallery's own
+      // token, so the pictures were always one join away.
+      const photos = db.prepare(`
+        SELECT a.id, a.width, a.height, a.variants
+        FROM ms_gallery_assets ga JOIN ms_assets a ON a.id = ga.asset_id
+        WHERE ga.gallery_id = ? AND a.type = 'photo' AND a.deleted_at IS NULL
+        ORDER BY ga.sort_order, a.capture_time, a.created_at
+        LIMIT 200`).all(g.id).map((a) => {
+        let v = {}; try { v = JSON.parse(a.variants || '{}'); } catch {}
+        return {
+          id: a.id,
+          width: a.width || null,
+          height: a.height || null,
+          thumb: v.thumb || v.web || null,
+          web: v.web || v.thumb || null,
+        };
+      }).filter((p) => p.thumb);
+      res.json({ brand: publicBrand(db, g.workspace_id, clientBaseUrl), currency_symbol: sym, gallery_title: g.title, products, photos });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -141,13 +161,23 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
       if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Your cart is empty' });
       if (!name || !(phone || email)) return res.status(400).json({ error: 'Name and a phone or email are required' });
       // price server-side from the catalog
+      // Which photograph each line is for. An order that says "2× Fine art print
+      // (16×20)" and nothing else is not actually actionable — the studio cannot
+      // fulfil it without going back to the customer to ask. Validated against
+      // THIS gallery so a line can never name an image the customer was not
+      // shown, or one belonging to somebody else's shoot.
+      const inGallery = new Set(
+        db.prepare('SELECT asset_id FROM ms_gallery_assets WHERE gallery_id = ?').all(g.id).map(r => r.asset_id)
+      );
       let total = 0; const lines = [];
       for (const it of items) {
         const p = db.prepare('SELECT * FROM ms_print_products WHERE id = ? AND workspace_id = ?').get(it.product_id, ws);
         if (!p) continue;
         const opts = J(p.options, []); const opt = opts.find(o => o.label === it.option) || opts[0] || { label: '', price: 0 };
         const qty = Math.max(1, Number(it.qty) || 1); const price = Number(opt.price) || 0;
-        total += price * qty; lines.push({ name: p.name, option: opt.label, qty, price });
+        const assetId = it.asset_id && inGallery.has(String(it.asset_id)) ? String(it.asset_id) : null;
+        total += price * qty;
+        lines.push({ name: p.name, option: opt.label, qty, price, ...(assetId ? { asset_id: assetId } : {}) });
       }
       if (!lines.length) return res.status(400).json({ error: 'Nothing valid in cart' });
       const ownerId = owner(ws);
