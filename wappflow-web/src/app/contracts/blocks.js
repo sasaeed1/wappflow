@@ -4,7 +4,7 @@
 import {
   Type, Heading1, Image as ImageIcon, Images, Video, Table, Package, Plus,
   ListChecks, HelpCircle, GitCommitVertical, Quote, Minus, Megaphone, MousePointerClick,
-  Code, LayoutTemplate, PenLine, CheckSquare,
+  Code, LayoutTemplate, PenLine, CheckSquare, SquarePen,
 } from 'lucide-react';
 import { mediaUrl } from '../../lib/api';
 import { clickable } from '@/lib/a11y';
@@ -28,9 +28,26 @@ export const BLOCK_TYPES = [
   { type: 'faq', label: 'FAQ', icon: HelpCircle, group: 'Content' },
   { type: 'testimonial', label: 'Testimonial', icon: Quote, group: 'Content' },
   { type: 'custom_section', label: 'Custom section', icon: LayoutTemplate, group: 'Content' },
-  { type: 'signature', label: 'Signature', icon: PenLine, group: 'Action' },
+  // A field the SIGNER fills in, placed where it belongs in the document.
+  // The old 'signature' block below is decorative — it draws a dashed box that
+  // says the client signs somewhere else. This one is the thing they sign.
+  { type: 'field', label: 'Fillable field', icon: SquarePen, group: 'Action' },
+  { type: 'signature', label: 'Signature (decorative)', icon: PenLine, group: 'Action' },
   { type: 'approval', label: 'Approval', icon: CheckSquare, group: 'Action' },
 ];
+
+const csSelect = {
+  padding: '5px 9px', borderRadius: 8, border: '1px solid var(--cs-line)',
+  background: 'var(--cs-surface)', color: 'var(--cs-ink)', fontSize: 12.5, fontFamily: 'inherit',
+};
+
+// Changing the KIND retitles the field, but only when the label is still the one
+// we generated — a label the user typed is theirs and must survive the switch.
+const FIELD_DEFAULT_LABELS = { signature: 'Signature', initials: 'Initials', date: 'Date', text: 'Your answer', checkbox: 'I agree' };
+function defaultFieldLabel(nextKind, currentLabel, prevKind) {
+  const wasGenerated = !currentLabel || currentLabel === FIELD_DEFAULT_LABELS[prevKind];
+  return wasGenerated ? FIELD_DEFAULT_LABELS[nextKind] : currentLabel;
+}
 
 export function defaultData(type) {
   switch (type) {
@@ -51,6 +68,10 @@ export function defaultData(type) {
     case 'faq': return { items: [{ q: 'Question?', a: 'Answer.' }] };
     case 'testimonial': return { quote: 'They were incredible to work with.', author: 'Happy client' };
     case 'custom_section': return { title: 'Section title', text: '' };
+    // Required by default: an optional signature is almost always a mistake,
+    // and the cost of the default being wrong is one click. Mirrors
+    // backend/contract-fields.js, which is the authority.
+    case 'field': return { kind: 'signature', role: 'client', label: 'Signature', required: true };
     case 'signature': return { label: 'Signature' };
     case 'approval': return { label: 'Do you approve this proposal?' };
     default: return {};
@@ -256,6 +277,54 @@ export function BlockView({ block, editing = false, onChange = () => {}, selecte
           {editing ? <IN v={d.author} on={t => set({ author: t })} ph="— Author" style={{ marginTop: 8, fontSize: 13, color: 'var(--cs-ink-2)' }} /> : <footer style={{ marginTop: 8, fontSize: 13, color: 'var(--cs-ink-2)' }}>— {d.author}</footer>}
         </blockquote>
       );
+    // A field the signer actually fills. In the STUDIO it renders as its own
+    // configuration (what kind, who for, is it required); in the client's copy
+    // the viewer replaces it with a real input — see app/d/[token].
+    case 'field': {
+      const KINDS = [
+        ['signature', 'Signature'], ['initials', 'Initials'], ['date', 'Date'],
+        ['text', 'Text answer'], ['checkbox', 'Checkbox'],
+      ];
+      const ROLES = [['client', 'Client'], ['company', 'You'], ['witness', 'Witness'], ['cosigner', 'Co-signer']];
+      const kindLabel = (KINDS.find(k => k[0] === (d.kind || 'signature')) || KINDS[0])[1];
+      const roleLabel = (ROLES.find(r => r[0] === (d.role || 'client')) || ROLES[0])[1];
+      if (!editing) {
+        return (
+          <div style={{ border: '1.5px dashed var(--cs-accent)', borderRadius: 'var(--cs-radius)', padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 12, background: 'color-mix(in srgb, var(--cs-accent) 6%, transparent)' }}>
+            <PenLine size={18} style={{ color: 'var(--cs-accent)', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: 'var(--cs-ink)' }}>
+                {d.label || 'Field'}{d.required ? <span style={{ color: 'var(--cs-accent)' }}> *</span> : null}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--cs-ink-2)' }}>{kindLabel} · {roleLabel} fills this in</div>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div style={{ border: '1.5px dashed var(--cs-accent)', borderRadius: 'var(--cs-radius)', padding: 16, background: 'var(--cs-surface)' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+            <select value={d.kind || 'signature'} onChange={e => set({ kind: e.target.value, label: defaultFieldLabel(e.target.value, d.label, d.kind) })}
+                    style={csSelect}>
+              {KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <select value={d.role || 'client'} onChange={e => set({ role: e.target.value })} style={csSelect}>
+              {ROLES.map(([v, l]) => <option key={v} value={v}>for {l}</option>)}
+            </select>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--cs-ink-2)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={d.required !== false} onChange={e => set({ required: e.target.checked })} />
+              Required
+            </label>
+          </div>
+          <IN v={d.label} on={t => set({ label: t })} ph="Label the signer sees" style={{ color: 'var(--cs-ink)', fontWeight: 700, width: '100%' }} />
+          <div style={{ fontSize: 12, color: 'var(--cs-ink-2)', marginTop: 6 }}>
+            {d.required !== false
+              ? 'They cannot sign until this is filled in.'
+              : 'Optional — they can leave this blank.'}
+          </div>
+        </div>
+      );
+    }
     case 'signature':
       return (
         <div style={{ border: '1.5px dashed var(--cs-accent)', borderRadius: 'var(--cs-radius)', padding: 22, display: 'flex', alignItems: 'center', gap: 14, background: 'var(--cs-surface)' }}>

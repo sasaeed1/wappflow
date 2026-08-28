@@ -11,6 +11,7 @@
  */
 const crypto = require('crypto');
 const pagination = require('./pagination');
+const csFields = require('./contract-fields');
 let ai = null; try { ai = require('./ai-engine'); } catch { /* AI optional */ }
 let cron = null; try { cron = require('node-cron'); } catch { /* scheduler optional */ }
 let pricing = null; try { pricing = require('./pricing'); } catch { /* pricing optional */ }
@@ -223,6 +224,16 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     CREATE INDEX IF NOT EXISTS idx_cs_signers_doc ON cs_signers(document_id);
     CREATE INDEX IF NOT EXISTS idx_cs_events_doc ON cs_events(document_id);
   `);
+
+  // Placed fields (the DocuSign-grade signing flow). What each signer actually
+  // filled in, keyed by the field block's id: { "<blockId>": "<value>" }.
+  //
+  // A JSON column rather than a table, matching how `blocks`, `settings` and
+  // `totals` already work here: the values have no life outside their signer
+  // row, are always read whole, and are never queried across documents. A table
+  // would buy a join and nothing else.
+  try { db.exec("ALTER TABLE cs_signers ADD COLUMN field_values TEXT DEFAULT '{}'"); }
+  catch (e) { if (!/duplicate column/i.test(e.message)) throw e; }
 
   const J = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
   const shareUrl = (d) => (d.token ? `${clientBaseUrl}/d/${d.token}` : null);
@@ -1041,19 +1052,43 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       const d = loadByToken(req.params.token);
       if (!d || d.status === 'voided') return res.status(404).json({ error: 'Not available' });
       if (['signed', 'completed'].includes(d.status)) return res.status(400).json({ error: 'Already signed' });
-      const { typed_name, signature_data, consent, selection } = req.body || {};
+      const { typed_name, signature_data, consent, selection, field_values } = req.body || {};
       if (!consent) return res.status(400).json({ error: 'Please agree to sign electronically.' });
       if (!typed_name || !String(typed_name).trim()) return res.status(400).json({ error: 'Please type your full name.' });
-      if (!signature_data) return res.status(400).json({ error: 'Please draw your signature.' });
-      const ip = clientIp(req); const ua = req.headers['user-agent'] || ''; const at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+      // Whose turn it is decides which fields are being asked for.
       const next = db.prepare("SELECT * FROM cs_signers WHERE document_id = ? AND status = 'pending' ORDER BY sign_order LIMIT 1").get(d.id);
-      if (next) db.prepare("UPDATE cs_signers SET status = 'signed', typed_name = ?, signature_data = ?, consent = 1, ip = ?, user_agent = ?, signed_at = ? WHERE id = ?")
-        .run(String(typed_name).slice(0, 120), signature_data, ip, ua, at, next.id);
+      const blocks = J(d.blocks, []);
+      const role = next?.role || 'client';
+      const placed = csFields.usesPlacedSigning(blocks, role);
+      const sub = csFields.validateSubmission(blocks, role, field_values || {});
+
+      if (!sub.ok) {
+        // Name the fields rather than saying "something is missing" — the client
+        // is looking at a long document and cannot be expected to hunt for it.
+        return res.status(400).json({
+          error: `Please complete: ${sub.missing.map(m => m.label).join(', ')}`,
+          missing: sub.missing,
+        });
+      }
+      // Documents written before placed fields existed still sign the old way —
+      // one drawn signature in the closing modal — and must keep working. Only a
+      // document that has no placed signature field for this role falls back to
+      // demanding that drawing.
+      if (!placed && !signature_data) return res.status(400).json({ error: 'Please draw your signature.' });
+
+      const ip = clientIp(req); const ua = req.headers['user-agent'] || ''; const at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      // With placed fields the mark of assent is the signature FIELD, so that is
+      // what gets stored as the signer's signature and what the PDF renders.
+      const signatureField = csFields.fieldsForRole(blocks, role).find(f => f.kind === 'signature' && sub.values[f.id]);
+      const signatureToStore = signature_data || (signatureField ? sub.values[signatureField.id] : null);
+      if (next) db.prepare("UPDATE cs_signers SET status = 'signed', typed_name = ?, signature_data = ?, consent = 1, ip = ?, user_agent = ?, signed_at = ?, field_values = ? WHERE id = ?")
+        .run(String(typed_name).slice(0, 120), signatureToStore, ip, ua, at, JSON.stringify(sub.values), next.id);
       const remaining = db.prepare("SELECT COUNT(*) c FROM cs_signers WHERE document_id = ? AND status = 'pending'").get(d.id).c;
       const allSigned = remaining === 0;
       const status = allSigned ? 'completed' : 'signed';
       let totals = J(d.totals, {}); if (selection) totals = { ...totals, selection };
-      const hash = crypto.createHash('sha256').update(`${d.id}::${d.blocks}::${typed_name}::${signature_data}::${at}`).digest('hex');
+      const hash = crypto.createHash('sha256').update(`${d.id}::${d.blocks}::${typed_name}::${signatureToStore}::${JSON.stringify(sub.values)}::${at}`).digest('hex');
       db.prepare('UPDATE cs_documents SET status = ?, completed_at = COALESCE(completed_at, ?), totals = ?, doc_hash = ? WHERE id = ?')
         .run(status, allSigned ? at : null, JSON.stringify(totals), hash, d.id);
       recordEvent(d, 'signed', { actor: 'client', ip, ua, meta: { typed_name } });

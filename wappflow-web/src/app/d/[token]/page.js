@@ -21,6 +21,8 @@ export default function PublicDocPage() {
   const [signing, setSigning] = useState(false);
   const [done, setDone] = useState(false);
   const [next, setNext] = useState(null);   // where the client can go after signing
+  // What the client has filled into the placed fields, keyed by block id.
+  const [fieldVals, setFieldVals] = useState({});
 
   useEffect(() => {
     fetchPublicDoc(token).then(d => {
@@ -50,6 +52,26 @@ export default function PublicDocPage() {
     });
     return { currency: cur, total: t };
   }, [blocks, pkgSel, addonSel]);
+
+  // Which placed fields still need answering, for the role whose turn it is.
+  // Mirrors backend/contract-fields.js — the server is the authority and refuses
+  // an incomplete submission regardless, but the client should never be able to
+  // press a button that is going to be rejected.
+  const pendingRole = (data?.signers || []).find(s => s.status === 'pending')?.role || 'client';
+  const myFields = useMemo(
+    () => blocks.filter(b => b.type === 'field' && ((b.data?.role) || 'client') === pendingRole),
+    [blocks, pendingRole],
+  );
+  const usesPlacedSigning = useMemo(
+    () => myFields.some(f => ['signature', 'initials'].includes(f.data?.kind) && f.data?.required !== false),
+    [myFields],
+  );
+  const fieldsRemaining = useMemo(() => myFields.filter(f => {
+    if (f.data?.required === false) return false;
+    const v = fieldVals[f.id];
+    if ((f.data?.kind) === 'checkbox') return v !== true;
+    return !(v && String(v).trim());
+  }), [myFields, fieldVals]);
 
   const toggleAddon = (idx, i) => setAddonSel(s => { const set = new Set(s[idx] || []); set.has(i) ? set.delete(i) : set.add(i); return { ...s, [idx]: set }; });
 
@@ -115,9 +137,19 @@ export default function PublicDocPage() {
             )}
             {blocks.map((b, idx) => (
               <div key={idx} data-bidx={idx}>
-                <BlockView block={b}
-                  selected={b.type === 'package' ? pkgSel[idx] : b.type === 'addons' ? (addonSel[idx] || new Set()) : undefined}
-                  onSelect={b.type === 'package' ? (i) => setPkgSel(s => ({ ...s, [idx]: i })) : b.type === 'addons' ? (i) => toggleAddon(idx, i) : undefined} />
+                {/* A field block is not read, it is filled — so the client's copy
+                    replaces the studio's configuration view with a real input.
+                    Once signed it falls through to BlockView, which renders the
+                    static summary rather than an editable control. */}
+                {b.type === 'field' && !done ? (
+                  <div data-fieldid={b.id}><FillableField block={b}
+                    value={fieldVals[b.id]}
+                    onChange={(v) => setFieldVals(s => ({ ...s, [b.id]: v }))} /></div>
+                ) : (
+                  <BlockView block={b}
+                    selected={b.type === 'package' ? pkgSel[idx] : b.type === 'addons' ? (addonSel[idx] || new Set()) : undefined}
+                    onSelect={b.type === 'package' ? (i) => setPkgSel(s => ({ ...s, [idx]: i })) : b.type === 'addons' ? (i) => toggleAddon(idx, i) : undefined} />
+                )}
               </div>
             ))}
           </div>
@@ -133,11 +165,25 @@ export default function PublicDocPage() {
               <div style={{ fontSize: 22, fontWeight: 800, color: '#16161a', lineHeight: 1 }}>{money(currency, total)}</div>
             </div>
           )}
-          <button onClick={() => setSigning(true)} style={{ padding: '14px 28px', borderRadius: 12, border: 'none', cursor: 'pointer', background: '#16161a', color: '#fff', fontWeight: 800, fontSize: 15, boxShadow: '0 10px 30px rgba(0,0,0,0.25)' }}>Review &amp; sign →</button>
+          {/* Named, not just disabled. "Review & sign" greyed out with no
+              explanation is the worst version of this: the client is looking at
+              a long document and cannot be expected to hunt for what is missing. */}
+          {fieldsRemaining.length > 0 && (
+            <button onClick={() => {
+              const el = document.querySelector(`[data-fieldid="${fieldsRemaining[0].id}"]`);
+              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }} style={{ marginRight: 'auto', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(220,38,38,0.35)', background: 'rgba(220,38,38,0.06)', color: '#b91c1c', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>
+              {fieldsRemaining.length} still to complete — go to “{fieldsRemaining[0].data?.label || 'field'}”
+            </button>
+          )}
+          <button onClick={() => setSigning(true)} disabled={fieldsRemaining.length > 0}
+            title={fieldsRemaining.length > 0 ? `Complete: ${fieldsRemaining.map(f => f.data?.label || 'field').join(', ')}` : undefined}
+            style={{ padding: '14px 28px', borderRadius: 12, border: 'none', cursor: fieldsRemaining.length > 0 ? 'not-allowed' : 'pointer', background: fieldsRemaining.length > 0 ? '#c2c2cc' : '#16161a', color: '#fff', fontWeight: 800, fontSize: 15, boxShadow: fieldsRemaining.length > 0 ? 'none' : '0 10px 30px rgba(0,0,0,0.25)' }}>Review &amp; sign →</button>
         </div>
       )}
 
       {signing && <SignSheet token={token} title={data.title} signerName={(data.signers || []).find(s => s.status === 'pending')?.name} onClose={() => setSigning(false)}
+        fieldValues={fieldVals} usesPlacedSigning={usesPlacedSigning}
         selectionPayload={{ packages: pkgSel, addons: Object.fromEntries(Object.entries(addonSel).map(([k, set]) => [k, [...set]])), total, currency }}
         onSigned={(res) => { setSigning(false); setDone(true); setNext(res?.next || null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
         onDeclined={() => { setSigning(false); setState('declined'); }} />}
@@ -189,7 +235,97 @@ function AskWidget({ token, stickyOffset }) {
   );
 }
 
-function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, selectionPayload }) {
+// ── A field the client fills IN the document, where it was placed ────────────
+//
+// This is the difference between "sign at the bottom" and a real signing flow:
+// the initials go beside the clause they initial, the date goes where the date
+// belongs, and the client can see what they are agreeing to as they agree to it.
+//
+// The signature pad is inline for the same reason. Sending someone to a modal to
+// draw and then back to the document loses the connection between the mark and
+// the thing it marks.
+function FillableField({ block, value, onChange }) {
+  const d = block.data || {};
+  const kind = d.kind || 'signature';
+  const label = d.label || 'Field';
+  const required = d.required !== false;
+  const isInk = kind === 'signature' || kind === 'initials';
+
+  const cv = useRef(null); const drawing = useRef(false); const last = useRef(null);
+  const [hasInk, setHasInk] = useState(!!value);
+
+  const setup = useCallback(() => {
+    const c = cv.current; if (!c) return;
+    const r = window.devicePixelRatio || 1; const w = c.clientWidth, h = c.clientHeight;
+    c.width = w * r; c.height = h * r; const x = c.getContext('2d'); x.scale(r, r);
+    x.lineWidth = 2.2; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#111';
+  }, []);
+  useEffect(() => { if (isInk) setup(); }, [isInk, setup]);
+
+  const pos = (e) => { const r = cv.current.getBoundingClientRect(); const t = e.touches?.[0]; return { x: (t ? t.clientX : e.clientX) - r.left, y: (t ? t.clientY : e.clientY) - r.top }; };
+  const start = (e) => { e.preventDefault(); drawing.current = true; last.current = pos(e); };
+  const move = (e) => {
+    if (!drawing.current) return; e.preventDefault();
+    const x = cv.current.getContext('2d'); const p = pos(e);
+    x.beginPath(); x.moveTo(last.current.x, last.current.y); x.lineTo(p.x, p.y); x.stroke();
+    last.current = p; setHasInk(true);
+  };
+  // Commit on stroke END, not on every move: serialising the canvas on each
+  // pointermove is what makes a signature pad feel like it is dragging a brick.
+  const end = () => { if (!drawing.current) return; drawing.current = false; onChange(cv.current.toDataURL('image/png')); };
+  const clear = () => { const c = cv.current; c.getContext('2d').clearRect(0, 0, c.width, c.height); setHasInk(false); onChange(''); };
+
+  const filled = kind === 'checkbox' ? value === true : !!(value && String(value).trim());
+
+  return (
+    <div style={{
+      border: `1.5px ${filled ? 'solid' : 'dashed'} ${filled ? '#10b981' : '#8b8bf0'}`,
+      borderRadius: 12, padding: 14,
+      background: filled ? 'rgba(16,185,129,0.05)' : 'rgba(99,102,241,0.04)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: isInk || kind !== 'checkbox' ? 9 : 0 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#16161a' }}>
+          {label}{required && <span style={{ color: '#dc2626' }}> *</span>}
+        </span>
+        {filled && <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981' }}>✓</span>}
+        <span style={{ flex: 1 }} />
+        {isInk && hasInk && (
+          <button onClick={clear} style={{ fontSize: 11.5, color: '#70707a', background: '#fff', border: '1px solid #e6e6ec', borderRadius: 7, padding: '3px 9px', cursor: 'pointer' }}>Clear</button>
+        )}
+      </div>
+
+      {isInk && (
+        <div style={{ position: 'relative', border: '1px dashed #cfcfd8', borderRadius: 10, height: kind === 'initials' ? 76 : 116, background: '#fff' }}>
+          <canvas ref={cv}
+            onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+            onTouchStart={start} onTouchMove={move} onTouchEnd={end}
+            style={{ width: '100%', height: '100%', touchAction: 'none', cursor: 'crosshair', display: 'block' }} />
+          {!hasInk && (
+            <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#c2c2cc', fontSize: 13, pointerEvents: 'none' }}>
+              {kind === 'initials' ? 'Initial here' : 'Sign here'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {kind === 'date' && (
+        <input type="date" value={value || ''} onChange={e => onChange(e.target.value)} style={inp} />
+      )}
+      {kind === 'text' && (
+        <input value={value || ''} onChange={e => onChange(e.target.value)} placeholder="Type your answer" style={inp} />
+      )}
+      {kind === 'checkbox' && (
+        <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', marginTop: 4 }}>
+          <input type="checkbox" checked={value === true} onChange={e => onChange(e.target.checked)}
+                 style={{ marginTop: 2, width: 17, height: 17, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: '#55555e', lineHeight: 1.5 }}>{d.help || 'I agree'}</span>
+        </label>
+      )}
+    </div>
+  );
+}
+
+function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, selectionPayload, fieldValues, usesPlacedSigning }) {
   const [typed, setTyped] = useState(signerName || '');
   const [consent, setConsent] = useState(false);
   const [hasInk, setHasInk] = useState(false);
@@ -214,9 +350,20 @@ function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, se
     setErr('');
     if (!consent) return setErr('Please confirm your intent to sign electronically.');
     if (!typed.trim()) return setErr('Please type your full legal name.');
-    if (!hasInk) return setErr('Please draw your signature.');
+    // When the document has a placed signature field, they have already signed
+    // it in context — asking again here is asking twice for the same mark.
+    if (!usesPlacedSigning && !hasInk) return setErr('Please draw your signature.');
     setBusy(true);
-    try { const r = await signPublicDoc(token, { typed_name: typed.trim(), signature_data: cv.current.toDataURL('image/png'), consent: true, selection: selectionPayload }); onSigned(r); }
+    try {
+      const r = await signPublicDoc(token, {
+        typed_name: typed.trim(),
+        signature_data: hasInk ? cv.current.toDataURL('image/png') : null,
+        consent: true,
+        selection: selectionPayload,
+        field_values: fieldValues || {},
+      });
+      onSigned(r);
+    }
     catch (e) { setErr(e.message || 'Could not submit'); setBusy(false); }
   };
   const decline = async () => { const reason = window.prompt('Decline this document? (optional reason)'); if (reason === null) return; await declinePublicDoc(token, reason); onDeclined(); };
@@ -229,12 +376,20 @@ function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, se
         <p style={{ fontSize: 13, color: '#70707a', margin: '0 0 16px' }}>Your electronic signature is legally binding.</p>
         <label style={lbl}>Full legal name</label>
         <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Type your name" style={inp} />
-        <label style={{ ...lbl, marginTop: 14 }}>Draw your signature</label>
-        <div style={{ position: 'relative', border: '1.5px dashed #cfcfd8', borderRadius: 12, height: 150, background: '#fff' }}>
-          <canvas ref={cv} onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end} onTouchStart={start} onTouchMove={move} onTouchEnd={end} style={{ width: '100%', height: '100%', touchAction: 'none', cursor: 'crosshair', display: 'block' }} />
-          {!hasInk && <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#c2c2cc', fontSize: 14, pointerEvents: 'none' }}>Sign here</span>}
-          {hasInk && <button onClick={clear} style={{ position: 'absolute', top: 8, right: 8, fontSize: 12, color: '#8a8a93', background: '#fff', border: '1px solid #e6e6ec', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>Clear</button>}
-        </div>
+        {usesPlacedSigning ? (
+          <div style={{ marginTop: 14, padding: '11px 13px', borderRadius: 10, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', fontSize: 13, color: '#15803d', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>✓</span> You have signed in the document above.
+          </div>
+        ) : (
+          <>
+            <label style={{ ...lbl, marginTop: 14 }}>Draw your signature</label>
+            <div style={{ position: 'relative', border: '1.5px dashed #cfcfd8', borderRadius: 12, height: 150, background: '#fff' }}>
+              <canvas ref={cv} onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end} onTouchStart={start} onTouchMove={move} onTouchEnd={end} style={{ width: '100%', height: '100%', touchAction: 'none', cursor: 'crosshair', display: 'block' }} />
+              {!hasInk && <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#c2c2cc', fontSize: 14, pointerEvents: 'none' }}>Sign here</span>}
+              {hasInk && <button onClick={clear} style={{ position: 'absolute', top: 8, right: 8, fontSize: 12, color: '#8a8a93', background: '#fff', border: '1px solid #e6e6ec', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>Clear</button>}
+            </div>
+          </>
+        )}
         <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 14, cursor: 'pointer' }}>
           <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 3, width: 17, height: 17, flexShrink: 0 }} />
           <span style={{ fontSize: 12, color: '#55555e', lineHeight: 1.5 }}>I agree to sign electronically; my e-signature is the legal equivalent of my handwritten signature (ESIGN/UETA). I consent to my IP, timestamp and device being recorded.</span>
