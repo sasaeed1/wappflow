@@ -457,7 +457,7 @@ html[data-ms-theme="editorial"] .ms-photo::after { background: linear-gradient(t
 
 /* — Home hero: the latest shoot as a full-bleed cinematic opener — */
 .ms-hero { position: relative; border-radius: calc(var(--ms-radius) + 6px); overflow: hidden; min-height: clamp(280px, 38vh, 420px); display: flex; align-items: flex-end; background: var(--ms-surface-2); cursor: pointer; animation: ms-rise .6s var(--ms-ease) both; }
-.ms-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 1.2s var(--ms-ease); }
+.ms-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 32%; transition: transform 1.2s var(--ms-ease); }
 .ms-hero:hover .ms-hero-img { transform: scale(1.03); }
 .ms-hero-veil { position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,8,10,0.82) 0%, rgba(8,8,10,0.25) 45%, rgba(8,8,10,0.05) 70%), linear-gradient(115deg, rgba(8,8,10,0.45), transparent 55%); }
 /* no-cover hero: a vivid, drifting colour-field (stays dark enough for white text) */
@@ -499,7 +499,13 @@ html[data-ms-theme="cinema"] .ms-hero-fallback { background:
 html[data-ms-theme="editorial"] .ms-covercard-veil { background: linear-gradient(to top, rgba(15,15,14,0.7), rgba(15,15,14,0.08) 46%, transparent 62%); }
 
 /* — Project workspace hero band — */
-.ms-projecthero { position: relative; border-radius: calc(var(--ms-radius) + 6px); overflow: hidden; margin-bottom: 26px; min-height: 200px; display: flex; align-items: flex-end; background: var(--ms-surface-2); }
+/* The hero crops one frame into a wide, short box. At min-height:200px that box
+   is roughly 6:1, so a portrait frame was sliced to a thin midriff band with the
+   faces cut off entirely. Two changes: give it real height (a 3.2:1 band that
+   still caps out, so it never eats the page), and bias the crop toward the upper
+   third, where faces sit in almost every frame a photographer would shoot.
+   page.js additionally prefers a landscape frame for this slot when one exists. */
+.ms-projecthero { position: relative; border-radius: calc(var(--ms-radius) + 6px); overflow: hidden; margin-bottom: 26px; min-height: clamp(230px, 26vw, 340px); display: flex; align-items: flex-end; background: var(--ms-surface-2); }
 .ms-projecthero .ms-hero-body { padding: clamp(18px, 2.6vw, 30px); }
 
 /* — Immersive cull canvas: the photo IS the page — */
@@ -689,11 +695,28 @@ html[data-ms-theme="editorial"] .ms-wall-head { flex-direction: column; align-it
 /* — Project workspace: media-first two-column layout — */
 .ms-workgrid { display: grid; grid-template-columns: minmax(0, 1fr) 352px; gap: clamp(20px, 2.6vw, 36px); align-items: start; }
 .ms-workmain { grid-column: 1; grid-row: 1; min-width: 0; }
-.ms-workaside { grid-column: 2; grid-row: 1; position: sticky; top: 76px; min-width: 0; }
+/* The aside is sticky, so once the gallery list grows past the viewport the only
+   way to reach the bottom galleries was to scroll the whole page — which scrolls
+   the library away with it and defeats the point of a sticky column. Give the
+   column its own scroller so galleries scroll against a stationary library. */
+.ms-workaside {
+  grid-column: 2; grid-row: 1; position: sticky; top: 76px; min-width: 0;
+  max-height: calc(100vh - 92px); overflow-y: auto; overscroll-behavior: contain;
+  /* room for the scrollbar so it never sits on top of the panel edges */
+  padding-right: 6px; margin-right: -6px;
+  scrollbar-width: thin; scrollbar-color: var(--ms-line) transparent;
+}
+.ms-workaside::-webkit-scrollbar { width: 8px; }
+.ms-workaside::-webkit-scrollbar-track { background: transparent; }
+.ms-workaside::-webkit-scrollbar-thumb { background: var(--ms-line); border-radius: 999px; }
+.ms-workaside::-webkit-scrollbar-thumb:hover { background: var(--ms-ink-3); }
 .ms-workaside .ms-h2 { font-size: 17px; }
 @media (max-width: 1020px) {
   .ms-workgrid { grid-template-columns: 1fr; }
+  /* Stacked, the aside is just another band of the page — a nested scroller
+     inside a scrolling page is a trap on touch, so hand scrolling back. */
   .ms-workmain, .ms-workaside { grid-column: 1; grid-row: auto; position: static; }
+  .ms-workaside { max-height: none; overflow-y: visible; padding-right: 0; margin-right: 0; }
 }
 
 /* Fullscreen preview (the F key / the stage button). :fullscreen paints its own

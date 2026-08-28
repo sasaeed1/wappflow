@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_URL, platformAccountsAPI, settingsAPI } from '../../lib/api';
 import { isLeadUnread } from '../../lib/unread';
+import { toDate, formatRelative } from '../../lib/datetime';
 import AddLeadModal from '../../components/AddLeadModal';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import { useSound } from '@/lib/sounds';
@@ -861,7 +862,12 @@ export default function DashboardPage() {
     color: col.color,
   })).filter(d => d.value > 0);
 
-  const recentLeads = [...allLeads].sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)).slice(0, 5);
+  // toDate, not new Date: the backend stores zone-less UTC ("2026-08-27 14:03:00"),
+  // which some engines parse as LOCAL time. A lead with no messages yet has a null
+  // last_message_at — it falls back to when it was created instead of sorting as
+  // an Invalid Date.
+  const lastActiveAt = (l) => (toDate(l.last_message_at) || toDate(l.created_at) || new Date(0)).getTime();
+  const recentLeads = [...allLeads].sort((a, b) => lastActiveAt(b) - lastActiveAt(a)).slice(0, 5);
 
   const totalBadge = notifBadge + liveEvents.length;
 
@@ -1121,7 +1127,14 @@ export default function DashboardPage() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.customer_name}</p>
-                      <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{new Date(lead.last_message_at).toLocaleDateString()}</p>
+                      {/* Relative, not a bare date. The chip beside this shows the
+                          PIPELINE STATUS — a lead nobody has worked yet is still
+                          "New" weeks later — and with only a date to go on the row
+                          read as though the lead had just arrived. "New · 6w ago"
+                          cannot be misread. */}
+                      <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>
+                        {formatRelative(lead.last_message_at || lead.created_at) || '—'}
+                      </p>
                     </div>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: sc.bg, color: sc.text, whiteSpace: 'nowrap' }}>{lead.status}</span>
                   </div>

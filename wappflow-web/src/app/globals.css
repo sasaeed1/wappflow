@@ -25,6 +25,16 @@
   --shadow: 0 4px 24px rgba(0,0,0,0.35);
 }
 
+/* color-scheme was never declared, so the browser rendered every NATIVE control
+   in light mode no matter what the app palette said. Author CSS can repaint a
+   <select> box but not the popup the OS opens on top of it, nor a checkbox, a
+   date picker, an autofill sheet or a non-webkit scrollbar — those follow
+   color-scheme alone. In dark mode that produced light-on-light controls; the
+   Print Store, which is almost entirely selects and number fields, was the worst
+   of it. One declaration fixes every native control app-wide. */
+:root { color-scheme: dark; }
+html.light, html.wf-public { color-scheme: light; }
+
 html.light {
   --bg: #f1f5f9;
   --surface: #ffffff;
@@ -308,7 +318,18 @@ select:-webkit-autofill {
   86% { transform: rotate(6deg); }
   94% { transform: rotate(-3deg); }
 }
-.wf-unread-bell { animation: wf-shake 2s ease-in-out infinite; transform-origin: 50% 10%; }
+/* A shake that never stops is fine for one badge and unbearable for twenty. The
+   leads list routinely shows 20 unread at once (measured: 20 of 25 rows), and a
+   screen of permanently vibrating badges reads as noise, not as "look here".
+   Draw the eye a few times, then settle — the badge still marks the row unread,
+   it just stops demanding attention forever. */
+.wf-unread-bell { animation: wf-shake 2s ease-in-out 3; transform-origin: 50% 10%; }
+@media (prefers-reduced-motion: reduce) { .wf-unread-bell { animation: none; } }
+
+/* Unread rows carry a quiet left marker until the lead is opened. An inset
+   shadow rather than a background, because the row's hover handlers write
+   background inline and would blow a class-level tint away on mouse-out. */
+.wf-lead-unread { box-shadow: inset 3px 0 0 #ef4444; }
 
 .spin { animation: spin 0.8s linear infinite; }
 

@@ -1276,8 +1276,9 @@ export default function LeadsListPage() {
             const isSelected = selected.has(lead.id);
             const assignedMember = lead.assigned_to ? memberById(lead.assigned_to) : null;
             const assignedName = assignedMember ? (assignedMember.full_name || assignedMember.invite_email || 'Member') : null;
+            const unread = isLeadUnread(lead);
             return (
-              <div key={lead.id} className="r-tw" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--surface)', transition: 'background 0.1s', cursor: 'pointer' }}
+              <div key={lead.id} className={`r-tw${unread ? ' wf-lead-unread' : ''}`} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 40px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--surface)', transition: 'background 0.1s', cursor: 'pointer' }}
                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background='var(--surface2)'; }}
                 onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background='var(--surface)'; }}
                 onClick={() => router.push(`/leads/${lead.id}`)}
@@ -1378,7 +1379,7 @@ export default function LeadsListPage() {
                   {value ? `Rs ${value.toLocaleString()}` : '—'}
                 </span>
 
-                {isLeadUnread(lead) && (
+                {unread && (
                   <div className="wf-unread-bell" title="New / unread messages" style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <MessageSquare size={12} color="#ef4444" />
                   </div>

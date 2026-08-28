@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
-  Lock, Globe, Eye, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
+  Lock, Globe, Eye, EyeOff, Sparkles, Loader, ExternalLink, ListChecks, Download, Package, BookOpen, Film,
   Heart, MessageSquare, ChevronLeft, ChevronRight, Grid2x2, Grid3x3, LayoutGrid, LayoutDashboard, Play, Pause, Droplets, Wand2, SlidersHorizontal, Settings,
 } from 'lucide-react';
 
@@ -157,10 +157,10 @@ function GalleryPhotosModal({ gallery, assets, onClose, onChanged, setBanner }) 
   return (
     <div className="ms-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="ms-modal" style={{ maxWidth: 880, width: '92vw' }} onClick={(e) => e.stopPropagation()}
-           role="dialog" aria-modal="true" aria-label="Gallery photos">
-        <h2 style={{ fontFamily: 'var(--ms-serif)', fontSize: 20, margin: '0 0 4px', color: 'var(--ms-ink)' }}>Photos in “{gallery.title}”</h2>
+           role="dialog" aria-modal="true" aria-label="Gallery media">
+        <h2 style={{ fontFamily: 'var(--ms-serif)', fontSize: 20, margin: '0 0 4px', color: 'var(--ms-ink)' }}>Media in “{gallery.title}”</h2>
         <p className="ms-modal-sub" style={{ marginBottom: 16 }}>
-          Click a photo to include or exclude it. {memberIds === null ? 'Loading…' : `${count} of ${assets.length} in this gallery.`}
+          Click an item to include or exclude it. {memberIds === null ? 'Loading…' : `${count} of ${assets.length} in this gallery.`}
         </p>
 
         {memberIds === null ? (
@@ -404,6 +404,21 @@ export default function ProjectPage() {
     }
   };
 
+  // Publish's missing counterpart. The API route (POST …/unpublish) and the
+  // client binding both already existed — nothing ever called them, so a gallery
+  // sent to the wrong client, or one with the wrong photographs in it, could not
+  // be withdrawn from the UI at all.
+  const unpublish = async (gallery) => {
+    if (!window.confirm(`Unpublish “${gallery.title}”? The share link stops working until you publish it again.`)) return;
+    try {
+      await mediaAPI.unpublishGallery(gallery.id);
+      await refreshGalleries();
+      setBanner({ type: 'ok', msg: 'Gallery unpublished — the client link no longer opens.' });
+    } catch (err) {
+      setBanner({ type: 'error', msg: err.response?.data?.error || 'Could not unpublish' });
+    }
+  };
+
   const copy = (text) => {
     if (!text) { setBanner({ type: 'error', msg: 'No share link yet — publish the gallery first.' }); return; }
     try { navigator.clipboard.writeText(text); setBanner({ type: 'ok', msg: 'Link copied', link: text }); } catch { setBanner({ type: 'error', msg: 'Could not copy', link: text }); }
@@ -435,14 +450,24 @@ export default function ProjectPage() {
 
   if (loading) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
+  // The hero crops one frame into a very wide, short box. Blindly taking
+  // assets[0] meant a portrait frame got sliced to a thin midriff band with the
+  // faces cropped clean off — which is what made the header look broken. Prefer
+  // a landscape frame when the shoot has one; the CSS biases the crop upward so
+  // faces survive it either way.
+  const heroAsset =
+    assets.find((a) => kindOf(a) === 'photo' && a.thumb_url && a.width && a.height && a.width >= a.height)
+    || assets.find((a) => kindOf(a) === 'photo' && a.thumb_url)
+    || assets[0];
+
   return (
     <>
       <div className="ms-page">
         <button onClick={() => router.push('/studio')} className="ms-back"><ArrowLeft size={15} /> All shoots</button>
 
         <div className="ms-projecthero">
-          {assets[0]?.thumb_url
-            ? <img className="ms-hero-img" src={mediaUrl(assets[0].variants?.web || assets[0].thumb_url)} alt="" />
+          {heroAsset?.thumb_url
+            ? <img className="ms-hero-img" src={mediaUrl(heroAsset.variants?.web || heroAsset.thumb_url)} alt="" />
             : <div className="ms-hero-fallback" />}
           <div className="ms-hero-veil" />
           <div className="ms-hero-body">
@@ -530,8 +555,9 @@ export default function ProjectPage() {
                 )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {selected.size > 0 && <button onClick={() => addSelected(g.id)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Plus size={13} /> Add {selected.size}</button>}
+                  {/* "Media", not "Photos" — a gallery carries video too. */}
                   <button onClick={() => setPhotosFor(g)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}>
-                    <ImageIcon size={13} /> Photos{g.asset_count ? ` (${g.asset_count})` : ''}
+                    <ImageIcon size={13} /> Media{g.asset_count ? ` (${g.asset_count})` : ''}
                   </button>
                   <button onClick={() => setEditing({ id: g.id, title: g.title, visibility: g.visibility, expires_at: (g.expires_at || '').slice(0, 10), password: '' })}
                           className="ms-btn-ghost" style={{ padding: '7px 13px' }}>
@@ -541,6 +567,7 @@ export default function ProjectPage() {
                     ? <>
                         <button onClick={() => g.share_url ? window.open(g.share_url, '_blank', 'noopener') : setBanner({ type: 'error', msg: 'Share link not ready — the API needs a restart (pm2 restart wappflow-api), then refresh.' })} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Eye size={13} /> Open</button>
                         <button onClick={() => copy(g.share_url)} className="ms-btn-ghost" style={{ padding: '7px 13px' }}><Copy size={13} /> Copy link</button>
+                        <button onClick={() => unpublish(g)} className="ms-btn-ghost" style={{ padding: '7px 13px' }} title="Stop the client link from opening"><EyeOff size={13} /> Unpublish</button>
                       </>
                     : <button onClick={() => publish(g)} disabled={(g.asset_count || 0) === 0} className="ms-btn-ink" style={{ padding: '8px 15px', fontSize: 12.5 }}><Share2 size={13} /> Publish &amp; send</button>}
                   {(() => {
