@@ -2537,6 +2537,10 @@ Only suggest actions that make sense for the question. If none make sense, retur
   function shapePortfolioItem(it) {
     let v = {};
     try { v = JSON.parse((it.asset_id ? it.a_variants : it.variants) || '{}'); } catch {}
+    // Item-level overrides (a creator-picked video frame, the tile's framing) live in
+    // the item's own `variants`, so they work for library-backed items too.
+    let own = v;
+    if (it.asset_id) { try { own = JSON.parse(it.variants || '{}'); } catch { own = {}; } }
     const key = it.asset_id ? it.a_key : it.storage_key;
     const kind = it.kind || (it.a_type === 'video' ? 'video' : 'photo');
     return {
@@ -2544,13 +2548,15 @@ Only suggest actions that make sense for the question. If none make sense, retur
       featured: !!it.featured, sort_order: it.sort_order, asset_id: it.asset_id || null,
       url: v.web || v.original || (key ? publicUrl(key) : null),
       full_url: v.original || v.web || (key ? publicUrl(key) : null),
-      poster_url: it.asset_id ? (it.a_poster || null) : (v.poster || null),
+      poster_url: own.poster || (it.asset_id ? (it.a_poster || null) : null),
+      focus: own.focus || null,
+      filename: v.filename || it.a_filename || null,
       video_url: kind === 'video' ? (it.asset_id ? (it.a_proxy || (key ? publicUrl(key) : null)) : (key ? publicUrl(key) : null)) : null,
     };
   }
   function getPortfolioItems(portfolioId) {
     return db.prepare(`
-      SELECT pi.*, a.variants AS a_variants, a.storage_key AS a_key, a.poster_url AS a_poster, a.proxy_url AS a_proxy, a.type AS a_type
+      SELECT pi.*, a.variants AS a_variants, a.storage_key AS a_key, a.poster_url AS a_poster, a.proxy_url AS a_proxy, a.type AS a_type, a.filename AS a_filename
       FROM ms_portfolio_items pi LEFT JOIN ms_assets a ON a.id = pi.asset_id
       WHERE pi.portfolio_id = ? ORDER BY pi.sort_order, pi.created_at
     `).all(portfolioId).map(shapePortfolioItem);
@@ -2570,7 +2576,9 @@ Only suggest actions that make sense for the question. If none make sense, retur
     let settings = {}; try { settings = JSON.parse(pf.settings || '{}'); } catch {}
     return {
       title: pf.title, tagline: pf.tagline, bio: pf.bio, theme: pf.theme,
-      cover_url: pf.cover_url, avatar_url: pf.avatar_url, settings, items: getPortfolioItems(pf.id),
+      cover_url: pf.cover_url, avatar_url: pf.avatar_url, settings,
+      // the original upload name is an editor label only — never shown publicly
+      items: getPortfolioItems(pf.id).map(({ filename, ...it }) => it),
       brand: publicBrand(db, pf.workspace_id, clientBaseUrl),
     };
   }
@@ -2677,20 +2685,62 @@ Only suggest actions that make sense for the question. If none make sense, retur
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/media/portfolio/upload', auth, mediaUpload.array('files', 30), (req, res) => {
+  // Portfolio-only files go through the same storage seam as project uploads: when
+  // STORAGE_PROVIDER=r2, publicUrl() points at R2, so a file left on local disk
+  // would render as a broken tile. Push it up; on an R2 hiccup keep it local.
+  async function storePortfolioFile(f) {
+    const key = `media/${path.basename(f.path)}`;
+    if (storage.isRemote) {
+      try { await storage.uploadFile(key, fs.readFileSync(f.path), f.mimetype); try { fs.unlinkSync(f.path); } catch {} }
+      catch {}
+    }
+    return key;
+  }
+  function deletePortfolioFile(key) {
+    if (!key) return;
+    try { fs.unlinkSync(path.join(uploadsDir, key)); } catch {}
+    if (storage.isRemote) { Promise.resolve(storage.deleteFile(key)).catch(() => {}); }
+  }
+
+  app.post('/api/media/portfolio/upload', auth, mediaUpload.array('files', 30), async (req, res) => {
     try {
       const pf = getOrCreatePortfolio(req);
+      const files = (req.files || []).filter(f => ['photo', 'video'].includes(detectType(f.mimetype, f.originalname)));
+      for (const f of req.files || []) { if (!files.includes(f)) { try { fs.unlinkSync(f.path); } catch {} } }
+      const prepared = [];
+      for (const f of files) prepared.push({ f, key: await storePortfolioFile(f) });
       let base = db.prepare('SELECT COALESCE(MAX(sort_order),0) m FROM ms_portfolio_items WHERE portfolio_id = ?').get(pf.id).m;
       const ins = db.prepare(`INSERT INTO ms_portfolio_items (id, workspace_id, portfolio_id, storage_key, variants, kind, source, sort_order) VALUES (?,?,?,?,?,?,'upload',?)`);
-      const files = req.files || [];
       db.transaction(() => {
-        for (const f of files) {
-          const key = `media/${path.basename(f.path)}`;
+        for (const { f, key } of prepared) {
           const kind = detectType(f.mimetype, f.originalname) === 'video' ? 'video' : 'photo';
-          ins.run(generateId(), req.workspaceId, pf.id, key, JSON.stringify({ original: publicUrl(key), web: publicUrl(key) }), kind, ++base);
+          // Keep the original name so the editor can label the tile; the public
+          // title stays empty until the creator names it.
+          const filename = String(f.originalname || '').slice(0, 160) || null;
+          ins.run(generateId(), req.workspaceId, pf.id, key, JSON.stringify({ original: publicUrl(key), web: publicUrl(key), filename }), kind, ++base);
         }
       })();
-      res.json({ added: files.length, items: getPortfolioItems(pf.id) });
+      logAudit(req.workspaceId, req.userId, 'portfolio_upload', 'ms_portfolio', pf.id, { count: prepared.length });
+      res.json({ added: prepared.length, items: getPortfolioItems(pf.id) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Custom thumbnail for a portfolio item — typically a frame the creator picked
+  // from the video in the editor (captured client-side, uploaded as a JPEG).
+  app.post('/api/media/portfolio/items/:itemId/poster', auth, mediaUpload.single('file'), async (req, res) => {
+    const f = req.file;
+    try {
+      const pf = getOrCreatePortfolio(req);
+      const it = db.prepare('SELECT * FROM ms_portfolio_items WHERE id = ? AND portfolio_id = ?').get(req.params.itemId, pf.id);
+      if (!it) { if (f) { try { fs.unlinkSync(f.path); } catch {} } return res.status(404).json({ error: 'Item not found' }); }
+      if (!f || !String(f.mimetype || '').startsWith('image/')) { if (f) { try { fs.unlinkSync(f.path); } catch {} } return res.status(400).json({ error: 'Send an image file.' }); }
+      const key = await storePortfolioFile(f);
+      let own = {}; try { own = JSON.parse(it.variants || '{}'); } catch {}
+      if (own.poster_key) deletePortfolioFile(own.poster_key);
+      own.poster = publicUrl(key); own.poster_key = key;
+      db.prepare('UPDATE ms_portfolio_items SET variants = ? WHERE id = ?').run(JSON.stringify(own), it.id);
+      logAudit(req.workspaceId, req.userId, 'portfolio_item_poster', 'ms_portfolio_item', it.id, {});
+      res.json({ ok: true, items: getPortfolioItems(pf.id) });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -2713,6 +2763,13 @@ Only suggest actions that make sense for the question. If none make sense, retur
       if (req.body.caption !== undefined) set.caption = String(req.body.caption || '').slice(0, 300);
       if (req.body.title !== undefined) set.title = String(req.body.title || '').slice(0, 120);
       if (req.body.featured !== undefined) set.featured = req.body.featured ? 1 : 0;
+      if (req.body.focus !== undefined) {
+        // Tile framing — a CSS object-position, clamped to "x% y%".
+        let own = {}; try { own = JSON.parse(it.variants || '{}'); } catch {}
+        const m = /^\s*(\d{1,3}(?:\.\d+)?)%\s+(\d{1,3}(?:\.\d+)?)%\s*$/.exec(String(req.body.focus || ''));
+        if (m) own.focus = `${Math.min(100, +m[1])}% ${Math.min(100, +m[2])}%`; else delete own.focus;
+        set.variants = JSON.stringify(own);
+      }
       const keys = Object.keys(set);
       if (keys.length) db.prepare(`UPDATE ms_portfolio_items SET ${keys.map(k => `${k}=@${k}`).join(', ')} WHERE id=@id`).run({ ...set, id: it.id });
       res.json({ ok: true });
@@ -2724,7 +2781,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
       const pf = getOrCreatePortfolio(req);
       const it = db.prepare('SELECT * FROM ms_portfolio_items WHERE id = ? AND portfolio_id = ?').get(req.params.itemId, pf.id);
       if (!it) return res.status(404).json({ error: 'Item not found' });
-      if (it.source === 'upload' && it.storage_key) { try { fs.unlinkSync(path.join(uploadsDir, it.storage_key)); } catch {} }
+      if (it.source === 'upload' && it.storage_key) deletePortfolioFile(it.storage_key);
+      try { deletePortfolioFile(JSON.parse(it.variants || '{}').poster_key); } catch {}
       db.prepare('DELETE FROM ms_portfolio_items WHERE id = ?').run(it.id);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }

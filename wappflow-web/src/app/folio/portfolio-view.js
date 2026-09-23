@@ -15,7 +15,7 @@ export default function PortfolioCanvas({ portfolio, items = [], preview = false
   const [lb, setLb] = useState(null);
   const pf = portfolio || {};
   const s = pf.settings || {};
-  const cover = pf.cover_url || (items.find((i) => i.kind === 'photo')?.full_url) || items[0]?.url || null;
+  const cover = pf.cover_url || (items.find((i) => i.kind === 'photo')?.full_url) || (items.find((i) => i.poster_url)?.poster_url) || null;
   const styleVars = s.accent ? { '--pf-accent': s.accent } : undefined;
   const hasContact = s.email || s.phone || s.instagram || s.website;
 
@@ -60,8 +60,8 @@ export default function PortfolioCanvas({ portfolio, items = [], preview = false
               <figure key={it.id || i} className={`pf-item${it.featured ? ' is-featured' : ''}`} onClick={() => setLb(i)}>
                 <div className="pf-item-media">
                   {it.kind === 'video'
-                    ? <><img src={mediaUrl(it.poster_url || it.url)} alt={it.title || ''} loading="lazy" /><span className="pf-play" aria-hidden /></>
-                    : <img src={mediaUrl(it.url || it.full_url)} alt={it.title || ''} loading="lazy" />}
+                    ? <><PortfolioThumb item={it} alt={it.title || ''} /><span className="pf-play" aria-hidden /></>
+                    : <PortfolioThumb item={it} alt={it.title || ''} />}
                 </div>
                 {(it.title || it.caption) && (
                   <figcaption className="pf-cap">{it.title && <strong>{it.title}</strong>}{it.caption && <span>{it.caption}</span>}</figcaption>
@@ -97,6 +97,23 @@ export default function PortfolioCanvas({ portfolio, items = [], preview = false
       )}
     </div>
   );
+}
+
+// The still for a tile. Photos use their web variant; videos use their poster, and
+// when none exists yet (a direct upload, no ffmpeg on the server) the browser
+// paints the video's own opening frame instead of a broken <img> pointing at an .mp4.
+// `focus` is the creator's framing (CSS object-position) for cropped tiles.
+export function PortfolioThumb({ item, alt = '', style, className }) {
+  const pos = item.focus ? { objectPosition: item.focus } : null;
+  const st = pos || style ? { ...style, ...pos } : undefined;
+  if (item.kind === 'video' && !item.poster_url) {
+    const src = item.video_url || item.full_url || item.url;
+    return src
+      ? <video className={className} src={`${mediaUrl(src)}#t=0.5`} muted playsInline preload="metadata" aria-label={alt || undefined} style={st} />
+      : null;
+  }
+  const src = item.kind === 'video' ? item.poster_url : (item.url || item.full_url);
+  return <img className={className} src={mediaUrl(src)} alt={alt} loading="lazy" style={st} />;
 }
 
 // Human labels + a representative palette for each theme (used by the editor's picker).

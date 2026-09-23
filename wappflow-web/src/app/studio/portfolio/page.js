@@ -5,11 +5,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus, X, Upload, Eye, EyeOff, Copy, Send, Check, Trash2, Star, ExternalLink,
-  Loader, GripVertical, Search, Layout, Globe, Sparkles, Crown,
+  Loader, GripVertical, Search, Layout, Globe, Sparkles, Crown, Pencil, Play,
+  ChevronLeft, ChevronRight, Image as ImageIcon,
 } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../../lib/api';
-import PortfolioCanvas, { PORTFOLIO_THEME_META } from '../../folio/portfolio-view';
+import PortfolioCanvas, { PORTFOLIO_THEME_META, PortfolioThumb } from '../../folio/portfolio-view';
 import { clickable } from '@/lib/a11y';
+import { startUpload, useUploads, cancel, fmtBytes, fmtEta } from '@/lib/uploads';
 
 const THEME_ORDER = ['atelier', 'noir', 'editorial', 'gallery', 'film', 'brut', 'luxe', 'vivid', 'mono', 'frame'];
 
@@ -26,6 +28,9 @@ export default function PortfolioEditorPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [handleState, setHandleState] = useState(null); // {checking|free|taken, value}
+  const [uploadId, setUploadId] = useState(null);
+  const [editing, setEditing] = useState(null); // item id open in the item editor
+  const upload = useUploads().find(j => j.id === uploadId) || null;
 
   const say = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 
@@ -62,15 +67,20 @@ export default function PortfolioEditorPage() {
     return () => clearTimeout(t);
   }, [pf?.handle]); // eslint-disable-line
 
-  const onUpload = async (e) => {
+  // Uploads go through the shared upload manager: live progress, speed and ETA
+  // here and in the global tray, and the transfer survives leaving the page.
+  const onUpload = (e) => {
     const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    setSaving(true);
-    const fd = new FormData(); files.forEach(f => fd.append('files', f));
-    try { const r = await mediaAPI.uploadPortfolio(fd); setItems(r.data.items || []); say(`Added ${r.data.added} to portfolio`); }
-    catch (er) { say(er.response?.data?.error || 'Upload failed'); }
-    setSaving(false);
     if (fileRef.current) fileRef.current.value = '';
+    if (!files.length) return;
+    const fd = new FormData(); files.forEach(f => fd.append('files', f));
+    setUploadId(startUpload({
+      url: '/media/portfolio/upload',
+      formData: fd,
+      label: `${files.length} portfolio file${files.length === 1 ? '' : 's'}`,
+      bytes: files.reduce((n, f) => n + (f.size || 0), 0),
+      onDone: (r) => { if (r?.data?.items) setItems(r.data.items); },
+    }));
   };
 
   const removeItem = async (id) => {
@@ -82,12 +92,24 @@ export default function PortfolioEditorPage() {
     try { await mediaAPI.updatePortfolioItem(it.id, { featured: !it.featured }); } catch {}
   };
   const setCaption = async (it, caption) => { try { await mediaAPI.updatePortfolioItem(it.id, { caption }); } catch {} };
-  const makeCover = async (it) => { await save({ cover_url: it.full_url || it.url }); say('Cover updated'); };
+  const makeCover = async (it) => {
+    // a video's cover is its thumbnail — an .mp4 in an <img> hero renders nothing
+    const still = it.kind === 'video' ? it.poster_url : (it.full_url || it.url);
+    if (!still) { say('Pick a thumbnail for this video first'); setEditing(it.id); return; }
+    await save({ cover_url: still }); say('Cover updated');
+  };
+  const patchItem = async (it, patch) => {
+    setItems(its => its.map(i => i.id === it.id ? { ...i, ...patch } : i));
+    try { await mediaAPI.updatePortfolioItem(it.id, patch); } catch { say('Save failed'); }
+  };
 
-  // drag reorder
-  const onDrop = async (toIdx) => {
+  // reorder — drag on desktop, or the position controls in the item editor
+  const onDrop = (toIdx) => {
     const from = dragFrom.current; dragFrom.current = null;
-    if (from == null || from === toIdx) return;
+    moveItem(from, toIdx);
+  };
+  const moveItem = async (from, toIdx) => {
+    if (from == null || from === toIdx || toIdx < 0 || toIdx >= items.length) return;
     const next = [...items];
     const [moved] = next.splice(from, 1);
     next.splice(toIdx, 0, moved);
@@ -142,10 +164,11 @@ export default function PortfolioEditorPage() {
               <h2 className="ms-h2">Your work <span style={{ fontSize: 13, color: 'var(--ms-ink-3)', fontWeight: 400 }}>· {items.length}</span></h2>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
-                <button onClick={() => fileRef.current?.click()} className="ms-btn-ghost"><Upload size={14} /> Upload</button>
+                <button onClick={() => fileRef.current?.click()} disabled={upload?.status === 'uploading'} className="ms-btn-ghost"><Upload size={14} /> {upload?.status === 'uploading' ? `Uploading ${upload.percent}%` : 'Upload'}</button>
                 <button onClick={() => setPicker(true)} className="ms-btn-ink"><Plus size={15} /> Add from published</button>
               </div>
             </div>
+            {upload && <UploadProgress job={upload} onCancel={() => { cancel(upload.id); setUploadId(null); }} onDismiss={() => setUploadId(null)} />}
             <p className="ms-note" style={{ marginTop: -6, marginBottom: 18 }}><Sparkles size={12} /> Published galleries auto-flow here{pf.auto_include ? '' : ' (off)'}. Drag to reorder · ★ to feature · only what you add is public.</p>
 
             {items.length === 0 ? (
@@ -155,11 +178,16 @@ export default function PortfolioEditorPage() {
                 {items.map((it, i) => (
                   <div key={it.id} draggable onDragStart={() => { dragFrom.current = i; }} onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(i)}
                     className="ms-pf-tile" style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', background: 'var(--ms-surface-2)', aspectRatio: '4/5', border: it.featured ? '2px solid var(--ms-spark)' : '1px solid var(--ms-line)' }}>
-                    <img src={mediaUrl(it.kind === 'video' ? (it.poster_url || it.url) : (it.url || it.full_url))} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.55), transparent 45%)', opacity: 0, transition: 'opacity .2s' }} className="ms-pf-tile-veil" />
-                    <div style={{ position: 'absolute', top: 6, left: 6, color: 'rgba(255,255,255,0.85)', cursor: 'grab' }}><GripVertical size={16} /></div>
-                    {it.kind === 'video' && <span style={{ position: 'absolute', top: 7, right: 7, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: '#fff', background: 'rgba(0,0,0,0.5)', padding: '2px 6px', borderRadius: 5 }}>VIDEO</span>}
+                    <button onClick={() => setEditing(it.id)} aria-label={`Open ${it.title || it.filename || (it.kind === 'video' ? 'video' : 'photo')}`} style={{ all: 'unset', position: 'absolute', inset: 0, cursor: 'pointer' }}>
+                      <PortfolioThumb item={it} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      {it.kind === 'video' && <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 40, height: 40, borderRadius: 999, background: 'rgba(10,10,12,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Play size={17} color="#fff" fill="#fff" /></span>}
+                    </button>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.55), transparent 45%)', opacity: 0, transition: 'opacity .2s', pointerEvents: 'none' }} className="ms-pf-tile-veil" />
+                    <div style={{ position: 'absolute', top: 6, left: 6, color: 'rgba(255,255,255,0.85)', cursor: 'grab', pointerEvents: 'none' }}><GripVertical size={16} /></div>
+                    {(it.title || it.filename) && <span style={{ position: 'absolute', bottom: 40, left: 8, right: 8, fontSize: 11.5, fontWeight: 600, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>{it.title || it.filename}</span>}
+                    {it.kind === 'video' && <span style={{ position: 'absolute', top: 7, right: 7, pointerEvents: 'none', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: '#fff', background: 'rgba(0,0,0,0.5)', padding: '2px 6px', borderRadius: 5 }}>VIDEO</span>}
                     <div style={{ position: 'absolute', bottom: 6, left: 6, right: 6, display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+                      <button onClick={() => setEditing(it.id)} title="Edit — thumbnail, name, position" aria-label="Edit" style={tileBtn}><Pencil size={13} color="#fff" /></button>
                       <button onClick={() => toggleFeatured(it)} title="Feature" style={tileBtn}><Star size={13} fill={it.featured ? '#e6b455' : 'none'} color={it.featured ? '#e6b455' : '#fff'} /></button>
                       <button onClick={() => makeCover(it)} title="Set as cover" style={tileBtn}><Crown size={13} color="#fff" /></button>
                       <button onClick={() => removeItem(it.id)} title="Remove" style={tileBtn}><Trash2 size={13} color="#fff" /></button>
@@ -249,6 +277,19 @@ export default function PortfolioEditorPage() {
         </div>
       )}
 
+      {editing && items.some(i => i.id === editing) && (
+        <ItemEditor
+          key={editing}
+          item={items.find(i => i.id === editing)}
+          index={items.findIndex(i => i.id === editing)}
+          count={items.length}
+          onClose={() => setEditing(null)}
+          onPatch={patchItem}
+          onMove={(to) => moveItem(items.findIndex(i => i.id === editing), to)}
+          onItems={setItems}
+          say={say}
+        />
+      )}
       {picker && <CandidatesPicker onClose={() => setPicker(false)} onAdded={(its) => { setItems(its); setPicker(false); }} />}
       {shareOpen && <ShareModal pf={pf} onClose={() => setShareOpen(false)} onCopy={copyLink} say={say} onPublic={() => save({ is_public: true })} />}
 
@@ -346,6 +387,160 @@ function ShareModal({ pf, onClose, onCopy, say, onPublic }) {
             </div>
           ))}
           {filtered.length === 0 && <p style={{ fontSize: 13, color: 'var(--ms-ink-3)', padding: '6px' }}>No matching clients.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UploadProgress({ job, onCancel, onDismiss }) {
+  const failed = job.status === 'error';
+  const done = job.status === 'done';
+  const pct = done ? 100 : job.percent || 0;
+  return (
+    <div role="status" aria-live="polite" className="ms-panel" style={{ padding: '10px 14px', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: 'var(--ms-ink-2)', marginBottom: 7 }}>
+        {!done && !failed && <Loader size={13} className="ms-spin" />}
+        {done && <Check size={13} color="#2f9e6e" />}
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {failed ? `Upload failed — ${job.error}` : done ? `${job.label} uploaded` : `Uploading ${job.label} · ${pct}%`}
+          {!done && !failed && job.bytes ? ` · ${fmtBytes(job.loaded)} of ${fmtBytes(job.bytes)}` : ''}
+          {!done && !failed && job.etaSec ? ` · ${fmtEta(job.etaSec)}` : ''}
+        </span>
+        {!done && !failed
+          ? <button onClick={onCancel} className="ms-btn-text">Cancel</button>
+          : <button onClick={onDismiss} aria-label="Dismiss" className="ms-iconbtn" style={{ border: 'none', padding: 2 }}><X size={14} /></button>}
+      </div>
+      <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} style={{ height: 6, borderRadius: 999, background: 'var(--ms-surface-2)', overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: failed ? '#d4564a' : 'var(--ms-spark)', transition: 'width .25s ease' }} />
+      </div>
+    </div>
+  );
+}
+
+// Grab one frame of a video as a JPEG. Uses its own CORS-mode <video> so the
+// visible player never depends on the media host sending CORS headers; only the
+// capture does (a tainted canvas can't be exported).
+function grabVideoFrame(src, time) {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous'; v.muted = true; v.playsInline = true; v.preload = 'auto';
+    const fail = (e) => { v.removeAttribute('src'); v.load(); reject(e || new Error('Could not read the video')); };
+    v.onerror = () => fail();
+    v.onloadedmetadata = () => { v.currentTime = Math.min(Math.max(0, time || 0), Math.max(0, (v.duration || 0) - 0.05)); };
+    v.onseeked = () => {
+      try {
+        const scale = Math.min(1, 1920 / Math.max(v.videoWidth, v.videoHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(v.videoWidth * scale); c.height = Math.round(v.videoHeight * scale);
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        c.toBlob((b) => { v.removeAttribute('src'); v.load(); if (b) resolve(b); else reject(new Error('Could not capture the frame')); }, 'image/jpeg', 0.88);
+      } catch (e) { fail(e); }
+    };
+    v.src = src;
+  });
+}
+
+// Open one portfolio piece: play it, pick its thumbnail, rename it, move it, frame it.
+function ItemEditor({ item, index, count, onClose, onPatch, onMove, onItems, say }) {
+  const videoRef = useRef(null);
+  const posterFileRef = useRef(null);
+  const [title, setTitle] = useState(item.title || '');
+  const [caption, setCaption] = useState(item.caption || '');
+  const [busy, setBusy] = useState(false);
+  const isVideo = item.kind === 'video';
+  const src = mediaUrl(isVideo ? (item.video_url || item.full_url || item.url) : (item.full_url || item.url));
+  const [fx, fy] = (item.focus || '50% 50%').split(' ').map(n => parseFloat(n));
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const sendPoster = async (blob, name) => {
+    setBusy(true);
+    try {
+      const fd = new FormData(); fd.append('file', blob, name);
+      const r = await mediaAPI.setPortfolioPoster(item.id, fd);
+      if (r.data.items) onItems(r.data.items);
+      say('Thumbnail updated');
+    } catch (e) { say(e.response?.data?.error || 'Could not save the thumbnail'); }
+    setBusy(false);
+  };
+  const useCurrentFrame = async () => {
+    const t = videoRef.current?.currentTime || 0;
+    videoRef.current?.pause();
+    setBusy(true);
+    try { await sendPoster(await grabVideoFrame(src, t), 'poster.jpg'); }
+    catch { setBusy(false); say('This video can’t be captured here — upload an image instead'); }
+  };
+  const onPosterFile = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) sendPoster(f, f.name);
+  };
+  const setFocus = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = Math.round(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)));
+    const y = Math.round(Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)));
+    onPatch(item, { focus: `${x}% ${y}%` });
+  };
+  const commit = (k, v) => { if ((item[k] || '') !== v) onPatch(item, { [k]: v }); };
+
+  return (
+    <div {...clickable(onClose)} className="ms-modal-overlay">
+      <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 920, width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
+          <h2 style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || item.filename || (isVideo ? 'Video' : 'Photo')}</h2>
+          <button aria-label="Close" onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
+        </div>
+        <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 260px', gap: 20 }}>
+          <div>
+            <div style={{ background: '#000', borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', maxHeight: '60vh' }}>
+              {isVideo
+                ? <video ref={videoRef} key={src} src={src} poster={item.poster_url ? mediaUrl(item.poster_url) : undefined} controls playsInline preload="metadata" style={{ width: '100%', maxHeight: '60vh', display: 'block' }} />
+                : <img src={src} alt={item.title || ''} style={{ maxWidth: '100%', maxHeight: '60vh', display: 'block' }} />}
+            </div>
+            {isVideo && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                <button onClick={useCurrentFrame} disabled={busy} className="ms-btn-ink"><ImageIcon size={14} /> {busy ? 'Saving…' : 'Use this frame as thumbnail'}</button>
+                <input ref={posterFileRef} type="file" accept="image/*" onChange={onPosterFile} style={{ display: 'none' }} />
+                <button onClick={() => posterFileRef.current?.click()} disabled={busy} className="ms-btn-ghost"><Upload size={14} /> Upload thumbnail</button>
+              </div>
+            )}
+            {isVideo && <p className="ms-note" style={{ marginTop: 8 }}>Pause on the moment you want, then use that frame.</p>}
+          </div>
+
+          <div>
+            <label className="ms-label" htmlFor="pf-item-title">Name</label>
+            <input id="pf-item-title" className="ms-input" value={title} maxLength={120} placeholder={item.filename || 'Untitled'}
+              onChange={e => setTitle(e.target.value)} onBlur={() => commit('title', title.trim())}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} style={{ marginBottom: 14 }} />
+            <label className="ms-label" htmlFor="pf-item-caption">Caption</label>
+            <input id="pf-item-caption" className="ms-input" value={caption} maxLength={300} placeholder="Optional"
+              onChange={e => setCaption(e.target.value)} onBlur={() => commit('caption', caption.trim())}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} style={{ marginBottom: 16 }} />
+
+            <label className="ms-label">Position</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}>
+              <button onClick={() => onMove(index - 1)} disabled={index <= 0} aria-label="Move earlier" className="ms-btn-ghost" style={{ padding: '6px 9px' }}><ChevronLeft size={15} /></button>
+              <select aria-label="Position in portfolio" className="ms-input" value={index} onChange={e => onMove(Number(e.target.value))} style={{ flex: 1 }}>
+                {Array.from({ length: count }, (_, i) => <option key={i} value={i}>{i === 0 ? '1 · first' : i === count - 1 ? `${i + 1} · last` : i + 1} of {count}</option>)}
+              </select>
+              <button onClick={() => onMove(index + 1)} disabled={index >= count - 1} aria-label="Move later" className="ms-btn-ghost" style={{ padding: '6px 9px' }}><ChevronRight size={15} /></button>
+            </div>
+
+            <label className="ms-label">Framing</label>
+            <p className="ms-note" style={{ marginBottom: 8 }}>Click the part of the thumbnail that should stay in view when it&rsquo;s cropped.</p>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+              <button onClick={setFocus} aria-label="Set framing point" style={{ all: 'unset', position: 'relative', width: 120, aspectRatio: '4/5', borderRadius: 8, overflow: 'hidden', background: 'var(--ms-surface-2)', cursor: 'crosshair', border: '1px solid var(--ms-line)' }}>
+                <PortfolioThumb item={item} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                <span aria-hidden style={{ position: 'absolute', left: `${fx}%`, top: `${fy}%`, width: 14, height: 14, marginLeft: -7, marginTop: -7, borderRadius: 999, border: '2px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)', pointerEvents: 'none' }} />
+              </button>
+              {item.focus && <button onClick={() => onPatch(item, { focus: '' })} className="ms-btn-text">Reset</button>}
+            </div>
+          </div>
         </div>
       </div>
     </div>

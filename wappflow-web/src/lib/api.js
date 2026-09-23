@@ -450,6 +450,7 @@ export const mediaAPI = {
   reorderPortfolio:    (order)         => api.put('/media/portfolio/items/order', { order }),
   updatePortfolioItem: (itemId, data)  => api.put(`/media/portfolio/items/${itemId}`, data),
   deletePortfolioItem: (itemId)        => api.delete(`/media/portfolio/items/${itemId}`),
+  setPortfolioPoster:  (itemId, formData) => api.post(`/media/portfolio/items/${itemId}/poster`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   sharePortfolio:      (lead_id)       => api.post('/media/portfolio/share', { lead_id }),
 };
 
