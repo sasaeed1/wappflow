@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- client gallery shows dynamic /uploads photos; next/image isn't configured for them */
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePrompt } from '@/lib/confirm';
 import { useParams } from 'next/navigation';
 import { Heart, Download, Lock, MessageSquare, X, Loader, Check, ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
 import PublicBrandMark from '@/components/PublicBrandMark';
@@ -11,6 +12,8 @@ import { BASE_URL } from '../../../lib/api';
 const imgUrl = (p) => (!p ? '' : /^https?:\/\//.test(p) ? p : `${BASE_URL}${p}`);
 
 export default function ClientGalleryPage() {
+  const prompt = usePrompt();
+
   const { token } = useParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -78,7 +81,7 @@ export default function ClientGalleryPage() {
 
   const [savedColl, setSavedColl] = useState(false);
   const saveCollection = async () => {
-    const name = window.prompt('Name this selection (e.g. "For the album", "Parents\' favourites")'); if (!name) return;
+    const name = await prompt({ title: 'Name this selection', placeholder: 'e.g. For the album', confirmLabel: 'Save' }); if (!name) return;
     try { const r = await fetch(`${BASE_URL}/api/media/portal/${token}/collection`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, contact: contact || 'guest', asset_ids: [...faved], pw }) }); if (r.ok) { setSavedColl(true); setTimeout(() => setSavedColl(false), 2500); } } catch {}
   };
 
@@ -304,7 +307,7 @@ export default function ClientGalleryPage() {
 
       {/* lightbox + slideshow */}
       {lightbox != null && shown[lightbox] && (
-        <div onClick={() => { setLightbox(null); setPlaying(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 20 }}>
+        <div data-dismiss onClick={() => { setLightbox(null); setPlaying(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 20 }}>
           <button aria-label="Close" onClick={(e) => { e.stopPropagation(); setLightbox(null); setPlaying(false); }} style={{ position: 'absolute', top: 18, right: 18, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}><X size={26} /></button>
           <button aria-label="Previous" onClick={(e) => { e.stopPropagation(); setLightbox(i => (i - 1 + shown.length) % shown.length); }} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', width: 46, height: 46, borderRadius: 999, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={26} /></button>
           <img src={imgUrl(shown[lightbox].web_url)} alt={shown[lightbox].filename} onClick={e => e.stopPropagation()} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8 }} />
@@ -343,7 +346,7 @@ function IconCircle({ children, onClick, active }) {
 function CommentModal({ onClose, onSend }) {
   const [body, setBody] = useState('');
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ background: '#15151b', border: '1px solid #2a2a33', borderRadius: 16, padding: 22, maxWidth: 380, width: '100%' }}>
         <h3 style={{ fontSize: 16, fontWeight: 800, color: '#fff', margin: '0 0 12px' }}>Leave a note</h3>
         <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Tell your photographer what you think…" rows={3}

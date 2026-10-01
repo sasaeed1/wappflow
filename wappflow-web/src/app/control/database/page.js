@@ -3,8 +3,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { ccApi, ccAuth, fmtNum } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
 import { clickable } from '@/lib/a11y';
+import { usePrompt } from '@/lib/confirm';
 
 export default function Database() {
+  const ask = usePrompt();
   // ── Explorer state ──
   const [tables, setTables] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -44,7 +46,8 @@ export default function Database() {
     } catch (e) {
       const data = e.response?.data;
       if (e.response?.status === 403 && data?.need_step_up) {
-        const pw = window.prompt('Step-up required. Re-enter your password to run founder-level SQL:');
+        // type=password: the native prompt this replaces echoed the password in plain text.
+        const pw = await ask({ title: 'Confirm it’s you', message: 'Founder-level SQL needs your password again.', label: 'Password', type: 'password', confirmLabel: 'Continue' });
         if (!pw) { setRunning(false); return; }
         try {
           const su = await ccAuth.stepUp(pw);

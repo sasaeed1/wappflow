@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { BASE_URL } from '../../lib/api';
 import { useRealtime } from '@/components/shell/realtime';
+import PairWithPhone from '@/components/PairWithPhone';
 
 export default function WhatsAppPage() {
   const router = useRouter();
@@ -204,6 +205,8 @@ export default function WhatsAppPage() {
                   </div>
                 ))}
               </div>
+              {/* On the phone itself there is nothing to scan WITH — link by code. */}
+              <PairWithPhone endpoint="/whatsapp/pair-code" />
             </div>
 
           ) : status?.isReady ? (

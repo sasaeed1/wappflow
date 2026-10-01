@@ -144,7 +144,7 @@ textarea:focus-visible, summary:focus-visible, [role="button"]:focus-visible,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
   min-height: 100vh;
   transition: background 0.2s, color 0.2s;
 }
@@ -408,14 +408,49 @@ select option {
   .lead-subnav > * { min-width: 0; }
   .lead-nav-actions { flex-wrap: wrap; justify-content: flex-end; }
 }
+/* Phones: the seven header actions wrapped into three ragged rows. The floating
+   "Chat Bar" duplicates the thread that is right there on this page, so it goes;
+   the other six sit in an even 3×2 grid of equal buttons. */
+@media (max-width: 640px) {
+  .lead-chatbar-btn { display: none !important; }
+  .lead-nav-actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px !important; width: 100%; }
+  .lead-nav-actions > *,
+  .lead-nav-actions > div > button[aria-haspopup] { width: 100%; min-width: 0; }
+  .lead-nav-actions > button,
+  .lead-nav-actions > a,
+  .lead-nav-actions > div > button[aria-haspopup] { justify-content: center; padding: 9px 6px !important; font-size: 12.5px !important; white-space: nowrap; min-height: 38px; }
+}
 
 /* Dashboard responsive grids — page uses inline grid styles, we override at breakpoints */
 @media (max-width: 900px) {
   .dash-stats-3 { grid-template-columns: repeat(2, 1fr) !important; }
   .dash-main { grid-template-columns: 1fr !important; }
 }
-@media (max-width: 540px) {
-  .dash-stats-3 { grid-template-columns: 1fr !important; }
+@media (max-width: 640px) {
+  /* Three KPI tiles side by side, compact — stacked full-width they cost a
+     whole screen of scrolling before any real content. */
+  .dash-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; margin-bottom: 14px !important; }
+  .dash-stat { padding: 12px !important; border-radius: 14px !important; }
+  .dash-stat-top { margin-bottom: 8px !important; }
+  .dash-stat-icon { width: 30px !important; height: 30px !important; border-radius: 9px !important; }
+  .dash-stat-live { display: none !important; }
+  .dash-stat-label { font-size: 10.5px !important; letter-spacing: 0.2px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-stat-value { font-size: 20px !important; }
+  .dash-stat-trend { font-size: 11px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Page action bars (.wf-subbar — Dashboard, Reports): once wrapped onto
+     phone rows they covered a third of the screen and slid over the content
+     beneath them. On phones they scroll away with the page. The Dashboard's
+     lays out as title / actions / full-width search. */
+  .wf-subbar { position: static !important; }
+  .dash-subbar-row { padding: 12px 14px !important; gap: 10px !important; }
+  .dash-subbar-title { flex: 1 1 auto !important; }
+  .dash-subbar-search { flex: 1 1 100% !important; max-width: none !important; min-width: 0 !important; order: 3; }
+  .dash-subbar-actions { margin-left: 0 !important; order: 2; }
+  .dash-subbar-btn { padding: 8px 12px !important; }
+  /* Kanban columns scroll sideways on phones; a sticky column title only
+     floated over the middle of the cards below it. */
+  .dash-col-head { position: static !important; }
 }
 
 /* Generic page container — adds reasonable padding on mobile */
@@ -474,6 +509,133 @@ select option {
   .wf-fab-studio  { bottom: 14px !important; right: 14px !important; }
   .wf-page        { padding-bottom: 132px !important; }
 }
+/* ── Swipeable chip rows ──────────────────────────────────────────────────────
+   Filter / status chips that wrap onto three or four lines on a phone. One row
+   that scrolls sideways keeps them reachable without eating the screen. */
+@media (max-width: 640px) {
+  .r-chips {
+    flex-wrap: nowrap !important; overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px;
+    scroll-padding-inline: 14px;
+  }
+  .r-chips::-webkit-scrollbar { display: none; }
+  .r-chips > * { flex-shrink: 0 !important; white-space: nowrap; }
+}
+
+/* ── Invoices on phones ───────────────────────────────────────────────────────
+   Four full-width stat cards cost a whole screen before the list; the status
+   filters wrapped to leave "Overdue" alone on a line; and the six-column table
+   squeezed its header into "CUSTOMERINVOICE NO." and cut the amount off. Stats
+   go 2×2, filters swipe, and each invoice becomes a two-line card:
+   customer · amount / number · date · status + actions. */
+@media (max-width: 640px) {
+  .inv-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; margin-bottom: 18px !important; }
+  .inv-stat { padding: 12px !important; gap: 10px !important; border-radius: 14px !important; }
+  .inv-stat > :first-child { width: 34px !important; height: 34px !important; border-radius: 10px !important; }
+  .inv-stat p:first-child { font-size: 17px !important; }
+  .inv-chips { width: calc(100% + 28px); }
+  .inv-head { display: none !important; }
+  .inv-row { grid-template-columns: auto minmax(0, 1fr) auto !important; column-gap: 10px; row-gap: 6px; padding: 12px 14px !important; }
+  .inv-row > :nth-child(1) { display: none !important; }
+  .inv-row > :nth-child(2) { grid-column: 1 / 3; grid-row: 1; }
+  .inv-row > :nth-child(5) { grid-column: 3; grid-row: 1; justify-self: end; }
+  .inv-row > :nth-child(3) { grid-column: 1; grid-row: 2; font-size: 12px !important; color: var(--text-muted) !important; }
+  .inv-row > :nth-child(4) { grid-column: 2; grid-row: 2; font-size: 12px !important; }
+  .inv-row > :nth-child(6) { grid-column: 3; grid-row: 2; }
+}
+
+/* ── Section side-nav → top tab strip (Settings, Help) ───────────────────────
+   Desktop: a sticky vertical list beside the content. On a phone the same list
+   used to stack ABOVE the content as a 20-row card — you scrolled a full screen
+   to reach the section you had just picked. It becomes a sticky, swipeable strip
+   of tabs under the app header instead; the active tab is scrolled into view by
+   the page (see scrollActiveIntoView in lib/sidenav.js). */
+@media (max-width: 860px) {
+  .wf-sidenav-layout { flex-direction: column !important; gap: 14px !important; padding: 0 0 24px !important; }
+  .wf-sidenav-wrap {
+    width: auto !important; position: sticky !important; top: var(--shell-h) !important;
+    z-index: 20; margin: 0 !important; align-self: stretch;
+    background: var(--bg);
+  }
+  .wf-sidenav {
+    display: flex !important; gap: 6px !important; overflow-x: auto; overflow-y: hidden;
+    padding: 10px 14px !important; border: none !important; border-bottom: 1px solid var(--border) !important;
+    border-radius: 0 !important; box-shadow: none !important; position: static !important;
+    background: var(--bg) !important; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    scroll-padding-inline: 14px;
+  }
+  .wf-sidenav::-webkit-scrollbar { display: none; }
+  .wf-sidenav > button, .wf-sidenav > a {
+    width: auto !important; flex: 0 0 auto !important; margin: 0 !important;
+    padding: 8px 13px !important; border-radius: 999px !important; white-space: nowrap;
+    border: 1px solid var(--border) !important; background: var(--surface);
+  }
+  .wf-sidenav > button[aria-current="page"] { border-color: transparent !important; }
+  .wf-sidenav-sep { display: none !important; }
+  .wf-sidenav-content { padding: 0 14px !important; }
+}
+
+/* Help centre on phones: a shorter hero, and a section header whose article
+   count drops under the title instead of squeezing it into three lines. */
+@media (max-width: 640px) {
+  .help-hero { padding: 28px 16px !important; }
+  .help-hero-title { font-size: 26px !important; }
+  .help-sec-head { padding: 14px !important; gap: 12px !important; margin-bottom: 14px !important; flex-wrap: wrap; }
+  .help-sec-icon { width: 40px !important; height: 40px !important; border-radius: 12px !important; }
+  .help-sec-text { flex: 1 1 calc(100% - 56px) !important; }
+  .help-sec-text h2 { font-size: 18px !important; }
+  .help-sec-count { margin-left: 52px !important; font-size: 12px !important; padding: 3px 10px !important; }
+}
+
+/* ── All Leads on phones ───────────────────────────────────────────────────────
+   The nine-column table was forced to 760px and scrolled sideways, so on a phone
+   you saw a truncated name, half a phone number and a status cut in two. Each
+   row becomes a card instead: name, channel and last activity on the left,
+   status and message count on the right. Phone, tags, owner and value stay one
+   tap away on the lead itself. */
+@media (max-width: 640px) {
+  .ll-head { padding: 12px 14px !important; row-gap: 10px !important; }
+  .ll-head-actions { width: 100%; }
+  .ll-head-actions > button { flex: 1 1 0; justify-content: center; padding: 9px 10px !important; white-space: nowrap; }
+  .ll-main { padding: 14px !important; }
+
+  .r-tw.wf-lead-head, .r-tw.wf-lead-row { min-width: 0 !important; }
+  .wf-lead-head { grid-template-columns: 28px minmax(0, 1fr) !important; padding: 10px 12px !important; }
+  .wf-lead-head > :nth-child(n+3) { display: none !important; }
+  .wf-lead-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto !important;
+    column-gap: 8px; row-gap: 4px; padding: 10px 12px !important;
+    height: 68px; box-sizing: border-box; overflow: hidden; align-content: center;
+  }
+  .wf-lead-row > :nth-child(1) { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+  .wf-lead-row > :nth-child(2) { grid-column: 2; grid-row: 1 / span 2; }
+  .wf-lead-row > :nth-child(4) { grid-column: 3; grid-row: 1; align-items: flex-end !important; }
+  .wf-lead-row > :nth-child(5) { grid-column: 3; grid-row: 2; justify-self: end; }
+  .wf-lead-row > :nth-child(3), .wf-lead-row > :nth-child(n+6) { display: none !important; }
+}
+
+/* Knowledge base KPIs: three across, icon above the number, on phones. */
+@media (max-width: 640px) {
+  .kb-stats { gap: 8px !important; margin-bottom: 16px !important; }
+  .kb-stat { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; padding: 12px !important; border-radius: 14px !important; }
+  .kb-stat-icon { width: 32px !important; height: 32px !important; border-radius: 10px !important; }
+  .kb-stat-value { font-size: 20px !important; }
+  .kb-head-btn { flex: 1 1 0; justify-content: center; padding: 10px 12px !important; }
+}
+
+/* Reports on phones: toolbar wraps (title, then the range pickers), the tab
+   row swipes instead of pushing the page 50px wider, and the custom-range
+   popover is pinned inside the screen instead of hanging off its left edge. */
+@media (max-width: 640px) {
+  .rp-toolbar { padding: 12px 14px !important; row-gap: 10px !important; }
+  .rp-title { flex: 1 1 100% !important; }
+  .rp-ranges { flex-wrap: wrap; }
+  .rp-custom-pop { position: fixed !important; left: 12px !important; right: 12px !important; top: auto !important; min-width: 0 !important; margin-top: 8px; }
+  .rp-tabs { padding: 0 14px !important; margin: 0 !important; }
+  .rp-main { padding: 16px 14px !important; }
+}
+
 /* Tablet step for very wide multi-col grids */
 @media (max-width: 900px) {
   .r-stack-tablet { grid-template-columns: minmax(0, 1fr) !important; }
@@ -588,6 +750,29 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
    entirely while custom properties still cascade to the children. */
 .wf-fab-scope { display: contents; }
 
+/* ── Touch hit area ───────────────────────────────────────────────────────────
+   Small icon buttons (row delete / email) were 14–27px — under half the ~44px a
+   fingertip needs. .wf-tap grows the HIT area on touch screens with an invisible
+   ::after, so the visual size and the row layout stay exactly as designed. */
+@media (pointer: coarse) {
+  .wf-tap { position: relative; }
+  .wf-tap::after { content: ''; position: absolute; inset: -6px; }
+}
+
+/* Phones: floating buttons yield to the page (AppShell sets the data flags).
+   `translate` is separate from `transform`, so the mobile scale(0.85) survives. */
+@media (max-width: 640px) {
+  .wf-fab { transition: translate .22s ease, opacity .22s ease; }
+  .wf-fab-scope[data-fab-phone-off] .wf-fab { display: none !important; }
+  .wf-fab-scope[data-fab-tucked] .wf-fab:not(:focus-within) { translate: 0 140px; opacity: 0; pointer-events: none; }
+  /* The on-screen keyboard is up: the composer/field being typed into is exactly
+     what sits under the FABs. :focus-within keeps a FAB's own panel (the
+     floating chat's lead search) from hiding itself while you type in it. */
+  body:has(:is(input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"]):focus) .wf-fab:not(:focus-within) {
+    translate: 0 140px; opacity: 0; pointer-events: none;
+  }
+}
+
 /* ── Short-viewport density ───────────────────────────────────────────────────
    A 1920×1080 screen at Windows' default 150% scaling is 1280×720 CSS px, and
    Chrome's own chrome takes ~177px of it — so the viewport is 503px tall with
@@ -655,10 +840,12 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
 @media (min-width: 861px) {
   .wf-page:not(.wf-bleed) { padding-right: 76px; }
 
-  /* Team Chat is a bleed route, so it has no page gutter — and its Send button
-     sits at the bottom-right corner, exactly under the chat FAB. Hit-testing
-     confirmed the FAB, not Send, received the click. Pad the action row instead. */
-  .wf-chat-actions { padding-right: 84px !important; }
+  /* Team Chat is a bleed route, so it has no page gutter — and its composer
+     sits at the bottom-right corner, exactly under the FABs. Hit-testing
+     confirmed the FABs, not Send (bottom row) or More (emoji row), received the
+     click. Padding only the Send row left the emoji row covered, so the whole
+     composer is padded clear. */
+  .wf-chat-input-area { padding-right: 84px !important; }
 }
 
 /* On a short viewport the FAB stack eats a disproportionate share of the height
@@ -668,4 +855,16 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
   .wf-fab-chat { bottom: 18px !important; }
   .wf-fab > button,
   .wf-fab > a { width: 46px !important; height: 46px !important; }
+}
+
+/* ── WhatsApp message actions (lead thread) ──────────────────────────────────
+   Reply / react bar under a bubble: revealed on hover with a mouse, and after a
+   long-press on touch screens (the page toggles .is-open). Collapsed to zero
+   height otherwise so it never adds gaps between messages. */
+.wa-msg-actions { display: flex; align-items: center; gap: 2px; max-height: 0; overflow: hidden; opacity: 0; transition: opacity .15s ease, max-height .15s ease; padding: 0 4px; }
+.wa-msg-actions button { border: none; background: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 5px 6px; border-radius: 999px; color: var(--text-muted); display: inline-flex; align-items: center; }
+.wa-msg-actions button:hover, .wa-msg-actions button.is-on { background: var(--surface2); }
+.wa-msg-actions.is-open { max-height: 40px; opacity: 1; margin-bottom: 6px; }
+@media (hover: hover) {
+  .wa-bubble-row:hover .wa-msg-actions { max-height: 40px; opacity: 1; margin-bottom: 4px; }
 }

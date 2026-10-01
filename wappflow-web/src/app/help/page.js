@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   HelpCircle, Search, ChevronDown, ChevronRight,
   MessageSquare, Users, DollarSign, BarChart2, Settings,
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { MODULE_SECTIONS } from './sections-modules';
+import { useScrollActiveIntoView } from '@/lib/sidenav';
 
 // The module sections live in their own file: this page was written when the
 // product was a WhatsApp CRM, and everything built since — Media Studio,
@@ -196,6 +197,8 @@ function ArticleItem({ title, body }) {
 export default function HelpPage() {
   const [search, setSearch] = useState('');
   const [activeSection, setActiveSection] = useState('getting-started');
+  const sideNavRef = useRef(null);
+  useScrollActiveIntoView(sideNavRef, activeSection);
 
   const filtered = SECTIONS.map(sec => ({
     ...sec,
@@ -212,16 +215,20 @@ export default function HelpPage() {
       <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
         {/* Hero */}
-        <div style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)', padding: '52px 28px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="help-hero" style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)', padding: '52px 28px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 20, background: 'rgba(99,102,241,0.25)', border: '1px solid rgba(99,102,241,0.4)', marginBottom: 20 }}>
             <HelpCircle size={14} color="#a5b4fc" />
             <span style={{ fontSize: 12, fontWeight: 700, color: '#a5b4fc', letterSpacing: '0.5px' }}>DOCUMENTATION</span>
           </div>
-          <h1 style={{ fontSize: 36, fontWeight: 900, color: 'white', margin: '0 0 10px', letterSpacing: '-0.5px' }}>How can we help?</h1>
+          <h1 className="help-hero-title" style={{ fontSize: 36, fontWeight: 900, color: 'white', margin: '0 0 10px', letterSpacing: '-0.5px' }}>How can we help?</h1>
           <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.65)', margin: '0 0 32px' }}>Complete documentation for WappFlow CRM</p>
           <div style={{ maxWidth: 520, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 14, padding: '13px 18px', backdropFilter: 'blur(10px)' }}>
             <Search size={18} color="rgba(255,255,255,0.5)" />
+            {/* data-ui opts out of the legacy global input fill (globals.css), which
+                painted a dark box inside this glass search bar */}
             <input
+              data-ui
+              aria-label="Search documentation"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search documentation..."
@@ -235,18 +242,19 @@ export default function HelpPage() {
           </div>
         </div>
 
-        <div className="r-col" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px', display: 'flex', gap: 28, alignItems: 'flex-start' }}>
+        <div className="wf-sidenav-layout" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px', display: 'flex', gap: 28, alignItems: 'flex-start' }}>
 
-          {/* Sidebar nav */}
+          {/* Sidebar nav — a swipeable tab strip on phones (.wf-sidenav, globals.css) */}
           {!search && (
-            <div className="r-full" style={{ width: 220, flexShrink: 0, position: 'sticky', top: 24 }}>
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 10, boxShadow: 'var(--shadow)' }}>
+            <nav aria-label="Help sections" className="wf-sidenav-wrap" style={{ width: 220, flexShrink: 0, position: 'sticky', top: 24 }}>
+              <div ref={sideNavRef} className="wf-sidenav" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 10, boxShadow: 'var(--shadow)' }}>
                 {SECTIONS.map(sec => {
                   const active = activeSection === sec.id;
                   return (
                     <button
                       key={sec.id}
                       onClick={() => setActiveSection(sec.id)}
+                      aria-current={active ? 'page' : undefined}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px',
                         borderRadius: 10, border: 'none',
@@ -264,11 +272,11 @@ export default function HelpPage() {
                   );
                 })}
               </div>
-            </div>
+            </nav>
           )}
 
           {/* Content */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="wf-sidenav-content" style={{ flex: 1, minWidth: 0, alignSelf: 'stretch' }}>
             {search && filtered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '60px 0' }}>
                 <Search size={40} color="var(--border)" style={{ margin: '0 auto 12px' }} />
@@ -296,15 +304,15 @@ export default function HelpPage() {
             ) : activeData ? (
               <div>
                 {/* Section header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '20px 22px', background: 'var(--surface)', borderRadius: 18, border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}>
-                  <div style={{ width: 52, height: 52, borderRadius: 16, background: activeData.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div className="help-sec-head" style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: '20px 22px', background: 'var(--surface)', borderRadius: 18, border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}>
+                  <div className="help-sec-icon" style={{ width: 52, height: 52, borderRadius: 16, background: activeData.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <activeData.icon size={24} color={activeData.color} />
                   </div>
-                  <div>
+                  <div className="help-sec-text" style={{ minWidth: 0, flex: 1 }}>
                     <h2 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text)', margin: 0 }}>{activeData.label}</h2>
                     <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 0' }}>{activeData.description}</p>
                   </div>
-                  <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, padding: '5px 12px', borderRadius: 20, background: activeData.color + '18', color: activeData.color }}>
+                  <div className="help-sec-count" style={{ marginLeft: 'auto', flexShrink: 0, whiteSpace: 'nowrap', fontSize: 13, fontWeight: 700, padding: '5px 12px', borderRadius: 20, background: activeData.color + '18', color: activeData.color }}>
                     {activeData.articles.length} articles
                   </div>
                 </div>

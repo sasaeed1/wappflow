@@ -6,14 +6,17 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Play, Pause, Scissors, Trash2, Copy, Download, Image as ImageIcon, Film, Maximize, Minimize,
   Check, Loader, X, ChevronDown, Wand2, ArrowLeftRight, ZoomIn, ZoomOut, Type, Snowflake,
-  Music, Upload, Volume2, Plus, Layers, VolumeX, Move,
+  Music, Upload, Volume2, Plus, Layers, VolumeX, Move, SlidersHorizontal,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
 import {
   ASPECTS, ASPECT_LABELS, EXPORT_PRESETS, QUALITIES, SAFE_AREAS, TRANSITIONS, VIDEO_EFFECTS,
   TEXT_TYPES, TEXT_ANIM, FONT_FAMILIES, DEFAULT_PHOTO_MS, DEFAULT_VIDEO_MS, PX_PER_MS, aspectBox, uid, colorPreviewFilter,
 } from '../../../video-constants';
-import { clickable } from '@/lib/a11y';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import Sheet from '@/components/ui/Sheet';
+import ErrorState from '@/components/ui/ErrorState';
+import { isGone, loadErrorText } from '@/lib/loadFailure';
 
 const ZERO_COLOR = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0 };
 
@@ -105,6 +108,7 @@ export default function VideoEditor() {
   const [audioAssets, setAudioAssets] = useState([]);
   const [luts, setLuts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [showMusic, setShowMusic] = useState(false);
   const [selId, setSelId] = useState(null);
   const [playhead, setPlayhead] = useState(0);
@@ -126,6 +130,13 @@ export default function VideoEditor() {
   });
   useEffect(() => { try { localStorage.setItem('wf_ve_tl_h', String(tlHeight)); } catch {} }, [tlHeight]);
   const [showExport, setShowExport] = useState(false);
+  // Phone layout (≤640px): a dark, full-screen editor — preview on top, a slim
+  // swipeable timeline, and a tool bar under the thumb. The media library, the
+  // clip inspector, tracks and aspect live in bottom sheets instead of side rails.
+  const isPhone = useMediaQuery('(max-width: 640px)');
+  const [mSheet, setMSheet] = useState(null);   // null | 'media' | 'clip' | 'tracks' | 'aspect'
+  const [added, setAdded] = useState(0);         // media added during this sheet session
+  const headW = isPhone ? 0 : HEAD_W;
   const [stageSize, setStageSize] = useState({ width: 360, height: 640 });
 
   const stageWrapRef = useRef(null);
@@ -151,7 +162,7 @@ export default function VideoEditor() {
         setAssets((a.data.assets || []).filter(x => x.type === 'photo' || x.type === 'video'));
         if (pr?.data?.luts) setLuts(pr.data.luts);
         try { setAudioAssets((await mediaAPI.listAudio(id)).data.audio || []); } catch {}
-      } catch { router.push(`/studio/${id}/video`); return; }
+      } catch (e) { if (isGone(e)) { router.push(`/studio/${id}/video`); return; } setLoadError(loadErrorText(e)); setLoading(false); return; }
       setLoading(false);
     })();
   }, [id, timelineId]);
@@ -214,7 +225,12 @@ export default function VideoEditor() {
     if (!stageEl || !doc) return;
     const measure = () => {
       const r = stageEl.getBoundingClientRect();
-      const w = r.width - 24, h = r.height - 24;
+      // The transport row shares the stage column with the frame, so its height
+      // (plus the column gap) comes off the frame's budget — otherwise the frame
+      // overflows the stage and slides under the top bar and the play button.
+      const transport = stageEl.querySelector('.ms-ve-transport');
+      const gap = parseFloat(getComputedStyle(stageEl).rowGap) || 0;
+      const w = r.width - 24, h = r.height - 24 - (transport ? transport.offsetHeight + gap : 0);
       if (w <= 0 || h <= 0) return; // not laid out yet — a later frame will size it
       setStageSize(aspectBox(doc.aspect, w, h));
     };
@@ -374,17 +390,21 @@ export default function VideoEditor() {
   // save — the renderer skips a muted track's clips the same way the preview does.
   const toggleTrackMute = (tid) => setDoc(d => ({ ...d, tracks: d.tracks.map(t => t.id === tid ? { ...t, muted: !t.muted } : t) }));
 
-  const changeAspect = (aspect) => { setDoc(d => ({ ...d, aspect })); setAspectMenu(false); };
+  const changeAspect = (aspect) => { setDoc(d => ({ ...d, aspect })); setAspectMenu(false); setMSheet(null); };
   const uploadLut = async (file) => { try { const r = await mediaAPI.uploadLut(file, file.name); setLuts(ls => [...ls, r.data]); } catch {} };
 
   // ── timeline drag (move / trim) ───────────────────────────────────────────────
   const onClipPointerDown = (e, clip, mode) => {
     e.stopPropagation();
     setSelId(clip.id); setPlaying(false);
+    // On a phone a finger on a clip is usually the start of a timeline scroll,
+    // so the clip body only selects; the trim handles still drag.
+    if (isPhone && mode === 'move') return;
     const tt = doc.tracks.find(tr => tr.clips.some(c => c.id === clip.id))?.type || 'video';
     drag.current = { id: clip.id, mode, startX: e.clientX, orig: { ...clip }, trackType: tt };
     window.addEventListener('pointermove', onDragMove);
     window.addEventListener('pointerup', onDragUp);
+    window.addEventListener('pointercancel', onDragUp);
   };
   const onDragMove = (e) => {
     const d = drag.current; if (!d) return;
@@ -406,7 +426,7 @@ export default function VideoEditor() {
       return { ...tr, clips: next };
     }) }));
   };
-  const onDragUp = () => { drag.current = null; window.removeEventListener('pointermove', onDragMove); window.removeEventListener('pointerup', onDragUp); };
+  const onDragUp = () => { drag.current = null; window.removeEventListener('pointermove', onDragMove); window.removeEventListener('pointerup', onDragUp); window.removeEventListener('pointercancel', onDragUp); };
 
   // ── timeline panel resize ──────────────────────────────────────────────────
   const tlResize = useRef(null);
@@ -480,6 +500,7 @@ export default function VideoEditor() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selId, activeClip, duration, playhead]); // eslint-disable-line
 
+  if (loadError) return <div className="ms-page"><ErrorState title="Could not open this reel" description="Your reel is safe — we just couldn’t load it right now." detail={loadError} onRetry={() => window.location.reload()} /></div>;
   if (loading || !doc) return <><div className="ms-page"><p className="ms-loading">Opening editor…</p></div></>;
 
   const safe = SAFE_AREAS[EXPORT_PRESETS.find(p => p.aspect === doc.aspect && p.safe)?.safe] || null;
@@ -500,19 +521,29 @@ export default function VideoEditor() {
     mediaStyle = { ...mediaStyle, transform: `translate(${tx}%, ${ty}%) scale(${sc}) rotate(${tf.rotation || 0}deg)`, opacity: op, transition: playing ? 'none' : 'transform .12s', filter: filter || undefined };
   }
 
+  // One inspector for a clip of any kind — the desktop side panel and the phone
+  // "Edit clip" sheet both render this.
+  const inspectorFor = (clip) => (
+    clip.kind === 'text'
+      ? <TextInspector clip={clip} patch={(p) => patchClip(clip.id, p)} onDelete={() => { removeClip(clip.id); setMSheet(null); }} onDup={() => duplicateClip(clip.id)} />
+      : clip.kind === 'audio'
+        ? <AudioInspector clip={clip} asset={musicAsset} patch={(p) => patchClip(clip.id, p)} onRemove={() => { removeMusic(); setMSheet(null); }} onReplace={() => { setMSheet(null); setShowMusic(true); }} />
+        : <Inspector clip={clip} luts={luts} onUploadLut={uploadLut} kfT={clip.duration ? clamp((playhead - clip.start) / clip.duration, 0, 1) : 0} patch={(p) => patchClip(clip.id, p)} onDelete={() => { removeClip(clip.id); setMSheet(null); }} onDup={() => duplicateClip(clip.id)} />
+  );
+
   return (
     <>
       <div className="ms-ve">
         {/* top bar */}
         <div className="ms-ve-top">
           <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-ve-icon" title="Back to reels"><ArrowLeft size={17} /></button>
-          <input value={name} onChange={e => setName(e.target.value)} className="ms-ve-name" placeholder="Untitled reel" />
+          <input data-ui aria-label="Reel name" value={name} onChange={e => setName(e.target.value)} className="ms-ve-name" placeholder="Untitled reel" />
           <span className="ms-ve-save">{saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved' : 'Saved'}</span>
 
           <div style={{ flex: 1 }} />
 
           <div style={{ position: 'relative' }}>
-            <button onClick={() => setAspectMenu(v => !v)} className="ms-ve-pill"><ArrowLeftRight size={14} /> {doc.aspect} <ChevronDown size={13} /></button>
+            <button onClick={() => (isPhone ? setMSheet('aspect') : setAspectMenu(v => !v))} className="ms-ve-pill"><ArrowLeftRight size={14} /> {doc.aspect} <ChevronDown size={13} /></button>
             {aspectMenu && (
               <div className="ms-menu" style={{ right: 0, top: '110%', minWidth: 180 }}>
                 {['9:16', '1:1', '4:5', '16:9', '21:9', '3:2'].map(a => (
@@ -523,12 +554,12 @@ export default function VideoEditor() {
               </div>
             )}
           </div>
-          <button onClick={() => setShowExport(true)} disabled={duration === 0} className="ms-btn-ink"><Download size={15} /> Export</button>
+          <button onClick={() => setShowExport(true)} disabled={duration === 0} className="ms-btn-ink ms-ve-export"><Download size={15} /> Export</button>
         </div>
 
         <div className="ms-ve-body">
-          {/* media rail */}
-          <aside className="ms-ve-rail">
+          {/* media rail (a sheet on phones) */}
+          {!isPhone && <aside className="ms-ve-rail">
             <div className="ms-ve-rail-h">Media <span>{assets.length}</span></div>
             <div className="ms-ve-rail-grid">
               {assets.map(a => (
@@ -540,7 +571,7 @@ export default function VideoEditor() {
               ))}
               {assets.length === 0 && <p style={{ fontSize: 12, color: 'var(--ms-ink-3)', gridColumn: '1/-1', padding: 8 }}>No photos or clips in this shoot yet.</p>}
             </div>
-          </aside>
+          </aside>}
 
           {/* stage */}
           <div className="ms-ve-stage" ref={attachStage}>
@@ -589,20 +620,16 @@ export default function VideoEditor() {
             {musicAsset && <audio ref={audioRef} key={musicClip.id} src={mediaUrl(musicAsset.url)} preload="auto" />}
           </div>
 
-          {/* inspector */}
-          <aside className="ms-ve-insp">
+          {/* inspector (a sheet on phones) */}
+          {!isPhone && <aside className="ms-ve-insp">
             {!selected ? (
               <div style={{ padding: 16, color: 'var(--ms-ink-3)', fontSize: 12.5, lineHeight: 1.6 }}>
                 <Wand2 size={16} style={{ marginBottom: 8, opacity: 0.7 }} /><br />
                 Select a clip to edit it. Click media on the left to add it to the timeline.<br /><br />
                 <b style={{ color: 'var(--ms-ink-2)' }}>Shortcuts</b><br />Space play · S split · Del remove · ←→ nudge
               </div>
-            ) : selected.kind === 'text' ? (
-              <TextInspector clip={selected} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />
-            ) : selected.kind === 'audio' ? (
-              <AudioInspector clip={selected} asset={musicAsset} patch={(p) => patchClip(selected.id, p)} onRemove={removeMusic} onReplace={() => setShowMusic(true)} />
-            ) : <Inspector clip={selected} luts={luts} onUploadLut={uploadLut} kfT={selected.duration ? clamp((playhead - selected.start) / selected.duration, 0, 1) : 0} patch={(p) => patchClip(selected.id, p)} onDelete={() => removeClip(selected.id)} onDup={() => duplicateClip(selected.id)} />}
-          </aside>
+            ) : inspectorFor(selected)}
+          </aside>}
         </div>
 
         {/* timeline */}
@@ -611,7 +638,7 @@ export default function VideoEditor() {
               and audio lanes out of sight in the first place. */}
           <div className="ms-ve-tl-grip" onPointerDown={onTlResizeDown}
                role="separator" aria-label="Resize timeline" title="Drag to resize the timeline" />
-          <div className="ms-ve-tl-tools">
+          {!isPhone && <div className="ms-ve-tl-tools">
             <button onClick={splitAtPlayhead} disabled={!activeClip} className="ms-ve-tool" title="Split (S)"><Scissors size={14} /> Split</button>
             <button onClick={addText} className="ms-ve-tool" title="Add text"><Type size={14} /> Text</button>
             <button onClick={() => setShowMusic(true)} className="ms-ve-tool" title="Music"><Music size={14} /> Music</button>
@@ -642,18 +669,18 @@ export default function VideoEditor() {
             <div style={{ flex: 1 }} />
             <button aria-label="Zoom out" onClick={() => setScale(s => clamp(s / 1.3, 0.012, 0.4))} className="ms-ve-tool"><ZoomOut size={14} /></button>
             <button aria-label="Zoom in" onClick={() => setScale(s => clamp(s * 1.3, 0.012, 0.4))} className="ms-ve-tool"><ZoomIn size={14} /></button>
-          </div>
+          </div>}
           <div className="ms-ve-tl-scroll">
             {/* One row per track, each with a sticky header. Replaces three
                 hardcoded lanes that could not show a second text track, could
                 not label what a lane was, and could not be added to. */}
-            <div className="ms-ve-tl-rows" style={{ width: HEAD_W + laneW }}>
+            <div className="ms-ve-tl-rows" style={{ width: headW + laneW }}>
               {tracks.map((tr) => {
                 const meta = TRACK_META[tr.type] || TRACK_META.video;
                 const isSpine = tr.type === 'video';
                 return (
                   <div key={tr.id} className="ms-ve-tl-row" style={{ height: trackH(tr.type), marginBottom: TRACK_GAP }}>
-                    <div className={`ms-ve-tl-head${tr.muted ? ' is-muted' : ''}`} style={{ width: HEAD_W }}>
+                    {!isPhone && <div className={`ms-ve-tl-head${tr.muted ? ' is-muted' : ''}`} style={{ width: HEAD_W }}>
                       <span className="ms-ve-tl-dot" style={{ background: meta.tint }} />
                       <span className="ms-ve-tl-name">{meta.label}</span>
                       <button className="ms-ve-tl-hbtn" title={tr.muted ? 'Unmute track' : 'Mute track'}
@@ -668,12 +695,13 @@ export default function VideoEditor() {
                               onClick={() => removeTrack(tr.id)}>
                         <Trash2 size={12} />
                       </button>
-                    </div>
+                    </div>}
 
-                    <div className="ms-ve-tl-lane" style={{ width: laneW }} onPointerDown={scrubTo}>
+                    {/* phones seek on tap (click), so a swipe scrolls the timeline instead of scrubbing it */}
+                    <div className="ms-ve-tl-lane" style={{ width: laneW }} onPointerDown={isPhone ? undefined : scrubTo} onClick={isPhone ? scrubTo : undefined}>
                       {tr.clips.length === 0 && (
                         <div className="ms-ve-tl-empty">
-                          {isSpine ? 'Click media on the left to build your reel' : `Empty ${meta.label.toLowerCase()} track`}
+                          {isSpine ? (isPhone ? 'Tap Media below to build your reel' : 'Click media on the left to build your reel') : `Empty ${meta.label.toLowerCase()} track`}
                         </div>
                       )}
                       {tr.clips.map(c => {
@@ -735,10 +763,96 @@ export default function VideoEditor() {
               })}
               {/* Height is derived now. It used to be `92 + (text ? 38 : 0) + …`,
                   a hand-maintained sum that could not know about a fourth track. */}
-              <div className="ms-ve-playhead" style={{ left: HEAD_W + playhead * scale, height: Math.max(tracksHeight, 40) }} />
+              <div className="ms-ve-playhead" style={{ left: headW + playhead * scale, height: Math.max(tracksHeight, 40) }} />
             </div>
           </div>
         </div>
+
+        {/* ── phone tool bar + sheets ─────────────────────────────────────────
+            Everything the desktop shows in side rails and the timeline header,
+            one tap away under the thumb. Contextual tools appear when a clip is
+            selected. */}
+        {isPhone && (
+          <>
+            <div className="mv-bar" role="toolbar" aria-label="Reel tools">
+              {selected ? (
+                <>
+                  <button onClick={() => setSelId(null)} className="mv-tool mv-tool-x" aria-label="Deselect"><X size={20} /></button>
+                  <button onClick={() => setMSheet('clip')} className="mv-tool"><SlidersHorizontal size={21} /><span>Edit</span></button>
+                  {spine.clips.some(c => c.id === selected.id) && <button onClick={splitAtPlayhead} disabled={!activeClip} className="mv-tool"><Scissors size={21} /><span>Split</span></button>}
+                  <button onClick={() => duplicateClip(selected.id)} className="mv-tool"><Copy size={21} /><span>Duplicate</span></button>
+                  <button onClick={() => removeClip(selected.id)} className="mv-tool mv-tool-danger"><Trash2 size={21} /><span>Delete</span></button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => { setAdded(0); setMSheet('media'); }} className="mv-tool mv-tool-main"><Plus size={22} /><span>Media</span></button>
+                  <button onClick={addText} className="mv-tool"><Type size={21} /><span>Text</span></button>
+                  <button onClick={() => setShowMusic(true)} className="mv-tool"><Music size={21} /><span>{musicClip ? 'Music ✓' : 'Music'}</span></button>
+                  <button onClick={splitAtPlayhead} disabled={!activeClip} className="mv-tool"><Scissors size={21} /><span>Split</span></button>
+                  <button onClick={() => setMSheet('tracks')} className="mv-tool"><Layers size={21} /><span>Tracks</span></button>
+                  <button onClick={() => setScale(s => clamp(s * 1.3, 0.012, 0.4))} className="mv-tool" aria-label="Zoom timeline in"><ZoomIn size={21} /><span>Zoom</span></button>
+                  <button onClick={() => setScale(s => clamp(s / 1.3, 0.012, 0.4))} className="mv-tool" aria-label="Zoom timeline out"><ZoomOut size={21} /><span>Fit</span></button>
+                </>
+              )}
+            </div>
+
+            <Sheet inline open={mSheet === 'media'} onClose={() => setMSheet(null)} title={added ? `Added ${added}` : 'Add media'}
+              action={<button className="mv-done" onClick={() => setMSheet(null)}>Done</button>}>
+              <div className="mv-media-grid">
+                {assets.map(a => (
+                  <button key={a.id} onClick={() => { addAsset(a); setAdded(n => n + 1); }} className="ms-ve-tile" aria-label={`Add ${a.filename}`}>
+                    <img src={mediaUrl(a.type === 'video' ? (a.poster_url || a.thumb_url) : (a.thumb_url || a.url))} alt="" loading="lazy" />
+                    {a.type === 'video' && <span className="ms-ve-tile-badge"><Film size={11} /></span>}
+                    {spine.clips.some(c => c.assetId === a.id) && <span className="mv-in-reel"><Check size={12} /></span>}
+                  </button>
+                ))}
+                {assets.length === 0 && <p className="mv-empty">No photos or clips in this shoot yet.</p>}
+              </div>
+            </Sheet>
+
+            <Sheet inline open={mSheet === 'clip' && !!selected} onClose={() => setMSheet(null)}
+              title={selected ? (selected.kind === 'text' ? 'Text' : selected.kind === 'audio' ? 'Music' : selected.kind === 'video' ? 'Video clip' : 'Photo clip') : ''}>
+              <div className="mv-insp">{selected && inspectorFor(selected)}</div>
+            </Sheet>
+
+            <Sheet inline open={mSheet === 'tracks'} onClose={() => setMSheet(null)} title="Tracks">
+              <div className="mv-list">
+                {tracks.map(tr => {
+                  const meta = TRACK_META[tr.type] || TRACK_META.video;
+                  const isSpine = tr.type === 'video';
+                  return (
+                    <div key={tr.id} className={`mv-track${tr.muted ? ' is-muted' : ''}`}>
+                      <span className="ms-ve-tl-dot" style={{ background: meta.tint }} />
+                      <span className="mv-track-name">{meta.label}<small>{tr.clips.length} clip{tr.clips.length === 1 ? '' : 's'}</small></span>
+                      <button onClick={() => toggleTrackMute(tr.id)} aria-label={`${tr.muted ? 'Unmute' : 'Mute'} ${meta.label} track`}>{tr.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+                      <button onClick={() => removeTrack(tr.id)} aria-label={`${isSpine ? 'Clear' : 'Delete'} ${meta.label} track`}><Trash2 size={18} /></button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mv-sheet-label">Add a track</div>
+              <div className="mv-chips">
+                {['text', 'audio', 'overlay', 'video'].map(t => (
+                  <button key={t} onClick={() => addTrack(t)} disabled={doc.tracks.length >= MAX_TRACKS}>
+                    <span className="ms-ve-tl-dot" style={{ background: TRACK_META[t].tint }} /> {TRACK_META[t].label}
+                  </button>
+                ))}
+              </div>
+            </Sheet>
+
+            <Sheet inline open={mSheet === 'aspect'} onClose={() => setMSheet(null)} title="Format">
+              <div className="mv-list">
+                {['9:16', '1:1', '4:5', '16:9', '21:9', '3:2'].map(a => (
+                  <button key={a} className={`mv-row${doc.aspect === a ? ' is-active' : ''}`} onClick={() => changeAspect(a)}>
+                    <span className="mv-ratio-box"><span className="mv-ratio" style={{ aspectRatio: a.replace(':', ' / ') }} /></span>
+                    <b>{a}</b><small>{ASPECT_LABELS[a]}</small>
+                    {doc.aspect === a && <Check size={18} />}
+                  </button>
+                ))}
+              </div>
+            </Sheet>
+          </>
+        )}
       </div>
 
       {showExport && <ExportModal timelineId={timelineId} aspect={doc.aspect} duration={duration} onClose={() => setShowExport(false)} />}
@@ -810,7 +924,7 @@ function MusicModal({ projectId, audioAssets, current, onClose, onPick, onUpload
   };
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 480 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -1174,7 +1288,7 @@ function ExportModal({ timelineId, aspect, duration, onClose }) {
   const failed = exp && exp.status === 'failed';
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
           <div><h2>Export reel</h2><p className="ms-modal-sub">{fmtClock(duration)} · MP4 / H.264</p></div>

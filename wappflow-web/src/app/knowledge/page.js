@@ -267,7 +267,7 @@ export default function KnowledgePage() {
         <div className="r-pad" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
 
           {/* Header */}
-          <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+          <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28, gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 52, height: 52, borderRadius: 16, background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Brain size={26} color="white" />
@@ -277,8 +277,8 @@ export default function KnowledgePage() {
                 <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>Teach your AI about your business — it learns and remembers</p>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={handleLearnFromMessages} disabled={learning} style={{
+            <div className="r-full" style={{ display: 'flex', gap: 10 }}>
+              <button className="kb-head-btn" onClick={handleLearnFromMessages} disabled={learning} style={{
                 display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px',
                 borderRadius: 12, border: '1.5px solid #c4b5fd', background: 'rgba(139,92,246,0.10)',
                 color: '#7c3aed', fontWeight: 700, cursor: learning ? 'not-allowed' : 'pointer', fontSize: 13
@@ -288,7 +288,7 @@ export default function KnowledgePage() {
               </button>
               <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileUpload}
                 accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{
+              <button className="kb-head-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{
                 display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px',
                 borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
                 color: 'white', fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', fontSize: 13,
@@ -301,26 +301,26 @@ export default function KnowledgePage() {
           </div>
 
           {/* Stats row */}
-          <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
+          <div className="kb-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14, marginBottom: 24 }}>
             {[
               { label: 'Documents', value: documents.length, icon: FileText, color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
               { label: 'Memories', value: memories.length, icon: Database, color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
               { label: 'Auto-Learned', value: memories.filter(m => m.source !== 'manual').length, icon: Sparkles, color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
             ].map(s => (
-              <div key={s.label} style={{ background: 'var(--surface)', borderRadius: 16, padding: '18px 20px', border: '1.5px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div key={s.label} className="kb-stat" style={{ background: 'var(--surface)', borderRadius: 16, padding: '18px 20px', border: '1.5px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+                <div className="kb-stat-icon" style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <s.icon size={20} color={s.color} />
                 </div>
-                <div>
-                  <p style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: 0, lineHeight: 1 }}>{s.value}</p>
-                  <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0, marginTop: 3 }}>{s.label}</p>
+                <div style={{ minWidth: 0 }}>
+                  <p className="kb-stat-value" style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: 0, lineHeight: 1 }}>{s.value}</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</p>
                 </div>
               </div>
             ))}
           </div>
 
           {/* Website crawler */}
-          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: '16px 20px', border: '1.5px solid #e5e7eb', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 16, padding: '16px 20px', border: '1.5px solid var(--border)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(34,197,94,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Globe size={20} color="#22c55e" />
             </div>
@@ -347,7 +347,7 @@ export default function KnowledgePage() {
           </div>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: 4, background: 'var(--surface)', borderRadius: 14, padding: 5, border: '1.5px solid #e5e7eb', marginBottom: 20, width: 'fit-content' }}>
+          <div style={{ display: 'flex', gap: 4, background: 'var(--surface)', borderRadius: 14, padding: 5, border: '1.5px solid var(--border)', marginBottom: 20, width: 'fit-content' }}>
             {[
               { id: 'documents', label: 'Documents', icon: FileText },
               { id: 'memories', label: 'All Memories', icon: Database },
@@ -365,7 +365,7 @@ export default function KnowledgePage() {
 
           {loading ? (
             <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 60, textAlign: 'center', color: 'var(--text-dim)' }}>
-              <div style={{ width: 36, height: 36, border: '3px solid #e5e7eb', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+              <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
               Loading knowledge base...
             </div>
           ) : (
@@ -374,7 +374,7 @@ export default function KnowledgePage() {
               {activeTab === 'documents' && (
                 <div>
                   {documents.length === 0 ? (
-                    <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '60px 40px', textAlign: 'center', border: '1.5px solid #e5e7eb' }}>
+                    <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '60px 40px', textAlign: 'center', border: '1.5px solid var(--border)' }}>
                       <div style={{ width: 72, height: 72, borderRadius: 22, background: '#f3e8ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                         <BookOpen size={32} color="#8b5cf6" />
                       </div>
@@ -389,7 +389,7 @@ export default function KnowledgePage() {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {documents.map(doc => (
-                        <div key={doc.id} style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid #e5e7eb', overflow: 'hidden' }}>
+                        <div key={doc.id} style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', overflow: 'hidden' }}>
                           <div className="r-col" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px' }}>
                             <div style={{ width: 44, height: 44, borderRadius: 14, background: doc.file_type === 'website' ? 'rgba(34,197,94,0.10)' : doc.file_type?.includes('pdf') ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               {doc.file_type === 'website'
@@ -419,7 +419,7 @@ export default function KnowledgePage() {
 
                           {/* Expanded memories */}
                           {expandedDoc === doc.id && (
-                            <div style={{ borderTop: '1px solid #f3f4f6', padding: '16px 20px', background: '#fafbff' }}>
+                            <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px', background: '#fafbff' }}>
                               {!docMemories[doc.id] ? (
                                 <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>Loading...</p>
                               ) : docMemories[doc.id].length === 0 ? (
@@ -456,9 +456,9 @@ export default function KnowledgePage() {
                   {/* Toolbar */}
                   <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search memories..."
-                      style={{ padding: '9px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', width: 220 }} />
+                      style={{ padding: '9px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', width: 220 }} />
                     <select value={filterType} onChange={e => setFilterType(e.target.value)}
-                      style={{ padding: '9px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)', cursor: 'pointer' }}>
+                      style={{ padding: '9px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)', cursor: 'pointer' }}>
                       <option value="all">All Types</option>
                       {MEMORY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
@@ -500,7 +500,7 @@ export default function KnowledgePage() {
                           style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                       </div>
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                        <button onClick={() => { setShowMemoryForm(false); setEditingMemory(null); }} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+                        <button onClick={() => { setShowMemoryForm(false); setEditingMemory(null); }} style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
                         <button onClick={handleSaveMemory} disabled={savingMemory} style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
                           {savingMemory ? 'Saving...' : editingMemory ? 'Update' : 'Add Memory'}
                         </button>
@@ -509,7 +509,7 @@ export default function KnowledgePage() {
                   )}
 
                   {filteredMemories.length === 0 ? (
-                    <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '60px 40px', textAlign: 'center', border: '1.5px solid #e5e7eb' }}>
+                    <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '60px 40px', textAlign: 'center', border: '1.5px solid var(--border)' }}>
                       <div style={{ fontSize: 48, marginBottom: 12 }}>🧠</div>
                       <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>No memories yet</h3>
                       <p style={{ fontSize: 14, color: 'var(--text-dim)', marginBottom: 24 }}>Upload a document or click "Learn from Chats" to start building your AI's knowledge.</p>
@@ -537,7 +537,7 @@ export default function KnowledgePage() {
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-                                  <button aria-label="Edit" onClick={() => openEditMemory(m)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}><Edit2 size={12} /></button>
+                                  <button aria-label="Edit" onClick={() => openEditMemory(m)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}><Edit2 size={12} /></button>
                                   <button aria-label="Delete" onClick={() => handleDeleteMemory(m.id)} style={{ padding: '5px 8px', borderRadius: 8, border: '1.5px solid #fecaca', background: 'rgba(239,68,68,0.10)', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={12} /></button>
                                 </div>
                               </div>

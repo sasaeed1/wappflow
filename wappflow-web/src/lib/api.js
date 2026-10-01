@@ -64,7 +64,8 @@ export const leadsAPI = {
 
   // Messages
   getMessages: (id, platform) => api.get(`/leads/${id}/messages`, { params: platform ? { platform } : {} }),
-  sendMessage: (id, body, platform) => api.post(`/leads/${id}/messages`, { body, platform }),
+  sendMessage: (id, body, platform, replyTo) => api.post(`/leads/${id}/messages`, { body, platform, ...(replyTo ? { reply_to: replyTo } : {}) }),
+  reactToMessage: (id, messageId, emoji) => api.post(`/leads/${id}/messages/${messageId}/react`, { emoji }),
   sendMedia: (id, formData) => api.post(`/leads/${id}/messages/media`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   sendVoice: (id, formData) => api.post(`/leads/${id}/messages/voice`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   syncMessages: (id) => api.post(`/leads/${id}/messages/sync`),

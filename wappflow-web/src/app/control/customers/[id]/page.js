@@ -3,8 +3,15 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ccApi, fmtBytes, fmtNum } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
+import { useConfirm, usePrompt } from '@/lib/confirm';
 
 export default function Workspace360() {
+  // In-app dialogs instead of the browser's native alert/prompt boxes.
+  const confirmDialog = useConfirm();
+  const ask = usePrompt();
+  const prompt = (title, defaultValue = '') => ask({ title, defaultValue, required: false });
+  const alert = (message) => confirmDialog({ title: 'Something went wrong', message, alertOnly: true, tone: 'danger' });
+
   const { id } = useParams();
   const router = useRouter();
   const [d, setD] = useState(null);
@@ -41,8 +48,8 @@ export default function Workspace360() {
         <div style={{ flex: 1 }} />
         {workspace.status === 'suspended'
           ? <button disabled={busy} onClick={() => act(() => ccApi.restore(id))} style={btn('#34d399')}>Restore</button>
-          : <button disabled={busy} onClick={() => { const r = prompt('Reason for suspension?'); if (r !== null) act(() => ccApi.suspend(id, r)); }} style={btn('#f87171')}>Suspend</button>}
-        <button disabled={busy} onClick={() => act(async () => { const days = parseInt(prompt('Grace period days?', '14'), 10); if (days > 0) await ccApi.grace(id, { days }); })} style={btn('#fbbf24')}>Grant grace</button>
+          : <button disabled={busy} onClick={async () => { const r = await prompt('Reason for suspension?'); if (r !== null) act(() => ccApi.suspend(id, r)); }} style={btn('#f87171')}>Suspend</button>}
+        <button disabled={busy} onClick={() => act(async () => { const days = parseInt(await prompt('Grace period days?', '14'), 10); if (days > 0) await ccApi.grace(id, { days }); })} style={btn('#fbbf24')}>Grant grace</button>
         <button disabled={busy} onClick={async () => { try { const r = await ccApi.impersonate(id, 'read'); window.open('/impersonate?token=' + encodeURIComponent(r.data.token), '_blank', 'noopener'); } catch (e) { alert(e.response?.data?.error || 'Failed'); } }} style={btn('#60a5fa')}>Impersonate (read-only)</button>
       </div>
 
@@ -110,9 +117,9 @@ export default function Workspace360() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ ...h3, margin: 0 }}>Overrides</h3>
           <button onClick={() => act(async () => {
-            const kind = prompt('kind? (limit | feature | module)', 'feature'); if (!kind) return;
-            const key = prompt('key? (e.g. flux, leads)'); if (!key) return;
-            let value = prompt('value? (true/false or a number)'); if (value === null) return;
+            const kind = await prompt('kind? (limit | feature | module)', 'feature'); if (!kind) return;
+            const key = await prompt('key? (e.g. flux, leads)'); if (!key) return;
+            let value = await prompt('value? (true/false or a number)'); if (value === null) return;
             if (value === 'true') value = true; else if (value === 'false') value = false; else if (!isNaN(Number(value))) value = Number(value);
             await ccApi.addOverride(id, { kind, key, value, reason: 'manual (Command Center)' });
           })} style={btn('#818cf8', true)}>+ Add override</button>

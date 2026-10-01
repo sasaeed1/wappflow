@@ -157,7 +157,7 @@ export default function FloatingChat() {
         {/* Lead picker dropdown */}
         {showLeadSearch && (
           <div style={{ position: 'absolute', bottom: 60, right: 0, width: 300, background: 'var(--surface)', borderRadius: 16, boxShadow: '0 16px 48px rgba(0,0,0,0.18)', border: '1.5px solid var(--border)', overflow: 'hidden', zIndex: 9001 }}>
-            <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
               <Search size={14} color="#9ca3af" />
               <input autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads to chat…"
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: 'var(--text)' }} />
@@ -232,7 +232,7 @@ export default function FloatingChat() {
         {/* Lead search overlay when searching from open window */}
         {showLeadSearch && (
           <div style={{ position: 'absolute', top: 56, left: 0, right: 0, background: 'var(--surface)', borderRadius: '0 0 16px 16px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', zIndex: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '10px 12px', borderBottom: '1px solid #f3f4f6', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
               <Search size={13} color="#9ca3af" />
               <input autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads…"
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: 'var(--text)' }} />
@@ -310,7 +310,7 @@ export default function FloatingChat() {
 
           {/* Emoji picker */}
           {showPicker && (
-            <div style={{ background: 'var(--surface)', borderTop: '1px solid #f3f4f6', padding: '8px 10px', display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 80, overflowY: 'auto' }}>
+            <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '8px 10px', display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 80, overflowY: 'auto' }}>
               {EMOJI_LIST.map(e => (
                 <button key={e} onClick={() => { setNewMsg(m => m + e); setShowPicker(false); inputRef.current?.focus(); }}
                   style={{ fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 1 }}>{e}</button>
@@ -319,7 +319,7 @@ export default function FloatingChat() {
           )}
 
           {/* Input row */}
-          <div style={{ padding: '8px 10px', borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-end', gap: 6, background: 'var(--surface)', flexShrink: 0 }}>
+          <div style={{ padding: '8px 10px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'flex-end', gap: 6, background: 'var(--surface)', flexShrink: 0 }}>
             <button aria-label="Add an emoji" onClick={() => setShowPicker(v => !v)} style={{ width: 30, height: 30, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Smile size={16} />
             </button>

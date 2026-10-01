@@ -77,7 +77,7 @@ export default function Dropdown({
   // sitting flush against them.
   const GAP = 12;
   const MIN_USABLE = 140;   // below this a flip is better than a stub of a menu
-  const [fit, setFit] = useState({ side: 'bottom', maxHeight: null });
+  const [fit, setFit] = useState({ side: 'bottom', maxHeight: null, shift: 0, maxWidth: null });
 
   useEffect(() => {
     if (!open) return;
@@ -92,7 +92,24 @@ export default function Dropdown({
       // nav bar is exactly the "no gap from the nav" complaint.
       const above = r.top - navH - GAP * 2;
       const side = (below >= MIN_USABLE || below >= above) ? 'bottom' : 'top';
-      setFit({ side, maxHeight: Math.max(MIN_USABLE, Math.floor(side === 'bottom' ? below : above)) });
+      // Horizontal fit. The panel hangs off one edge of its trigger, so a 340px
+      // panel under a bell 120px from the left of a 412px phone ran ~230px off
+      // the left of the screen — the notification list was cut in half. Cap the
+      // width to the viewport and slide the panel back inside it when needed.
+      const vw = window.innerWidth;
+      const maxWidth = vw - GAP * 2;
+      const w = Math.min(width, maxWidth);
+      // `shift` is the value for the panel's [align] offset: a negative right
+      // pushes it rightwards, a negative left pushes it leftwards.
+      let shift = 0;
+      if (align === 'right') {
+        const left = r.right - w;
+        if (left < GAP) shift = left - GAP;
+      } else {
+        const right = r.left + w;
+        if (right > vw - GAP) shift = (vw - GAP) - right;
+      }
+      setFit({ side, maxHeight: Math.max(MIN_USABLE, Math.floor(side === 'bottom' ? below : above)), shift, maxWidth });
     };
 
     measure();
@@ -104,7 +121,7 @@ export default function Dropdown({
       window.removeEventListener('scroll', measure, true);
       window.removeEventListener('resize', measure);
     };
-  }, [open]);
+  }, [open, align, width]);
 
   const close = () => setOpen(false);
 
@@ -127,8 +144,10 @@ export default function Dropdown({
             ...(fit.side === 'bottom'
               ? { top: 'calc(100% + 8px)' }
               : { bottom: 'calc(100% + 8px)' }),
-            [align]: 0,
-            minWidth: width, zIndex: 'var(--z-dropdown)',
+            [align]: fit.shift,
+            minWidth: fit.maxWidth ? Math.min(width, fit.maxWidth) : width,
+            maxWidth: fit.maxWidth ?? undefined,
+            zIndex: 'var(--z-dropdown)',
             background: 'var(--surface)', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-lg)', boxShadow: 'var(--elev-3)', padding: 6,
             // Scroll INSIDE the menu rather than off the end of the window.

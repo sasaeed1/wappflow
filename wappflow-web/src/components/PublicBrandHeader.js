@@ -23,6 +23,10 @@
 const TONE = {
   light: { bg: 'var(--glass)', border: 'var(--border)', text: 'var(--text)', meta: 'var(--text-muted)' },
   dark:  { bg: 'rgba(11,11,15,0.72)', border: '#1a1a22', text: '#fff', meta: '#9aa0aa' },
+  // Fixed ink-on-white for pages that are always white paper (the /d signing page).
+  // `light` follows the viewer's theme tokens, so in dark mode it put white text on
+  // that page's forced-white bar: the studio's own name was invisible.
+  paper: { bg: 'rgba(255,255,255,0.7)', border: 'rgba(0,0,0,0.06)', text: '#16161a', meta: '#6b6b76' },
 };
 
 export default function PublicBrandHeader({

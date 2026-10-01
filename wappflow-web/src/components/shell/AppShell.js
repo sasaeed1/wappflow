@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Menu, LogOut, User, Lock } from 'lucide-react';
 import Dropdown, { MenuItem } from '@/components/ui/Dropdown';
@@ -42,8 +42,35 @@ import { clickable } from '@/lib/a11y';
 // `(\/|$)` matters: /^\/studio\// missed the module index itself, so the Studio
 // landing page — a full-bleed cinematic hero — got the gutter and showed a pale
 // strip of its own backdrop down the right edge.
-const BLEED_ROUTES = [/^\/chat(\/|$)/, /^\/leads\/[^/]+$/, /^\/studio(\/|$)/, /^\/contracts\/[^/]+$/];
+// The lead page used to be listed here, but it is a scrolling page of cards like
+// any other: its outgoing bubbles and their Reply/React bar sit on the right edge,
+// and the FABs covered them (measured). It takes the gutter now.
+const BLEED_ROUTES = [/^\/chat(\/|$)/, /^\/studio(\/|$)/, /^\/contracts\/[^/]+$/];
 const isBleedRoute = (pathname) => !!pathname && BLEED_ROUTES.some((re) => re.test(pathname));
+
+// Phone-width routes that bring their own full-screen chrome — Team Chat's composer,
+// the cull viewer, the reel editor. A floating button there always lands on a
+// control (Send, photo info, the zoom tool), so the FABs stand down entirely.
+const NO_FAB_PHONE_ROUTES = [/^\/chat(\/|$)/, /^\/studio\/[^/]+\/cull$/, /^\/studio\/[^/]+\/video\/[^/]+$/];
+
+// Everywhere else on a phone the FABs get out of the way while you scroll down
+// and come back when you scroll up — the usual mobile pattern — so a row under
+// them is never unreachable. (Hiding them while typing is pure CSS, globals.css.)
+function useFabsTuckedOnScroll() {
+  const [tucked, setTucked] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (Math.abs(y - last) < 8) return;
+      setTucked(y > last && y > 80);
+      last = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  return tucked;
+}
 
 export default function AppShell({ module: moduleKey, children, actions, subHeader }) {
   const mod = MODULES[moduleKey];
@@ -57,6 +84,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
   const plan = usePlan();
   const summary = useSummary();
   const [drawer, setDrawer] = useState(false);
+  const fabsTucked = useFabsTuckedOnScroll();
   useAuthGuard();
 
   if (!mod) throw new Error(`AppShell: unknown module "${moduleKey}"`);
@@ -229,7 +257,11 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
           behind it. .wf-fab-scope is display:contents, so the tokens cascade while
           .ms-root's own min-height/backdrop paint nothing. */}
       {mod.fabs?.length > 0 && (
-        <div className={mod.dialectClass ? `wf-fab-scope ${mod.dialectClass}` : undefined}>
+        <div
+          className={['wf-fab-scope', mod.dialectClass].filter(Boolean).join(' ')}
+          data-fab-tucked={fabsTucked ? '' : undefined}
+          data-fab-phone-off={NO_FAB_PHONE_ROUTES.some((re) => re.test(pathname || '')) ? '' : undefined}
+        >
           {mod.fabs.map((Fab, i) => <Fab key={i} />)}
         </div>
       )}

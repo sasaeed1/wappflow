@@ -6,11 +6,14 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Check, X, HelpCircle, Star, ChevronLeft, ChevronRight, Sparkles, Copy as Dup, Images,
   Columns2, SlidersHorizontal, RotateCcw, RotateCw, Crop, Loader, Undo2, Wand2, Info,
-  ClipboardCopy, ClipboardPaste, Users,
+  ClipboardCopy, ClipboardPaste, Users, ListFilter,
 } from 'lucide-react';
 import { mediaAPI, mediaUrl, brainsAPI } from '../../../../lib/api';
 import { PRESETS, previewFilter, previewVignette, suggestEnhance } from '../../presets';
-import { clickable } from '@/lib/a11y';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import Sheet from '@/components/ui/Sheet';
+import ErrorState from '@/components/ui/ErrorState';
+import { isGone, loadErrorText } from '@/lib/loadFailure';
 
 const FILTERS = [
   ['all', 'All'], ['undecided', 'Review'], ['keep', 'Keep'], ['maybe', 'Maybe'], ['reject', 'Reject'],
@@ -23,6 +26,14 @@ const DEC_META = {
 const ZERO_EDITS = { exposure: 0, contrast: 0, temperature: 0, tint: 0, saturation: 0, fade: 0, vignette: 0, grain: 0, bw: 0, rotate: 0 };
 const FULL_CROP = { x: 0, y: 0, w: 1, h: 1 };
 const EDIT_KEYS = ['exposure', 'contrast', 'temperature', 'tint', 'saturation', 'fade', 'vignette', 'grain', 'bw', 'rotate'];
+
+// Phone editor: one adjustment at a time, picked from a swipeable row (the
+// Instagram pattern) instead of eight stacked sliders.
+const ADJUSTMENTS = [
+  ['exposure', 'Exposure'], ['contrast', 'Contrast'], ['temperature', 'Warmth'], ['tint', 'Tint'],
+  ['saturation', 'Saturation'], ['fade', 'Fade', 0], ['vignette', 'Vignette', 0], ['grain', 'Grain', 0],
+  ['straighten', 'Straighten'],
+];
 
 const parseEdits = (a) => { try { return JSON.parse(a?.edits || '{}'); } catch { return {}; } };
 const hasEdits = (a) => { const e = parseEdits(a); return EDIT_KEYS.concat('crop').some(k => e[k]); };
@@ -101,6 +112,7 @@ export default function CullPage() {
   const [filter, setFilter] = useState('all');
   const [cursor, setCursor] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [showGallery, setShowGallery] = useState(false);
   const [tool, setTool] = useState(null); // null | info | edit | presets
   const [compare, setCompare] = useState(false);
@@ -119,6 +131,13 @@ export default function CullPage() {
   const [isTouch, setIsTouch] = useState(false);
   const [brain, setBrain] = useState(null);
   const [showPicks, setShowPicks] = useState(false);
+  // Phone layout (≤640px): a full-screen, gesture-first viewer instead of the
+  // desktop HUD. Same state and actions underneath — only the chrome differs.
+  const isPhone = useMediaQuery('(max-width: 640px)');
+  const [sheet, setSheet] = useState(null);       // null | 'filter' | 'info'
+  const [adjust, setAdjust] = useState('exposure');
+  const [swipe, setSwipe] = useState(null);       // live {dx, dy} while a finger drags the photo
+  const [flash, setFlash] = useState(null);       // {d, k} — decision feedback burst
   const panDrag = useRef(null);
   const stageRef = useRef(null);
   const imgRef = useRef(null);
@@ -141,7 +160,7 @@ export default function CullPage() {
       try {
         const [p, a] = await Promise.all([mediaAPI.getProject(id), mediaAPI.listAssets(id, { limit: 5000 })]);
         setProject(p.data); setAssets(a.data.assets || []);
-      } catch { router.push('/studio'); return; }
+      } catch (e) { if (isGone(e)) { router.push('/studio'); return; } setLoadError(loadErrorText(e)); setLoading(false); return; }
       setLoading(false);
       try { const r = await mediaAPI.intelligence(id); setScores(r.data.scores || {}); } catch {}
       try { const b = await mediaAPI.brain(); setBrain(b.data.brain || {}); } catch {}
@@ -185,6 +204,7 @@ export default function CullPage() {
     const target = assetId ? assets.find(a => a.id === assetId) : current;
     if (!target) return;
     applyLocal(target.id, { cull_decision: decision });
+    if (!assetId && decision) setFlash({ d: decision, k: Date.now() });
     if (!assetId && filter === 'all') setCursor(c => Math.min(c + 1, view.length - 1));
     try { await mediaAPI.cullAsset(target.id, { decision }); } catch {}
   }, [current, assets, filter, view.length]);
@@ -205,12 +225,19 @@ export default function CullPage() {
     if (zoomed || editing || e.touches.length !== 1) { touch.current = null; return; }
     touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
   }, [zoomed, editing]);
+  const onTouchMove = useCallback((e) => {
+    const s = touch.current; if (!s || e.touches.length !== 1) return;
+    setSwipe({ dx: e.touches[0].clientX - s.x, dy: e.touches[0].clientY - s.y });
+  }, []);
   const onTouchEnd = useCallback((e) => {
     const s = touch.current; touch.current = null;
+    setSwipe(null);
     if (!s) return;
     const t = e.changedTouches[0]; const dx = t.clientX - s.x; const dy = t.clientY - s.y;
     const adx = Math.abs(dx), ady = Math.abs(dy);
-    if (Math.max(adx, ady) < 45 || Date.now() - s.t > 700) return; // ignore taps / slow drags
+    // ignore taps; a slow drag still counts once it has clearly travelled (the
+    // phone layout shows the photo following the finger, so people drag slowly)
+    if (Math.max(adx, ady) < 45 || (Date.now() - s.t > 700 && Math.max(adx, ady) < 110)) return;
     if (adx > ady) { dx < 0 ? next() : prev(); }
     else { dy < 0 ? decide('keep') : decide('reject'); }
   }, [next, prev, decide, zoomed, editing]);
@@ -373,7 +400,7 @@ export default function CullPage() {
   // Cancel: discard unsaved changes (revert to the last saved state) and leave edit.
   const cancelEdits = () => { if (current) loadPendingFrom(current); setCropOn(false); setBa(false); setTool(null); };
 
-  const usePreset = (preset) => {
+  const applyPreset = (preset) => {
     const p = { ...ZERO_EDITS };
     Object.entries(preset.p).forEach(([k, v]) => { p[k] = v; });
     setPending(p); setActivePreset(preset.id);
@@ -410,6 +437,7 @@ export default function CullPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [decide, rate, next, prev, zoomed, compare, editing, tool, compareSet.length, toggle100, copyEdits, pasteEdits, ba]);
 
+  if (loadError) return <div className="ms-page"><ErrorState title="Could not open Cull" description="Your photos are safe — we just couldn’t load this shoot right now." detail={loadError} onRetry={() => window.location.reload()} /></div>;
   if (loading) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   const sharp = current?.sharpness != null ? current.sharpness >= 120 : null;
@@ -425,6 +453,404 @@ export default function CullPage() {
   const liveVignette = editing ? previewVignette(pending) : 'none';
   const panelOpen = !!tool && !!current;
 
+  // The photograph with its live edit preview, before/after split and crop
+  // overlay — one implementation for both layouts.
+  const photo = (maxH) => {
+    const baActive = editing && ba && !zoomed;
+    const originalSrc = mediaUrl(current.variants?.original || current.url);
+    const afterSrc = baActive ? originalSrc : mediaUrl(zoomed ? (current.variants?.full_edit || current.url) : (current.variants?.web || current.url));
+    return (
+      <>
+        <img ref={imgRef} key={current.id} src={afterSrc} alt={current.filename} draggable={false}
+          style={{ maxWidth: '100%', maxHeight: maxH, objectFit: 'contain', display: 'block', userSelect: 'none', boxShadow: '0 30px 90px -30px rgba(0,0,0,0.8)', ...livePreview }} />
+        {liveVignette !== 'none' && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: liveVignette, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined }} />}
+        {baActive && (
+          <>
+            {/* BEFORE = untouched original, revealed on the left of the divider */}
+            <img src={originalSrc} alt="" draggable={false}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', clipPath: `inset(0 ${(1 - baPos) * 100}% 0 0)`, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined, userSelect: 'none' }} />
+            <div className="ms-ba-divider" style={{ left: `${baPos * 100}%` }} onPointerDown={startBaDrag}>
+              <span className="ms-ba-handle"><Columns2 size={13} /></span>
+            </div>
+            <span className="ms-ba-tag" style={{ left: 10 }}>Before</span>
+            <span className="ms-ba-tag" style={{ right: 10 }}>After</span>
+          </>
+        )}
+        {editing && cropOn && !zoomed && !ba && <CropOverlay crop={crop} setCrop={setCrop} boxRef={cropBoxRef} />}
+      </>
+    );
+  };
+
+  // Panel bodies — shared by the desktop HUD panel and the phone layout's
+  // sheets, so the two never drift apart.
+  const presetsPanel = () => (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span className="ms-hud-label">Presets</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{PRESETS.length} looks</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {/* Original — the untouched look, always selectable to revert */}
+        <button onClick={() => { setPending({ ...ZERO_EDITS }); setActivePreset('__original'); }} style={{ border: activePreset === '__original' ? '2px solid #fff' : '1px solid rgba(255,255,255,0.12)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', textAlign: 'left' }}>
+          <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
+            <img src={mediaUrl(current.variants?.original || current.thumb_url || current.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          <div style={{ padding: '5px 7px', fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.03em' }}>Original</div>
+        </button>
+        {PRESETS.map(ps => (
+          <button key={ps.id} onClick={() => applyPreset(ps)} style={{ border: activePreset === ps.id ? '2px solid #fff' : '1px solid rgba(255,255,255,0.12)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', textAlign: 'left' }}>
+            <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
+              <img src={mediaUrl(current.thumb_url || current.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: previewFilter(ps.p) }} />
+              {ps.p.vignette ? <div style={{ position: 'absolute', inset: 0, boxShadow: previewVignette(ps.p) }} /> : null}
+            </div>
+            <div style={{ padding: '5px 7px', fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ps.name}</div>
+          </button>
+        ))}
+      </div>
+      <button onClick={applyEdits} disabled={rendering || !activePreset} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }}>
+        {rendering ? 'Rendering…' : 'Apply to this photo'}
+      </button>
+      <button onClick={applyToKeepers} disabled={rendering || !activePreset || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 8, padding: '9px' }}>
+        <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
+      </button>
+    </>
+  );
+  const editPanel = () => (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span className="ms-hud-label">Edit</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'rgba(255,255,255,0.72)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!pending.bw} onChange={e => setPending(p => ({ ...p, bw: e.target.checked ? 1 : 0 }))} /> B&amp;W
+        </label>
+      </div>
+      {aiSuggestion && (
+        <button onClick={() => { setPending(p => ({ ...p, ...aiSuggestion })); setActivePreset(null); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 12, gap: 6 }}>
+          <Sparkles size={13} /> AI auto-enhance{aiSuggestion.exposure ? ` · exp ${aiSuggestion.exposure > 0 ? '+' : ''}${aiSuggestion.exposure}` : ''}
+        </button>
+      )}
+      <EditSlider label="Exposure" value={pending.exposure} onChange={v => setPending(p => ({ ...p, exposure: v }))} />
+      <EditSlider label="Contrast" value={pending.contrast} onChange={v => setPending(p => ({ ...p, contrast: v }))} />
+      <EditSlider label="Warmth" value={pending.temperature} onChange={v => setPending(p => ({ ...p, temperature: v }))} />
+      <EditSlider label="Tint" value={pending.tint} onChange={v => setPending(p => ({ ...p, tint: v }))} />
+      <EditSlider label="Saturation" value={pending.saturation} onChange={v => setPending(p => ({ ...p, saturation: v }))} />
+      <EditSlider label="Fade" value={pending.fade} onChange={v => setPending(p => ({ ...p, fade: v }))} min={0} />
+      <EditSlider label="Vignette" value={pending.vignette} onChange={v => setPending(p => ({ ...p, vignette: v }))} min={0} />
+      <EditSlider label="Grain" value={pending.grain} onChange={v => setPending(p => ({ ...p, grain: v }))} min={0} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0 6px' }}>
+        <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', flex: 1 }}>Rotate</span>
+        <button aria-label="Undo" onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate - 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCcw size={14} /></button>
+        <button aria-label="Redo" onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate + 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCw size={14} /></button>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+        <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>Straighten</span>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{(pending.rotate - Math.round(pending.rotate / 90) * 90).toFixed(1)}°</span>
+      </div>
+      <input type="range" min={-15} max={15} step={0.5} value={pending.rotate - Math.round(pending.rotate / 90) * 90}
+        onChange={e => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 + Number(e.target.value) }))}
+        onDoubleClick={() => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 }))}
+        style={{ width: '100%', marginBottom: 12 }} />
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <button onClick={() => { setBa(v => !v); setCropOn(false); }} disabled={!pendingNonZero && !hasEdits(current)} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', background: ba ? 'rgba(255,255,255,0.1)' : undefined, opacity: (!pendingNonZero && !hasEdits(current)) ? 0.4 : 1 }} title="Before / after (B)">
+          <Columns2 size={14} /> {ba ? 'Comparing' : 'Before / After'}
+        </button>
+        <button onClick={() => { setCropOn(v => !v); setBa(false); }} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', background: cropOn ? 'rgba(255,255,255,0.1)' : undefined }}>
+          <Crop size={14} /> {cropOn ? 'Cropping' : 'Crop'}
+        </button>
+      </div>
+      <button onClick={applyEdits} disabled={rendering || !pendingDirty} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
+        {rendering ? 'Rendering…' : 'Apply'}
+      </button>
+      <button onClick={applyToKeepers} disabled={rendering || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 10 }}>
+        <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
+      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
+        <button onClick={cancelEdits} className="ms-btn-text" style={{ justifyContent: 'center' }}><X size={13} /> {pendingDirty ? 'Cancel' : 'Close'}</button>
+        <button onClick={resetEdits} disabled={rendering || (!hasEdits(current) && !pendingNonZero)} className="ms-btn-text" style={{ justifyContent: 'center' }}><Undo2 size={13} /> Reset to original</button>
+      </div>
+    </>
+  );
+  const infoPanel = ({ compact = false } = {}) => (
+    <>
+      <div className="ms-hud-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}><Sparkles size={12} /> AI suggests</div>
+      {sharp == null ? (
+        <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.5)', margin: 0 }}>No analysis yet (RAW, or still processing).</p>
+      ) : (
+        <>
+          <HudRow label="Focus" value={sharp ? 'Sharp' : 'Soft'} color={sharp ? '#5fd0a0' : '#e6b455'} />
+          <HudRow label="Exposure" value={expoLabel} color={expoColor} />
+          {q != null && <HudRow label="Quality" value={qualLabel} color={qualColor} />}
+          {current.dup_group && <HudRow label="Duplicate" value={`${dupMembers ? dupMembers.length : 2} similar`} color="rgba(255,255,255,0.7)" icon={<Dup size={11} />} />}
+          {scores[current.id] && (scores[current.id].hero || scores[current.id].portfolio) && (
+            <div style={{ marginTop: 4 }}>
+              {['hero', 'portfolio', 'album'].map(k => scores[current.id][k] ? <HudRow key={k} label={k[0].toUpperCase() + k.slice(1)} value={Math.round(scores[current.id][k].value * 100)} color="#bcd4ff" /> : null)}
+              {scores[current.id].hero && scores[current.id].hero.reasons && scores[current.id].hero.reasons.length > 0 && Array.isArray(scores[current.id].hero.reasons) && (
+                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0', lineHeight: 1.5 }}>Why: {scores[current.id].hero.reasons.join(' · ')}</p>
+              )}
+            </div>
+          )}
+          {/* Primitive AI-vision signals (P3): people / smile+emotion / eyes / scene — advisory */}
+          {scores[current.id] && (scores[current.id].face_count || scores[current.id].scene_class) && (
+            <div style={{ marginTop: 4 }}>
+              {scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
+                <HudRow label="People" value={Number(scores[current.id].face_count.value)} color="rgba(255,255,255,0.7)" />
+              )}
+              {scores[current.id].smile && scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
+                <HudRow label="Smile" value={`${Math.round(scores[current.id].smile.value * 100)}%${scores[current.id].smile.reasons && scores[current.id].smile.reasons.dominant ? ' · ' + scores[current.id].smile.reasons.dominant : ''}`} color="rgba(255,255,255,0.7)" />
+              )}
+              {scores[current.id].eyes_open && scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
+                <HudRow label="Eyes" value={Number(scores[current.id].eyes_open.value) >= 0.5 ? 'open' : 'check'} color="rgba(255,255,255,0.7)" />
+              )}
+              {scores[current.id].scene_class && scores[current.id].scene_class.reasons && scores[current.id].scene_class.reasons.label && (
+                <HudRow label="Scene" value={scores[current.id].scene_class.reasons.label} color="rgba(255,255,255,0.7)" />
+              )}
+            </div>
+          )}
+        </>
+      )}
+      {aiSuggestion && (
+        <button onClick={() => { setSheet(null); setTool('edit'); setPending(p => ({ ...p, ...aiSuggestion })); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 12, gap: 6 }}>
+          <Wand2 size={13} /> Auto-enhance suggestion
+        </button>
+      )}
+      {dupMembers && (
+        <button onClick={() => { setSheet(null); setCompare(true); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 8 }}><Columns2 size={13} /> Compare duplicates</button>
+      )}
+      {!compact && <>
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '14px 0', paddingTop: 12 }}>
+        <div className="ms-hud-label" style={{ marginBottom: 10 }}>Your rating</div>
+        <div style={{ display: 'flex', gap: 5 }}>
+          {[1, 2, 3, 4, 5].map(n => (
+            <button key={n} onClick={() => rate(n)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              <Star size={22} fill={(current.cull_rating || 0) >= n ? '#e6b455' : 'none'} color={(current.cull_rating || 0) >= n ? '#e6b455' : 'rgba(255,255,255,0.35)'} />
+            </button>
+          ))}
+        </div>
+      </div>
+      <p style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)', margin: 0, lineHeight: 1.6 }}>
+        ←→ nav · P keep · X reject · M maybe · U undo · 1–5 rate · scroll/Z zoom · C compare · E edit · F presets · B before/after · ⇧C/⇧V copy/paste edits.<br />
+        AI is advisory only — it never decides for you.
+      </p>
+      </>}
+    </>
+  );
+
+
+  // ── Phone layout ────────────────────────────────────────────────────────────
+  // The photo is the screen. Top: back · title · filter. Bottom, under the
+  // thumb: a slim filmstrip and three round decisions (plus Edit and Info).
+  // Swipe: ←/→ browse · ↑ keep · ↓ reject, with the photo following the finger.
+  const FILTER_LABEL = Object.fromEntries(FILTERS);
+  const decided = counts.keep + counts.reject + counts.maybe;
+  const straighten = pending.rotate - Math.round(pending.rotate / 90) * 90;
+  const adjValue = (k) => (k === 'straighten' ? straighten / 15 : pending[k] || 0);
+  const setAdj = (k, v) => {
+    setActivePreset(null);
+    if (k === 'straighten') setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 + v * 15 }));
+    else setPending(p => ({ ...p, [k]: v }));
+  };
+  const swipeHint = swipe && !zoomed ? (Math.abs(swipe.dy) > Math.abs(swipe.dx) ? (swipe.dy < -30 ? 'keep' : swipe.dy > 30 ? 'reject' : null) : null) : null;
+
+  const mobileView = () => (
+    <div className="mc-root">
+      <div className="mc-top">
+        <button className="mc-round" onClick={() => (editing ? cancelEdits() : router.push(`/studio/${id}`))} aria-label={editing ? 'Close editor' : 'Back to shoot'}>
+          {editing ? <X size={19} /> : <ArrowLeft size={19} />}
+        </button>
+        <div className="mc-title">
+          <b>{editing ? 'Edit' : (project?.title || 'Shoot')}</b>
+          <span>{view.length ? `${idx + 1} of ${view.length}` : '0'} · {FILTER_LABEL[filter]}{zoomed ? ` · ${Math.round(scale * 100)}%` : ''}</span>
+        </div>
+        {!editing && (
+          <>
+            <button className="mc-round" onClick={() => setSheet('filter')} aria-label="Filter and sort">
+              <ListFilter size={18} />
+              {(filter !== 'all' || sortMode !== 'order' || showPicks) && <i className="mc-dot" />}
+            </button>
+            {counts.keep > 0 && (
+              <button className="mc-pill" onClick={() => setShowGallery(true)} aria-label={`Create a gallery from ${counts.keep} keepers`}>
+                <Images size={15} /> {counts.keep}
+              </button>
+            )}
+          </>
+        )}
+        {editing && (
+          <button className="mc-pill mc-pill-solid" onClick={applyEdits} disabled={rendering || !pendingDirty}>
+            {rendering ? <Loader size={14} className="ms-spin" /> : 'Apply'}
+          </button>
+        )}
+      </div>
+      {!editing && (
+        <div className="mc-progress" aria-label={`${decided} of ${assets.length} decided`}>
+          <span style={{ width: `${assets.length ? (decided / assets.length) * 100 : 0}%` }} />
+        </div>
+      )}
+
+      {!current ? (
+        <div className="mc-empty">
+          <p>{assets.length === 0 ? 'Upload photographs first.' : `Nothing in ${FILTER_LABEL[filter]}.`}</p>
+          {assets.length > 0 && filter !== 'all' && <button className="mc-pill" onClick={() => { setFilter('all'); setCursor(0); }}>Show all photos</button>}
+        </div>
+      ) : (
+        <div ref={stageRef} className="mc-stage"
+          onPointerDown={startPan} onDoubleClick={toggle100}
+          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+          style={{ touchAction: zoomed ? 'none' : 'pan-y' }}>
+          <div ref={cropBoxRef} style={{
+            position: 'relative', display: 'inline-block', maxWidth: '100%',
+            transform: zoomed ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})`
+              : swipe ? `translate(${swipe.dx * 0.9}px, ${swipe.dy * 0.9}px) rotate(${swipe.dx / 40}deg)` : undefined,
+            transition: swipe || zoomed ? 'none' : 'transform .22s cubic-bezier(.2,.8,.2,1)',
+          }}>
+            {photo(editing ? 'calc(100dvh - 330px)' : 'calc(100dvh - 232px)')}
+          </div>
+          {swipeHint && <span className={`mc-swipe-tag is-${swipeHint}`}>{swipeHint === 'keep' ? <><Check size={18} /> KEEP</> : <><X size={18} /> REJECT</>}</span>}
+          {!editing && current.cull_decision && DEC_META[current.cull_decision] && (
+            <span className="mc-badge" style={{ background: DEC_META[current.cull_decision].color }}>{DEC_META[current.cull_decision].label}</span>
+          )}
+          {!editing && showPicks && recommended.has(current.id) && <span className="mc-badge mc-badge-r"><Sparkles size={11} /> Pick</span>}
+          {flash && <span key={flash.k} className={`mc-flash is-${flash.d}`} onAnimationEnd={() => setFlash(null)}>
+            {flash.d === 'keep' ? <Check size={44} /> : flash.d === 'reject' ? <X size={44} /> : <HelpCircle size={40} />}
+          </span>}
+        </div>
+      )}
+
+      {current && !editing && (
+        <>
+          <div ref={filmRef} className="mc-film">
+            {(() => {
+              const big = view.length > 300;
+              const start = big ? Math.max(0, idx - 70) : 0;
+              const end = big ? Math.min(view.length, start + 160) : view.length;
+              return view.slice(start, end).map((a, li) => {
+                const i = start + li; const meta = a.cull_decision && DEC_META[a.cull_decision];
+                return (
+                  <button key={a.id} data-active={i === idx ? '1' : '0'} onClick={() => setCursor(i)} className={i === idx ? 'is-active' : ''} aria-label={`Photo ${i + 1}`}>
+                    {a.thumb_url ? <img src={mediaUrl(a.thumb_url)} alt="" loading="lazy" style={{ opacity: a.cull_decision === 'reject' ? 0.35 : 1 }} /> : null}
+                    {meta && <i style={{ background: meta.color }} />}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+          <div className="mc-actions">
+            <button className="mc-act-sm" onClick={() => setTool('edit')} aria-label="Edit photo"><SlidersHorizontal size={20} /><span>Edit</span></button>
+            <button className={`mc-act is-reject${current.cull_decision === 'reject' ? ' is-on' : ''}`} onClick={() => decide('reject')} aria-label="Reject"><X size={28} /></button>
+            <button className={`mc-act mc-act-mid is-maybe${current.cull_decision === 'maybe' ? ' is-on' : ''}`} onClick={() => decide('maybe')} aria-label="Maybe"><HelpCircle size={22} /></button>
+            <button className={`mc-act is-keep${current.cull_decision === 'keep' ? ' is-on' : ''}`} onClick={() => decide('keep')} aria-label="Keep"><Check size={30} /></button>
+            <button className="mc-act-sm" onClick={() => setSheet('info')} aria-label="Photo info and AI"><Info size={20} /><span>Info</span></button>
+          </div>
+        </>
+      )}
+
+      {current && editing && (
+        <div className="mc-edit">
+          <div className="mc-seg">
+            <button className={tool === 'presets' ? 'is-active' : ''} onClick={() => setTool('presets')}>Presets</button>
+            <button className={tool === 'edit' && !cropOn ? 'is-active' : ''} onClick={() => { setTool('edit'); setCropOn(false); }}>Adjust</button>
+            <button className={cropOn ? 'is-active' : ''} onClick={() => { setTool('edit'); setCropOn(v => !v); setBa(false); }}><Crop size={13} /> Crop</button>
+          </div>
+
+          {tool === 'presets' ? (
+            <div className="mc-presets">
+              <button className={activePreset === '__original' ? 'is-active' : ''} onClick={() => { setPending({ ...ZERO_EDITS }); setActivePreset('__original'); }}>
+                <img src={mediaUrl(current.thumb_url || current.url)} alt="" /><span>Original</span>
+              </button>
+              {PRESETS.map(ps => (
+                <button key={ps.id} className={activePreset === ps.id ? 'is-active' : ''} onClick={() => applyPreset(ps)}>
+                  <img src={mediaUrl(current.thumb_url || current.url)} alt="" style={{ filter: previewFilter(ps.p) }} /><span>{ps.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : cropOn ? (
+            <p className="mc-edit-hint">Drag the corners to crop, then Apply.</p>
+          ) : (
+            <>
+              <div className="mc-adj-row">
+                {aiSuggestion && (
+                  <button onClick={() => { setPending(p => ({ ...p, ...aiSuggestion })); setActivePreset(null); }} className="mc-adj is-ai"><Sparkles size={14} /> Auto</button>
+                )}
+                {ADJUSTMENTS.map(([k, label]) => (
+                  <button key={k} className={`mc-adj${adjust === k ? ' is-active' : ''}${adjValue(k) ? ' is-set' : ''}`} onClick={() => setAdjust(k)}>{label}</button>
+                ))}
+                <button className={`mc-adj${pending.bw ? ' is-active' : ''}`} onClick={() => setPending(p => ({ ...p, bw: p.bw ? 0 : 1 }))}>B&amp;W</button>
+                <button className="mc-adj" onClick={() => setPending(p => ({ ...p, rotate: (p.rotate + 90) % 360 }))} aria-label="Rotate 90°"><RotateCw size={14} /></button>
+              </div>
+              {(() => {
+                const meta = ADJUSTMENTS.find(x => x[0] === adjust) || ADJUSTMENTS[0];
+                const min = meta[2] === 0 ? 0 : -100;
+                const v = Math.round(adjValue(adjust) * 100);
+                return (
+                  <div className="mc-slider">
+                    <span>{meta[1]}</span>
+                    <input type="range" min={min} max={100} value={v} aria-label={meta[1]}
+                      onChange={e => setAdj(adjust, Number(e.target.value) / 100)} onDoubleClick={() => setAdj(adjust, 0)} />
+                    <b>{adjust === 'straighten' ? `${straighten.toFixed(1)}°` : v}</b>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+
+          <div className="mc-edit-foot">
+            <button onClick={resetEdits} disabled={rendering || (!hasEdits(current) && !pendingNonZero)}><Undo2 size={15} /> Reset</button>
+            <button onClick={() => { setBa(v => !v); setCropOn(false); }} disabled={!pendingNonZero && !hasEdits(current)} className={ba ? 'is-on' : ''}><Columns2 size={15} /> Compare</button>
+            <button onClick={applyToKeepers} disabled={rendering || keepers.length === 0}><Users size={15} /> All {keepers.length} keeper{keepers.length === 1 ? '' : 's'}</button>
+          </div>
+        </div>
+      )}
+
+      {rendering && <div className="mc-busy"><Loader size={18} className="ms-spin" /> Rendering…</div>}
+      {toast && <div className="mc-toast">{toast}</div>}
+
+      <Sheet open={sheet === 'filter'} onClose={() => setSheet(null)} title="Show">
+        <div className="mc-list">
+          {FILTERS.map(([f, label]) => (
+            <button key={f} className={filter === f ? 'is-active' : ''} onClick={() => { setFilter(f); setCursor(0); setSheet(null); }}>
+              <span>{f !== 'all' && f !== 'undecided' && <i style={{ background: DEC_META[f].color }} />}{label}</span>
+              <b>{counts[f] ?? 0}</b>
+            </button>
+          ))}
+        </div>
+        <div className="mc-sheet-label">Sort</div>
+        <div className="mc-chiprow">
+          {[['order', 'Shoot order'], ['hero', '✦ AI best'], ['rating', '★ Rating']].map(([m, label]) => (
+            <button key={m} className={sortMode === m ? 'is-active' : ''} onClick={() => { setSortMode(m); setCursor(0); }}>{label}</button>
+          ))}
+        </div>
+        <button className={`mc-toggle${showPicks ? ' is-on' : ''}`} onClick={() => setShowPicks(v => !v)}>
+          <Sparkles size={16} />
+          <span><b>Top picks</b><small>Spotlight the top {Math.round(keepRate * 100)}% by AI score{recommendedLearned ? ' — learned from your keep rate' : ''}</small></span>
+          <i />
+        </button>
+        <p className="mc-sheet-note">Swipe up to keep · down to reject · sideways to browse. Double-tap to zoom.</p>
+      </Sheet>
+
+      <Sheet open={sheet === 'info'} onClose={() => setSheet(null)} title="Photo">
+        {current && (
+          <>
+            <div className="mc-stars">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} onClick={() => rate(n)} aria-label={`${n} star${n > 1 ? 's' : ''}`}>
+                  <Star size={28} fill={(current.cull_rating || 0) >= n ? '#e6b455' : 'none'} color={(current.cull_rating || 0) >= n ? '#e6b455' : 'rgba(255,255,255,0.35)'} />
+                </button>
+              ))}
+            </div>
+            <div className="mc-sheet-scope">{infoPanel({ compact: true })}</div>
+            <div className="mc-chiprow" style={{ marginTop: 14 }}>
+              <button onClick={() => { setSheet(null); setCompare(true); }} disabled={compareSet.length < 2}><Columns2 size={14} /> Compare</button>
+              <button onClick={copyEdits}><ClipboardCopy size={14} /> Copy edits</button>
+              <button onClick={pasteEdits} disabled={!copied}><ClipboardPaste size={14} /> Paste edits</button>
+              {current.cull_decision && <button onClick={() => decide(null)}><RotateCcw size={14} /> Undo decision</button>}
+            </div>
+            {recTip && <p className="mc-sheet-note"><Sparkles size={12} /> {recTip}</p>}
+          </>
+        )}
+      </Sheet>
+    </div>
+  );
+
   const railBtn = (key, Icon, label) => (
     <button key={key} onClick={() => setTool(t => t === key ? null : key)} title={label}
       style={{ width: 40, height: 40, borderRadius: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -435,8 +861,9 @@ export default function CullPage() {
 
   return (
     <>
+      {isPhone ? mobileView() : <>
       {recTip && (
-        <div style={{ position: 'fixed', bottom: 18, left: 18, zIndex: 60, maxWidth: 330, background: 'rgba(17,19,29,0.96)', border: '1px solid rgba(99,102,241,0.45)', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 14px 44px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', bottom: 112, left: 18, zIndex: 60, maxWidth: 300, /* above the filmstrip dock, which it used to cover */ background: 'rgba(17,19,29,0.96)', border: '1px solid rgba(99,102,241,0.45)', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 14px 44px rgba(0,0,0,0.5)' }}>
           <Sparkles size={14} style={{ color: '#a5b4fc', flexShrink: 0, marginTop: 1 }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 9.5, fontWeight: 800, color: '#a5b4fc', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 2 }}>Studio Brain</div>
@@ -459,31 +886,7 @@ export default function CullPage() {
               onPointerDown={startPan} onDoubleClick={toggle100}
               onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
               <div ref={cropBoxRef} style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '100%', transform: zoomed ? `translate(${pan.x}px, ${pan.y}px) scale(${scale})` : undefined, transition: panDrag.current ? 'none' : 'transform 0.12s ease-out' }}>
-                {(() => {
-                  const baActive = editing && ba && !zoomed;
-                  const originalSrc = mediaUrl(current.variants?.original || current.url);
-                  const afterSrc = baActive ? originalSrc : mediaUrl(zoomed ? (current.variants?.full_edit || current.url) : (current.variants?.web || current.url));
-                  return (
-                    <>
-                      <img ref={imgRef} key={current.id} src={afterSrc} alt={current.filename} draggable={false}
-                        style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 246px)', objectFit: 'contain', display: 'block', userSelect: 'none', boxShadow: '0 30px 90px -30px rgba(0,0,0,0.8)', ...livePreview }} />
-                      {liveVignette !== 'none' && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', boxShadow: liveVignette, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined }} />}
-                      {baActive && (
-                        <>
-                          {/* BEFORE = untouched original, revealed on the left of the divider */}
-                          <img src={originalSrc} alt="" draggable={false}
-                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', clipPath: `inset(0 ${(1 - baPos) * 100}% 0 0)`, transform: pending.rotate ? `rotate(${pending.rotate}deg)` : undefined, userSelect: 'none' }} />
-                          <div className="ms-ba-divider" style={{ left: `${baPos * 100}%` }} onPointerDown={startBaDrag}>
-                            <span className="ms-ba-handle"><Columns2 size={13} /></span>
-                          </div>
-                          <span className="ms-ba-tag" style={{ left: 10 }}>Before</span>
-                          <span className="ms-ba-tag" style={{ right: 10 }}>After</span>
-                        </>
-                      )}
-                      {editing && cropOn && !zoomed && !ba && <CropOverlay crop={crop} setCrop={setCrop} boxRef={cropBoxRef} />}
-                    </>
-                  );
-                })()}
+                {photo('calc(100vh - 246px)')}
               </div>
               {!zoomed && (
                 <>
@@ -551,158 +954,11 @@ export default function CullPage() {
             {/* right HUD panel */}
             {panelOpen && (
               <div className="ms-hud" style={{ position: 'absolute', right: 12, top: 68, bottom: 168, width: 284, padding: 14, overflowY: 'auto', animation: 'ms-rise .25s ease both' }}>
-                {tool === 'presets' && (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <span className="ms-hud-label">Presets</span>
-                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{PRESETS.length} looks</span>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {/* Original — the untouched look, always selectable to revert */}
-                      <button onClick={() => { setPending({ ...ZERO_EDITS }); setActivePreset('__original'); }} style={{ border: activePreset === '__original' ? '2px solid #fff' : '1px solid rgba(255,255,255,0.12)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', textAlign: 'left' }}>
-                        <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
-                          <img src={mediaUrl(current.variants?.original || current.thumb_url || current.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                        <div style={{ padding: '5px 7px', fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.03em' }}>Original</div>
-                      </button>
-                      {PRESETS.map(ps => (
-                        <button key={ps.id} onClick={() => usePreset(ps)} style={{ border: activePreset === ps.id ? '2px solid #fff' : '1px solid rgba(255,255,255,0.12)', borderRadius: 9, padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', textAlign: 'left' }}>
-                          <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
-                            <img src={mediaUrl(current.thumb_url || current.url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: previewFilter(ps.p) }} />
-                            {ps.p.vignette ? <div style={{ position: 'absolute', inset: 0, boxShadow: previewVignette(ps.p) }} /> : null}
-                          </div>
-                          <div style={{ padding: '5px 7px', fontSize: 9.5, fontWeight: 600, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ps.name}</div>
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={applyEdits} disabled={rendering || !activePreset} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }}>
-                      {rendering ? 'Rendering…' : 'Apply to this photo'}
-                    </button>
-                    <button onClick={applyToKeepers} disabled={rendering || !activePreset || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 8, padding: '9px' }}>
-                      <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
-                    </button>
-                  </>
-                )}
+                {tool === 'presets' && presetsPanel()}
 
-                {tool === 'edit' && (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <span className="ms-hud-label">Edit</span>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'rgba(255,255,255,0.72)', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={!!pending.bw} onChange={e => setPending(p => ({ ...p, bw: e.target.checked ? 1 : 0 }))} /> B&amp;W
-                      </label>
-                    </div>
-                    {aiSuggestion && (
-                      <button onClick={() => { setPending(p => ({ ...p, ...aiSuggestion })); setActivePreset(null); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 12, gap: 6 }}>
-                        <Sparkles size={13} /> AI auto-enhance{aiSuggestion.exposure ? ` · exp ${aiSuggestion.exposure > 0 ? '+' : ''}${aiSuggestion.exposure}` : ''}
-                      </button>
-                    )}
-                    <EditSlider label="Exposure" value={pending.exposure} onChange={v => setPending(p => ({ ...p, exposure: v }))} />
-                    <EditSlider label="Contrast" value={pending.contrast} onChange={v => setPending(p => ({ ...p, contrast: v }))} />
-                    <EditSlider label="Warmth" value={pending.temperature} onChange={v => setPending(p => ({ ...p, temperature: v }))} />
-                    <EditSlider label="Tint" value={pending.tint} onChange={v => setPending(p => ({ ...p, tint: v }))} />
-                    <EditSlider label="Saturation" value={pending.saturation} onChange={v => setPending(p => ({ ...p, saturation: v }))} />
-                    <EditSlider label="Fade" value={pending.fade} onChange={v => setPending(p => ({ ...p, fade: v }))} min={0} />
-                    <EditSlider label="Vignette" value={pending.vignette} onChange={v => setPending(p => ({ ...p, vignette: v }))} min={0} />
-                    <EditSlider label="Grain" value={pending.grain} onChange={v => setPending(p => ({ ...p, grain: v }))} min={0} />
+                {tool === 'edit' && editPanel()}
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0 6px' }}>
-                      <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', flex: 1 }}>Rotate</span>
-                      <button aria-label="Undo" onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate - 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCcw size={14} /></button>
-                      <button aria-label="Redo" onClick={() => setPending(p => ({ ...p, rotate: ((p.rotate + 90) % 360) }))} className="ms-iconbtn" style={{ width: 30, height: 30 }}><RotateCw size={14} /></button>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                      <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>Straighten</span>
-                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{(pending.rotate - Math.round(pending.rotate / 90) * 90).toFixed(1)}°</span>
-                    </div>
-                    <input type="range" min={-15} max={15} step={0.5} value={pending.rotate - Math.round(pending.rotate / 90) * 90}
-                      onChange={e => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 + Number(e.target.value) }))}
-                      onDoubleClick={() => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 }))}
-                      style={{ width: '100%', marginBottom: 12 }} />
-
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                      <button onClick={() => { setBa(v => !v); setCropOn(false); }} disabled={!pendingNonZero && !hasEdits(current)} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', background: ba ? 'rgba(255,255,255,0.1)' : undefined, opacity: (!pendingNonZero && !hasEdits(current)) ? 0.4 : 1 }} title="Before / after (B)">
-                        <Columns2 size={14} /> {ba ? 'Comparing' : 'Before / After'}
-                      </button>
-                      <button onClick={() => { setCropOn(v => !v); setBa(false); }} className="ms-btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '8px', background: cropOn ? 'rgba(255,255,255,0.1)' : undefined }}>
-                        <Crop size={14} /> {cropOn ? 'Cropping' : 'Crop'}
-                      </button>
-                    </div>
-                    <button onClick={applyEdits} disabled={rendering || !pendingDirty} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
-                      {rendering ? 'Rendering…' : 'Apply'}
-                    </button>
-                    <button onClick={applyToKeepers} disabled={rendering || keepers.length === 0} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '8px', marginBottom: 10 }}>
-                      <Users size={13} /> Apply to {keepers.length} keeper{keepers.length === 1 ? '' : 's'}
-                    </button>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
-                      <button onClick={cancelEdits} className="ms-btn-text" style={{ justifyContent: 'center' }}><X size={13} /> {pendingDirty ? 'Cancel' : 'Close'}</button>
-                      <button onClick={resetEdits} disabled={rendering || (!hasEdits(current) && !pendingNonZero)} className="ms-btn-text" style={{ justifyContent: 'center' }}><Undo2 size={13} /> Reset to original</button>
-                    </div>
-                  </>
-                )}
-
-                {tool === 'info' && (
-                  <>
-                    <div className="ms-hud-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}><Sparkles size={12} /> AI suggests</div>
-                    {sharp == null ? (
-                      <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.5)', margin: 0 }}>No analysis yet (RAW, or still processing).</p>
-                    ) : (
-                      <>
-                        <HudRow label="Focus" value={sharp ? 'Sharp' : 'Soft'} color={sharp ? '#5fd0a0' : '#e6b455'} />
-                        <HudRow label="Exposure" value={expoLabel} color={expoColor} />
-                        {q != null && <HudRow label="Quality" value={qualLabel} color={qualColor} />}
-                        {current.dup_group && <HudRow label="Duplicate" value={`${dupMembers ? dupMembers.length : 2} similar`} color="rgba(255,255,255,0.7)" icon={<Dup size={11} />} />}
-                        {scores[current.id] && (scores[current.id].hero || scores[current.id].portfolio) && (
-                          <div style={{ marginTop: 4 }}>
-                            {['hero', 'portfolio', 'album'].map(k => scores[current.id][k] ? <HudRow key={k} label={k[0].toUpperCase() + k.slice(1)} value={Math.round(scores[current.id][k].value * 100)} color="#bcd4ff" /> : null)}
-                            {scores[current.id].hero && scores[current.id].hero.reasons && scores[current.id].hero.reasons.length > 0 && Array.isArray(scores[current.id].hero.reasons) && (
-                              <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0', lineHeight: 1.5 }}>Why: {scores[current.id].hero.reasons.join(' · ')}</p>
-                            )}
-                          </div>
-                        )}
-                        {/* Primitive AI-vision signals (P3): people / smile+emotion / eyes / scene — advisory */}
-                        {scores[current.id] && (scores[current.id].face_count || scores[current.id].scene_class) && (
-                          <div style={{ marginTop: 4 }}>
-                            {scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
-                              <HudRow label="People" value={Number(scores[current.id].face_count.value)} color="rgba(255,255,255,0.7)" />
-                            )}
-                            {scores[current.id].smile && scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
-                              <HudRow label="Smile" value={`${Math.round(scores[current.id].smile.value * 100)}%${scores[current.id].smile.reasons && scores[current.id].smile.reasons.dominant ? ' · ' + scores[current.id].smile.reasons.dominant : ''}`} color="rgba(255,255,255,0.7)" />
-                            )}
-                            {scores[current.id].eyes_open && scores[current.id].face_count && Number(scores[current.id].face_count.value) > 0 && (
-                              <HudRow label="Eyes" value={Number(scores[current.id].eyes_open.value) >= 0.5 ? 'open' : 'check'} color="rgba(255,255,255,0.7)" />
-                            )}
-                            {scores[current.id].scene_class && scores[current.id].scene_class.reasons && scores[current.id].scene_class.reasons.label && (
-                              <HudRow label="Scene" value={scores[current.id].scene_class.reasons.label} color="rgba(255,255,255,0.7)" />
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {aiSuggestion && (
-                      <button onClick={() => { setTool('edit'); setPending(p => ({ ...p, ...aiSuggestion })); }} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 12, gap: 6 }}>
-                        <Wand2 size={13} /> Auto-enhance suggestion
-                      </button>
-                    )}
-                    {dupMembers && (
-                      <button onClick={() => setCompare(true)} className="ms-btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '7px', marginTop: 8 }}><Columns2 size={13} /> Compare duplicates</button>
-                    )}
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '14px 0', paddingTop: 12 }}>
-                      <div className="ms-hud-label" style={{ marginBottom: 10 }}>Your rating</div>
-                      <div style={{ display: 'flex', gap: 5 }}>
-                        {[1, 2, 3, 4, 5].map(n => (
-                          <button key={n} onClick={() => rate(n)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                            <Star size={22} fill={(current.cull_rating || 0) >= n ? '#e6b455' : 'none'} color={(current.cull_rating || 0) >= n ? '#e6b455' : 'rgba(255,255,255,0.35)'} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <p style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.4)', margin: 0, lineHeight: 1.6 }}>
-                      ←→ nav · P keep · X reject · M maybe · U undo · 1–5 rate · scroll/Z zoom · C compare · E edit · F presets · B before/after · ⇧C/⇧V copy/paste edits.<br />
-                      AI is advisory only — it never decides for you.
-                    </p>
-                  </>
-                )}
+                {tool === 'info' && infoPanel()}
               </div>
             )}
 
@@ -752,10 +1008,11 @@ export default function CullPage() {
           </>
         )}
       </div>
+      </>}
 
       {/* compare overlay */}
       {compare && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 350, background: 'rgba(6,6,8,0.96)', display: 'flex', flexDirection: 'column', padding: 'clamp(12px, 3vw, 32px)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1350, background: 'rgba(6,6,8,0.96)', display: 'flex', flexDirection: 'column', padding: 'clamp(12px, 3vw, 32px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
             <span style={{ color: '#fff', fontSize: 14, fontWeight: 600, flex: 1 }}>{dupMembers ? `Duplicate set — ${compareSet.length} similar frames` : 'Compare'}</span>
             {dupMembers && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginRight: 14 }}>Pick the best — “Keep this” rejects the others</span>}
@@ -816,7 +1073,7 @@ function GalleryFromKeepersModal({ projectId, keepers, onClose, onDone }) {
   };
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 420 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: 'var(--ms-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Images size={18} color="var(--ms-on-accent)" /></div>

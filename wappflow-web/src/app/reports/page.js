@@ -262,15 +262,15 @@ export default function ReportsPage() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
       {/* Page sub-header */}
-      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 60, zIndex: 40 }}>
-        <div className="r-toolbar" style={{ maxWidth: 1300, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', height: 52, gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+      <div className="wf-subbar" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 'var(--shell-h)', zIndex: 40 }}>
+        <div className="r-toolbar rp-toolbar" style={{ maxWidth: 1300, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', height: 52, gap: 16 }}>
+          <div className="rp-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <BarChart2 size={14} color="white" />
             </div>
             <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>Reports & Analytics</span>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }}>
+          <div className="rp-ranges" style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }}>
             {[{ v: '7', l: '7D' }, { v: '30', l: '30D' }, { v: '90', l: '90D' }, { v: '365', l: '1Y' }].map(p => {
               const active = !customStart && !customEnd && period === p.v;
               return (
@@ -286,7 +286,7 @@ export default function ReportsPage() {
 
             {/* Custom date range popover */}
             {showCustom && (
-              <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 12, padding: 16, boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 60, minWidth: 280 }}>
+              <div className="rp-custom-pop" style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 12, padding: 16, boxShadow: '0 12px 32px rgba(0,0,0,0.12)', zIndex: 60, minWidth: 280 }}>
                 <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 12px' }}>Custom date range</p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                   <div>
@@ -330,14 +330,14 @@ export default function ReportsPage() {
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
-        <div style={{ maxWidth: 1300, margin: '0 auto', padding: '0 24px', display: 'flex', gap: 4 }}>
+        <div className="r-chips rp-tabs" style={{ maxWidth: 1300, margin: '0 auto', padding: '0 24px', display: 'flex', gap: 4 }}>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: '8px 18px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: tab === t.id ? 700 : 600, fontSize: 13, color: tab === t.id ? '#6366f1' : '#6b7280', borderBottom: `3px solid ${tab === t.id ? '#6366f1' : 'transparent'}` }}>{t.label}</button>
           ))}
         </div>
       </div>
 
-      <main style={{ maxWidth: 1300, margin: '0 auto', padding: '28px 24px' }}>
+      <main className="rp-main" style={{ maxWidth: 1300, margin: '0 auto', padding: '28px 24px' }}>
         {loading ? (
           <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 80, textAlign: 'center' }}>
             <RefreshCw size={32} color="var(--text-dim)" style={{ animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />

@@ -291,14 +291,14 @@ export default function InvoicesPage() {
               above already offers both destinations. */}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 28 }}>
+        <div className="inv-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 28 }}>
           {[
             { label: 'Total Invoices', value: invoices.length, icon: FileText, color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
             { label: 'Paid Revenue', value: `${sym}${totalRevenue.toLocaleString()}`, icon: CheckCircle, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
             { label: 'Pending', value: `${sym}${totalPending.toLocaleString()}`, icon: Clock, color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
             { label: 'Overdue', value: invoices.filter(i => i.is_overdue).length, icon: AlertCircle, color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
           ].map(stat => (
-            <div key={stat.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div key={stat.label} className="inv-stat" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 44, height: 44, borderRadius: 14, background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <stat.icon size={20} color={stat.color} />
               </div>
@@ -316,7 +316,7 @@ export default function InvoicesPage() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..."
               style={{ width: '100%', padding: '10px 12px 10px 36px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div className="r-chips inv-chips" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {['all', 'draft', 'sent', 'pending', 'paid', 'overdue'].map(s => (
               <button key={s} onClick={() => setFilterStatus(s)}
                 style={{
@@ -332,7 +332,7 @@ export default function InvoicesPage() {
         </div>
 
         <div className="r-scroll-x" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '50px 1fr 130px 120px 110px 200px', padding: '12px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+          <div className="inv-head" style={{ display: 'grid', gridTemplateColumns: '50px 1fr 130px 120px 110px 200px', padding: '12px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
             {['#', 'Customer', 'Invoice No.', 'Date', 'Amount', 'Status'].map(h => (
               <span key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</span>
             ))}
@@ -369,7 +369,7 @@ export default function InvoicesPage() {
             />
           ) : filtered.map((inv, idx) => {
             return (
-              <div key={inv.id}
+              <div key={inv.id} className="inv-row"
                 style={{ display: 'grid', gridTemplateColumns: '50px 1fr 130px 120px 110px 200px', padding: '14px 20px', borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', transition: 'background 0.1s' }}
                 {...clickable(() => setViewInvoice(inv))}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
@@ -384,11 +384,11 @@ export default function InvoicesPage() {
                 <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', alignSelf: 'center' }}>{inv.currency_symbol || sym}{parseFloat(inv.total || 0).toFixed(2)}</span>
                 <div style={{ alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
                   <Badge tone={invoiceStatusMeta(displayInvoiceStatus(inv)).tone} dot>{invoiceStatusMeta(displayInvoiceStatus(inv)).label}</Badge>
-                  <button onClick={e => { e.stopPropagation(); setEmailInvoice(inv); }} title="Email invoice"
+                  <button onClick={e => { e.stopPropagation(); setEmailInvoice(inv); }} title="Email invoice" aria-label="Email invoice" className="wf-tap"
                     style={{ padding: 6, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', color: '#6366f1', cursor: 'pointer', display: 'flex' }}>
                     <Send size={13} />
                   </button>
-                  <button onClick={e => { e.stopPropagation(); handleDelete(inv); }} title="Delete invoice"
+                  <button onClick={e => { e.stopPropagation(); handleDelete(inv); }} title="Delete invoice" aria-label="Delete invoice" className="wf-tap"
                     style={{ padding: 6, borderRadius: 8, border: '1px solid var(--danger-border)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', display: 'flex' }}>
                     <Trash2 size={13} />
                   </button>

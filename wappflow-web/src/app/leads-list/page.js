@@ -15,13 +15,14 @@ import { isLeadUnread } from '../../lib/unread';
 import { formatDate } from '../../lib/datetime';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import AddLeadModal from '../../components/AddLeadModal';
-import { useConfirm } from '@/lib/confirm';
+import { useConfirm, usePrompt } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import VirtualList from '@/components/ui/VirtualList';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { toast } from '@/components/ui/Toast';
 import { leadStatusMeta } from '@/lib/leadStatus';
 import { UpgradeCta } from '@/components/PlanLock';
@@ -128,7 +129,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
+    <div data-dismiss onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
       <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, maxWidth: 420, width: '100%', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -265,7 +266,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
 // ── Bulk Trash Confirm Modal ────────────────────────────────────────────────
 function BulkTrashModal({ count, loading, onCancel, onConfirm }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
+    <div data-dismiss onClick={e => { if (e.target === e.currentTarget) onCancel(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
       <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.4)', maxWidth: 440, width: '100%', padding: 28, border: '1.5px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
           <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -372,7 +373,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
 
   // Step 3 = success screen with invite link / skipped summary
   const Backdrop = ({ children }) => (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
+    <div data-dismiss onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
       <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.4)', maxWidth: 540, width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1.5px solid var(--border)' }}>
         {children}
       </div>
@@ -651,7 +652,7 @@ function MergeDuplicatesModal({ onClose, onDone }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }} onClick={() => onClose(doneCount)}>
+    <div data-dismiss style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }} onClick={() => onClose(doneCount)}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, maxWidth: 640, width: '100%', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#f59e0b,#ef4444)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -710,6 +711,9 @@ function MergeDuplicatesModal({ onClose, onDone }) {
 
 // ── Main Page ───────────────────────────────────────────────────────────────
 export default function LeadsListPage() {
+  const isPhone = useMediaQuery('(max-width: 640px)');
+  const prompt = usePrompt();
+  const confirmDialog = useConfirm();
   const router = useRouter();
   const plan = usePlan();
   const [leads, setLeads] = useState([]);
@@ -918,7 +922,7 @@ export default function LeadsListPage() {
     setActiveView(v.name);
   };
   const saveCurrentView = async () => {
-    const name = viewName(window.prompt('Name this view (e.g. "Hot — needs follow-up")'));
+    const name = viewName(await prompt({ title: 'Save this view', label: 'Name', placeholder: 'e.g. Hot — needs follow-up', confirmLabel: 'Save view' }));
     if (!name) return;
     try {
       const saved = normalizeView((await viewsAPI.save('leads', name, currentFilters())).data.view);
@@ -1018,7 +1022,7 @@ export default function LeadsListPage() {
       })()}
 
       {/* Page header */}
-      <div className="r-wrap" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="r-wrap ll-head" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Users style={{ width: 14, height: 14, color: 'white' }} />
@@ -1026,7 +1030,7 @@ export default function LeadsListPage() {
           <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>{platformFilter ? `${platformFilter.charAt(0).toUpperCase() + platformFilter.slice(1)} Leads` : 'All Leads'}</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.12)', border: '1px solid #c7d2fe', padding: '2px 10px', borderRadius: 20 }}>{allLeads.length}</span>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="ll-head-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {/* Export */}
           <button
             onClick={() => {
@@ -1042,11 +1046,11 @@ export default function LeadsListPage() {
             disabled={leads.length === 0}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: leads.length ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', border: `1.5px solid ${leads.length ? '#a7f3d0' : 'var(--border)'}`, borderRadius: 10, color: leads.length ? '#059669' : 'var(--text-dim)', fontSize: 13, fontWeight: 700, cursor: leads.length ? 'pointer' : 'not-allowed' }}
           >
-            <Download style={{ width: 14, height: 14 }} /> Export CSV {leads.length > 0 && `(${leads.length})`}
+            <Download style={{ width: 14, height: 14 }} /> Export<span className="r-hide">CSV {leads.length > 0 && `(${leads.length})`}</span>
           </button>
-          <button onClick={() => setShowDupModal(true)} title="Find & merge duplicate contacts"
+          <button onClick={() => setShowDupModal(true)} title="Find & merge duplicate contacts" aria-label="Merge duplicates"
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text-muted)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            <UsersRound style={{ width: 14, height: 14 }} /> Merge duplicates
+            <UsersRound style={{ width: 14, height: 14 }} /> Merge<span className="r-hide">duplicates</span>
           </button>
           {(() => {
             const limit = plan.limits?.leads;
@@ -1063,14 +1067,14 @@ export default function LeadsListPage() {
             return (
               <button onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 10, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
                 <Plus style={{ width: 15, height: 15 }} /> New Lead
-                {limit && limit !== -1 && <span style={{ opacity: 0.85, fontSize: 11, marginLeft: 4 }}>({usage}/{limit})</span>}
+                {limit && limit !== -1 && <span className="r-hide" style={{ opacity: 0.85, fontSize: 11, marginLeft: 4 }}>({usage}/{limit})</span>}
               </button>
             );
           })()}
         </div>
       </div>
 
-      <main style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 24px' }}>
+      <main className="ll-main" style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 24px' }}>
 
         {/* Action queue — next best actions across the pipeline */}
         {!loading && actionItems.length > 0 && (
@@ -1155,7 +1159,7 @@ export default function LeadsListPage() {
             </button>
             <button
               onClick={async () => {
-                if (!window.confirm(`Move ${selected.size} lead${selected.size > 1 ? 's' : ''} to Clients? They'll leave the Leads list but keep their chat, history & analytics.`)) return;
+                if (!(await confirmDialog({ title: `Move ${selected.size} lead${selected.size > 1 ? 's' : ''} to Clients?`, message: "They'll leave the Leads list but keep their chat, history & analytics.", confirmLabel: 'Move to Clients' }))) return;
                 const ids = [...selected];
                 for (const id of ids) { try { await leadsAPI.setClient(id, true); } catch {} }
                 setAllLeads(prev => prev.filter(l => !ids.includes(l.id)));
@@ -1232,7 +1236,7 @@ export default function LeadsListPage() {
 
         {/* Tag filter pills */}
         {allTags.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="r-chips" style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tag:</span>
             <button onClick={() => setTagFilter(null)} style={{ padding: '4px 12px', borderRadius: 20, border: `1.5px solid ${!tagFilter ? '#6366f1' : 'var(--border)'}`, background: !tagFilter ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: !tagFilter ? '#4338ca' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>All</button>
             {allTags.map(tag => (
@@ -1244,9 +1248,9 @@ export default function LeadsListPage() {
         )}
 
         {/* Saved views */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="r-chips" style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Views:</span>
-          {views.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>Save a filter combination to reuse it.</span>}
+          {views.length === 0 && <span className="r-hide" style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>Save a filter combination to reuse it.</span>}
           {views.map(v => (
             <span key={v.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 6px 4px 12px', borderRadius: 20, border: `1.5px solid ${activeView === v.name ? '#6366f1' : 'var(--border)'}`, background: activeView === v.name ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: activeView === v.name ? '#4338ca' : 'var(--text-muted)', fontSize: 11.5, fontWeight: 700 }}>
               <span {...clickable(() => applyView(v))} style={{ cursor: 'pointer' }}>{v.name}</span>
@@ -1270,7 +1274,7 @@ export default function LeadsListPage() {
         )}
 
         {/* Status tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
+        <div className="r-chips" style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           {ALL_STATUSES.map(s => {
             const meta = STATUS_META[s] || { dot: '#6366f1', bg: 'rgba(99,102,241,0.12)', text: '#4338ca' };
             const active = statusFilter === s;
@@ -1288,7 +1292,7 @@ export default function LeadsListPage() {
         <div className="r-scroll-x" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
 
           {/* Table header */}
-          <div className="r-tw" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
+          <div className="r-tw wf-lead-head" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
             <div {...clickable(toggleAll)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {selected.size === leads.length && leads.length > 0
                 ? <CheckSquare size={16} color="#6366f1" />
@@ -1326,7 +1330,9 @@ export default function LeadsListPage() {
           /* Phase 4: windowed — only viewport rows render. The row JSX is untouched;
              rowHeight matches the measured 59px row (see SkeletonRow 'leads'). Below
              the threshold the list renders exactly as before. */
-          <VirtualList items={leads} rowHeight={59} renderRow={(lead, i) => {
+          // Phones lay each row out as a two-line card (globals.css, .wf-lead-row)
+          // pinned to 68px, so the windowing must use that height there.
+          <VirtualList items={leads} rowHeight={isPhone ? 68 : 59} renderRow={(lead, i) => {
             const sc = STATUS_META[lead.status] || STATUS_META['New'];
             const value = lead.actual_sale || lead.estimated_value;
             const isSelected = selected.has(lead.id);

@@ -11,6 +11,7 @@ import ImpersonationBanner from '@/components/ImpersonationBanner';
 import UploadTray from '@/components/UploadTray';
 import InstallAppBanner from '@/components/InstallAppBanner';
 import PushEnroll from '@/components/PushEnroll';
+import EscapeDismiss from '@/components/ui/EscapeDismiss';
 
 export default function Providers({ children }) {
   return (
@@ -39,6 +40,8 @@ export default function Providers({ children }) {
                 otherwise persist silently forever. Only ASKS after install, once,
                 from a tap. */}
             <PushEnroll />
+            {/* Escape closes hand-rolled pop-ups (backdrops marked data-dismiss). */}
+            <EscapeDismiss />
             {children}
           </RealtimeProvider>
         </PlanProvider>

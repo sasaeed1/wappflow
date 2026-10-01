@@ -28,12 +28,13 @@ import SendInvoiceModal from '@/components/SendInvoiceModal';
 import LeadAssistStrip from '@/components/LeadAssistStrip';
 import { sanitizeHtml } from '@/lib/sanitizeHtml';
 import ContactActions from '@/components/ContactActions';
-import { useConfirm } from '@/lib/confirm';
+import { useConfirm, usePrompt } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
 import RoomPanel from '@/components/RoomPanel';
 import { buildInvoiceHTML } from '@/lib/invoiceDoc';
 import { useRealtime } from '@/components/shell/realtime';
 import { clickable } from '@/lib/a11y';
+import { WaTicks, QuotedSnippet, SpecialContent, ReactionsRow, MessageActions, messageMeta, messageReactions } from '@/components/WaMessageParts';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
 // click the value, it becomes an input/select, saves on blur/Enter, Esc cancels.
@@ -731,6 +732,10 @@ const [aiError, setAiError] = useState('');
   const [newReminder, setNewReminder] = useState({ reminder_date: '', message: '' });
   const [addingReminder, setAddingReminder] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  // Replying to a specific message (WhatsApp quote), and which bubble has its
+  // reply/react bar open after a long-press on a phone.
+  const [replyTo, setReplyTo] = useState(null);
+  const [actionsFor, setActionsFor] = useState(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -772,7 +777,7 @@ const [aiError, setAiError] = useState('');
   // Also picks up email_received, which the backend has always broadcast with
   // this lead's id and which this page used to ignore — an inbound email only
   // surfaced when the 8s poll below happened to catch it.
-  useRealtime(['new_message', 'lead_updated', 'email_received'], (data) => {
+  useRealtime(['new_message', 'lead_updated', 'email_received', 'message_updated'], (data) => {
     if (data.type === 'lead_updated') {
       const updated = data.lead || data;
       if (!updated?.id || updated.id !== leadId) return;
@@ -780,6 +785,11 @@ const [aiError, setAiError] = useState('');
       return;
     }
     if (data.lead_id !== leadId) return; // ignore other leads
+    // Ticks, reactions, edits, deletions: patch the one row in place.
+    if (data.type === 'message_updated') {
+      if (data.message?.id) setMessages(prev => prev.map(m => (m.id === data.message.id ? { ...m, ...data.message } : m)));
+      return;
+    }
     if (data.type === 'email_received') { fetchMessages(activePlatformRef.current || undefined); return; }
     const incomingPlatform = (data.message?.platform || 'whatsapp').toLowerCase();
     const viewing = activePlatformRef.current;
@@ -1061,18 +1071,27 @@ const [aiError, setAiError] = useState('');
     if (!newMessage.trim()) return;
     try {
       setSendingMessage(true);
-      const res = await leadsAPI.sendMessage(leadId, newMessage, activePlatform);
+      const res = await leadsAPI.sendMessage(leadId, newMessage, activePlatform, replyTo?.id);
       // Outbound delivery is only wired for WhatsApp today. For other platforms the message
       // is persisted locally so the user sees their draft, and the server returns delivered:false.
       if (res.data?.delivered === false) {
         showToast(`Saved as draft — ${activePlatform} sending isn't connected yet`, 'info');
       }
       setNewMessage('');
+      setReplyTo(null);
       await fetchMessages();
     } catch (e) {
       const msg = e.response?.data?.error || e.message || `Failed to send on ${activePlatform || 'WhatsApp'}`;
       showToast(msg);
     } finally { setSendingMessage(false); }
+  };
+
+  const handleReact = async (msg, emoji) => {
+    setActionsFor(null);
+    try {
+      const res = await leadsAPI.reactToMessage(leadId, msg.id, emoji);
+      if (res.data?.message) setMessages(prev => prev.map(m => (m.id === msg.id ? res.data.message : m)));
+    } catch (e) { showToast(e.response?.data?.error || 'Could not send the reaction'); }
   };
 
   const handleFileUpload = async (e) => {
@@ -1448,6 +1467,7 @@ useEffect(() => {
               }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #a7f3d0', background: 'rgba(16,185,129,0.12)', color: '#059669', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
               title="Open WhatsApp chat in floating bar"
+              className="lead-chatbar-btn"
             >
               <MessageSquare size={14} /> Chat Bar
             </button>
@@ -1558,7 +1578,7 @@ useEffect(() => {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
               {PIPELINE_STEPS.map(step => (
-                <span key={step} style={{ fontSize: 9, fontWeight: 700, color: lead.status === step ? STATUS_META[step].dot : '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                <span key={step} style={{ fontSize: 10.5, fontWeight: 700, color: lead.status === step ? STATUS_META[step].dot : '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                   {step === 'Negotiating' ? 'Nego.' : step}
                 </span>
               ))}
@@ -1913,6 +1933,10 @@ useEffect(() => {
                 const today = new Date().toDateString();
                 const yesterday = new Date(Date.now() - 86400000).toDateString();
                 const dayLabel = curDay === today ? 'Today' : curDay === yesterday ? 'Yesterday' : formatDate(msg.timestamp);
+                const meta = messageMeta(msg);
+                const reactions = messageReactions(msg);
+                const isWa = (msg.platform || 'whatsapp') === 'whatsapp';
+                const canReact = isWa && !!msg.wa_message_id && !String(msg.wa_message_id).startsWith('call_') && !msg.deleted_at;
                 return (
                   <div key={msg.id}>
                     {showDateBreak && (
@@ -1920,11 +1944,15 @@ useEffect(() => {
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20, background: 'var(--surface2)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{dayLabel}</span>
                       </div>
                     )}
-                    <div style={{ display: 'flex', justifyContent: msg.from_me ? 'flex-end' : 'flex-start', marginBottom: sameSender ? 2 : 8, marginTop: sameSender ? 0 : 0 }}>
-                    <div style={{ maxWidth: '72%', padding: '9px 13px', borderRadius: msg.from_me
+                    <div className="wa-bubble-row"
+                      // Long-press on a phone opens the context menu; use it for reply/react.
+                      onContextMenu={isWa ? (e) => { e.preventDefault(); setActionsFor(a => (a === msg.id ? null : msg.id)); } : undefined}
+                      style={{ display: 'flex', flexDirection: 'column', alignItems: msg.from_me ? 'flex-end' : 'flex-start', marginBottom: sameSender && !Object.keys(reactions).length ? 2 : 8, marginTop: sameSender ? 0 : 0 }}>
+                    <div style={{ maxWidth: '72%', opacity: msg.deleted_at ? 0.75 : 1, padding: '9px 13px', borderRadius: msg.from_me
                           ? (sameSender ? '14px 4px 4px 14px' : '18px 18px 4px 18px')
                           : (sameSender ? '4px 14px 14px 4px' : '18px 18px 18px 4px'),
                         background: msg.from_me ? (typeof document !== 'undefined' && document.documentElement.classList.contains('light') ? '#dcf8c6' : '#1a4731') : 'var(--surface2)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', fontSize: 14, lineHeight: 1.5, color: 'var(--text)' }}>
+                      <QuotedSnippet body={msg.quoted_body} fromMe={!!msg.from_me} />
                       {isVoice ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#25d366', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1961,14 +1989,24 @@ useEffect(() => {
                             </a>
                           );
                         })()
+                      ) : meta && (meta.location || meta.contacts || meta.poll || meta.call) ? (
+                        <SpecialContent meta={meta} />
                       ) : (
-                        <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif' }}>{msg.body}</p>
+                        <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', textDecoration: msg.deleted_at ? 'line-through' : undefined }}>{msg.body}</p>
                       )}
                       <p style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 3, textAlign: 'right', margin: 0, marginTop: 3 }}>
+                        {msg.deleted_at && <span style={{ fontStyle: 'italic', marginRight: 6 }}>{msg.from_me ? 'You deleted this' : 'Deleted by sender'} ·</span>}
+                        {msg.edited_at && <span title={msg.original_body ? `Originally: ${msg.original_body}` : undefined} style={{ fontStyle: 'italic', marginRight: 6, cursor: msg.original_body ? 'help' : undefined }}>Edited ·</span>}
                         {formatTime(msg.timestamp)}
-                        {!!msg.from_me && <span style={{ color: '#34b7f1', marginLeft: 4 }}>✓✓</span>}
+                        {!!msg.from_me && isWa && <WaTicks ack={msg.ack} />}
                       </p>
                     </div>
+                    <ReactionsRow reactions={reactions} fromMe={!!msg.from_me} />
+                    {isWa && !msg.deleted_at && (
+                      <MessageActions fromMe={!!msg.from_me} open={actionsFor === msg.id} canReact={canReact} myReaction={reactions.me}
+                        onReply={() => { setReplyTo(msg); setActionsFor(null); }}
+                        onReact={(e) => handleReact(msg, e)} />
+                    )}
                     </div>
                   </div>
                 );
@@ -2102,6 +2140,17 @@ useEffect(() => {
                 )}
               </div>
             </div>
+
+            {/* Replying-to strip (WhatsApp quote) */}
+            {replyTo && (
+              <div style={{ margin: '8px 14px 0', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderRadius: 10, background: 'var(--surface2)', borderLeft: `3px solid ${replyTo.from_me ? '#25d366' : '#6366f1'}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: replyTo.from_me ? '#25d366' : '#6366f1' }}>Replying to {replyTo.from_me ? 'yourself' : (lead?.customer_name || 'them')}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{replyTo.body}</p>
+                </div>
+                <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+              </div>
+            )}
 
             {/* Input */}
             <div style={{ padding: '10px 14px 14px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
@@ -2947,10 +2996,22 @@ function EmailComposeModal({ lead, onClose, onSent }) {
   const bodyRef = useRef(null);
   const fileInputRef = useRef(null);
   const [attachments, setAttachments] = useState([]);
+  const prompt = usePrompt();
 
   const execCmd = (cmd, value = null) => {
     bodyRef.current?.focus();
     document.execCommand(cmd, false, value);
+  };
+  // The link dialog takes focus, which drops the editor's selection — keep the
+  // range and put it back before applying the link to the text it was meant for.
+  const insertLink = async (cmd) => {
+    const sel = window.getSelection();
+    const range = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    const url = await prompt({ title: 'Insert link', placeholder: 'https://…', type: 'url', confirmLabel: 'Insert' });
+    if (!url) return;
+    bodyRef.current?.focus();
+    if (range) { const s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(range); }
+    document.execCommand(cmd, false, /^[a-z]+:/i.test(url) ? url : `https://${url}`);
   };
 
   const handleAttach = (e) => {
@@ -3025,8 +3086,7 @@ function EmailComposeModal({ lead, onClose, onSent }) {
                   onMouseDown={e => {
                     e.preventDefault();
                     if (btn.prompt) {
-                      const url = window.prompt('Enter URL:');
-                      if (url) execCmd(btn.cmd, url);
+                      insertLink(btn.cmd);
                     } else {
                       execCmd(btn.cmd);
                     }

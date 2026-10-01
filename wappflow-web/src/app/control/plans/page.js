@@ -2,8 +2,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ccApi } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
+import { useConfirm, usePrompt } from '@/lib/confirm';
 
 export default function Plans() {
+  // In-app dialogs instead of the browser's native alert/prompt boxes.
+  const confirmDialog = useConfirm();
+  const ask = usePrompt();
+  const prompt = (title, defaultValue = '') => ask({ title, defaultValue, required: false });
+  const alert = (message) => confirmDialog({ title: 'Something went wrong', message, alertOnly: true, tone: 'danger' });
+
   const [plans, setPlans] = useState([]);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState('');
@@ -28,14 +35,14 @@ export default function Plans() {
   };
 
   const newPlan = async () => {
-    const key = prompt('New plan key (e.g. studio_pro):'); if (!key) return;
-    const name = prompt('Display name:', key) || key;
+    const key = await prompt('New plan key (e.g. studio_pro):'); if (!key) return;
+    const name = (await prompt('Display name:', key)) || key;
     try { await ccApi.createPlan({ key: key.trim(), name }); load(); } catch (e) { alert(e.response?.data?.error || 'Failed'); }
   };
 
-  const addLimit = (k) => { const lk = prompt('Limit key (e.g. leads, users):'); if (!lk) return; const v = prompt('Value (-1 = unlimited):', '0'); patch(k, (p) => { p.limits = { ...p.limits, [lk.trim()]: parseInt(v, 10) || 0 }; return p; }); };
-  const addFeature = (k) => { const fk = prompt('Feature key (e.g. flux, api_access):'); if (!fk) return; let v = prompt('Value (true / false / text):', 'true'); if (v === 'true') v = true; else if (v === 'false') v = false; patch(k, (p) => { p.features = { ...p.features, [fk.trim()]: v }; return p; }); };
-  const addPrice = (k) => { const interval = prompt('Interval (month / year / lifetime):', 'month'); if (!interval) return; const amount = parseFloat(prompt('Amount (USD):', '0')) || 0; patch(k, (p) => { p.prices = [...p.prices, { interval, currency: 'USD', amount }]; return p; }); };
+  const addLimit = async (k) => { const lk = await prompt('Limit key (e.g. leads, users):'); if (!lk) return; const v = await prompt('Value (-1 = unlimited):', '0'); patch(k, (p) => { p.limits = { ...p.limits, [lk.trim()]: parseInt(v, 10) || 0 }; return p; }); };
+  const addFeature = async (k) => { const fk = await prompt('Feature key (e.g. flux, api_access):'); if (!fk) return; let v = await prompt('Value (true / false / text):', 'true'); if (v === 'true') v = true; else if (v === 'false') v = false; patch(k, (p) => { p.features = { ...p.features, [fk.trim()]: v }; return p; }); };
+  const addPrice = async (k) => { const interval = await prompt('Interval (month / year / lifetime):', 'month'); if (!interval) return; const amount = parseFloat(await prompt('Amount (USD):', '0')) || 0; patch(k, (p) => { p.prices = [...p.prices, { interval, currency: 'USD', amount }]; return p; }); };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

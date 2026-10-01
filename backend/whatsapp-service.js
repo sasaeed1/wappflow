@@ -96,6 +96,71 @@ function waBodyFallback(mediaType) {
     : '[Media]';
 }
 
+
+// ── Message kinds that carry no text and no file ─────────────────────────────
+// Locations, contact cards and polls arrive with an empty body and hasMedia
+// false, and the live handler's "skip empty messages" guard used to drop them
+// on the floor — a client's venue pin simply never reached the CRM. This turns
+// each into a readable body plus structured `meta` (stored as JSON on the
+// message row) so the thread can render a map link, a contact or a poll.
+function parseVcard(raw) {
+  const text = String(raw || '');
+  const fn = (text.match(/^FN[^:\n]*:(.+)$/m) || [])[1];
+  const phones = [];
+  const re = /^(?:item\d+\.)?TEL[^:\n]*:(.+)$/gm;
+  let m;
+  while ((m = re.exec(text))) phones.push(m[1].trim());
+  return { name: fn ? fn.trim() : null, phones };
+}
+
+function waSpecialContent(message) {
+  if (!message) return null;
+  const type = message.type;
+  if (type === 'location' && message.location) {
+    const loc = message.location;
+    const lat = Number(loc.latitude), lng = Number(loc.longitude);
+    const name = loc.name || loc.description || null;
+    const address = loc.address || null;
+    const label = [name, address].filter(Boolean).join(' — ');
+    return {
+      body: `📍 ${label || 'Location'}`,
+      meta: { location: { lat, lng, name, address, url: loc.url || `https://maps.google.com/?q=${lat},${lng}` } },
+    };
+  }
+  if ((type === 'vcard' || type === 'multi_vcard') && (message.vCards || message.body)) {
+    const cards = (Array.isArray(message.vCards) && message.vCards.length ? message.vCards : [message.body])
+      .map(parseVcard).filter(c => c.name || c.phones.length);
+    if (!cards.length) return null;
+    const first = cards[0];
+    const more = cards.length > 1 ? ` +${cards.length - 1} more` : '';
+    return {
+      body: `👤 ${first.name || first.phones[0]}${first.name && first.phones[0] ? ` · ${first.phones[0]}` : ''}${more}`,
+      meta: { contacts: cards },
+    };
+  }
+  if (type === 'poll_creation' && (message.pollName || message.pollOptions)) {
+    const options = (message.pollOptions || []).map(o => (typeof o === 'string' ? o : o.name)).filter(Boolean);
+    return {
+      body: `📊 ${message.pollName || 'Poll'}`,
+      meta: { poll: { name: message.pollName || '', options, multiple: !!(message.allowMultipleAnswers) } },
+    };
+  }
+  return null;
+}
+
+// WhatsApp's delivery states (message.ack). Stored as the number so the thread
+// can draw ✓ sent · ✓✓ delivered · blue ✓✓ read, and ! for a failed send.
+const WA_ACK = { ERROR: -1, PENDING: 0, SERVER: 1, DEVICE: 2, READ: 3, PLAYED: 4 };
+
+// A LID (an opaque "@lid" id WhatsApp uses when it hides a phone number) or a
+// phone-number JID → the "+digits" we store, or null when it is not a phone.
+function phoneFromJid(jid) {
+  const s = String(jid || '');
+  if (!s || s.endsWith('@lid') || s.endsWith('@g.us')) return null;
+  const digits = s.split('@')[0].replace(/\D/g, '');
+  return digits.length >= 7 && digits.length <= 15 ? '+' + digits : null;
+}
+
 class WhatsAppService {
   constructor(db, broadcastToUser, accountId = null, sessionName = undefined, broadcastToWorkspace = null, notify = null) {
     this.db = db;
@@ -127,6 +192,14 @@ class WhatsAppService {
     this.initWatchdogTimer = null;
     this.initStartedAt = null;
     this.browserPid = null; // tracked puppeteer chrome PID, set in initialize()
+    // Delivery states that arrived before the row they belong to existed (a send's
+    // first ✓ often lands before the route has inserted its row). Applied when the
+    // row is linked or inserted. Bounded — see _stashAck.
+    this._pendingAcks = new Map();
+    // How long message_create waits before deciding whether an outgoing message
+    // came from WappFlow (whose route inserts the row right after sending) or
+    // from the phone itself. Tests set this to 0.
+    this._outgoingSettleMs = 2500;
   }
 
   generateId() {
@@ -430,8 +503,12 @@ class WhatsAppService {
         // Groups are handled by the Groups feature, not the lead pipeline.
         if (message.from.includes('@g.us')) return;
         if (!WhatsAppService.isIngestableChat(message.from)) return;
+        // Locations, contact cards and polls carry no text and no file; they are
+        // real messages and used to be dropped right here.
+        const special = waSpecialContent(message);
         // Only skip if truly empty AND not a media message
-        if (!message.hasMedia && (!message.body || message.body.trim() === '')) return;
+        if (!message.hasMedia && !special && (!message.body || message.body.trim() === '')) return;
+        const msgText = special ? special.body : (message.body || '');
 
         // Falling back to the raw `message.id` OBJECT here made this Set useless — every
         // object is a distinct key, so nothing was ever recognised as already processed.
@@ -448,14 +525,19 @@ class WhatsAppService {
         // present rather than pinning one, and store it as a SECOND identifier —
         // the number stays authoritative until WhatsApp says otherwise.
         const waUsername = (contact && (contact.username || contact.handle || contact.pushname_username)) || null;
+        // WhatsApp increasingly hides a sender's number behind a LID ("…@lid").
+        // Remember the LID on the lead so the same person always lands on the
+        // same lead, and ask WhatsApp for the real number before giving up and
+        // storing the LID itself as the "phone".
+        const waLid = message.from.endsWith('@lid') ? message.from : null;
         let customerPhone;
-        if (message.from.endsWith('@lid')) {
+        if (waLid) {
           if (contact.id?._serialized && !contact.id._serialized.includes('@lid')) {
             customerPhone = '+' + contact.id.user;
           } else if (contact.number && contact.number.length <= 15 && /^\d+$/.test(contact.number)) {
             customerPhone = '+' + contact.number;
           } else {
-            customerPhone = message.from;
+            customerPhone = (await this._resolveLidPhone(waLid)) || message.from;
           }
         } else {
           customerPhone = '+' + message.from.split('@')[0];
@@ -472,14 +554,15 @@ class WhatsAppService {
         const workspaceId = user.workspace_id;
         const stripSQL = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(customer_phone,' ',''),'+',''),'-',''),'(',''),')',''),'.','')`;
         const normPhone = customerPhone.replace(/\D/g, '');
-        const firstMsg = message.body || (message.hasMedia ? '[Media]' : '');
+        const firstMsg = msgText || (message.hasMedia ? '[Media]' : '');
 
         // Atomic lookup-or-create — prevents duplicate leads when two messages from the same
         // phone race through the message handler simultaneously. better-sqlite3 transactions
         // serialize on the connection, so concurrent calls queue rather than both inserting.
         let leadCreated = false;
         const upsertLead = this.db.transaction(() => {
-          let l = this.db.prepare(
+          let l = waLid ? this._leadByLid(workspaceId, waLid) : null;
+          if (!l) l = this.db.prepare(
             `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} = ?`
           ).get(workspaceId, normPhone);
           if (!l && normPhone.length >= 10) {
@@ -489,14 +572,20 @@ class WhatsAppService {
           }
           if (l) {
             this.db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP,
-              wa_username = COALESCE(?, wa_username) WHERE id = ?`).run(waUsername, l.id);
+              wa_username = COALESCE(?, wa_username), wa_lid = COALESCE(?, wa_lid) WHERE id = ?`).run(waUsername, waLid, l.id);
             if (waUsername && !l.wa_username) l.wa_username = waUsername;
+            // A lead first created while WhatsApp hid the number carries the LID as
+            // its "phone"; replace it the moment the real number is known.
+            if (String(l.customer_phone || '').includes('@lid') && !customerPhone.includes('@')) {
+              this.db.prepare('UPDATE leads SET customer_phone = ? WHERE id = ?').run(customerPhone, l.id);
+              l.customer_phone = customerPhone;
+            }
             return l;
           }
           const leadId = this.generateId();
           this.db.prepare(
-            `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, wa_username, first_message, total_messages, status, platform_source, platform_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'New', 'whatsapp', ?)`
-          ).run(leadId, user.id, workspaceId, customerName, customerPhone, waUsername, firstMsg, this.accountId || null);
+            `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, wa_username, wa_lid, first_message, total_messages, status, platform_source, platform_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'New', 'whatsapp', ?)`
+          ).run(leadId, user.id, workspaceId, customerName, customerPhone, waUsername, waLid, firstMsg, this.accountId || null);
           leadCreated = true;
           return this.db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
         });
@@ -510,7 +599,7 @@ class WhatsAppService {
             this.notify(user.workspace_id, {
               type: 'lead',
               title: `New WhatsApp lead: ${lead.customer_name || lead.wa_username || lead.customer_phone}`,
-              body: (message.body || '[media]').slice(0, 140),
+              body: (msgText || '[media]').slice(0, 140),
               url: `/leads/${lead.id}`,
               icon: '💬',
             });
@@ -564,9 +653,12 @@ class WhatsAppService {
             }
           }
           const fallbackBody = waBodyFallback(mediaType);
+          // Which message the customer was replying to, so the thread can show it.
+          const quoted = await this._quotedInfo(message);
           this.db.prepare(
-            `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id, platform, platform_account_id) VALUES (?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP, ?, 'whatsapp', ?)`
-          ).run(msgId, lead.id, user.id, message.body || fallbackBody, mediaType, mediaUrl, waId, this.accountId || null);
+            `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id, platform, platform_account_id, quoted_wa_id, quoted_body, meta) VALUES (?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP, ?, 'whatsapp', ?, ?, ?, ?)`
+          ).run(msgId, lead.id, user.id, msgText || fallbackBody, mediaType, mediaUrl, waId, this.accountId || null,
+            quoted.waId, quoted.body, special ? JSON.stringify(special.meta) : null);
         } catch (e) {
           console.log('⚠️ Could not save message:', e.message);
         }
@@ -582,7 +674,7 @@ class WhatsAppService {
           customer_name: lead.customer_name || null,
           customer_phone: lead.customer_phone || null,
           wa_username: lead.wa_username || null,
-          message: savedMsg || { id: msgId, body: message.body || '[Media]', from_me: 0, lead_id: lead.id }
+          message: savedMsg || { id: msgId, body: msgText || '[Media]', from_me: 0, lead_id: lead.id }
         });
 
         this.checkAutoReply(user.id, lead, message.body || '');
@@ -592,12 +684,306 @@ class WhatsAppService {
       }
     });
 
+    // ── Everything else WhatsApp tells us about a conversation ──────────────
+    // Each handler is a method (below) so it can be exercised without a live
+    // session. All of them are best-effort: a failure here must never take the
+    // session or the inbound pipeline down with it.
+    const guard = (name, fn) => async (...args) => {
+      try { await fn.apply(this, args); } catch (e) { console.log(`⚠️ WhatsApp ${name} handler failed: ${e && e.message}`); }
+    };
+    this.client.on('message_create', guard('message_create', this._onMessageCreate));
+    this.client.on('message_ack', guard('message_ack', this._onAck));
+    this.client.on('message_reaction', guard('message_reaction', this._onReaction));
+    this.client.on('message_edit', guard('message_edit', this._onEdit));
+    this.client.on('message_revoke_everyone', guard('message_revoke', this._onRevoke));
+    this.client.on('call', guard('call', this._onCall));
+
     this.client.initialize().catch((err) => {
       console.error('❌ WhatsApp initialize error:', err.message);
       this.status = 'error';
       this.isReady = false;
       // No auto-retry — user clicks "Reconnect WhatsApp" button which calls reconnect()
     });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  CONVERSATION EVENTS — everything WhatsApp reports beyond "a message came in"
+  // ════════════════════════════════════════════════════════════════════════
+  // Until these existed the CRM only ever heard about INBOUND messages: replies
+  // typed on the phone, delivery/read state, reactions, edits, deletions and
+  // calls all happened in WhatsApp and never reached the lead.
+
+  _leadByLid(workspaceId, lid) {
+    if (!lid) return null;
+    try {
+      return this.db.prepare(
+        'SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND wa_lid = ?'
+      ).get(workspaceId, lid) || null;
+    } catch { return null; }
+  }
+
+  // Same matching rules as the inbound handler: exact digits, then last 10.
+  _leadByPhone(workspaceId, phone) {
+    const norm = String(phone || '').replace(/\D/g, '');
+    if (!norm) return null;
+    const stripSQL = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(customer_phone,' ',''),'+',''),'-',''),'(',''),')',''),'.','')`;
+    let l = this.db.prepare(
+      `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} = ?`
+    ).get(workspaceId, norm);
+    if (!l && norm.length >= 10) {
+      l = this.db.prepare(
+        `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} LIKE ?`
+      ).get(workspaceId, `%${norm.slice(-10)}`);
+    }
+    return l || null;
+  }
+
+  // Ask WhatsApp which phone number sits behind a LID. null when it won't say.
+  async _resolveLidPhone(lid) {
+    try {
+      if (!this.client || typeof this.client.getContactLidAndPhone !== 'function') return null;
+      const res = await this.client.getContactLidAndPhone([lid]);
+      const row = Array.isArray(res) ? res[0] : res;
+      return phoneFromJid(row && (row.pn || row.phone));
+    } catch { return null; }
+  }
+
+  // The existing lead for a one-to-one chat (phone JID or LID). Never creates one.
+  async _leadForJid(workspaceId, jid) {
+    const id = String(jid || '');
+    const lid = id.endsWith('@lid') ? id : null;
+    const byLid = lid ? this._leadByLid(workspaceId, lid) : null;
+    if (byLid) return byLid;
+    const phone = phoneFromJid(id) || (lid ? await this._resolveLidPhone(lid) : null);
+    if (phone) return this._leadByPhone(workspaceId, phone);
+    if (!lid) return null;
+    // A lead created before LIDs were remembered may carry the LID as its phone.
+    return this.db.prepare(
+      'SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND customer_phone = ?'
+    ).get(workspaceId, lid) || null;
+  }
+
+  // The message a reply is quoting: its WhatsApp id and a short preview.
+  async _quotedInfo(message) {
+    const none = { waId: null, body: null };
+    if (!message || !message.hasQuotedMsg || typeof message.getQuotedMessage !== 'function') return none;
+    try {
+      const q = await message.getQuotedMessage();
+      if (!q) return none;
+      const sp = waSpecialContent(q);
+      const body = sp ? sp.body : (q.body || waBodyFallback(q.hasMedia ? waMediaType(q.type) : null));
+      return { waId: WhatsAppService.waMessageKey(q.id), body: String(body || '').slice(0, 300) };
+    } catch { return none; }
+  }
+
+  _stashAck(key, ack) {
+    const prev = this._pendingAcks.get(key);
+    this._pendingAcks.set(key, Math.max(prev ?? -1, ack));
+    if (this._pendingAcks.size > 500) this._pendingAcks.delete(this._pendingAcks.keys().next().value);
+  }
+  _takeAck(key) {
+    const a = this._pendingAcks.get(key);
+    this._pendingAcks.delete(key);
+    return a ?? null;
+  }
+
+  _rowByWaId(key) {
+    return key ? (this.db.prepare('SELECT * FROM messages WHERE wa_message_id = ?').get(key) || null) : null;
+  }
+
+  // Push the changed row to open threads (ticks, reactions, edits, deletions).
+  _messageUpdated(row) {
+    if (!row) return;
+    this._emit(this._resolveOwner(), 'message_updated', { lead_id: row.lead_id, message: row });
+  }
+
+  // Shared by the call handler: a new lead from a WhatsApp contact.
+  _createLead(user, { phone, lid, name, firstMsg }) {
+    const id = this.generateId();
+    this.db.prepare(
+      `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, wa_lid, first_message, total_messages, status, platform_source, platform_account_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'New', 'whatsapp', ?)`
+    ).run(id, user.id, user.workspace_id, name || phone, phone, lid || null, firstMsg, this.accountId || null);
+    const lead = this.db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
+    this._emit(user, 'lead_created', { lead });
+    return lead;
+  }
+
+  // ── 1. Outgoing messages: sent from WappFlow OR typed on the phone ─────────
+  // WappFlow's own send routes insert their row right after sending, without
+  // WhatsApp's id. So wait briefly, then either LINK that row (which is what
+  // lets delivery/read ticks find it) or, if WappFlow didn't send it, it was
+  // sent from the phone or another linked device: record it on the lead.
+  // Chats that are not leads (personal conversations) are left alone.
+  async _onMessageCreate(message) {
+    if (!message || !message.fromMe) return;
+    const to = String(message.to || (message.id && message.id.remote) || '');
+    if (!to || to.endsWith('@g.us') || !WhatsAppService.isIngestableChat(to)) return;
+    const special = waSpecialContent(message);
+    const text = special ? special.body : (message.body || '');
+    if (!message.hasMedia && !special && !text.trim()) return;   // notifications, protocol messages
+    const key = WhatsAppService.waMessageKey(message.id);
+    if (!key) return;
+
+    if (this._outgoingSettleMs) await new Promise(r => setTimeout(r, this._outgoingSettleMs));
+    if (this._rowByWaId(key)) return;                             // already recorded (e.g. the route stored the id)
+
+    const user = this._resolveOwner();
+    if (!user) return;
+    const lead = await this._leadForJid(user.workspace_id, to);
+    if (!lead) return;
+
+    const mediaHint = message.hasMedia ? waMediaType(message.type) : null;
+    const ack = Math.max(this._takeAck(key) ?? -1, Number.isFinite(message.ack) ? message.ack : -1);
+
+    const candidate = this.db.prepare(
+      `SELECT id FROM messages WHERE lead_id = ? AND from_me = 1 AND wa_message_id IS NULL
+         AND (platform IS NULL OR platform = 'whatsapp')
+         AND timestamp >= datetime('now', '-5 minutes')
+         AND (body = ? OR (? IS NOT NULL AND media_type IS NOT NULL))
+       ORDER BY timestamp DESC LIMIT 1`
+    ).get(lead.id, text, mediaHint);
+    if (candidate) {
+      this.db.prepare('UPDATE messages SET wa_message_id = ?, ack = COALESCE(?, ack) WHERE id = ?')
+        .run(key, ack >= 0 ? ack : null, candidate.id);
+      this._messageUpdated(this.db.prepare('SELECT * FROM messages WHERE id = ?').get(candidate.id));
+      return;
+    }
+
+    let mediaType = mediaHint, mediaUrl = null;
+    if (message.hasMedia) {
+      const got = await this._downloadMediaFor(message, key, mediaType);
+      if (got) { mediaUrl = got.url; mediaType = got.type; }
+    }
+    const quoted = await this._quotedInfo(message);
+    const ts = message.timestamp ? new Date(message.timestamp * 1000).toISOString().replace('T', ' ').slice(0, 19) : null;
+    const id = this.generateId();
+    this.db.prepare(
+      `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id, platform, platform_account_id, quoted_wa_id, quoted_body, meta, ack)
+       VALUES (?, ?, ?, ?, 1, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, 'whatsapp', ?, ?, ?, ?, ?)`
+    ).run(id, lead.id, user.id, text || waBodyFallback(mediaType), mediaType, mediaUrl, ts, key, this.accountId || null,
+      quoted.waId, quoted.body, special ? JSON.stringify(special.meta) : null, ack >= 0 ? ack : null);
+    this.db.prepare(
+      `UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP, last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).run(lead.id);
+    this._emit(user, 'new_message', {
+      lead_id: lead.id, customer_name: lead.customer_name || null, customer_phone: lead.customer_phone || null,
+      wa_username: lead.wa_username || null, message: this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id),
+    });
+  }
+
+  // ── 3. Delivery / read state ───────────────────────────────────────────────
+  _onAck(message, ack) {
+    const key = WhatsAppService.waMessageKey(message && message.id);
+    if (!key || !Number.isFinite(ack)) return;
+    // Only ever move forward (read never regresses to delivered); an error is final.
+    const r = this.db.prepare(
+      'UPDATE messages SET ack = ? WHERE wa_message_id = ? AND (ack IS NULL OR ack < ? OR ? = -1)'
+    ).run(ack, key, ack, ack);
+    if (r.changes) this._messageUpdated(this._rowByWaId(key));
+    else if (!this._rowByWaId(key)) this._stashAck(key, ack);
+  }
+
+  // ── 6. Reactions (either side; an empty reaction means it was removed) ────
+  _onReaction(reaction) {
+    const key = WhatsAppService.waMessageKey(reaction && reaction.msgId);
+    const row = this._rowByWaId(key);
+    if (!row) return;
+    let map = {};
+    try { map = JSON.parse(row.reactions || '{}') || {}; } catch {}
+    const who = reaction.id && reaction.id.fromMe ? 'me' : 'them';
+    if (reaction.reaction) map[who] = reaction.reaction; else delete map[who];
+    this.db.prepare('UPDATE messages SET reactions = ? WHERE id = ?')
+      .run(Object.keys(map).length ? JSON.stringify(map) : null, row.id);
+    this._messageUpdated(this.db.prepare('SELECT * FROM messages WHERE id = ?').get(row.id));
+  }
+
+  // ── 7a. Edits: show the new text, keep the first version ──────────────────
+  _onEdit(message, newBody, prevBody) {
+    const key = WhatsAppService.waMessageKey(message && message.id);
+    const row = this._rowByWaId(key);
+    if (!row || typeof newBody !== 'string') return;
+    this.db.prepare(
+      'UPDATE messages SET body = ?, original_body = COALESCE(original_body, ?), edited_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).run(newBody, prevBody ?? row.body, row.id);
+    this._messageUpdated(this.db.prepare('SELECT * FROM messages WHERE id = ?').get(row.id));
+  }
+
+  // ── 7b. "Deleted for everyone": mark it, but keep what was said ───────────
+  // A CRM is a record. WhatsApp hides the text; the thread keeps it, labelled.
+  _onRevoke(message, revoked) {
+    const keys = [
+      WhatsAppService.waMessageKey(revoked && revoked.id),
+      WhatsAppService.waMessageKey(message && message.protocolMessageKey),
+      WhatsAppService.waMessageKey(message && message.id),
+    ].filter(Boolean);
+    for (const key of keys) {
+      const row = this._rowByWaId(key);
+      if (!row) continue;
+      if (!row.deleted_at) this.db.prepare('UPDATE messages SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(row.id);
+      this._messageUpdated(this.db.prepare('SELECT * FROM messages WHERE id = ?').get(row.id));
+      return;
+    }
+  }
+
+  // ── 9. Incoming WhatsApp calls → on the lead's thread + a notification ────
+  // WhatsApp Web can't answer calls, so this records that the client rang.
+  async _onCall(call) {
+    if (!call || call.isGroup || call.fromMe) return;
+    const jid = String(call.from || '');
+    if (!jid || !WhatsAppService.isIngestableChat(jid)) return;
+    const key = `call_${call.id || `${jid}_${call.timestamp || Date.now()}`}`;
+    if (this._rowByWaId(key)) return;                               // WhatsApp re-sends the offer
+    const user = this._resolveOwner();
+    if (!user) return;
+    const kind = call.isVideo ? 'video' : 'voice';
+    const body = `📞 Incoming WhatsApp ${kind} call`;
+    let lead = await this._leadForJid(user.workspace_id, jid);
+    let created = false;
+    if (!lead) {
+      const lid = jid.endsWith('@lid') ? jid : null;
+      const phone = phoneFromJid(jid) || (lid ? await this._resolveLidPhone(lid) : null) || jid;
+      lead = this._createLead(user, { phone, lid, name: phone, firstMsg: body });
+      created = true;
+    }
+    const id = this.generateId();
+    this.db.prepare(
+      `INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp, wa_message_id, platform, platform_account_id, meta)
+       VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP, ?, 'whatsapp', ?, ?)`
+    ).run(id, lead.id, user.id, body, key, this.accountId || null, JSON.stringify({ call: { video: !!call.isVideo } }));
+    this.db.prepare('UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP WHERE id = ?').run(lead.id);
+    const who = lead.customer_name || lead.wa_username || lead.customer_phone;
+    try {
+      this.notify(user.workspace_id, {
+        type: 'call', title: `${who} called you on WhatsApp`,
+        body: created ? 'New lead — they called before messaging' : `Incoming ${kind} call`,
+        url: `/leads/${lead.id}`, icon: '📞',
+      });
+    } catch {}
+    this._emit(user, 'new_message', {
+      lead_id: lead.id, customer_name: lead.customer_name || null, customer_phone: lead.customer_phone || null,
+      wa_username: lead.wa_username || null, message: this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id),
+    });
+  }
+
+  // ── 6. Send a reaction from WappFlow ───────────────────────────────────────
+  async react(waKey, emoji) {
+    if (!this.isReady) throw new Error('WhatsApp client is not ready');
+    const msg = await this.client.getMessageById(waKey);
+    if (!msg) throw new Error('That message is no longer available in WhatsApp');
+    await msg.react(emoji || '');
+  }
+
+  // ── 8. Link by phone number instead of scanning a QR ───────────────────────
+  // The QR has to be scanned by ANOTHER device's camera — impossible when the
+  // phone that should scan it is the one showing it. WhatsApp's alternative is
+  // an 8-character code typed into Linked devices → Link with phone number.
+  async requestPairingCode(phone) {
+    if (this.isReady) throw new Error('This WhatsApp number is already connected');
+    if (!this.client || !this.client.pupPage) throw new Error('WhatsApp is still starting — wait for the QR code, then try again');
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (digits.length < 8 || digits.length > 15) throw new Error('Enter the full number with country code, e.g. 923001234567');
+    return await this.client.requestPairingCode(digits, true);
   }
 
   // ── Properly destroy old client then start fresh ──
@@ -819,9 +1205,13 @@ class WhatsAppService {
     return `${p.replace(/\D/g, '')}@c.us`;
   }
 
-  async sendMessage(phone, message) {
+  // Returns WhatsApp's id for the sent message so the caller can store it —
+  // that id is what delivery/read ticks, reactions and replies key on.
+  // `options` passes through to whatsapp-web.js (e.g. { quotedMessageId }).
+  async sendMessage(phone, message, options = {}) {
     if (!this.isReady) throw new Error('WhatsApp client is not ready');
-    await this.client.sendMessage(this._resolveChatId(phone), message);
+    const sent = await this.client.sendMessage(this._resolveChatId(phone), message, options);
+    return sent ? WhatsAppService.waMessageKey(sent.id) : null;
   }
 
   async sendMedia(phone, filePath, mimetype, filename, caption = '') {
@@ -1443,9 +1833,11 @@ class WhatsAppService {
           for (const m of msgs) {
             if (m.isNotification) continue;
             if (NON_CONTENT_TYPES.has(m.type)) continue;
-            if (m.id ? m.id.fromMe : m.fromMe) continue;
             if (!m.t || m.t <= since) continue;
             messages.push({
+              // Replies typed on the phone while WappFlow was offline are part of
+              // the conversation too; the importer records them on EXISTING leads.
+              fromMe: !!(m.id ? m.id.fromMe : m.fromMe),
               waId: keyOf(m.id),
               body: m.body || m.caption || '',
               ts: m.t,
@@ -1524,12 +1916,14 @@ class WhatsAppService {
           }
           const normPhone = customerPhone.replace(/\D/g, '');
 
-          // Already filtered to inbound messages newer than our last import.
+          // Messages newer than our last import, both directions.
           const newMsgs = chat.messages;
           if (newMsgs.length === 0) continue;
+          const firstInbound = newMsgs.find(m => !m.fromMe);
 
-          // Find or create lead
-          let lead = this.db.prepare(
+          // Find or create lead (a LID chat matches the lead that remembers that LID)
+          let lead = jid.endsWith('@lid') ? this._leadByLid(user.workspace_id, jid) : null;
+          if (!lead) lead = this.db.prepare(
             `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} = ?`
           ).get(user.workspace_id, normPhone);
           if (!lead && normPhone.length >= 10) {
@@ -1537,13 +1931,16 @@ class WhatsAppService {
               `SELECT * FROM leads WHERE workspace_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND ${stripSQL} LIKE ?`
             ).get(user.workspace_id, `%${normPhone.slice(-10)}`);
           }
+          // Only an inbound message makes someone a lead; a chat where we merely
+          // wrote to someone (a friend, a supplier) is not CRM data.
+          if (!lead && !firstInbound) continue;
           if (!lead) {
             const leadId = this.generateId();
             const name = chat.name || customerPhone;
             this.db.prepare(
               `INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, first_message, total_messages, status, platform_source)
                VALUES (?, ?, ?, ?, ?, ?, ?, 'New', 'whatsapp')`
-            ).run(leadId, user.id, user.workspace_id, name, customerPhone, newMsgs[0].body || '[Media]', newMsgs.length);
+            ).run(leadId, user.id, user.workspace_id, name, customerPhone, firstInbound.body || '[Media]', newMsgs.length);
             lead = this.db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
             leadsCreated++;
             this._emit(user, 'lead_created', { lead });
@@ -1586,8 +1983,8 @@ class WhatsAppService {
 
             this.db.prepare(
               `INSERT INTO messages (id, lead_id, user_id, body, from_me, media_type, media_url, timestamp, wa_message_id, platform, platform_account_id)
-               VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 'whatsapp', ?)`
-            ).run(this.generateId(), lead.id, user.id, m.body || bodyFallback, mediaType, mediaUrl, ts, waId, this.accountId || null);
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'whatsapp', ?)`
+            ).run(this.generateId(), lead.id, user.id, m.body || bodyFallback, m.fromMe ? 1 : 0, mediaType, mediaUrl, ts, waId, this.accountId || null);
             msgCount++;
           }
 
@@ -1829,8 +2226,20 @@ class WhatsAppManager {
     return service;
   }
 
-  async sendMessage(phone, message, accountId = null, workspaceId = null) {
-    return this._requireService(accountId, workspaceId).sendMessage(phone, message);
+  async sendMessage(phone, message, accountId = null, workspaceId = null, options = {}) {
+    return this._requireService(accountId, workspaceId).sendMessage(phone, message, options);
+  }
+
+  async react(waKey, emoji, accountId = null, workspaceId = null) {
+    return this._requireService(accountId, workspaceId).react(waKey, emoji);
+  }
+
+  // Pairing happens BEFORE the session is ready, so this goes straight to the
+  // account's instance instead of through _requireService (which wants ready).
+  async requestPairingCode(accountId, phone) {
+    const service = this.instances.get(accountId || '__legacy__');
+    if (!service) throw new Error('Press Connect first, then request a code');
+    return service.requestPairingCode(phone);
   }
 
   saveOutgoingMessage(leadId, userId, body, workspaceId = null) {
@@ -1920,5 +2329,6 @@ class WhatsAppManager {
   }
 }
 
-// persistWaMedia/waMediaType are exported for the media regression test.
-module.exports = { WhatsAppService, WhatsAppManager, persistWaMedia, waMediaType, waTypeFromMime, waEffectiveType };
+// persistWaMedia/waMediaType are exported for the media regression test;
+// waSpecialContent/parseVcard/phoneFromJid/WA_ACK for the message-events test.
+module.exports = { WhatsAppService, WhatsAppManager, persistWaMedia, waMediaType, waTypeFromMime, waEffectiveType, waSpecialContent, parseVcard, phoneFromJid, WA_ACK };

@@ -79,8 +79,11 @@ export function defaultData(type) {
 }
 
 // auto-sizing inline editors (field-sizing is supported in the target Chrome)
-const TA = ({ v, on, ph, style }) => <textarea value={v || ''} onChange={e => on(e.target.value)} placeholder={ph} rows={1} style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', font: 'inherit', color: 'inherit', outline: 'none', fieldSizing: 'content', ...style }} />;
-const IN = ({ v, on, ph, style }) => <input value={v || ''} onChange={e => on(e.target.value)} placeholder={ph} style={{ border: 'none', background: 'transparent', font: 'inherit', color: 'inherit', outline: 'none', ...style }} />;
+// data-ui opts these out of the global legacy-input override (globals.css), whose
+// !important dark background painted a dark slab behind every field on the white
+// paper. They are deliberately borderless and transparent: the page is the field.
+const TA = ({ v, on, ph, style }) => <textarea data-ui value={v || ''} onChange={e => on(e.target.value)} placeholder={ph} rows={1} style={{ width: '100%', border: 'none', background: 'transparent', resize: 'none', font: 'inherit', color: 'inherit', outline: 'none', fieldSizing: 'content', ...style }} />;
+const IN = ({ v, on, ph, style }) => <input data-ui value={v || ''} onChange={e => on(e.target.value)} placeholder={ph} style={{ border: 'none', background: 'transparent', font: 'inherit', color: 'inherit', outline: 'none', ...style }} />;
 const money = (c, n) => `${c || '$'}${(Number(n) || 0).toLocaleString()}`;
 
 // One renderer for edit (builder) AND view (portal). `onChange(data)` only in edit.
@@ -304,11 +307,11 @@ export function BlockView({ block, editing = false, onChange = () => {}, selecte
       return (
         <div style={{ border: '1.5px dashed var(--cs-accent)', borderRadius: 'var(--cs-radius)', padding: 16, background: 'var(--cs-surface)' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-            <select value={d.kind || 'signature'} onChange={e => set({ kind: e.target.value, label: defaultFieldLabel(e.target.value, d.label, d.kind) })}
+            <select data-ui value={d.kind || 'signature'} onChange={e => set({ kind: e.target.value, label: defaultFieldLabel(e.target.value, d.label, d.kind) })}
                     style={csSelect}>
               {KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            <select value={d.role || 'client'} onChange={e => set({ role: e.target.value })} style={csSelect}>
+            <select data-ui value={d.role || 'client'} onChange={e => set({ role: e.target.value })} style={csSelect}>
               {ROLES.map(([v, l]) => <option key={v} value={v}>for {l}</option>)}
             </select>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--cs-ink-2)', cursor: 'pointer' }}>

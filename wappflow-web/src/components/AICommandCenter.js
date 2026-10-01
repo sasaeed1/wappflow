@@ -225,7 +225,7 @@ export default function AICommandCenter({ enabled = true }) {
             {/* Loading */}
             {loading && (
               <div style={{ textAlign: 'center', padding: '32px 0' }}>
-                <div style={{ width: 36, height: 36, border: '3px solid #e5e7eb', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+                <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
                 <p style={{ fontSize: 13, color: 'var(--text-dim)', fontWeight: 600 }}>Thinking...</p>
               </div>
             )}
@@ -365,7 +365,7 @@ export default function AICommandCenter({ enabled = true }) {
           {/* Footer */}
           <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', flexShrink: 0 }}>
             <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0, textAlign: 'center' }}>
-              Press <kbd style={{ background: 'var(--surface2)', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Enter</kbd> to run · <kbd style={{ background: 'var(--surface2)', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Esc</kbd> to close
+              Press <kbd style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Enter</kbd> to run · <kbd style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Esc</kbd> to close
             </p>
           </div>
         </div>

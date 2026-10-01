@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Plus, X, Search, MapPin, Calendar, ArrowRight } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../lib/api';
 import { clickable } from '@/lib/a11y';
+import ErrorState from '@/components/ui/ErrorState';
+import { loadErrorText } from '@/lib/loadFailure';
 
 const TYPES = ['wedding', 'event', 'portrait', 'real_estate', 'commercial', 'product', 'general'];
 
@@ -42,7 +44,7 @@ function NewProjectModal({ onClose, onCreated }) {
   };
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal">
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
@@ -108,6 +110,7 @@ export default function StudioPage() {
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [query, setQuery] = useState('');
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
@@ -116,7 +119,11 @@ export default function StudioPage() {
 
   const load = async () => {
     setLoading(true);
-    try { const res = await mediaAPI.listProjects(); setProjects(res.data.projects || []); } catch {}
+    setLoadError(null);
+    // A failed fetch must not fall through to the "no shoots yet" stage: that
+    // told a photographer with fifty shoots that they had none.
+    try { const res = await mediaAPI.listProjects(); setProjects(res.data.projects || []); }
+    catch (e) { setLoadError(loadErrorText(e)); }
     setLoading(false);
   };
 
@@ -134,6 +141,8 @@ export default function StudioPage() {
     <>
       {loading ? (
         <div className="ms-page"><p className="ms-loading">Opening the studio…</p></div>
+      ) : loadError ? (
+        <div className="ms-page"><ErrorState title="Could not load your shoots" description="Your shoots are safe — we just couldn’t fetch them right now." detail={loadError} onRetry={load} /></div>
       ) : projects.length === 0 ? (
         <div className="ms-stage ms-stage-empty" {...clickable(() => setShowNew(true))}>
           <div className="ms-hero-fallback" />

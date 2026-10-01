@@ -6,6 +6,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, FileText, Download, Loader, Sparkles, X } from 'lucide-react';
 import { mediaAPI, mediaUrl } from '../../../../../lib/api';
 import { clickable } from '@/lib/a11y';
+import ErrorState from '@/components/ui/ErrorState';
+import { isGone, loadErrorText } from '@/lib/loadFailure';
 
 const SLOTS = { single: 1, 'two-h': 2, 'two-v': 2, three: 3, grid4: 4 };
 const LAYOUT_OPTIONS = [['single', 'Single'], ['two-h', '2 across'], ['two-v', '2 stacked'], ['three', '3 across'], ['grid4', 'Grid of 4']];
@@ -40,6 +42,7 @@ export default function AlbumEditor() {
   const [assets, setAssets] = useState([]);
   const [active, setActive] = useState(null); // { pageId, index }
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [pdf, setPdf] = useState(null); // { status, url }
   const [adding, setAdding] = useState(false);
 
@@ -56,7 +59,7 @@ export default function AlbumEditor() {
       try {
         const [, a] = await Promise.all([refetch(), mediaAPI.listAssets(id, { limit: 500 })]);
         setAssets(a.data.assets || []);
-      } catch { router.push(`/studio/${id}/albums`); return; }
+      } catch (e) { if (isGone(e)) { router.push(`/studio/${id}/albums`); return; } setLoadError(loadErrorText(e)); setLoading(false); return; }
       setLoading(false);
     })();
   }, [id, albumId]);
@@ -109,6 +112,7 @@ export default function AlbumEditor() {
     } catch { setPdf({ status: 'failed' }); }
   };
 
+  if (loadError) return <div className="ms-page"><ErrorState title="Could not open this album" description="Your album is safe — we just couldn’t load it right now." detail={loadError} onRetry={() => window.location.reload()} /></div>;
   if (loading) return <><div style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</div></>;
 
   return (

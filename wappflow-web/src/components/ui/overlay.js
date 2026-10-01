@@ -56,6 +56,9 @@ export function useOverlayStack(active) {
   return isTop;
 }
 
+/** How many primitive overlays (Modal, Drawer, Sheet, confirm) are open right now. */
+export const openOverlayCount = () => stack.length;
+
 // ── Escape ──────────────────────────────────────────────────────────────────────────
 /** Escape closes the overlay — but only the top one, so nested overlays peel one by one. */
 export function useEscape(active, isTop, onEscape) {

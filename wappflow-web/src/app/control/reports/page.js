@@ -89,7 +89,7 @@ export default function Reports() {
       </Card>
 
       {showNew && (
-        <div onClick={() => setShowNew(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', zIndex: 100, padding: 20 }}>
+        <div data-dismiss onClick={() => setShowNew(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', zIndex: 100, padding: 20 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, background: 'var(--surface,#14141b)', border: '1px solid var(--border,#1e1e26)', borderRadius: 14, padding: 22 }}>
             <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700 }}>New report</h3>
             <label style={lbl}>Name</label>

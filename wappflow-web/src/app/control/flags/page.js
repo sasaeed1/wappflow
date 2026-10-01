@@ -2,8 +2,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ccApi } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
+import { usePrompt } from '@/lib/confirm';
 
 export default function Flags() {
+  const ask = usePrompt();
+  const prompt = (title, defaultValue = '') => ask({ title, defaultValue, required: false });
+
   const [flags, setFlags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -16,9 +20,9 @@ export default function Flags() {
 
   const act = async (fn) => { setBusy(true); try { await fn(); load(); } catch (e) { alert(e.response?.data?.error || 'Failed'); } setBusy(false); };
 
-  const newFlag = () => {
-    const key = prompt('Flag key (e.g. NEW_CULL_UI):'); if (!key) return;
-    const description = prompt('Description:', '') || '';
+  const newFlag = async () => {
+    const key = await prompt('Flag key (e.g. NEW_CULL_UI):'); if (!key) return;
+    const description = (await prompt('Description:', '')) || '';
     act(() => ccApi.createFlag({ key: key.trim(), description }));
   };
 
@@ -56,8 +60,8 @@ export default function Flags() {
             <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
               <button disabled={busy} onClick={() => act(() => ccApi.assignFlag(f.key, { scope: 'global', state: 1 }))} style={btn('#34d399', true)}>Enable globally</button>
               <button disabled={busy} onClick={() => act(() => ccApi.assignFlag(f.key, { scope: 'global', state: 0 }))} style={btn('#f87171', true)}>Disable globally</button>
-              <button disabled={busy} onClick={() => { const pct = parseInt(prompt('Rollout %?', String(f.rollout_pct)), 10); if (pct >= 0 && pct <= 100) act(() => ccApi.updateFlag(f.key, { rollout_pct: pct })); }} style={btn('#60a5fa', true)}>Set rollout %</button>
-              <button disabled={busy} onClick={() => { const ws = prompt('Workspace ID to enable for:'); if (ws) act(() => ccApi.assignFlag(f.key, { scope: 'workspace', scope_id: ws.trim(), state: 1 })); }} style={btn('#a78bfa', true)}>Enable for workspace…</button>
+              <button disabled={busy} onClick={async () => { const pct = parseInt(await prompt('Rollout %?', String(f.rollout_pct)), 10); if (pct >= 0 && pct <= 100) act(() => ccApi.updateFlag(f.key, { rollout_pct: pct })); }} style={btn('#60a5fa', true)}>Set rollout %</button>
+              <button disabled={busy} onClick={async () => { const ws = await prompt('Workspace ID to enable for:'); if (ws) act(() => ccApi.assignFlag(f.key, { scope: 'workspace', scope_id: ws.trim(), state: 1 })); }} style={btn('#a78bfa', true)}>Enable for workspace…</button>
             </div>
 
             {f.assignments?.length > 0 && (
