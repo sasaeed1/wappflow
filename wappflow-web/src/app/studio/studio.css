@@ -558,13 +558,20 @@ html[data-ms-theme="editorial"] .ms-ve { top: 64px; }
 .ms-ve-body { flex: 1; display: flex; min-height: 0; }
 .ms-ve-rail { width: 264px; flex-shrink: 0; border-right: 1px solid var(--ms-line); display: flex; flex-direction: column; min-height: 0; }
 .ms-ve-rail-h { padding: 12px 14px 8px; font-family: var(--ms-font-label); font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ms-ink-3); display: flex; justify-content: space-between; }
-.ms-ve-rail-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 0 10px 12px; align-content: start; }
+/* A wrapping flex row, not a grid: a %-width image inside a <button> grid item
+   contributes ~0 to the auto row's min-content size, so in this height-limited
+   scroller the rows collapsed and the tiles drew over one another. Flex items
+   get a definite width here, so the image's 3:4 height resolves. */
+.ms-ve-rail-grid { flex: 1; overflow-y: auto; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 7px; padding: 0 10px 12px; }
+.ms-ve-rail-grid > .ms-ve-tile { flex: 0 0 calc(50% - 3.5px); }
+.ms-ve-rail-grid > p { flex: 1 1 100%; }
 /* Portrait-friendly and UNCROPPED. These were square with object-fit:cover, so a
    9:16 wedding frame showed only a narrow band through its middle — you could not
    tell two shots apart, which is the whole job of this rail. `contain` letterboxes
    instead of hiding, and 3:4 wastes less space than a square on portrait work. */
-.ms-ve-tile { position: relative; aspect-ratio: 3 / 4; border-radius: 8px; overflow: hidden; border: 1px solid var(--ms-line); background: var(--ms-ink-soft); cursor: pointer; padding: 0; }
-.ms-ve-tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* The IMAGE carries the 3:4 ratio (see .ms-ve-rail-grid). */
+.ms-ve-tile { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--ms-line); background: var(--ms-ink-soft); cursor: pointer; padding: 0; }
+.ms-ve-tile img { width: 100%; height: auto; aspect-ratio: 3 / 4; object-fit: contain; display: block; }
 .ms-ve-tile:hover { border-color: var(--ms-accent); }
 .ms-ve-tile-badge { position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; border-radius: 5px; background: rgba(0,0,0,0.6); color: #fff; display: flex; align-items: center; justify-content: center; }
 .ms-ve-tile-add { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 300; color: #fff; background: rgba(12,12,16,0.45); opacity: 0; transition: opacity .15s; }
@@ -688,18 +695,92 @@ html[data-ms-theme="editorial"] .ms-ve { top: 64px; }
 @media (max-width: 880px) {
   .ms-ve-rail { width: 150px; } .ms-ve-insp { width: 200px; }
 }
-/* Phones — the 3-pane timeline editor stacks vertically instead of overflowing.
-   (A timeline editor is desktop-first; this keeps it usable + scroll-free horizontally.) */
+/* ═══ PHONE REEL EDITOR — dark, full-screen, thumb-first (≤640px) ════════════
+   The desktop's three panes (media rail · stage · inspector) don't fit a phone,
+   and stacking them buried the preview under a wall of thumbnails. On phones
+   the page renders: preview on top, a slim swipeable timeline, and a tool bar
+   (.mv-bar); the media library, clip inspector, tracks and format open as
+   bottom sheets (components/ui/Sheet, rendered inline so these tokens reach
+   them). The Studio tokens are remapped dark inside the editor so the
+   inspectors — which are token-driven — follow without per-control overrides. */
 @media (max-width: 640px) {
-  .ms-ve-body { flex-direction: column; min-height: 0; }
-  .ms-ve-rail, .ms-ve-insp { width: 100%; flex-shrink: 0; max-height: 34vh; border-right: none; border-left: none; border-bottom: 1px solid var(--ms-line); }
-  .ms-ve-rail-grid { grid-template-columns: repeat(3, 1fr); }
-  /* !important because the panel height is an inline style from the resize
-     state; on a narrow screen the stacked layout needs the fixed budget back. */
-  .ms-ve-timeline { height: 200px !important; }
-  /* No hover on touch, so track controls have to be permanently visible. */
-  .ms-ve-tl-hbtn { opacity: 1; }
+  .ms-ve {
+    top: 0 !important; z-index: 1150; background: #000;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    --ms-paper: #000; --ms-surface: #141417; --ms-surface-2: #1f1f24; --ms-ink: #f4f4f6; --ms-ink-2: rgba(255,255,255,0.78);
+    --ms-ink-3: rgba(255,255,255,0.5); --ms-ink-soft: #1a1a1e; --ms-line: rgba(255,255,255,0.1); --ms-accent: #ffffff; --ms-on-accent: #000;
+    --ms-panel-bg: #141417; color: var(--ms-ink);
+  }
+  .ms-ve-top { gap: 8px; padding: 10px 12px 6px; border-bottom: none; }
+  .ms-ve-icon { width: 40px; height: 40px; border-radius: 999px; border: none; background: rgba(255,255,255,0.12); color: #fff; }
+  .ms-ve-name { flex: 1; min-width: 0; max-width: none; font-size: 15px; font-weight: 700; padding: 6px 4px; color: #fff; }
+  .ms-ve-name:focus { background: rgba(255,255,255,0.08); border-color: transparent; }
+  .ms-ve-save { display: none; }
+  .ms-ve-top > div[style*="flex: 1"] { display: none; }
+  .ms-ve-pill { height: 40px; padding: 0 12px; border: none; background: rgba(255,255,255,0.12); color: #fff; font-size: 13px; }
+  .ms-ve-pill svg:last-child { display: none; }
+  .ms-ve-export { height: 40px; padding: 0 14px !important; border-radius: 999px !important; background: #fff !important; color: #000 !important; font-size: 13px !important; }
+  .ms-ve-export svg { display: none; }
+
+  .ms-ve-body { flex: 1; min-height: 0; }
+  .ms-ve-stage { background: #000; padding: 6px 12px; gap: 10px; }
+  .ms-ve-frame { border-radius: 12px; box-shadow: none; }
+  .ms-ve-transport { width: 100%; justify-content: center; gap: 14px; }
+  .ms-ve-play { width: 46px; height: 46px; }
+  .ms-ve-clock { font-size: 13px; }
+
+  /* !important: the panel height is inline state from the desktop resize grip */
+  .ms-ve-timeline { height: auto !important; min-height: 0; max-height: 34vh; background: #0b0b0d; border-top: 1px solid rgba(255,255,255,0.06); }
+  .ms-ve-tl-grip { display: none; }
+  .ms-ve-tl-scroll { padding: 14px 50vw 10px 12px; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .ms-ve-tl-scroll::-webkit-scrollbar { display: none; }
+  .ms-ve-tl-lane { background: rgba(255,255,255,0.04); border-radius: 8px; }
+  .ms-ve-clip { border-radius: 8px; cursor: pointer; }
+  .ms-ve-clip.is-sel { border-color: #fff; }
+  .ms-ve-handle { width: 18px; opacity: 0; touch-action: none; background: linear-gradient(#fff, #fff) center/3px 26px no-repeat; }
+  .ms-ve-clip.is-sel .ms-ve-handle { opacity: 1; }
+  .ms-ve-playhead { background: #fff; }
+  .ms-ve-playhead::before { border-top-color: #fff; }
+
+  .mv-bar { display: flex; gap: 2px; overflow-x: auto; padding: 8px 8px 10px; background: #000; flex-shrink: 0; scrollbar-width: none; }
+  .mv-bar::-webkit-scrollbar { display: none; }
+  .mv-tool { flex: 0 0 auto; min-width: 64px; height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+    border: none; border-radius: 14px; background: none; color: rgba(255,255,255,0.9); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .mv-tool span { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.65); }
+  .mv-tool:active { background: rgba(255,255,255,0.08); }
+  .mv-tool:disabled { opacity: 0.3; }
+  .mv-tool-main { color: #000; }
+  .mv-tool-main svg { background: #fff; border-radius: 999px; padding: 4px; width: 30px; height: 30px; }
+  .mv-tool-x { min-width: 52px; }
+  .mv-tool-danger, .mv-tool-danger span { color: #ff7b6e; }
+
+  /* studio dialogs opened from the full-screen editor sit above it */
+  .ms-modal-overlay { z-index: 1250; }
 }
+/* phone sheet contents (inline Sheets inside .ms-ve) */
+.mv-done { height: 34px; padding: 0 16px; border-radius: 999px; border: none; background: #fff; color: #000; font-size: 13px; font-weight: 700; cursor: pointer; }
+.mv-media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mv-media-grid .ms-ve-tile { border: none; border-radius: 10px; }
+.mv-media-grid .ms-ve-tile img { aspect-ratio: 1; object-fit: cover; }
+.mv-in-reel { position: absolute; right: 6px; bottom: 6px; width: 20px; height: 20px; border-radius: 999px; background: #fff; color: #000; display: grid; place-items: center; }
+.mv-empty { grid-column: 1 / -1; font-size: 13px; color: rgba(255,255,255,0.5); padding: 12px 0; }
+.mv-insp > div { padding: 0 !important; overflow: visible !important; }
+.mv-list { display: flex; flex-direction: column; gap: 4px; margin: 0 -6px; }
+.mv-track { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-radius: 12px; }
+.mv-track.is-muted { opacity: 0.5; }
+.mv-track-name { flex: 1; display: flex; flex-direction: column; font-size: 15px; font-weight: 600; }
+.mv-track-name small { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.5); }
+.mv-track button { width: 40px; height: 40px; border-radius: 999px; border: none; background: rgba(255,255,255,0.08); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.mv-sheet-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.45); margin: 16px 0 8px; }
+.mv-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.mv-chips button { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: none; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.mv-row { display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 10px; border: none; border-radius: 12px; background: none; color: rgba(255,255,255,0.85); cursor: pointer; text-align: left; }
+.mv-row.is-active { background: rgba(255,255,255,0.1); color: #fff; }
+.mv-row b { font-size: 15px; width: 44px; }
+.mv-row small { flex: 1; font-size: 13px; color: rgba(255,255,255,0.5); }
+.mv-ratio-box { width: 40px; display: flex; justify-content: center; flex-shrink: 0; }
+.mv-ratio { height: 22px; width: auto; max-width: 40px; border: 2px solid currentColor; border-radius: 4px; }
+.mv-track .ms-ve-tl-dot, .mv-chips .ms-ve-tl-dot { box-shadow: 0 0 0 1.5px rgba(255,255,255,0.35); }
 
 /* ═══ IMMERSIVE HOME — full-bleed cinematic stage → edge-to-edge wall ═══════ */
 /* You don't land on a dashboard. You land INSIDE the latest shoot: it fills the
@@ -825,3 +906,127 @@ html[data-ms-theme="editorial"] .ms-wall-head { flex-direction: column; align-it
 .ms-gp-mark { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: rgba(12,12,16,0.55); color: #fff; }
 .ms-gp-tile.in .ms-gp-mark { background: var(--ms-accent); color: var(--ms-on-accent); }
 .ms-gp-vid { position: absolute; top: 6px; left: 6px; width: 20px; height: 20px; border-radius: 6px; background: rgba(0,0,0,0.6); color: #fff; display: grid; place-items: center; }
+
+/* ═══ PHONE CULLING — full-screen, gesture-first (≤640px) ════════════════════
+   The cull page renders a separate phone layout (mobileView in cull/page.js):
+   the photo is the whole screen, the app shell and floating assistants are
+   covered, and every secondary control lives in a bottom sheet. Black canvas,
+   white type, frosted round controls — the camera-roll / stories idiom. */
+.mc-root { position: fixed; inset: 0; z-index: 1150; background: #000; color: #fff; display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); font-family: var(--ms-font-ui);
+  -webkit-tap-highlight-color: transparent; user-select: none; overscroll-behavior: none; }
+.mc-top { display: flex; align-items: center; gap: 10px; padding: 10px 12px 8px; flex-shrink: 0; }
+.mc-round { position: relative; width: 40px; height: 40px; flex-shrink: 0; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(255,255,255,0.12); color: #fff; display: grid; place-items: center; backdrop-filter: blur(12px); }
+.mc-round:active { transform: scale(0.94); }
+.mc-dot { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 99px; background: #4fd1a5; }
+.mc-title { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.mc-title b { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-title span { font-size: 11.5px; color: rgba(255,255,255,0.55); font-variant-numeric: tabular-nums; }
+.mc-pill { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(255,255,255,0.12); color: #fff; font-size: 13.5px; font-weight: 700; }
+.mc-pill-solid { background: #fff; color: #000; min-width: 76px; justify-content: center; }
+.mc-pill-solid:disabled { opacity: 0.35; }
+.mc-progress { height: 2px; margin: 0 14px 4px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; flex-shrink: 0; }
+.mc-progress span { display: block; height: 100%; background: #fff; transition: width .3s ease; }
+
+.mc-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 4px 8px; }
+.mc-stage img { border-radius: 4px; box-shadow: none !important; }
+.mc-empty { flex: 1; display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center; color: rgba(255,255,255,0.55); font-size: 14px; }
+.mc-badge { position: absolute; top: 12px; left: 16px; padding: 4px 10px; border-radius: 999px; color: #fff; font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; pointer-events: none; }
+.mc-badge-r { left: auto; right: 16px; background: rgba(194,168,120,0.9); display: inline-flex; align-items: center; gap: 4px; letter-spacing: 0.02em; }
+.mc-swipe-tag { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+  border-radius: 999px; font-size: 14px; font-weight: 800; letter-spacing: 0.1em; pointer-events: none; }
+.mc-swipe-tag.is-keep { background: #2f9e6e; }
+.mc-swipe-tag.is-reject { background: #d4564a; }
+.mc-flash { position: absolute; left: 50%; top: 50%; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 999px; display: grid; place-items: center;
+  color: #fff; pointer-events: none; animation: mc-flash .6s cubic-bezier(.2,.8,.2,1) forwards; }
+.mc-flash.is-keep { background: rgba(47,158,110,0.92); }
+.mc-flash.is-reject { background: rgba(212,86,74,0.92); }
+.mc-flash.is-maybe { background: rgba(211,154,62,0.92); }
+@keyframes mc-flash { 0% { opacity: 0; transform: scale(0.6); } 30% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.15); } }
+
+.mc-film { display: flex; gap: 4px; overflow-x: auto; padding: 8px 12px; flex-shrink: 0; scrollbar-width: none; }
+.mc-film::-webkit-scrollbar { display: none; }
+.mc-film button { position: relative; flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border: none; border-radius: 8px; overflow: hidden; background: #1a1a1d; cursor: pointer; opacity: 0.6; transition: opacity .15s, transform .15s; }
+.mc-film button.is-active { opacity: 1; outline: 2px solid #fff; outline-offset: -2px; transform: scale(1.06); }
+.mc-film img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mc-film i { position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-radius: 99px; border: 1.5px solid #000; }
+
+.mc-actions { display: flex; align-items: center; justify-content: space-between; padding: 6px 18px 14px; flex-shrink: 0; }
+.mc-act { width: 64px; height: 64px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color: #fff;
+  display: grid; place-items: center; cursor: pointer; transition: transform .12s ease, background .15s ease, border-color .15s ease; }
+.mc-act:active { transform: scale(0.9); }
+.mc-act-mid { width: 50px; height: 50px; }
+.mc-act.is-reject { color: #ff7b6e; }
+.mc-act.is-maybe { color: #f0b85a; }
+.mc-act.is-keep { color: #5fd9a3; }
+.mc-act.is-reject.is-on { background: #d4564a; border-color: #d4564a; color: #fff; }
+.mc-act.is-maybe.is-on { background: #d39a3e; border-color: #d39a3e; color: #fff; }
+.mc-act.is-keep.is-on { background: #2f9e6e; border-color: #2f9e6e; color: #fff; }
+.mc-act-sm { width: 52px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; color: rgba(255,255,255,0.8); cursor: pointer; padding: 0; }
+.mc-act-sm span { font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,0.6); }
+
+/* phone editor */
+.mc-edit { flex-shrink: 0; padding: 8px 0 12px; display: flex; flex-direction: column; gap: 12px; background: #000; }
+.mc-seg { display: flex; gap: 4px; margin: 0 16px; padding: 4px; border-radius: 999px; background: rgba(255,255,255,0.08); }
+.mc-seg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 34px; border: none; border-radius: 999px; background: none; color: rgba(255,255,255,0.6); font-size: 13px; font-weight: 600; cursor: pointer; }
+.mc-seg button.is-active { background: #fff; color: #000; }
+.mc-presets { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px; scrollbar-width: none; }
+.mc-presets::-webkit-scrollbar { display: none; }
+.mc-presets button { flex: 0 0 auto; width: 70px; padding: 0; border: none; background: none; color: rgba(255,255,255,0.65); cursor: pointer; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.mc-presets img { width: 70px; height: 70px; object-fit: cover; border-radius: 10px; border: 2px solid transparent; display: block; }
+.mc-presets button.is-active { color: #fff; }
+.mc-presets button.is-active img { border-color: #fff; }
+.mc-presets span { font-size: 11px; font-weight: 600; max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-adj-row { display: flex; gap: 6px; overflow-x: auto; padding: 0 16px; scrollbar-width: none; }
+.mc-adj-row::-webkit-scrollbar { display: none; }
+.mc-adj { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14); background: none; color: rgba(255,255,255,0.7); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.mc-adj.is-active { background: #fff; color: #000; border-color: #fff; }
+.mc-adj.is-set:not(.is-active)::after { content: ''; position: absolute; top: 5px; right: 6px; width: 5px; height: 5px; border-radius: 99px; background: #e6b455; }
+.mc-adj.is-ai { color: #bcd4ff; border-color: rgba(120,160,255,0.4); }
+.mc-slider { display: flex; align-items: center; gap: 12px; padding: 4px 20px; }
+.mc-slider span { font-size: 12px; color: rgba(255,255,255,0.55); width: 72px; }
+.mc-slider input { flex: 1; accent-color: #fff; height: 28px; }
+.mc-slider b { width: 44px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+.mc-edit-hint { margin: 6px 20px; font-size: 13px; color: rgba(255,255,255,0.6); text-align: center; }
+.mc-edit-foot { display: flex; justify-content: space-around; padding: 2px 12px 0; }
+.mc-edit-foot button { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: none; border-radius: 999px; background: none; color: rgba(255,255,255,0.75); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.mc-edit-foot button.is-on { background: rgba(255,255,255,0.14); color: #fff; }
+.mc-edit-foot button:disabled { opacity: 0.3; }
+.mc-busy { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.55); font-size: 14px; }
+.mc-toast { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 50%; transform: translateX(-50%); z-index: 6; padding: 9px 16px; border-radius: 999px; background: rgba(40,40,46,0.95); font-size: 13px; white-space: nowrap; }
+
+/* sheet contents (dark sheets from components/ui/Sheet.js) */
+.mc-list { display: flex; flex-direction: column; margin: 0 -8px 8px; }
+.mc-list button { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 12px; border: none; border-radius: 12px; background: none; color: rgba(255,255,255,0.85); font-size: 15px; font-weight: 500; cursor: pointer; }
+.mc-list button.is-active { background: rgba(255,255,255,0.1); color: #fff; font-weight: 700; }
+.mc-list button span { display: inline-flex; align-items: center; gap: 10px; }
+.mc-list button i { width: 8px; height: 8px; border-radius: 99px; }
+.mc-list button b { font-size: 13px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+.mc-sheet-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.45); margin: 10px 0 8px; }
+.mc-chiprow { display: flex; flex-wrap: wrap; gap: 8px; }
+.mc-chiprow button { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: none; color: rgba(255,255,255,0.8); font-size: 13px; font-weight: 600; cursor: pointer; }
+.mc-chiprow button.is-active { background: #fff; color: #000; border-color: #fff; }
+.mc-chiprow button:disabled { opacity: 0.35; }
+.mc-toggle { width: 100%; display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 12px 14px; border-radius: 14px; border: none; background: rgba(255,255,255,0.06); color: #fff; text-align: left; cursor: pointer; }
+.mc-toggle span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.mc-toggle b { font-size: 14px; }
+.mc-toggle small { font-size: 11.5px; color: rgba(255,255,255,0.5); }
+.mc-toggle i { width: 42px; height: 26px; border-radius: 99px; background: rgba(255,255,255,0.2); position: relative; flex-shrink: 0; transition: background .15s; }
+.mc-toggle i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 99px; background: #fff; transition: transform .15s; }
+.mc-toggle.is-on i { background: #2f9e6e; }
+.mc-toggle.is-on i::after { transform: translateX(16px); }
+.mc-sheet-note { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: rgba(255,255,255,0.5); margin: 16px 0 0; line-height: 1.5; }
+.mc-stars { display: flex; justify-content: center; gap: 10px; margin: 0 0 16px; }
+.mc-stars button { background: none; border: none; padding: 2px; cursor: pointer; }
+@media (max-width: 640px) {
+  /* studio dialogs opened from a full-screen phone surface must sit above it */
+  .ms-modal-overlay { z-index: 1250; }
+}
+/* Sheets portal to <body>, outside .ms-root's tokens — the shared panel body
+   (infoPanel) gets self-contained versions of the Studio controls it uses. */
+.mc-sheet-scope .ms-hud-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.45); }
+.mc-sheet-scope .ms-btn-ghost { display: inline-flex; align-items: center; gap: 6px; height: 40px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.16);
+  background: none; color: rgba(255,255,255,0.88); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
