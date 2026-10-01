@@ -267,7 +267,7 @@ export default function KnowledgePage() {
         <div className="r-pad" style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
 
           {/* Header */}
-          <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+          <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28, gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 52, height: 52, borderRadius: 16, background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Brain size={26} color="white" />
@@ -277,8 +277,8 @@ export default function KnowledgePage() {
                 <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: 0 }}>Teach your AI about your business — it learns and remembers</p>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={handleLearnFromMessages} disabled={learning} style={{
+            <div className="r-full" style={{ display: 'flex', gap: 10 }}>
+              <button className="kb-head-btn" onClick={handleLearnFromMessages} disabled={learning} style={{
                 display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px',
                 borderRadius: 12, border: '1.5px solid #c4b5fd', background: 'rgba(139,92,246,0.10)',
                 color: '#7c3aed', fontWeight: 700, cursor: learning ? 'not-allowed' : 'pointer', fontSize: 13
@@ -288,7 +288,7 @@ export default function KnowledgePage() {
               </button>
               <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileUpload}
                 accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{
+              <button className="kb-head-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{
                 display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px',
                 borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
                 color: 'white', fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', fontSize: 13,
@@ -301,19 +301,19 @@ export default function KnowledgePage() {
           </div>
 
           {/* Stats row */}
-          <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
+          <div className="kb-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14, marginBottom: 24 }}>
             {[
               { label: 'Documents', value: documents.length, icon: FileText, color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
               { label: 'Memories', value: memories.length, icon: Database, color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
               { label: 'Auto-Learned', value: memories.filter(m => m.source !== 'manual').length, icon: Sparkles, color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
             ].map(s => (
-              <div key={s.label} style={{ background: 'var(--surface)', borderRadius: 16, padding: '18px 20px', border: '1.5px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div key={s.label} className="kb-stat" style={{ background: 'var(--surface)', borderRadius: 16, padding: '18px 20px', border: '1.5px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+                <div className="kb-stat-icon" style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <s.icon size={20} color={s.color} />
                 </div>
-                <div>
-                  <p style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: 0, lineHeight: 1 }}>{s.value}</p>
-                  <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0, marginTop: 3 }}>{s.label}</p>
+                <div style={{ minWidth: 0 }}>
+                  <p className="kb-stat-value" style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: 0, lineHeight: 1 }}>{s.value}</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</p>
                 </div>
               </div>
             ))}

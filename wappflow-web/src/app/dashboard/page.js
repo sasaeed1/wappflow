@@ -446,7 +446,7 @@ function KanbanColumn({ column, leads, onLeadClick, allTags, onTagToggle, newLea
   // (root gets r-kanban-col so columns stay a usable width and the board scrolls sideways on phones)
   return (
     <div className="r-kanban-col" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ position: 'sticky', top: 117, zIndex: 30, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '6px 4px' }}>
+      <div className="dash-col-head" style={{ position: 'sticky', top: 'calc(var(--shell-h) + 57px)', zIndex: 30, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '6px 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: column.color, boxShadow: `0 0 6px ${column.color}66` }} />
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{column.label}</span>
@@ -905,9 +905,9 @@ export default function DashboardPage() {
       )}
 
       {/* ── DASHBOARD SUB-HEADER (page-specific actions) ── */}
-      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 60, zIndex: 40 }}>
-        <div className="r-toolbar" style={{ maxWidth: 1600, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 56, gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+      <div className="wf-subbar" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 'var(--shell-h)', zIndex: 40 }}>
+        <div className="r-toolbar dash-subbar-row" style={{ maxWidth: 1600, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 56, gap: 12, flexWrap: 'wrap' }}>
+          <div className="dash-subbar-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <LayoutGrid size={14} color="white" />
             </div>
@@ -916,7 +916,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Search */}
-          <div style={{ flex: 1, maxWidth: 380, position: 'relative', minWidth: 200 }}>
+          <div className="dash-subbar-search" style={{ flex: 1, maxWidth: 380, position: 'relative', minWidth: 200 }}>
             <Search style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--text-dim)' }} />
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search leads…"
@@ -924,7 +924,7 @@ export default function DashboardPage() {
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <div className="dash-subbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
               title={soundEnabled ? 'Mute notifications' : 'Unmute notifications'}
@@ -932,10 +932,10 @@ export default function DashboardPage() {
             >
               {soundEnabled ? <Volume2 style={{ width: 14, height: 14 }} /> : <VolumeX style={{ width: 14, height: 14 }} />}
             </button>
-            <button onClick={() => setShowBulkUpload(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', background: 'rgba(16,185,129,0.12)', border: '1.5px solid #bbf7d0', borderRadius: 9, color: '#16a34a', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            <button className="dash-subbar-btn" onClick={() => setShowBulkUpload(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '7px 14px', background: 'rgba(16,185,129,0.12)', border: '1.5px solid #bbf7d0', borderRadius: 9, color: '#16a34a', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               <Upload style={{ width: 14, height: 14 }} /> Import CSV
             </button>
-            <button onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
+            <button className="dash-subbar-btn" onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 16px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
               <Plus style={{ width: 15, height: 15 }} /> New Lead
             </button>
           </div>
@@ -946,24 +946,24 @@ export default function DashboardPage() {
       <main style={{ maxWidth: 1600, margin: '0 auto', padding: '20px' }}>
 
         {/* ── STAT CARDS ── */}
-        <div className="dash-stats-3 r-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
+        <div className="dash-stats-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
           {[
             { label: 'Total Leads',  value: analytics?.total_leads || 0,                              icon: Users,        color: '#6366f1', bg: 'rgba(99,102,241,0.12)', trend: '+' + (analytics?.leads_today || 0) + ' today' },
             { label: 'Conversion',   value: `${analytics?.conversion_rate || 0}%`,                    icon: Target,       color: '#10b981', bg: 'rgba(16,185,129,0.10)', trend: 'Won / Total' },
             { label: 'New Today',    value: analytics?.leads_today || 0,                               icon: Activity,     color: '#06b6d4', bg: 'rgba(6,182,212,0.10)', trend: 'Incoming leads' },
           ].map(({ label, value, icon: Icon, color, bg, trend }) => (
-            <div key={label} style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '20px 22px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div key={label} className="dash-stat" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '20px 22px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', minWidth: 0 }}>
+              <div className="dash-stat-top" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <div className="dash-stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon style={{ width: 18, height: 18, color }} />
                 </div>
-                <span style={{ fontSize: 11, color: sseConnected ? '#10b981' : '#f59e0b', fontWeight: 700, background: sseConnected ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', padding: '3px 8px', borderRadius: 20 }}>
+                <span className="dash-stat-live" style={{ fontSize: 11, color: sseConnected ? '#10b981' : '#f59e0b', fontWeight: 700, background: sseConnected ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', padding: '3px 8px', borderRadius: 20 }}>
                   {sseConnected ? 'Live' : 'Offline'}
                 </span>
               </div>
-              <p style={{ fontSize: 11, color: 'var(--text-dim)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
-              <p style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: '0 0 4px' }}>{value}</p>
-              <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{trend}</p>
+              <p className="dash-stat-label" style={{ fontSize: 11, color: 'var(--text-dim)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
+              <p className="dash-stat-value" style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: '0 0 4px' }}>{value}</p>
+              <p className="dash-stat-trend" style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>{trend}</p>
             </div>
           ))}
         </div>
@@ -1167,8 +1167,8 @@ export default function DashboardPage() {
         </div>
 
         {/* ── PLATFORM FILTER ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', marginRight: 4 }}>Platform:</span>
+        <div className="r-chips" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          <span className="r-hide" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', marginRight: 4 }}>Platform:</span>
           {[
             { id: 'all',       label: 'All Platforms', color: '#6366f1', icon: Layers },
             { id: 'whatsapp',  label: 'WhatsApp',      color: '#25d366', icon: MessageCircle },

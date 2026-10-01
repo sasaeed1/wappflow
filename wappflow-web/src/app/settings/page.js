@@ -13,6 +13,7 @@ import {
   Plug, Calendar, Video, Volume2, Play
 } from 'lucide-react';
 import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, auditAPI, BASE_URL } from '../../lib/api';
+import { useScrollActiveIntoView } from '@/lib/sidenav';
 import { Send as SendIcon } from 'lucide-react';
 import { useConfirm } from '@/lib/confirm';
 import { toast } from '@/components/ui/Toast';
@@ -1882,7 +1883,10 @@ function ConnectionsTab({ showToast }) {
               </div>
               <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>No {activeDef.label} accounts yet</p>
               <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-                {activeDef.id === 'whatsapp' ? `Link up to ${platformLimit(activeDef.id) === -1 ? '5' : platformLimit(activeDef.id)} WhatsApp number${platformLimit(activeDef.id) === 1 ? '' : 's'}. Each gets its own QR code.` : `Add up to ${platformLimit(activeDef.id)} accounts to capture leads from ${activeDef.label}`}
+                {platformLimit(activeDef.id) == null
+                  // plan still loading — don't render "up to undefined"
+                  ? (activeDef.id === 'whatsapp' ? 'Link your WhatsApp numbers. Each gets its own QR code.' : `Add accounts to capture leads from ${activeDef.label}`)
+                  : activeDef.id === 'whatsapp' ? `Link up to ${platformLimit(activeDef.id) === -1 ? '5' : platformLimit(activeDef.id)} WhatsApp number${platformLimit(activeDef.id) === 1 ? '' : 's'}. Each gets its own QR code.` : `Add up to ${platformLimit(activeDef.id)} accounts to capture leads from ${activeDef.label}`}
               </p>
               <button onClick={() => handleAddAccount(activeDef.id)} disabled={creating || platformAtLimit(activeDef.id)} style={{ padding: '10px 22px', background: platformAtLimit(activeDef.id) ? 'rgba(255,255,255,0.06)' : activeDef.color, color: platformAtLimit(activeDef.id) ? 'var(--text-muted)' : 'white', border: platformAtLimit(activeDef.id) ? '1px solid var(--border)' : 'none', borderRadius: 11, fontWeight: 700, fontSize: 13, cursor: platformAtLimit(activeDef.id) ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
                 {platformAtLimit(activeDef.id) ? <Lock size={14} /> : <Plus size={14} />}
@@ -2370,6 +2374,8 @@ export default function SettingsPage() {
   // Reset scroll to the top whenever the tab changes — otherwise switching from a
   // long tab to a short one (e.g. Data & Privacy) lands you in dead space.
   useEffect(() => { if (typeof window !== 'undefined') window.scrollTo({ top: 0 }); }, [activeTab]);
+  const sideNavRef = useRef(null);
+  useScrollActiveIntoView(sideNavRef, activeTab);
 
   const fetchCompany = async () => {
     try {
@@ -2403,17 +2409,17 @@ export default function SettingsPage() {
 
 
 
-      <div className="r-col" style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px', display: 'flex', gap: 24 }}>
+      <div className="wf-sidenav-layout" style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px', display: 'flex', gap: 24 }}>
 
-        {/* Sidebar */}
-        <div className="r-full" style={{ width: 220, flexShrink: 0 }}>
-          <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 10, boxShadow: 'var(--shadow)', position: 'sticky', top: 24 }}>
+        {/* Sidebar — a swipeable tab strip on phones (.wf-sidenav, globals.css) */}
+        <nav aria-label="Settings sections" className="wf-sidenav-wrap" style={{ width: 220, flexShrink: 0 }}>
+          <div ref={sideNavRef} className="wf-sidenav" style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 10, boxShadow: 'var(--shadow)', position: 'sticky', top: 24 }}>
             {TABS.map(tab => {
               const active = activeTab === tab.id;
               const gate = TAB_GATING[tab.id];
               const locked = gate && !plan.hasFeature(gate.feature);
               return (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} aria-current={active ? 'page' : undefined} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
                   borderRadius: 12, border: 'none', background: active ? tab.color + '18' : 'transparent',
                   color: active ? tab.color : (locked ? 'var(--text-muted)' : 'var(--text-muted)'), fontWeight: active ? 700 : 600, fontSize: 13,
@@ -2430,7 +2436,7 @@ export default function SettingsPage() {
               );
             })}
 
-            <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
+            <div className="wf-sidenav-sep" style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
 
             <button onClick={() => router.push('/team')} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
@@ -2452,10 +2458,10 @@ export default function SettingsPage() {
               <FileText size={16} /> Reports
             </button>
           </div>
-        </div>
+        </nav>
 
         {/* Content */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="wf-sidenav-content" style={{ flex: 1, minWidth: 0 }}>
           {loading ? (
             <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>Loading settings...</div>
           ) : activeTabLocked ? (

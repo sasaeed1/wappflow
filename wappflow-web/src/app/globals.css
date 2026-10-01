@@ -414,8 +414,31 @@ select option {
   .dash-stats-3 { grid-template-columns: repeat(2, 1fr) !important; }
   .dash-main { grid-template-columns: 1fr !important; }
 }
-@media (max-width: 540px) {
-  .dash-stats-3 { grid-template-columns: 1fr !important; }
+@media (max-width: 640px) {
+  /* Three KPI tiles side by side, compact — stacked full-width they cost a
+     whole screen of scrolling before any real content. */
+  .dash-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; margin-bottom: 14px !important; }
+  .dash-stat { padding: 12px !important; border-radius: 14px !important; }
+  .dash-stat-top { margin-bottom: 8px !important; }
+  .dash-stat-icon { width: 30px !important; height: 30px !important; border-radius: 9px !important; }
+  .dash-stat-live { display: none !important; }
+  .dash-stat-label { font-size: 9.5px !important; letter-spacing: 0.3px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-stat-value { font-size: 20px !important; }
+  .dash-stat-trend { font-size: 10px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Page action bars (.wf-subbar — Dashboard, Reports): once wrapped onto
+     phone rows they covered a third of the screen and slid over the content
+     beneath them. On phones they scroll away with the page. The Dashboard's
+     lays out as title / actions / full-width search. */
+  .wf-subbar { position: static !important; }
+  .dash-subbar-row { padding: 12px 14px !important; gap: 10px !important; }
+  .dash-subbar-title { flex: 1 1 auto !important; }
+  .dash-subbar-search { flex: 1 1 100% !important; max-width: none !important; min-width: 0 !important; order: 3; }
+  .dash-subbar-actions { margin-left: 0 !important; order: 2; }
+  .dash-subbar-btn { padding: 8px 12px !important; }
+  /* Kanban columns scroll sideways on phones; a sticky column title only
+     floated over the middle of the cards below it. */
+  .dash-col-head { position: static !important; }
 }
 
 /* Generic page container — adds reasonable padding on mobile */
@@ -474,6 +497,111 @@ select option {
   .wf-fab-studio  { bottom: 14px !important; right: 14px !important; }
   .wf-page        { padding-bottom: 132px !important; }
 }
+/* ── Swipeable chip rows ──────────────────────────────────────────────────────
+   Filter / status chips that wrap onto three or four lines on a phone. One row
+   that scrolls sideways keeps them reachable without eating the screen. */
+@media (max-width: 640px) {
+  .r-chips {
+    flex-wrap: nowrap !important; overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px;
+    scroll-padding-inline: 14px;
+  }
+  .r-chips::-webkit-scrollbar { display: none; }
+  .r-chips > * { flex-shrink: 0 !important; white-space: nowrap; }
+}
+
+/* ── Section side-nav → top tab strip (Settings, Help) ───────────────────────
+   Desktop: a sticky vertical list beside the content. On a phone the same list
+   used to stack ABOVE the content as a 20-row card — you scrolled a full screen
+   to reach the section you had just picked. It becomes a sticky, swipeable strip
+   of tabs under the app header instead; the active tab is scrolled into view by
+   the page (see scrollActiveIntoView in lib/sidenav.js). */
+@media (max-width: 860px) {
+  .wf-sidenav-layout { flex-direction: column !important; gap: 14px !important; padding: 0 0 24px !important; }
+  .wf-sidenav-wrap {
+    width: auto !important; position: sticky !important; top: var(--shell-h) !important;
+    z-index: 20; margin: 0 !important; align-self: stretch;
+    background: var(--bg);
+  }
+  .wf-sidenav {
+    display: flex !important; gap: 6px !important; overflow-x: auto; overflow-y: hidden;
+    padding: 10px 14px !important; border: none !important; border-bottom: 1px solid var(--border) !important;
+    border-radius: 0 !important; box-shadow: none !important; position: static !important;
+    background: var(--bg) !important; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    scroll-padding-inline: 14px;
+  }
+  .wf-sidenav::-webkit-scrollbar { display: none; }
+  .wf-sidenav > button, .wf-sidenav > a {
+    width: auto !important; flex: 0 0 auto !important; margin: 0 !important;
+    padding: 8px 13px !important; border-radius: 999px !important; white-space: nowrap;
+    border: 1px solid var(--border) !important; background: var(--surface);
+  }
+  .wf-sidenav > button[aria-current="page"] { border-color: transparent !important; }
+  .wf-sidenav-sep { display: none !important; }
+  .wf-sidenav-content { padding: 0 14px !important; }
+}
+
+/* Help centre on phones: a shorter hero, and a section header whose article
+   count drops under the title instead of squeezing it into three lines. */
+@media (max-width: 640px) {
+  .help-hero { padding: 28px 16px !important; }
+  .help-hero-title { font-size: 26px !important; }
+  .help-sec-head { padding: 14px !important; gap: 12px !important; margin-bottom: 14px !important; flex-wrap: wrap; }
+  .help-sec-icon { width: 40px !important; height: 40px !important; border-radius: 12px !important; }
+  .help-sec-text { flex: 1 1 calc(100% - 56px) !important; }
+  .help-sec-text h2 { font-size: 18px !important; }
+  .help-sec-count { margin-left: 52px !important; font-size: 12px !important; padding: 3px 10px !important; }
+}
+
+/* ── All Leads on phones ───────────────────────────────────────────────────────
+   The nine-column table was forced to 760px and scrolled sideways, so on a phone
+   you saw a truncated name, half a phone number and a status cut in two. Each
+   row becomes a card instead: name, channel and last activity on the left,
+   status and message count on the right. Phone, tags, owner and value stay one
+   tap away on the lead itself. */
+@media (max-width: 640px) {
+  .ll-head { padding: 12px 14px !important; row-gap: 10px !important; }
+  .ll-head-actions { width: 100%; }
+  .ll-head-actions > button { flex: 1 1 0; justify-content: center; padding: 9px 10px !important; white-space: nowrap; }
+  .ll-main { padding: 14px !important; }
+
+  .r-tw.wf-lead-head, .r-tw.wf-lead-row { min-width: 0 !important; }
+  .wf-lead-head { grid-template-columns: 28px minmax(0, 1fr) !important; padding: 10px 12px !important; }
+  .wf-lead-head > :nth-child(n+3) { display: none !important; }
+  .wf-lead-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto !important;
+    column-gap: 8px; row-gap: 4px; padding: 10px 12px !important;
+    height: 68px; box-sizing: border-box; overflow: hidden; align-content: center;
+  }
+  .wf-lead-row > :nth-child(1) { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+  .wf-lead-row > :nth-child(2) { grid-column: 2; grid-row: 1 / span 2; }
+  .wf-lead-row > :nth-child(4) { grid-column: 3; grid-row: 1; align-items: flex-end !important; }
+  .wf-lead-row > :nth-child(5) { grid-column: 3; grid-row: 2; justify-self: end; }
+  .wf-lead-row > :nth-child(3), .wf-lead-row > :nth-child(n+6) { display: none !important; }
+}
+
+/* Knowledge base KPIs: three across, icon above the number, on phones. */
+@media (max-width: 640px) {
+  .kb-stats { gap: 8px !important; margin-bottom: 16px !important; }
+  .kb-stat { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; padding: 12px !important; border-radius: 14px !important; }
+  .kb-stat-icon { width: 32px !important; height: 32px !important; border-radius: 10px !important; }
+  .kb-stat-value { font-size: 20px !important; }
+  .kb-head-btn { flex: 1 1 0; justify-content: center; padding: 10px 12px !important; }
+}
+
+/* Reports on phones: toolbar wraps (title, then the range pickers), the tab
+   row swipes instead of pushing the page 50px wider, and the custom-range
+   popover is pinned inside the screen instead of hanging off its left edge. */
+@media (max-width: 640px) {
+  .rp-toolbar { padding: 12px 14px !important; row-gap: 10px !important; }
+  .rp-title { flex: 1 1 100% !important; }
+  .rp-ranges { flex-wrap: wrap; }
+  .rp-custom-pop { position: fixed !important; left: 12px !important; right: 12px !important; top: auto !important; min-width: 0 !important; margin-top: 8px; }
+  .rp-tabs { padding: 0 14px !important; margin: 0 !important; }
+  .rp-main { padding: 16px 14px !important; }
+}
+
 /* Tablet step for very wide multi-col grids */
 @media (max-width: 900px) {
   .r-stack-tablet { grid-template-columns: minmax(0, 1fr) !important; }
