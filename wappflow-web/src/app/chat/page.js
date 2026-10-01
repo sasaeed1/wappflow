@@ -78,8 +78,8 @@ function EmojiPicker({ onPick, onClose }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
   return (
-    <div ref={ref} style={{ position: 'absolute', bottom: '100%', right: 0, marginBottom: 8, background: 'var(--surface)', border: '1.5px solid #e5e7eb', borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.15)', width: 340, maxHeight: 360, display: 'flex', flexDirection: 'column', zIndex: 100, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', overflowX: 'auto' }}>
+    <div ref={ref} style={{ position: 'absolute', bottom: '100%', right: 0, marginBottom: 8, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.15)', width: 340, maxHeight: 360, display: 'flex', flexDirection: 'column', zIndex: 100, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
         {Object.keys(EMOJI_CATEGORIES).map(cat => (
           <button key={cat} onClick={() => setActiveCat(cat)} style={{ padding: '8px 12px', fontSize: 11, fontWeight: activeCat === cat ? 700 : 600, color: activeCat === cat ? '#6366f1' : '#6b7280', background: activeCat === cat ? 'rgba(99,102,241,0.12)' : 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', borderBottom: `2px solid ${activeCat === cat ? '#6366f1' : 'transparent'}` }}>
             {cat}
@@ -105,7 +105,7 @@ function ChannelModal({ onSave, onClose }) {
   const [desc, setDesc] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div data-dismiss onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 18, padding: 28, width: 440, boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Create Channel</h3>
@@ -113,7 +113,7 @@ function ChannelModal({ onSave, onClose }) {
         </div>
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Channel Name</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', focus: 'outline:none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1.5px solid var(--border)', borderRadius: 10, padding: '8px 12px', focus: 'outline:none' }}>
             <Hash size={14} color="#9ca3af" />
             <input value={name} onChange={e => setName(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
               placeholder="channel-name" style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, color: 'var(--text)' }} />
@@ -122,7 +122,7 @@ function ChannelModal({ onSave, onClose }) {
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Description (optional)</label>
           <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="What's this channel for?"
-            style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }} />
+            style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }} />
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 20 }}>
           <div style={{ width: 36, height: 20, borderRadius: 10, background: isPrivate ? '#6366f1' : 'var(--border)', position: 'relative', transition: 'background 0.2s', cursor: 'pointer' }}
@@ -132,7 +132,7 @@ function ChannelModal({ onSave, onClose }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{isPrivate ? <><Lock size={12} style={{ display: 'inline', marginRight: 4 }} />Private channel</> : 'Public channel'}</span>
         </label>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '10px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)' }}>Cancel</button>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--surface)', color: 'var(--text)' }}>Cancel</button>
           <button onClick={() => name && onSave({ name, description: desc, is_private: isPrivate })} disabled={!name}
             style={{ flex: 2, padding: '10px', background: name ? 'linear-gradient(135deg, #6366f1, #4f46e5)' : 'var(--border)', color: name ? 'white' : '#9ca3af', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: name ? 'pointer' : 'not-allowed' }}>
             Create Channel
@@ -213,10 +213,10 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
         {msg.media_url && (
           <div style={{ marginTop: 4 }}>
             {msg.media_type === 'image' ? (
-              <img src={msg.media_url} alt={msg.body} style={{ maxWidth: 300, maxHeight: 240, borderRadius: 12, border: '1.5px solid #e5e7eb', cursor: 'pointer' }}
+              <img src={msg.media_url} alt={msg.body} style={{ maxWidth: 300, maxHeight: 240, borderRadius: 12, border: '1.5px solid var(--border)', cursor: 'pointer' }}
                 onClick={() => window.open(msg.media_url, '_blank')} />
             ) : (
-              <a href={msg.media_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '8px 14px', textDecoration: 'none', color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>
+              <a href={msg.media_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, padding: '8px 14px', textDecoration: 'none', color: 'var(--text)', fontSize: 13, fontWeight: 600 }}>
                 <FileText size={16} color="#6366f1" /> {msg.body || 'Download file'}
               </a>
             )}
@@ -257,7 +257,7 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
 
       {/* Action buttons */}
       {showActions && (
-        <div style={{ position: 'absolute', right: 0, top: -6, display: 'flex', gap: 4, background: 'var(--surface)', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '4px 6px', boxShadow: '0 4px 14px rgba(0,0,0,0.1)', zIndex: 10 }}>
+        <div style={{ position: 'absolute', right: 0, top: -6, display: 'flex', gap: 4, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 10, padding: '4px 6px', boxShadow: '0 4px 14px rgba(0,0,0,0.1)', zIndex: 10 }}>
           {/* Emoji react */}
           <div style={{ position: 'relative' }}>
             <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 6, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
@@ -265,7 +265,7 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
               <Smile size={15} />
             </button>
             {showEmojiPicker && (
-              <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'var(--surface)', border: '1.5px solid #e5e7eb', borderRadius: 12, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', display: 'flex', gap: 4, flexWrap: 'wrap', width: 220 }}>
+              <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 12, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', display: 'flex', gap: 4, flexWrap: 'wrap', width: 220 }}>
                 {QUICK_EMOJIS.map(emoji => (
                   <button key={emoji} onClick={() => { onReact(msg.id, emoji); setShowEmojiPicker(false); }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: '3px 5px', borderRadius: 6, lineHeight: 1 }}
@@ -934,13 +934,13 @@ export default function ChatPage() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
           {/* Channel header */}
-          <div className="r-wrap" style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="r-wrap" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div className="r-full" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
               <Hash size={18} color="#6366f1" />
               <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{activeChannel.name}</span>
-              {activeChannel.is_private && <Lock size={13} color="#9ca3af" />}
+              {!!activeChannel.is_private && <Lock size={13} color="#9ca3af" />}
               {activeChannel.description && (
-                <span style={{ fontSize: 12, color: 'var(--text-dim)', borderLeft: '1px solid #e5e7eb', paddingLeft: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeChannel.description}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-dim)', borderLeft: '1px solid var(--border)', paddingLeft: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeChannel.description}</span>
               )}
             </div>
             <button onClick={() => { setShowSearch(s => !s); setShowPins(false); }} title="Search messages"
@@ -970,7 +970,7 @@ export default function ChatPage() {
 
           {/* Search panel (server-side, across channels) */}
           {showSearch && (
-            <div style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
+            <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '10px 20px' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-dim)' }} />
                 <input autoFocus value={msgQuery} onChange={e => runMsgSearch(e.target.value)} placeholder="Search all messages…"
@@ -993,7 +993,7 @@ export default function ChatPage() {
 
           {/* Pinned messages panel */}
           {showPins && (
-            <div style={{ background: 'var(--surface)', borderBottom: '1px solid #e5e7eb', padding: '10px 20px' }}>
+            <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '10px 20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}><Pin size={13} /> Pinned</div>
               {!pins.length && <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>No pinned messages yet.</div>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
@@ -1055,8 +1055,10 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input area */}
-          <div style={{ background: 'var(--surface)', borderTop: '1px solid #e5e7eb', padding: '12px 20px' }}>
+          {/* Input area. The class is load-bearing: the whole composer sits at the
+              bottom-right of a full-bleed page, directly under the floating
+              assistants, so globals.css pads it clear of them on desktop. */}
+          <div className="wf-chat-input-area" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '12px 20px' }}>
 
             {/* Typing indicator (real-time) */}
             {typingUser && (
@@ -1080,7 +1082,7 @@ export default function ChatPage() {
             <div style={{ border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface)', overflow: 'visible', position: 'relative' }}>
 
               {/* Format toolbar — clickable buttons, no markdown shown to user */}
-              <div style={{ display: 'flex', gap: 2, padding: '6px 8px', borderBottom: '1px solid #f3f4f6', flexWrap: 'wrap', alignItems: 'center', background: 'var(--surface2)', borderRadius: '12px 12px 0 0' }}>
+              <div style={{ display: 'flex', gap: 2, padding: '6px 8px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', alignItems: 'center', background: 'var(--surface2)', borderRadius: '12px 12px 0 0' }}>
                 {FORMAT_BUTTONS.map(({ cmd, label, icon: Icon, shortcut }) => (
                   <button key={cmd} onMouseDown={e => e.preventDefault()} onClick={() => applyFormat(cmd)}
                     title={shortcut ? `${label} (${shortcut})` : label}
@@ -1140,9 +1142,7 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {/* Bottom action row inside the input box. The class is load-bearing:
-                  Send sits at the far right of a full-bleed page, directly under the
-                  floating assistants, so globals.css pads it clear of them. */}
+              {/* Bottom action row inside the input box. */}
               <div className="wf-chat-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', borderRadius: '0 0 12px 12px' }}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button onMouseDown={e => e.preventDefault()} onClick={() => fileInputRef.current?.click()}
@@ -1160,7 +1160,7 @@ export default function ChatPage() {
                   </button>
                   {recording && <span style={{ fontSize: 11, color: '#ef4444', alignSelf: 'center', fontWeight: 600 }}>Recording… tap to send</span>}
                 </div>
-                <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+                <span className="r-hide" style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>
                   <strong>Enter</strong> to send · <strong>Shift+Enter</strong> new line
                 </span>
                 <button onClick={handleSend} disabled={!hasContent || sending} style={{
@@ -1216,13 +1216,13 @@ export default function ChatPage() {
         .wf-msg-body a { color: #6366f1; text-decoration: underline; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
       `}</style>
       {/* Thread side-drawer */}
       {threadFor && (
-        <div onClick={() => setThreadFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(8,8,12,0.35)', display: 'flex', justifyContent: 'flex-end' }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: 'min(420px, 92vw)', background: 'var(--surface)', borderLeft: '1px solid #e5e7eb', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 18px', borderBottom: '1px solid #e5e7eb' }}>
+        <div data-dismiss onClick={() => setThreadFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(8,8,12,0.35)', display: 'flex', justifyContent: 'flex-end' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 'min(420px, 92vw)', background: 'var(--surface)', borderLeft: '1px solid var(--border)', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
               <MessagesSquare size={16} color="#6366f1" />
               <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>Thread</span>
               <button aria-label="Close thread" onClick={() => setThreadFor(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}><X size={17} /></button>
@@ -1248,7 +1248,7 @@ export default function ChatPage() {
                 </>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--border)' }}>
               <input value={threadReply} onChange={e => setThreadReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendThreadReply(); } }}
                 placeholder="Reply in thread…" style={{ flex: 1, padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
               <button aria-label="Send" onClick={sendThreadReply} disabled={!threadReply.trim()} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 9, padding: '0 14px', cursor: threadReply.trim() ? 'pointer' : 'default', opacity: threadReply.trim() ? 1 : 0.5 }}><Send size={15} /></button>

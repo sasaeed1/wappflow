@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- gallery thumbs are dynamic /uploads URLs; next/image isn't configured for them */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useConfirm, usePrompt } from '@/lib/confirm';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Upload, Image as ImageIcon, Check, X, Plus, Share2, Copy, Trash2,
@@ -16,6 +17,8 @@ import { mediaAPI, mediaUrl, studioAiAPI, videoAiAPI } from '../../../lib/api';
 import { startUpload } from '@/lib/uploads';
 import RoomPanel from '@/components/RoomPanel';
 import { clickable } from '@/lib/a11y';
+import ErrorState from '@/components/ui/ErrorState';
+import { isGone, loadErrorText } from '@/lib/loadFailure';
 
 function FocusChip({ sharpness }) {
   if (sharpness == null) return null;
@@ -53,7 +56,7 @@ function Lightbox({ assets, index, onClose, onNav, onAdvance, onDelete, selected
   if (!a) return null;
   const isSel = selected.has(a.id);
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(8,7,5,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(8,7,5,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {isVideo
         ? <video onClick={e => e.stopPropagation()} src={mediaUrl(a.proxy_url || a.url)} poster={a.poster_url ? mediaUrl(a.poster_url) : undefined} controls autoPlay style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', background: '#000' }} />
         : <img onClick={e => e.stopPropagation()} src={mediaUrl(a.variants?.web || a.url)} alt={a.filename} style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain' }} />}
@@ -85,7 +88,7 @@ function CreateGalleryModal({ onClose, onCreate }) {
     finally { setSaving(false); }
   };
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 440 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
           <h2>New gallery</h2>
@@ -155,7 +158,7 @@ function GalleryPhotosModal({ gallery, assets, onClose, onChanged, setBanner }) 
   const count = memberIds ? memberIds.size : 0;
 
   return (
-    <div className="ms-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div data-dismiss className="ms-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="ms-modal" style={{ maxWidth: 880, width: '92vw' }} onClick={(e) => e.stopPropagation()}
            role="dialog" aria-modal="true" aria-label="Gallery media">
         <h2 style={{ fontFamily: 'var(--ms-serif)', fontSize: 20, margin: '0 0 4px', color: 'var(--ms-ink)' }}>Media in “{gallery.title}”</h2>
@@ -205,7 +208,7 @@ function ProofingRequestModal({ gallery, onClose, onCreate }) {
     finally { setSaving(false); }
   };
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 440 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Request selections</h2>
@@ -225,6 +228,8 @@ function ProofingRequestModal({ gallery, onClose, onCreate }) {
 }
 
 export default function ProjectPage() {
+  const confirmDialog = useConfirm();
+
   const router = useRouter();
   const { id } = useParams();
   const fileRef = useRef(null);
@@ -234,6 +239,8 @@ export default function ProjectPage() {
   const [selected, setSelected] = useState(() => new Set());
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [showNewGallery, setShowNewGallery] = useState(false);
   const [banner, setBanner] = useState(null);
   const [exports, setExports] = useState({});
@@ -271,15 +278,20 @@ export default function ProjectPage() {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=' + encodeURIComponent(window.location.pathname)); return; }
     let poll;
     (async () => {
-      setLoading(true);
-      try { const p = await mediaAPI.getProject(id); setProject(p.data); } catch { router.push('/studio'); return; }
+      setLoading(true); setLoadError(null);
+      // Only a shoot that is really gone sends you back to the list (lib/loadFailure).
+      try { const p = await mediaAPI.getProject(id); setProject(p.data); }
+      catch (e) {
+        if (isGone(e)) { router.push('/studio'); return; }
+        setLoadError(loadErrorText(e)); setLoading(false); return;
+      }
       await Promise.all([refreshAssets(), refreshGalleries()]);
       setLoading(false);
       // Live-ish: pick up client favourites / comments / submissions without a manual refresh.
       poll = setInterval(() => { refreshAssets(); refreshGalleries(); }, 20000);
     })();
     return () => { if (poll) clearInterval(poll); };
-  }, [id]);
+  }, [id, reloadKey]);
 
   const onUpload = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -359,7 +371,7 @@ export default function ProjectPage() {
 
   const deleteSelected = async () => {
     if (selected.size === 0) return;
-    if (!window.confirm(`Move ${selected.size} item${selected.size === 1 ? '' : 's'} to Trash? You can restore within 30 days.`)) return;
+    if (!(await confirmDialog({ title: `Move ${selected.size} item${selected.size === 1 ? '' : 's'} to Trash?`, message: 'You can restore them within 30 days.', confirmLabel: 'Move to Trash', tone: 'danger' }))) return;
     for (const aid of Array.from(selected)) { try { await mediaAPI.deleteAsset(aid); } catch {} }
     setSelected(new Set());
     await refreshAssets();
@@ -367,7 +379,7 @@ export default function ProjectPage() {
   };
 
   const deleteOne = async (asset) => {
-    if (!window.confirm(`Move this ${kindOf(asset) === 'video' ? 'video' : 'photograph'} to Trash? You can restore within 30 days.`)) return;
+    if (!(await confirmDialog({ title: `Move this ${kindOf(asset) === 'video' ? 'video' : 'photograph'} to Trash?`, message: 'You can restore it within 30 days.', confirmLabel: 'Move to Trash', tone: 'danger' }))) return;
     try { await mediaAPI.deleteAsset(asset.id); } catch {}
     setSelected(prev => { const n = new Set(prev); n.delete(asset.id); return n; });
     const remaining = await refreshAssets();
@@ -409,7 +421,7 @@ export default function ProjectPage() {
   // sent to the wrong client, or one with the wrong photographs in it, could not
   // be withdrawn from the UI at all.
   const unpublish = async (gallery) => {
-    if (!window.confirm(`Unpublish “${gallery.title}”? The share link stops working until you publish it again.`)) return;
+    if (!(await confirmDialog({ title: `Unpublish “${gallery.title}”?`, message: 'The share link stops working until you publish it again.', confirmLabel: 'Unpublish', tone: 'warning' }))) return;
     try {
       await mediaAPI.unpublishGallery(gallery.id);
       await refreshGalleries();
@@ -448,6 +460,7 @@ export default function ProjectPage() {
   const approveProof = async (setId) => { await mediaAPI.proofingApprove(setId); await refreshGalleries(); setBanner({ type: 'ok', msg: 'Selection approved — client notified' }); };
   const requestChangesProof = async (setId) => { await mediaAPI.proofingRequestChanges(setId, ''); await refreshGalleries(); setBanner({ type: 'ok', msg: 'Change request sent to the client' }); };
 
+  if (loadError) return <div className="ms-page"><ErrorState title="Could not open this shoot" description="Your photos are safe — we just couldn’t load the shoot right now." detail={loadError} onRetry={() => setReloadKey(k => k + 1)} /></div>;
   if (loading) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   // The hero crops one frame into a very wide, short box. Blindly taking
@@ -488,7 +501,7 @@ export default function ProjectPage() {
               <h1 className="ms-hero-title" style={{ fontSize: 'clamp(26px, 3.6vw, 44px)' }}>{project.title}</h1>
               <p className="ms-hero-sub">{photoCount} photo{photoCount === 1 ? '' : 's'}{videoCount > 0 ? ` · ${videoCount} video${videoCount === 1 ? '' : 's'}` : ''} · {galleries.length} galler{galleries.length === 1 ? 'y' : 'ies'}</p>
             </div>
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+            <div className="ms-hero-actions" style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
               <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/cull`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><ListChecks size={15} /> Cull</button>}
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><BookOpen size={15} /> Albums</button>}
@@ -604,7 +617,7 @@ export default function ProjectPage() {
         </aside>
         <div className="ms-workmain">
         {/* Library */}
-        <div className="ms-section-head">
+        <div className="ms-section-head ms-section-head--stack">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 'clamp(14px, 2vw, 26px)', flexWrap: 'wrap', minWidth: 0 }}>
             <h2 className="ms-h2">Library</h2>
             {/* media switch — reads as sections, works as a filter */}
@@ -710,7 +723,7 @@ export default function ProjectPage() {
       {proofingFor && <ProofingRequestModal gallery={proofingFor} onClose={() => setProofingFor(null)} onCreate={createProof} />}
       {wmModal && <WatermarkModal projectId={id} count={selected.size} initial={project?.settings?.watermark} sampleUrl={(() => { const a = assets.find(x => selected.has(x.id) && kindOf(x) === 'photo'); return a ? mediaUrl(a.thumb_url || a.url) : null; })()} onClose={() => setWmModal(false)} onApply={applyWatermark} onRemove={removeWatermark} />}
       {showRoom && (
-        <div onClick={() => setShowRoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 16 }}>
+        <div data-dismiss onClick={() => setShowRoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, marginTop: 64 }}>
             <RoomPanel type="project" id={id} title={project?.title} />
           </div>
@@ -722,7 +735,7 @@ export default function ProjectPage() {
           not its title, not who could open it, not its password - and Gallery Expiry
           was a named feature backed by a column nothing ever wrote. */}
       {editing && (
-        <div className="ms-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setEditing(null); }}>
+        <div data-dismiss className="ms-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setEditing(null); }}>
           <div className="ms-modal" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Gallery settings">
             <h2 style={{ fontFamily: 'var(--ms-serif)', fontSize: 20, margin: '0 0 4px', color: 'var(--ms-ink)' }}>Gallery settings</h2>
             <p className="ms-modal-sub" style={{ marginBottom: 18 }}>
@@ -784,6 +797,8 @@ export default function ProjectPage() {
 }
 
 function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply, onRemove }) {
+  const prompt = usePrompt();
+
   const [cfg, setCfg] = useState(() => ({ type: 'text', text: 'PROOF', color: 'white', position: 'tiled', opacity: 0.35, size: 32, logo_url: '', ...(initial || {}) }));
   const [uploading, setUploading] = useState(false);
   const [presets, setPresets] = useState(() => { try { return JSON.parse(localStorage.getItem('ms-wm-presets') || '[]'); } catch { return []; } });
@@ -794,7 +809,7 @@ function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply
     try { const fd = new FormData(); fd.append('file', f); const r = await mediaAPI.uploadWatermarkLogo(projectId, fd); set({ logo_url: r.data.url, type: 'logo' }); }
     catch {} finally { setUploading(false); }
   };
-  const savePreset = () => { const name = (window.prompt('Name this watermark preset') || '').trim(); if (!name) return; const next = [...presets.filter(p => p.name !== name), { name, cfg }]; setPresets(next); try { localStorage.setItem('ms-wm-presets', JSON.stringify(next)); } catch {} };
+  const savePreset = async () => { const name = ((await prompt({ title: 'Save watermark preset', placeholder: 'e.g. Corner logo' })) || '').trim(); if (!name) return; const next = [...presets.filter(p => p.name !== name), { name, cfg }]; setPresets(next); try { localStorage.setItem('ms-wm-presets', JSON.stringify(next)); } catch {} };
   const delPreset = (name) => { const next = presets.filter(p => p.name !== name); setPresets(next); try { localStorage.setItem('ms-wm-presets', JSON.stringify(next)); } catch {} };
 
   // live preview — mirrors the server's placement so what you see is what applies
@@ -827,7 +842,7 @@ function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply
   const POS = [['top-left', '↖'], ['top-right', '↗'], ['center', '◉'], ['bottom-left', '↙'], ['bottom-right', '↘'], ['tiled', '▦']];
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 460, maxHeight: '88vh', overflowY: 'auto', background: 'var(--ms-paper, #fff)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ms-ink, #14120f)', display: 'inline-flex', alignItems: 'center', gap: 8 }}><Droplets size={18} /> Watermark</h3>
@@ -911,7 +926,7 @@ function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
   const makeReel = async () => { setBusy('reel'); try { const r = await videoAiAPI.reel(projectId, { length_s: reelLen }); setReel(r.data); setNote({ ok: true, msg: `Reel built: ${r.data.plan.timeline.length} clips${r.data.template ? ' · ' + r.data.template : ''}.` }); } catch (e) { setNote({ ok: false, msg: e?.response?.data?.error || 'Reel failed.' }); } finally { setBusy(''); } };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '88vh', overflowY: 'auto', background: 'var(--ms-paper,#fff)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: 'var(--ms-ink,#14120f)', display: 'inline-flex', alignItems: 'center', gap: 8 }}><Wand2 size={18} /> Studio AI</h3>

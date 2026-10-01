@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { usePrompt } from '@/lib/confirm';
 import { useParams } from 'next/navigation';
 import { fetchPublicDoc, signPublicDoc, declinePublicDoc, askPublicDoc, trackPublicDoc, mediaUrl } from '../../../lib/api';
 import { BlockView, DocFrame } from '../../contracts/blocks';
@@ -104,7 +105,7 @@ export default function PublicDocPage() {
       title={data?.title}
       meta={data?.type}
       sticky
-      style={{ background: 'rgba(255,255,255,0.7)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}
+      tone="paper"
     />
   );
 
@@ -226,7 +227,7 @@ function AskWidget({ token, stickyOffset }) {
             {busy && <div style={{ alignSelf: 'flex-start', fontSize: 13, color: '#8a8a93' }}>Thinking…</div>}
           </div>
           <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-            <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()} placeholder="Type your question…" style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e2e8', fontSize: 14, outline: 'none' }} />
+            <input data-ui value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()} placeholder="Type your question…" style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e2e8', background: '#fff', color: '#16161a', fontSize: 14, outline: 'none' }} />
             <button onClick={ask} disabled={busy || !q.trim()} style={{ padding: '0 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: '#16161a', color: '#fff', fontWeight: 700, fontSize: 14, opacity: busy || !q.trim() ? 0.5 : 1 }}>Ask</button>
           </div>
         </div>
@@ -309,10 +310,10 @@ function FillableField({ block, value, onChange }) {
       )}
 
       {kind === 'date' && (
-        <input type="date" value={value || ''} onChange={e => onChange(e.target.value)} style={inp} />
+        <input data-ui type="date" value={value || ''} onChange={e => onChange(e.target.value)} style={inp} />
       )}
       {kind === 'text' && (
-        <input value={value || ''} onChange={e => onChange(e.target.value)} placeholder="Type your answer" style={inp} />
+        <input data-ui value={value || ''} onChange={e => onChange(e.target.value)} placeholder="Type your answer" style={inp} />
       )}
       {kind === 'checkbox' && (
         <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', marginTop: 4 }}>
@@ -326,6 +327,8 @@ function FillableField({ block, value, onChange }) {
 }
 
 function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, selectionPayload, fieldValues, usesPlacedSigning }) {
+  const prompt = usePrompt();
+
   const [typed, setTyped] = useState(signerName || '');
   const [consent, setConsent] = useState(false);
   const [hasInk, setHasInk] = useState(false);
@@ -366,16 +369,16 @@ function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, se
     }
     catch (e) { setErr(e.message || 'Could not submit'); setBusy(false); }
   };
-  const decline = async () => { const reason = window.prompt('Decline this document? (optional reason)'); if (reason === null) return; await declinePublicDoc(token, reason); onDeclined(); };
+  const decline = async () => { const reason = await prompt({ title: 'Decline this document?', message: 'The sender will be told you declined.', label: 'Reason (optional)', placeholder: 'Optional', confirmLabel: 'Decline', tone: 'danger', required: false }); if (reason === null) return; await declinePublicDoc(token, reason); onDeclined(); };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: '20px 20px 0 0', padding: 24, boxShadow: '0 -20px 60px rgba(0,0,0,0.3)', animation: 'csUp .25s ease' }}>
         <div style={{ width: 40, height: 4, borderRadius: 999, background: '#e2e2e8', margin: '0 auto 16px' }} />
         <h2 style={{ fontSize: 20, fontWeight: 800, color: '#16161a', margin: '0 0 4px' }}>Sign “{title}”</h2>
         <p style={{ fontSize: 13, color: '#70707a', margin: '0 0 16px' }}>Your electronic signature is legally binding.</p>
         <label style={lbl}>Full legal name</label>
-        <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Type your name" style={inp} />
+        <input data-ui value={typed} onChange={e => setTyped(e.target.value)} placeholder="Type your name" style={inp} />
         {usesPlacedSigning ? (
           <div style={{ marginTop: 14, padding: '11px 13px', borderRadius: 10, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', fontSize: 13, color: '#15803d', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>✓</span> You have signed in the document above.
@@ -408,4 +411,7 @@ function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, se
 const center = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eceef2' };
 const spinner = { width: 26, height: 26, border: '2px solid rgba(0,0,0,0.15)', borderTopColor: '#16161a', borderRadius: '50%', animation: 'csp .9s linear infinite' };
 const lbl = { display: 'block', fontSize: 11.5, fontWeight: 700, color: '#55555e', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 7 };
-const inp = { width: '100%', padding: '11px 13px', borderRadius: 10, border: '1px solid #d8d8e0', background: '#fff', fontSize: 15, outline: 'none', boxSizing: 'border-box' };
+// Signing inputs carry data-ui: the page is always white paper, and the global
+// legacy-input override (globals.css) would otherwise paint them in the viewer's
+// dark-theme colours, !important, over these inline values.
+const inp = { width: '100%', padding: '11px 13px', borderRadius: 10, border: '1px solid #d8d8e0', background: '#fff', color: '#16161a', fontSize: 15, outline: 'none', boxSizing: 'border-box' };

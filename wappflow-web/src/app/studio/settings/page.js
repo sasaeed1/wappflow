@@ -109,13 +109,13 @@ export default function StudioSettingsPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
                 <span className={`ms-status${pf.is_public ? ' ms-status-live' : ''}`}>{pf.is_public ? 'Public' : 'Private'}</span>
-                {pf.is_public && <a href={pf.share_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: 'var(--ms-ink)', fontWeight: 600, textDecoration: 'none' }}>{pf.share_url?.replace(/^https?:\/\//, '')}</a>}
+                {!!pf.is_public && <a href={pf.share_url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: 'var(--ms-ink)', fontWeight: 600, textDecoration: 'none' }}>{pf.share_url?.replace(/^https?:\/\//, '')}</a>}
                 <span style={{ fontSize: 12.5, color: 'var(--ms-ink-3)' }}>· {pf.view_count || 0} views</span>
               </div>
               <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
                 <button onClick={() => router.push('/studio/portfolio')} className="ms-btn-ink"><Sliders size={14} /> Open editor</button>
                 <button onClick={togglePublic} className="ms-btn-ghost">{pf.is_public ? 'Make private' : 'Make public'}</button>
-                {pf.is_public && <button onClick={copyLink} className="ms-btn-ghost"><Copy size={14} /> Copy link</button>}
+                {!!pf.is_public && <button onClick={copyLink} className="ms-btn-ghost"><Copy size={14} /> Copy link</button>}
               </div>
             </div>
           ) : <p style={{ fontSize: 13, color: 'var(--ms-ink-3)' }}>Loading…</p>}

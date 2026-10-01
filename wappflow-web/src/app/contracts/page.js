@@ -198,7 +198,7 @@ function NewDocModal({ onClose, onCreated, say }) {
   };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, padding: 24, boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>New document</h2>
@@ -289,7 +289,7 @@ function BulkSendModal({ onClose, say }) {
   const srcChip = (type, id, title) => { const on = source && source.type === type && source.id === id; return <button key={type + id} onClick={() => setSource({ type, id, title })} style={{ padding: '7px 12px', borderRadius: 9, cursor: 'pointer', border: `1.5px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-light)' : 'var(--bg)', color: 'var(--text)', fontSize: 12.5, fontWeight: 600 }}>{title}</button>; };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, padding: 24, boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Bulk send</h2>

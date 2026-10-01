@@ -15,7 +15,7 @@ import { isLeadUnread } from '../../lib/unread';
 import { formatDate } from '../../lib/datetime';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import AddLeadModal from '../../components/AddLeadModal';
-import { useConfirm } from '@/lib/confirm';
+import { useConfirm, usePrompt } from '@/lib/confirm';
 import { usePlan } from '@/lib/plan';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
@@ -129,7 +129,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
+    <div data-dismiss onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
       <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, padding: 28, maxWidth: 420, width: '100%', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -266,7 +266,7 @@ function BulkAssignModal({ leadIds, members, onClose, onDone }) {
 // ── Bulk Trash Confirm Modal ────────────────────────────────────────────────
 function BulkTrashModal({ count, loading, onCancel, onConfirm }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
+    <div data-dismiss onClick={e => { if (e.target === e.currentTarget) onCancel(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
       <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.4)', maxWidth: 440, width: '100%', padding: 28, border: '1.5px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
           <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -373,7 +373,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
 
   // Step 3 = success screen with invite link / skipped summary
   const Backdrop = ({ children }) => (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
+    <div data-dismiss onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 250, padding: 16 }}>
       <div className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.4)', maxWidth: 540, width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1.5px solid var(--border)' }}>
         {children}
       </div>
@@ -652,7 +652,7 @@ function MergeDuplicatesModal({ onClose, onDone }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }} onClick={() => onClose(doneCount)}>
+    <div data-dismiss style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }} onClick={() => onClose(doneCount)}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ background: 'var(--surface)', borderRadius: 20, padding: 24, maxWidth: 640, width: '100%', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 32px 80px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#f59e0b,#ef4444)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -712,6 +712,8 @@ function MergeDuplicatesModal({ onClose, onDone }) {
 // ── Main Page ───────────────────────────────────────────────────────────────
 export default function LeadsListPage() {
   const isPhone = useMediaQuery('(max-width: 640px)');
+  const prompt = usePrompt();
+  const confirmDialog = useConfirm();
   const router = useRouter();
   const plan = usePlan();
   const [leads, setLeads] = useState([]);
@@ -920,7 +922,7 @@ export default function LeadsListPage() {
     setActiveView(v.name);
   };
   const saveCurrentView = async () => {
-    const name = viewName(window.prompt('Name this view (e.g. "Hot — needs follow-up")'));
+    const name = viewName(await prompt({ title: 'Save this view', label: 'Name', placeholder: 'e.g. Hot — needs follow-up', confirmLabel: 'Save view' }));
     if (!name) return;
     try {
       const saved = normalizeView((await viewsAPI.save('leads', name, currentFilters())).data.view);
@@ -1157,7 +1159,7 @@ export default function LeadsListPage() {
             </button>
             <button
               onClick={async () => {
-                if (!window.confirm(`Move ${selected.size} lead${selected.size > 1 ? 's' : ''} to Clients? They'll leave the Leads list but keep their chat, history & analytics.`)) return;
+                if (!(await confirmDialog({ title: `Move ${selected.size} lead${selected.size > 1 ? 's' : ''} to Clients?`, message: "They'll leave the Leads list but keep their chat, history & analytics.", confirmLabel: 'Move to Clients' }))) return;
                 const ids = [...selected];
                 for (const id of ids) { try { await leadsAPI.setClient(id, true); } catch {} }
                 setAllLeads(prev => prev.filter(l => !ids.includes(l.id)));

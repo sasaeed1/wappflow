@@ -113,7 +113,7 @@ export default function ProfilePage() {
       <>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ width: 40, height: 40, border: '3px solid #e5e7eb', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+            <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
             <p style={{ color: 'var(--text-dim)', fontSize: 14 }}>Loading profile…</p>
           </div>
         </div>
@@ -162,7 +162,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Avatar + read-only info card */}
-        <div style={{ background: 'var(--surface)', border: '1.5px solid #f3f4f6', borderRadius: 20, padding: 28, marginBottom: 20, boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 20, padding: 28, marginBottom: 20, boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
             {/* Avatar */}
             <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -171,7 +171,7 @@ export default function ProfilePage() {
                 background: avatarSrc ? 'transparent' : 'linear-gradient(135deg, #6366f1, #06b6d4)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 32, fontWeight: 900, color: 'white',
-                overflow: 'hidden', border: '3px solid #e5e7eb',
+                overflow: 'hidden', border: '3px solid var(--border)',
                 boxShadow: '0 4px 16px rgba(99,102,241,0.2)'
               }}>
                 {avatarSrc
@@ -241,7 +241,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Editable fields */}
-        <div style={{ background: 'var(--surface)', border: '1.5px solid #f3f4f6', borderRadius: 20, padding: 28, boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 20, padding: 28, boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
           <h3 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <User size={16} color="#6366f1" />
             Personal Information

@@ -84,7 +84,7 @@ export function TagPicker({ leadId, assignedTags = [], allTags = [], onToggle, c
             left: dropPos.left,
             zIndex: 9999,
             background: 'var(--surface)',
-            border: '1.5px solid #e5e7eb',
+            border: '1.5px solid var(--border)',
             borderRadius: 14,
             boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
             minWidth: 210,
@@ -92,7 +92,7 @@ export function TagPicker({ leadId, assignedTags = [], allTags = [], onToggle, c
           }}
           onClick={e => e.stopPropagation()}
         >
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>Assign Tags</span>
           </div>
           {allTags.length === 0 ? (

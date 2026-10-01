@@ -23,7 +23,7 @@ function NewAlbumModal({ projectId, onClose, onCreated }) {
     catch { setSaving(false); }
   };
   return (
-    <div {...clickable(onClose)} style={overlay}>
+    <div data-dismiss onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={overlay}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={modalBox}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>New album</h2>

@@ -144,7 +144,7 @@ textarea:focus-visible, summary:focus-visible, [role="button"]:focus-visible,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
   min-height: 100vh;
   transition: background 0.2s, color 0.2s;
 }
@@ -408,6 +408,18 @@ select option {
   .lead-subnav > * { min-width: 0; }
   .lead-nav-actions { flex-wrap: wrap; justify-content: flex-end; }
 }
+/* Phones: the seven header actions wrapped into three ragged rows. The floating
+   "Chat Bar" duplicates the thread that is right there on this page, so it goes;
+   the other six sit in an even 3×2 grid of equal buttons. */
+@media (max-width: 640px) {
+  .lead-chatbar-btn { display: none !important; }
+  .lead-nav-actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px !important; width: 100%; }
+  .lead-nav-actions > *,
+  .lead-nav-actions > div > button[aria-haspopup] { width: 100%; min-width: 0; }
+  .lead-nav-actions > button,
+  .lead-nav-actions > a,
+  .lead-nav-actions > div > button[aria-haspopup] { justify-content: center; padding: 9px 6px !important; font-size: 12.5px !important; white-space: nowrap; min-height: 38px; }
+}
 
 /* Dashboard responsive grids — page uses inline grid styles, we override at breakpoints */
 @media (max-width: 900px) {
@@ -422,9 +434,9 @@ select option {
   .dash-stat-top { margin-bottom: 8px !important; }
   .dash-stat-icon { width: 30px !important; height: 30px !important; border-radius: 9px !important; }
   .dash-stat-live { display: none !important; }
-  .dash-stat-label { font-size: 9.5px !important; letter-spacing: 0.3px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-stat-label { font-size: 10.5px !important; letter-spacing: 0.2px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dash-stat-value { font-size: 20px !important; }
-  .dash-stat-trend { font-size: 10px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-stat-trend { font-size: 11px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* Page action bars (.wf-subbar — Dashboard, Reports): once wrapped onto
      phone rows they covered a third of the screen and slid over the content
@@ -509,6 +521,28 @@ select option {
   }
   .r-chips::-webkit-scrollbar { display: none; }
   .r-chips > * { flex-shrink: 0 !important; white-space: nowrap; }
+}
+
+/* ── Invoices on phones ───────────────────────────────────────────────────────
+   Four full-width stat cards cost a whole screen before the list; the status
+   filters wrapped to leave "Overdue" alone on a line; and the six-column table
+   squeezed its header into "CUSTOMERINVOICE NO." and cut the amount off. Stats
+   go 2×2, filters swipe, and each invoice becomes a two-line card:
+   customer · amount / number · date · status + actions. */
+@media (max-width: 640px) {
+  .inv-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; margin-bottom: 18px !important; }
+  .inv-stat { padding: 12px !important; gap: 10px !important; border-radius: 14px !important; }
+  .inv-stat > :first-child { width: 34px !important; height: 34px !important; border-radius: 10px !important; }
+  .inv-stat p:first-child { font-size: 17px !important; }
+  .inv-chips { width: calc(100% + 28px); }
+  .inv-head { display: none !important; }
+  .inv-row { grid-template-columns: auto minmax(0, 1fr) auto !important; column-gap: 10px; row-gap: 6px; padding: 12px 14px !important; }
+  .inv-row > :nth-child(1) { display: none !important; }
+  .inv-row > :nth-child(2) { grid-column: 1 / 3; grid-row: 1; }
+  .inv-row > :nth-child(5) { grid-column: 3; grid-row: 1; justify-self: end; }
+  .inv-row > :nth-child(3) { grid-column: 1; grid-row: 2; font-size: 12px !important; color: var(--text-muted) !important; }
+  .inv-row > :nth-child(4) { grid-column: 2; grid-row: 2; font-size: 12px !important; }
+  .inv-row > :nth-child(6) { grid-column: 3; grid-row: 2; }
 }
 
 /* ── Section side-nav → top tab strip (Settings, Help) ───────────────────────
@@ -716,6 +750,29 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
    entirely while custom properties still cascade to the children. */
 .wf-fab-scope { display: contents; }
 
+/* ── Touch hit area ───────────────────────────────────────────────────────────
+   Small icon buttons (row delete / email) were 14–27px — under half the ~44px a
+   fingertip needs. .wf-tap grows the HIT area on touch screens with an invisible
+   ::after, so the visual size and the row layout stay exactly as designed. */
+@media (pointer: coarse) {
+  .wf-tap { position: relative; }
+  .wf-tap::after { content: ''; position: absolute; inset: -6px; }
+}
+
+/* Phones: floating buttons yield to the page (AppShell sets the data flags).
+   `translate` is separate from `transform`, so the mobile scale(0.85) survives. */
+@media (max-width: 640px) {
+  .wf-fab { transition: translate .22s ease, opacity .22s ease; }
+  .wf-fab-scope[data-fab-phone-off] .wf-fab { display: none !important; }
+  .wf-fab-scope[data-fab-tucked] .wf-fab:not(:focus-within) { translate: 0 140px; opacity: 0; pointer-events: none; }
+  /* The on-screen keyboard is up: the composer/field being typed into is exactly
+     what sits under the FABs. :focus-within keeps a FAB's own panel (the
+     floating chat's lead search) from hiding itself while you type in it. */
+  body:has(:is(input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"]):focus) .wf-fab:not(:focus-within) {
+    translate: 0 140px; opacity: 0; pointer-events: none;
+  }
+}
+
 /* ── Short-viewport density ───────────────────────────────────────────────────
    A 1920×1080 screen at Windows' default 150% scaling is 1280×720 CSS px, and
    Chrome's own chrome takes ~177px of it — so the viewport is 503px tall with
@@ -783,10 +840,12 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
 @media (min-width: 861px) {
   .wf-page:not(.wf-bleed) { padding-right: 76px; }
 
-  /* Team Chat is a bleed route, so it has no page gutter — and its Send button
-     sits at the bottom-right corner, exactly under the chat FAB. Hit-testing
-     confirmed the FAB, not Send, received the click. Pad the action row instead. */
-  .wf-chat-actions { padding-right: 84px !important; }
+  /* Team Chat is a bleed route, so it has no page gutter — and its composer
+     sits at the bottom-right corner, exactly under the FABs. Hit-testing
+     confirmed the FABs, not Send (bottom row) or More (emoji row), received the
+     click. Padding only the Send row left the emoji row covered, so the whole
+     composer is padded clear. */
+  .wf-chat-input-area { padding-right: 84px !important; }
 }
 
 /* On a short viewport the FAB stack eats a disproportionate share of the height

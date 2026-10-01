@@ -28,7 +28,7 @@ import SendInvoiceModal from '@/components/SendInvoiceModal';
 import LeadAssistStrip from '@/components/LeadAssistStrip';
 import { sanitizeHtml } from '@/lib/sanitizeHtml';
 import ContactActions from '@/components/ContactActions';
-import { useConfirm } from '@/lib/confirm';
+import { useConfirm, usePrompt } from '@/lib/confirm';
 import { TagChip, TagPicker } from '../../../components/TagPicker';
 import RoomPanel from '@/components/RoomPanel';
 import { buildInvoiceHTML } from '@/lib/invoiceDoc';
@@ -1467,6 +1467,7 @@ useEffect(() => {
               }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #a7f3d0', background: 'rgba(16,185,129,0.12)', color: '#059669', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
               title="Open WhatsApp chat in floating bar"
+              className="lead-chatbar-btn"
             >
               <MessageSquare size={14} /> Chat Bar
             </button>
@@ -1577,7 +1578,7 @@ useEffect(() => {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
               {PIPELINE_STEPS.map(step => (
-                <span key={step} style={{ fontSize: 9, fontWeight: 700, color: lead.status === step ? STATUS_META[step].dot : '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                <span key={step} style={{ fontSize: 10.5, fontWeight: 700, color: lead.status === step ? STATUS_META[step].dot : '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                   {step === 'Negotiating' ? 'Nego.' : step}
                 </span>
               ))}
@@ -1991,7 +1992,7 @@ useEffect(() => {
                       ) : meta && (meta.location || meta.contacts || meta.poll || meta.call) ? (
                         <SpecialContent meta={meta} />
                       ) : (
-                        <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif', textDecoration: msg.deleted_at ? 'line-through' : undefined }}>{msg.body}</p>
+                        <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', textDecoration: msg.deleted_at ? 'line-through' : undefined }}>{msg.body}</p>
                       )}
                       <p style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 3, textAlign: 'right', margin: 0, marginTop: 3 }}>
                         {msg.deleted_at && <span style={{ fontStyle: 'italic', marginRight: 6 }}>{msg.from_me ? 'You deleted this' : 'Deleted by sender'} ·</span>}
@@ -2995,10 +2996,22 @@ function EmailComposeModal({ lead, onClose, onSent }) {
   const bodyRef = useRef(null);
   const fileInputRef = useRef(null);
   const [attachments, setAttachments] = useState([]);
+  const prompt = usePrompt();
 
   const execCmd = (cmd, value = null) => {
     bodyRef.current?.focus();
     document.execCommand(cmd, false, value);
+  };
+  // The link dialog takes focus, which drops the editor's selection — keep the
+  // range and put it back before applying the link to the text it was meant for.
+  const insertLink = async (cmd) => {
+    const sel = window.getSelection();
+    const range = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    const url = await prompt({ title: 'Insert link', placeholder: 'https://…', type: 'url', confirmLabel: 'Insert' });
+    if (!url) return;
+    bodyRef.current?.focus();
+    if (range) { const s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(range); }
+    document.execCommand(cmd, false, /^[a-z]+:/i.test(url) ? url : `https://${url}`);
   };
 
   const handleAttach = (e) => {
@@ -3073,8 +3086,7 @@ function EmailComposeModal({ lead, onClose, onSent }) {
                   onMouseDown={e => {
                     e.preventDefault();
                     if (btn.prompt) {
-                      const url = window.prompt('Enter URL:');
-                      if (url) execCmd(btn.cmd, url);
+                      insertLink(btn.cmd);
                     } else {
                       execCmd(btn.cmd);
                     }

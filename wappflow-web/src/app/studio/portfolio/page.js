@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { mediaAPI, leadsAPI, mediaUrl } from '../../../lib/api';
 import PortfolioCanvas, { PORTFOLIO_THEME_META, PortfolioThumb } from '../../folio/portfolio-view';
-import { clickable } from '@/lib/a11y';
 import { startUpload, useUploads, cancel, fmtBytes, fmtEta } from '@/lib/uploads';
 
 const THEME_ORDER = ['atelier', 'noir', 'editorial', 'gallery', 'film', 'brut', 'luxe', 'vivid', 'mono', 'frame'];
@@ -152,9 +151,9 @@ export default function PortfolioEditorPage() {
           <Globe size={15} style={{ color: pf.is_public ? 'var(--ms-spark)' : 'var(--ms-ink-3)' }} />
           <span style={{ fontSize: 13, color: 'var(--ms-ink-2)' }}>
             {pf.is_public ? 'Live at' : 'Private — turn on Public to share.'}{' '}
-            {pf.is_public && <a href={pf.share_url} target="_blank" rel="noreferrer" style={{ color: 'var(--ms-ink)', fontWeight: 600 }}>{pf.share_url?.replace(/^https?:\/\//, '')}</a>}
+            {!!pf.is_public && <a href={pf.share_url} target="_blank" rel="noreferrer" style={{ color: 'var(--ms-ink)', fontWeight: 600 }}>{pf.share_url?.replace(/^https?:\/\//, '')}</a>}
           </span>
-          {pf.is_public && <a href={pf.share_url} target="_blank" rel="noreferrer" className="ms-btn-text" style={{ marginLeft: 'auto', textDecoration: 'none' }}><ExternalLink size={13} /> Open</a>}
+          {!!pf.is_public && <a href={pf.share_url} target="_blank" rel="noreferrer" className="ms-btn-text" style={{ marginLeft: 'auto', textDecoration: 'none' }}><ExternalLink size={13} /> Open</a>}
         </div>
 
         <div className="ms-workgrid r-stack" style={{ gridTemplateColumns: 'minmax(0,1fr) 380px' }}>
@@ -312,7 +311,7 @@ function CandidatesPicker({ onClose, onAdded }) {
   };
   const available = (cands || []).filter(c => !c.in_portfolio);
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 820, width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Add from published work</h2>
@@ -357,7 +356,7 @@ function ShareModal({ pf, onClose, onCopy, say, onPublic }) {
     setSending(null);
   };
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Share portfolio</h2>
@@ -489,7 +488,7 @@ function ItemEditor({ item, index, count, onClose, onPatch, onMove, onItems, say
   const commit = (k, v) => { if ((item[k] || '') !== v) onPatch(item, { [k]: v }); };
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 920, width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
           <h2 style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || item.filename || (isVideo ? 'Video' : 'Photo')}</h2>

@@ -21,6 +21,11 @@ import { Portal, useOverlayStack, useEscape, useScrollLock, useFocusTrap } from 
  *     tone: 'danger', requireTyped: 'DELETE',
  *   });
  *
+ *   // Ask for a value (replaces window.prompt — the browser's grey box looked
+ *   // like a different app, couldn't be styled, and blocks the whole tab):
+ *   const name = await prompt({ title: 'Name this view', placeholder: 'Hot leads', defaultValue: '' });
+ *   if (name === null) return;  // cancelled  (usePrompt() → string | null)
+ *
  * Batch C: the dialog now runs on the shared overlay foundation (components/ui/overlay)
  * — portal, overlay stack (Escape peels the top overlay only), reference-counted scroll
  * lock, and a real focus trap with focus restore. The confirm() API is unchanged.
@@ -41,13 +46,16 @@ export function ConfirmProvider({ children }) {
         tone: opts.tone || 'default', // default | danger | success | warning | info
         alertOnly: !!opts.alertOnly,
         requireTyped: opts.requireTyped || null, // exact phrase the user must type to enable Confirm
+        input: opts.input || null,               // { label, placeholder, defaultValue, type, required } → resolves string | null
         resolve,
       });
     });
   }, []);
 
   const handleClose = (value) => {
-    state?.resolve(value);
+    // Input dialogs resolve with the text (or null when cancelled), not a boolean.
+    if (state?.input) state.resolve(value === false ? null : value);
+    else state?.resolve(value);
     setState(null);
   };
 
@@ -58,7 +66,7 @@ export function ConfirmProvider({ children }) {
         <ConfirmDialog
           {...state}
           onCancel={() => handleClose(false)}
-          onConfirm={() => handleClose(true)}
+          onConfirm={(value) => handleClose(state.input ? value : true)}
         />
       )}
     </ConfirmContext.Provider>
@@ -70,6 +78,10 @@ export function useConfirm() {
   if (!ctx) {
     // Safe fallback for components rendered outside provider (e.g. landing page)
     return (opts) => {
+      if (opts?.input) {
+        if (typeof window === 'undefined') return Promise.resolve(null);
+        return Promise.resolve(window.prompt(opts.title || '', opts.input.defaultValue ?? ''));
+      }
       if (opts?.alertOnly) {
         if (typeof window !== 'undefined') window.alert(opts.message || opts.title || '');
         return Promise.resolve(true);
@@ -81,10 +93,37 @@ export function useConfirm() {
   return ctx;
 }
 
-function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertOnly, requireTyped, onConfirm, onCancel }) {
+/**
+ * Ask for a single value in the app's own dialog — the replacement for
+ * window.prompt. Resolves with the trimmed text, or null when cancelled.
+ *
+ *   const prompt = usePrompt();
+ *   const url = await prompt({ title: 'Insert link', placeholder: 'https://…', type: 'url' });
+ */
+export function usePrompt() {
+  const confirm = useConfirm();
+  return useCallback((opts = {}) => confirm({
+    title: opts.title || 'Enter a value',
+    message: opts.message || '',
+    confirmLabel: opts.confirmLabel || 'OK',
+    cancelLabel: opts.cancelLabel || 'Cancel',
+    tone: opts.tone || 'default',
+    input: {
+      label: opts.label || '',
+      placeholder: opts.placeholder || '',
+      defaultValue: opts.defaultValue ?? '',
+      type: opts.type || 'text',
+      required: opts.required !== false,
+    },
+  }).then((v) => (typeof v === 'string' ? v.trim() : v === true ? '' : null)), [confirm]);
+}
+
+function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertOnly, requireTyped, input, onConfirm, onCancel }) {
   const [cardEl, setCardEl] = useState(null);
   const [typed, setTyped] = useState('');
-  const canConfirm = !requireTyped || typed === requireTyped;
+  const [value, setValue] = useState(input ? String(input.defaultValue ?? '') : '');
+  const canConfirm = (!requireTyped || typed === requireTyped) && (!input || !input.required || value.trim() !== '');
+  const confirmNow = () => onConfirm(input ? value : undefined);
 
   const isTop = useOverlayStack(true);
   useScrollLock(true);
@@ -98,11 +137,11 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
       if (e.key !== 'Enter') return;
       if (!canConfirm) return;
       e.preventDefault();
-      onConfirm();
+      confirmNow();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isTop, canConfirm, onConfirm]);
+  }, [isTop, canConfirm, confirmNow]);
 
   const icon = {
     danger:  <AlertTriangle size={20} />,
@@ -137,6 +176,22 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
 
           {message && <div className="cm-body" id="cm-body">{message}</div>}
 
+          {input && (
+            <div className="cm-typed">
+              {input.label && <label className="cm-typed-label" htmlFor="cm-input">{input.label}</label>}
+              <input
+                id="cm-input"
+                className="cm-typed-input"
+                data-autofocus
+                type={input.type || 'text'}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder={input.placeholder}
+                aria-label={input.label || title}
+              />
+            </div>
+          )}
+
           {requireTyped && (
             <div className="cm-typed">
               <label className="cm-typed-label" htmlFor="cm-typed-input">
@@ -163,9 +218,9 @@ function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone, alertO
             )}
             <button
               className={`cm-btn cm-btn-primary cm-btn-${tone}`}
-              onClick={onConfirm}
+              onClick={confirmNow}
               disabled={!canConfirm}
-              data-autofocus={requireTyped ? undefined : true}
+              data-autofocus={requireTyped || input ? undefined : true}
             >
               {alertOnly ? 'OK' : confirmLabel}
             </button>

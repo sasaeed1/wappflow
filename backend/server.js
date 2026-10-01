@@ -92,7 +92,11 @@ const limiter = rateLimit({
   // instead of falling back to a generic "failed" message.
   message: { error: 'Too many requests — please wait a few minutes and try again.' },
 });
-app.use(limiter);
+// Mounted AFTER cors() below, not here: a 429 sent from this point carried no
+// Access-Control-Allow-Origin, so the browser reported it as a CORS failure and
+// the page could never read the message above — it showed a generic network
+// error instead. Mounting after cors also lets CORS preflights (OPTIONS, which
+// cors() answers itself) stop counting against the limit.
 
 // Brute-force guard on password login. Counts only FAILED attempts per IP
 // (skipSuccessfulRequests), so normal sign-ins never trip it.
@@ -110,6 +114,7 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
   credentials: true,
 }));
+app.use(limiter);
 // Stripe webhook signature verification needs the RAW request bytes, so a path-scoped
 // raw parser is registered BEFORE the global JSON parser (which would otherwise consume
 // the stream). type:()=>true so charset-suffixed content-types can't slip through to

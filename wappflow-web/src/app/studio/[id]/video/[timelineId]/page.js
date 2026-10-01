@@ -13,9 +13,10 @@ import {
   ASPECTS, ASPECT_LABELS, EXPORT_PRESETS, QUALITIES, SAFE_AREAS, TRANSITIONS, VIDEO_EFFECTS,
   TEXT_TYPES, TEXT_ANIM, FONT_FAMILIES, DEFAULT_PHOTO_MS, DEFAULT_VIDEO_MS, PX_PER_MS, aspectBox, uid, colorPreviewFilter,
 } from '../../../video-constants';
-import { clickable } from '@/lib/a11y';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import Sheet from '@/components/ui/Sheet';
+import ErrorState from '@/components/ui/ErrorState';
+import { isGone, loadErrorText } from '@/lib/loadFailure';
 
 const ZERO_COLOR = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0 };
 
@@ -107,6 +108,7 @@ export default function VideoEditor() {
   const [audioAssets, setAudioAssets] = useState([]);
   const [luts, setLuts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [showMusic, setShowMusic] = useState(false);
   const [selId, setSelId] = useState(null);
   const [playhead, setPlayhead] = useState(0);
@@ -160,7 +162,7 @@ export default function VideoEditor() {
         setAssets((a.data.assets || []).filter(x => x.type === 'photo' || x.type === 'video'));
         if (pr?.data?.luts) setLuts(pr.data.luts);
         try { setAudioAssets((await mediaAPI.listAudio(id)).data.audio || []); } catch {}
-      } catch { router.push(`/studio/${id}/video`); return; }
+      } catch (e) { if (isGone(e)) { router.push(`/studio/${id}/video`); return; } setLoadError(loadErrorText(e)); setLoading(false); return; }
       setLoading(false);
     })();
   }, [id, timelineId]);
@@ -498,6 +500,7 @@ export default function VideoEditor() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selId, activeClip, duration, playhead]); // eslint-disable-line
 
+  if (loadError) return <div className="ms-page"><ErrorState title="Could not open this reel" description="Your reel is safe — we just couldn’t load it right now." detail={loadError} onRetry={() => window.location.reload()} /></div>;
   if (loading || !doc) return <><div className="ms-page"><p className="ms-loading">Opening editor…</p></div></>;
 
   const safe = SAFE_AREAS[EXPORT_PRESETS.find(p => p.aspect === doc.aspect && p.safe)?.safe] || null;
@@ -921,7 +924,7 @@ function MusicModal({ projectId, audioAssets, current, onClose, onPick, onUpload
   };
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 480 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -1285,7 +1288,7 @@ function ExportModal({ timelineId, aspect, duration, onClose }) {
   const failed = exp && exp.status === 'failed';
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
           <div><h2>Export reel</h2><p className="ms-modal-sub">{fmtClock(duration)} · MP4 / H.264</p></div>

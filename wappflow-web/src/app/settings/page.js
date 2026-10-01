@@ -537,7 +537,7 @@ function EmailTemplatesTab({ showToast }) {
         </div>
       ) : (
         templates.map(t => (
-          <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderBottom: '1px solid #f3f4f6' }}>
+          <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(245,158,11,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Mail size={15} color="#f59e0b" />
             </div>
@@ -644,7 +644,7 @@ function AutoReplyTab({ showToast }) {
       {rules.map(r => {
         const kws = (() => { try { return JSON.parse(r.keywords); } catch { return [r.keywords]; } })();
         return (
-          <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderBottom: '1px solid #f3f4f6' }}>
+          <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
             <button onClick={() => toggleRule(r)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0, marginTop: 2 }}>
               {r.is_active ? <ToggleRight size={28} color="#8b5cf6" /> : <ToggleLeft size={28} color="#d1d5db" />}
             </button>
@@ -940,7 +940,7 @@ function NotificationsTab({ showToast }) {
             ].map((item, i, arr) => {
               const active = notifTypes[item.key];
               return (
-                <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+                <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
                   <div>
                     <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: '0 0 2px' }}>{item.label}</p>
                     <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: 0 }}>{item.desc}</p>

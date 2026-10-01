@@ -279,7 +279,7 @@ function TicketDetail({ id, onClose, onChanged }) {
 
 function Modal({ title, children, onClose, wide }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'grid', placeItems: 'center', zIndex: 50, padding: 20 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'grid', placeItems: 'center', zIndex: 50, padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--surface,#14141b)', border: '1px solid var(--border,#1e1e26)', borderRadius: 14, padding: 20, width: '100%', maxWidth: wide ? 640 : 480, maxHeight: '86vh', overflow: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>{title}</h2>

@@ -10,9 +10,10 @@ import {
 } from 'lucide-react';
 import { mediaAPI, mediaUrl, brainsAPI } from '../../../../lib/api';
 import { PRESETS, previewFilter, previewVignette, suggestEnhance } from '../../presets';
-import { clickable } from '@/lib/a11y';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import Sheet from '@/components/ui/Sheet';
+import ErrorState from '@/components/ui/ErrorState';
+import { isGone, loadErrorText } from '@/lib/loadFailure';
 
 const FILTERS = [
   ['all', 'All'], ['undecided', 'Review'], ['keep', 'Keep'], ['maybe', 'Maybe'], ['reject', 'Reject'],
@@ -111,6 +112,7 @@ export default function CullPage() {
   const [filter, setFilter] = useState('all');
   const [cursor, setCursor] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [showGallery, setShowGallery] = useState(false);
   const [tool, setTool] = useState(null); // null | info | edit | presets
   const [compare, setCompare] = useState(false);
@@ -158,7 +160,7 @@ export default function CullPage() {
       try {
         const [p, a] = await Promise.all([mediaAPI.getProject(id), mediaAPI.listAssets(id, { limit: 5000 })]);
         setProject(p.data); setAssets(a.data.assets || []);
-      } catch { router.push('/studio'); return; }
+      } catch (e) { if (isGone(e)) { router.push('/studio'); return; } setLoadError(loadErrorText(e)); setLoading(false); return; }
       setLoading(false);
       try { const r = await mediaAPI.intelligence(id); setScores(r.data.scores || {}); } catch {}
       try { const b = await mediaAPI.brain(); setBrain(b.data.brain || {}); } catch {}
@@ -435,6 +437,7 @@ export default function CullPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [decide, rate, next, prev, zoomed, compare, editing, tool, compareSet.length, toggle100, copyEdits, pasteEdits, ba]);
 
+  if (loadError) return <div className="ms-page"><ErrorState title="Could not open Cull" description="Your photos are safe — we just couldn’t load this shoot right now." detail={loadError} onRetry={() => window.location.reload()} /></div>;
   if (loading) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   const sharp = current?.sharpness != null ? current.sharpness >= 120 : null;
@@ -860,7 +863,7 @@ export default function CullPage() {
     <>
       {isPhone ? mobileView() : <>
       {recTip && (
-        <div style={{ position: 'fixed', bottom: 18, left: 18, zIndex: 60, maxWidth: 330, background: 'rgba(17,19,29,0.96)', border: '1px solid rgba(99,102,241,0.45)', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 14px 44px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', bottom: 112, left: 18, zIndex: 60, maxWidth: 300, /* above the filmstrip dock, which it used to cover */ background: 'rgba(17,19,29,0.96)', border: '1px solid rgba(99,102,241,0.45)', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 14px 44px rgba(0,0,0,0.5)' }}>
           <Sparkles size={14} style={{ color: '#a5b4fc', flexShrink: 0, marginTop: 1 }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 9.5, fontWeight: 800, color: '#a5b4fc', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 2 }}>Studio Brain</div>
@@ -1070,7 +1073,7 @@ function GalleryFromKeepersModal({ projectId, keepers, onClose, onDone }) {
   };
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 420 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: 'var(--ms-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Images size={18} color="var(--ms-on-accent)" /></div>

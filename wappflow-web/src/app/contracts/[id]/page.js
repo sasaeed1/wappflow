@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useConfirm } from '@/lib/confirm';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, Eye, X, Check, Cloud, Send, Copy, MessageCircle, Mail, Settings, Zap, CreditCard, ShieldCheck, FolderPlus, Sparkles, Wand2, AlertTriangle, FileText, Clock, Users, UserPlus, Bell, Paperclip, Image as ImageIcon, BookMarked, History, RotateCcw } from 'lucide-react';
 import { csAPI, mediaUrl } from '../../../lib/api';
@@ -8,6 +9,8 @@ import RoomPanel from '@/components/RoomPanel';
 import { BLOCK_TYPES, defaultData, BlockView, DocFrame, computeTotals } from '../blocks';
 import '../contracts.css';
 import { clickable } from '@/lib/a11y';
+import ErrorState from '@/components/ui/ErrorState';
+import { isGone, loadErrorText } from '@/lib/loadFailure';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const THEMES = [['monochrome', 'Monochrome'], ['editorial', 'Editorial'], ['executive', 'Executive']];
@@ -17,6 +20,7 @@ export default function BuilderPage() {
   const router = useRouter();
   const { id } = useParams();
   const [doc, setDoc] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [title, setTitle] = useState('');
   const [blocks, setBlocks] = useState([]);
   const [theme, setTheme] = useState('monochrome');
@@ -40,7 +44,7 @@ export default function BuilderPage() {
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) { router.push('/login?next=/contracts'); return; }
     csAPI.get(id).then(r => { setDoc(r.data); setTitle(r.data.title || ''); setBlocks((r.data.blocks || []).map(b => b.id ? b : { ...b, id: uid() })); setTheme(r.data.theme || 'monochrome'); setSettings(r.data.settings || {}); })
-      .catch(() => router.push('/contracts'));
+      .catch((e) => { if (isGone(e)) router.push('/contracts'); else setLoadError(loadErrorText(e)); });
     csAPI.getSettings().then(r => { setWsLetterhead(r.data.letterhead_url || null); setWsDefaults(r.data.settings || {}); }).catch(() => {});
   }, [id]);
 
@@ -60,6 +64,7 @@ export default function BuilderPage() {
   const del = (bid) => { setBlocks(bs => bs.filter(b => b.id !== bid)); setSelected(null); };
   const saveAsTemplate = async () => { try { await csAPI.createTemplate({ title: title || 'Untitled', type: doc.type, blocks }); setTplSaved(true); setTimeout(() => setTplSaved(false), 2200); } catch {} };
 
+  if (loadError) return <div style={{ padding: 24 }}><ErrorState title="Could not open this document" description="Your document is safe — we just couldn’t load it right now." detail={loadError} onRetry={() => window.location.reload()} /></div>;
   if (!doc) return <><p style={{ padding: 40, color: 'var(--text-muted)' }}>Loading…</p></>;
   const outerBg = theme === 'executive' ? '#080b12' : theme === 'editorial' ? '#efe9dd' : '#eceef2';
   const docLetterhead = (settings.letterhead !== false && wsLetterhead) ? wsLetterhead : null;
@@ -73,7 +78,7 @@ export default function BuilderPage() {
   return (
     <>
       {/* builder toolbar */}
-      <div style={{ position: 'sticky', top: 58, zIndex: 50, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+      <div style={{ position: 'sticky', top: 'var(--shell-h)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
         <button onClick={() => router.push('/contracts')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}><ArrowLeft size={15} /> Back</button>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Untitled document" style={{ flex: 1, minWidth: 160, maxWidth: 420, border: '1px solid transparent', borderRadius: 8, padding: '6px 10px', fontSize: 15, fontWeight: 700, color: 'var(--text)', background: 'transparent', outline: 'none' }} />
         <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
@@ -123,7 +128,7 @@ export default function BuilderPage() {
 
       {/* block palette */}
       {addAt != null && (
-        <div onClick={() => setAddAt(null)} style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div data-dismiss onClick={() => setAddAt(null)} style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 560, maxHeight: '82vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, boxShadow: '0 30px 80px rgba(0,0,0,0.4)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Add a block</h3>
@@ -166,7 +171,7 @@ export default function BuilderPage() {
       {showAI && <AIModal id={id} type={doc.type} blocks={blocks} setBlocks={setBlocks} selectedBlock={blocks.find(b => b.id === selected)} updateBlock={updateBlock} onClose={() => setShowAI(false)} />}
       {showPeople && <PeopleModal id={id} onClose={() => setShowPeople(false)} />}
       {showRoom && (
-        <div onClick={() => setShowRoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 16 }}>
+        <div data-dismiss onClick={() => setShowRoom(false)} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(8,8,12,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 440, marginTop: 64 }}>
             <RoomPanel type="contract" id={id} title={title} />
           </div>
@@ -182,7 +187,7 @@ function ClausePickerModal({ onClose, onInsert }) {
   const [clauses, setClauses] = useState(null);
   useEffect(() => { csAPI.clauses().then(r => setClauses(r.data.clauses || [])).catch(() => setClauses([])); }, []);
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 460, maxHeight: '80vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Insert a clause</h3>
@@ -206,18 +211,20 @@ function ClausePickerModal({ onClose, onInsert }) {
 }
 
 function VersionsModal({ id, onClose }) {
+  const confirmDialog = useConfirm();
+
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState('');
   const [viewing, setViewing] = useState(null);
   useEffect(() => { csAPI.versions(id).then(r => setData(r.data)).catch(() => setData({ versions: [] })); }, []); // eslint-disable-line
   const viewDiff = async (vid) => { try { const r = await csAPI.getVersion(id, vid); setViewing(r.data); } catch {} };
   const restore = async (vid) => {
-    if (!window.confirm('Restore this version? Your current content will be replaced (sent copies are unaffected).')) return;
+    if (!(await confirmDialog({ title: 'Restore this version?', message: 'Your current content will be replaced. Copies already sent are unaffected.', confirmLabel: 'Restore', tone: 'warning' }))) return;
     setBusy(vid);
     try { await csAPI.restoreVersion(id, vid); window.location.reload(); } catch { setBusy(''); }
   };
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 460, maxHeight: '82vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><History size={18} style={{ color: 'var(--accent)' }} /> Version history</h3>
@@ -284,7 +291,7 @@ function PeopleModal({ id, onClose }) {
   const remind = async () => { setRemindState('working'); try { await csAPI.remind(id, ['whatsapp', 'email']); setRemindState('done'); setTimeout(() => setRemindState(''), 2500); load(); } catch { setRemindState('err'); } };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '86vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Users size={18} style={{ color: 'var(--accent)' }} /> Signers & activity</h3>
@@ -391,7 +398,7 @@ function AIModal({ id, type, blocks, setBlocks, selectedBlock, updateBlock, onCl
   );
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '86vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Sparkles size={18} style={{ color: 'var(--accent)' }} /> AI assistant</h3>
@@ -475,7 +482,7 @@ function SettingsModal({ id, settings, setSettings, hasLead, wsLetterhead, onClo
   const removeFile = async () => { await csAPI.removeDocFile(id); setSettings(s => { const n = { ...s }; delete n.upload; return n; }); };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 520, maxHeight: '86vh', overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Automations & settings</h3>
@@ -561,7 +568,7 @@ function SendModal({ id, doc, hasLead, defaultExpire = 0, onClose }) {
   );
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(8,8,12,0.6)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ width: '100%', maxWidth: 460, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 22, boxShadow: '0 30px 80px rgba(0,0,0,0.45)' }}>
         {phase !== 'sent' ? (
           <>

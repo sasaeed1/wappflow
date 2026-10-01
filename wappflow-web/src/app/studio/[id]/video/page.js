@@ -2,21 +2,27 @@
 /* eslint-disable @next/next/no-img-element -- dynamic /uploads media */
 
 import { useState, useEffect } from 'react';
+import { useConfirm } from '@/lib/confirm';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Film, Trash2, Clock, Sparkles, X, LayoutTemplate, Loader, RefreshCw, Wand2, Image as ImageIcon, Layers, ChevronRight, ChevronLeft } from 'lucide-react';
 import { mediaAPI, reelAPI } from '../../../../lib/api';
 import { ASPECTS, ASPECT_LABELS } from '../../video-constants';
 import { clickable } from '@/lib/a11y';
+import ErrorState from '@/components/ui/ErrorState';
+import { isGone, loadErrorText } from '@/lib/loadFailure';
 
 const fmtDur = (ms) => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 export default function ReelListPage() {
+  const confirmDialog = useConfirm();
+
   const router = useRouter();
   const { id } = useParams();
   const [project, setProject] = useState(null);
   const [timelines, setTimelines] = useState([]);
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showAi, setShowAi] = useState(false);
@@ -29,7 +35,7 @@ export default function ReelListPage() {
       try {
         const [p, tl, a] = await Promise.all([mediaAPI.getProject(id), mediaAPI.listTimelines(id), mediaAPI.listAssets(id, { limit: 1 })]);
         setProject(p.data); setTimelines(tl.data.timelines || []); setAssets(a.data.assets || []);
-      } catch { router.push('/studio'); return; }
+      } catch (e) { if (isGone(e)) { router.push('/studio'); return; } setLoadError(loadErrorText(e)); setLoading(false); return; }
       setLoading(false);
     })();
   }, [id]);
@@ -42,7 +48,7 @@ export default function ReelListPage() {
   };
   const remove = async (tlId, e) => {
     e.stopPropagation();
-    if (!confirm('Delete this reel? This cannot be undone.')) return;
+    if (!(await confirmDialog({ title: 'Delete this reel?', message: 'This cannot be undone.', confirmLabel: 'Delete', tone: 'danger' }))) return;
     try { await mediaAPI.deleteTimeline(tlId); setTimelines(t => t.filter(x => x.id !== tlId)); } catch {}
   };
   const refresh = async (tlId, e) => {
@@ -63,6 +69,7 @@ export default function ReelListPage() {
     setBuilding(false);
   };
 
+  if (loadError) return <div className="ms-page"><ErrorState title="Could not open Reels" description="Your reels are safe — we just couldn’t load them right now." detail={loadError} onRetry={() => window.location.reload()} /></div>;
   if (loading) return <><div className="ms-page"><p className="ms-loading">Loading…</p></div></>;
 
   return (
@@ -243,7 +250,7 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
   const narrowed = matched.length > 0 && matched.length < allStyles.length;
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 560 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -385,7 +392,7 @@ function TemplateGalleryModal({ projectId, hasMedia, onClose }) {
   };
 
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 1160, width: '95vw' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 4 }}>
           <div>
@@ -455,7 +462,7 @@ function TemplateGalleryModal({ projectId, hasMedia, onClose }) {
 function NewReelModal({ onClose, onPick }) {
   const order = ['9:16', '1:1', '4:5', '16:9', '21:9', '3:2'];
   return (
-    <div {...clickable(onClose)} className="ms-modal-overlay">
+    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 520 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>New reel</h2>
