@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, auditAPI, BASE_URL } from '../../lib/api';
 import { useScrollActiveIntoView } from '@/lib/sidenav';
+import PairWithPhone from '@/components/PairWithPhone';
 import { Send as SendIcon } from 'lucide-react';
 import { useConfirm } from '@/lib/confirm';
 import { toast } from '@/components/ui/Toast';
@@ -2079,6 +2080,8 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
             </div>
           )}
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Scan with WhatsApp → Linked Devices → Link a Device</p>
+          {/* No second device to scan with (e.g. on the phone itself)? Link by code. */}
+          <PairWithPhone endpoint={`/whatsapp/accounts/${account.id}/pair-code`} />
         </div>
       )}
 

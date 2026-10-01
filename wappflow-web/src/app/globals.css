@@ -797,3 +797,15 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
   .wf-fab > button,
   .wf-fab > a { width: 46px !important; height: 46px !important; }
 }
+
+/* ── WhatsApp message actions (lead thread) ──────────────────────────────────
+   Reply / react bar under a bubble: revealed on hover with a mouse, and after a
+   long-press on touch screens (the page toggles .is-open). Collapsed to zero
+   height otherwise so it never adds gaps between messages. */
+.wa-msg-actions { display: flex; align-items: center; gap: 2px; max-height: 0; overflow: hidden; opacity: 0; transition: opacity .15s ease, max-height .15s ease; padding: 0 4px; }
+.wa-msg-actions button { border: none; background: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 5px 6px; border-radius: 999px; color: var(--text-muted); display: inline-flex; align-items: center; }
+.wa-msg-actions button:hover, .wa-msg-actions button.is-on { background: var(--surface2); }
+.wa-msg-actions.is-open { max-height: 40px; opacity: 1; margin-bottom: 6px; }
+@media (hover: hover) {
+  .wa-bubble-row:hover .wa-msg-actions { max-height: 40px; opacity: 1; margin-bottom: 4px; }
+}

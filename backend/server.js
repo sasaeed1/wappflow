@@ -792,6 +792,21 @@ safeAlter('ALTER TABLE messages ADD COLUMN wa_message_id TEXT');
 // Multi-platform message routing: which platform this message lives on, and which connected account it used.
 safeAlter('ALTER TABLE messages ADD COLUMN platform TEXT DEFAULT "whatsapp"');
 safeAlter('ALTER TABLE messages ADD COLUMN platform_account_id TEXT');
+// WhatsApp conversation state beyond the text itself (PROP-004): delivery/read
+// ticks, the message a reply quotes, reactions, edits, deletions, and structured
+// content for locations / contact cards / polls / calls. All nullable — older
+// rows and other platforms simply don't have them.
+safeAlter('ALTER TABLE messages ADD COLUMN ack INTEGER');
+safeAlter('ALTER TABLE messages ADD COLUMN quoted_wa_id TEXT');
+safeAlter('ALTER TABLE messages ADD COLUMN quoted_body TEXT');
+safeAlter('ALTER TABLE messages ADD COLUMN reactions TEXT');
+safeAlter('ALTER TABLE messages ADD COLUMN edited_at TIMESTAMP');
+safeAlter('ALTER TABLE messages ADD COLUMN original_body TEXT');
+safeAlter('ALTER TABLE messages ADD COLUMN deleted_at TIMESTAMP');
+safeAlter('ALTER TABLE messages ADD COLUMN meta TEXT');
+// The WhatsApp LID ("…@lid") behind which WhatsApp hides some numbers, so the
+// same person always lands on the same lead even before their number is known.
+safeAlter('ALTER TABLE leads ADD COLUMN wa_lid TEXT');
 // Backfill: pre-existing messages with NULL platform default to whatsapp (since that was the only channel before).
 try { db.prepare('UPDATE messages SET platform = ? WHERE platform IS NULL').run('whatsapp'); } catch {}
 safeAlter('ALTER TABLE knowledge_documents ADD COLUMN workspace_id TEXT');
@@ -990,6 +1005,7 @@ for (const ix of [
   // full scan of the largest table in the product, on the busiest code path there
   // is — and it gets slower with every message ever received.
   'CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON messages(wa_message_id)',
+  'CREATE INDEX IF NOT EXISTS idx_leads_wa_lid ON leads(workspace_id, wa_lid)',
   // Message history is always read per-lead, newest first.
   'CREATE INDEX IF NOT EXISTS idx_messages_lead_ts ON messages(lead_id, timestamp DESC)',
   // The bin sweep and every trash list filter on these.
@@ -1968,29 +1984,63 @@ app.get('/api/leads/:leadId/messages', auth, (req, res) => {
 
 app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
   try {
-    const { body, platform } = req.body;
+    const { body, platform, reply_to } = req.body;
     const { leadId } = req.params;
     const lead = getScopedLead(req, leadId);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     const targetPlatform = (platform || 'whatsapp').toLowerCase();
 
+    // Replying to a specific message: it must belong to THIS lead (the lead
+    // scope above is what keeps a reply from reaching into another workspace).
+    let quoted = null;
+    if (reply_to) {
+      quoted = db.prepare('SELECT id, wa_message_id, body FROM messages WHERE id = ? AND lead_id = ?').get(reply_to, leadId);
+      if (!quoted) return res.status(400).json({ error: 'The message you are replying to is not in this conversation' });
+    }
+
     // Only WhatsApp has a real outbound send wired today. Other platforms persist the message
     // locally so the user sees their draft in the chat history, but flag that delivery is pending.
     let delivered = false;
+    let waId = null;
     if (targetPlatform === 'whatsapp') {
-      await whatsappService.sendMessage(lead.customer_phone, body, null, lead.workspace_id);
+      const opts = quoted && quoted.wa_message_id ? { quotedMessageId: quoted.wa_message_id } : {};
+      waId = await whatsappService.sendMessage(lead.customer_phone, body, null, lead.workspace_id, opts) || null;
       delivered = true;
     }
 
     const msgId = generateId();
-    db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp, platform) VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)`)
-      .run(msgId, leadId, req.userId, body, targetPlatform);
+    db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp, platform, wa_message_id, quoted_wa_id, quoted_body)
+      VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?, ?, ?, ?)`)
+      .run(msgId, leadId, req.userId, body, targetPlatform, waId,
+        quoted ? quoted.wa_message_id : null, quoted ? String(quoted.body || '').slice(0, 300) : null);
     db.prepare(`UPDATE leads SET total_messages = total_messages + 1, last_message_at = CURRENT_TIMESTAMP,
       last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
     addContactHistory(leadId, req.userId, 'message', `Sent ${targetPlatform} message: ${body.substring(0, 80)}${body.length > 80 ? '…' : ''}`);
 
-    res.json({ message: 'Sent', delivered, platform: targetPlatform });
+    res.json({ message: 'Sent', delivered, platform: targetPlatform, sent: db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId) });
   } catch (e) { res.status(500).json({ error: e.message || e.toString() }); }
+});
+
+// React to a WhatsApp message (an empty emoji removes our reaction).
+app.post('/api/leads/:leadId/messages/:messageId/react', auth, async (req, res) => {
+  try {
+    const lead = getScopedLead(req, req.params.leadId);
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    const msg = db.prepare('SELECT * FROM messages WHERE id = ? AND lead_id = ?').get(req.params.messageId, lead.id);
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+    if (!msg.wa_message_id || String(msg.wa_message_id).startsWith('call_')) {
+      return res.status(400).json({ error: 'This message cannot be reacted to on WhatsApp' });
+    }
+    const emoji = typeof req.body?.emoji === 'string' ? req.body.emoji.slice(0, 16) : '';
+    await whatsappService.react(msg.wa_message_id, emoji, null, lead.workspace_id);
+    // Recorded now so the thread updates instantly; WhatsApp's own reaction
+    // event (which may follow) writes the same value.
+    let map = {};
+    try { map = JSON.parse(msg.reactions || '{}') || {}; } catch {}
+    if (emoji) map.me = emoji; else delete map.me;
+    db.prepare('UPDATE messages SET reactions = ? WHERE id = ?').run(Object.keys(map).length ? JSON.stringify(map) : null, msg.id);
+    res.json({ message: db.prepare('SELECT * FROM messages WHERE id = ?').get(msg.id) });
+  } catch (e) { res.status(500).json({ error: e.message || 'Reaction failed' }); }
 });
 
 // Send voice note. Multer errors are handled inline (they're middleware errors,
@@ -3244,6 +3294,30 @@ app.post('/api/whatsapp/accounts/:id/connect', auth, async (req, res) => {
   if (!account) return res.status(404).json({ error: 'Account not found' });
   try { await whatsappService.reconnect(req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Link by phone number: WhatsApp → Linked devices → Link with phone number
+// instead → type this 8-character code. The account must be connecting (QR
+// showing) — the code replaces the QR scan.
+app.post('/api/whatsapp/accounts/:id/pair-code', auth, async (req, res) => {
+  const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  try {
+    const code = await whatsappService.requestPairingCode(req.params.id, req.body && req.body.phone);
+    logAudit(req.workspaceId, req.userId, 'whatsapp_pair_code', 'platform_account', account.id, {});
+    res.json({ code });
+  } catch (e) { res.status(400).json({ error: describeWaError(e).split('\n')[0] || e.message }); }
+});
+
+// Same, for the workspace's WhatsApp page (which works on "the" account).
+app.post('/api/whatsapp/pair-code', auth, async (req, res) => {
+  const account = resolveWorkspaceWaAccount(req.workspaceId);
+  if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
+  try {
+    const code = await whatsappService.requestPairingCode(account.id, req.body && req.body.phone);
+    logAudit(req.workspaceId, req.userId, 'whatsapp_pair_code', 'platform_account', account.id, {});
+    res.json({ code });
+  } catch (e) { res.status(400).json({ error: describeWaError(e).split('\n')[0] || e.message }); }
 });
 
 app.post('/api/whatsapp/accounts/:id/disconnect', auth, async (req, res) => {
