@@ -38,6 +38,16 @@ const app = express();
 // express-rate-limit + req.ip identify the real client, not the proxy. Configurable
 // via TRUST_PROXY (default 1 = one proxy in front).
 app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+// Public website forms are embedded on customers' own sites (any origin), but the
+// global cors() below only allows FRONTEND_URL and answers OPTIONS itself, so the
+// JSON preflight from e.g. remoteops.co was refused and every submission was lost
+// (the embed shows "thanks" regardless). Answer this route's preflight first.
+app.options('/api/website-form/:formToken/submit', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
 const DATA_DIR = process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : require('path').join(__dirname));
 // Phase 8: one answer to "who is the studio?" for every public page.
 const { publicBrand, ensureBrandColumns } = require('./public-brand');
@@ -5536,13 +5546,17 @@ app.post('/api/website-form/:formToken/submit', (req, res) => {
 
     const leadId = generateId();
     const now = new Date().toISOString();
+    // leads.user_id is a foreign key to users. Only legacy workspaces share their
+    // owner's id, so writing workspace_id there failed for every workspace created
+    // by signup — the submission 500'd and the lead was lost. Use the owner.
+    const ownerId = db.prepare('SELECT owner_id FROM workspaces WHERE id = ?').get(account.workspace_id)?.owner_id || account.workspace_id;
     db.prepare(`
       INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, email, status, first_message, platform_source, platform_account_id, created_at, last_message_at)
       VALUES (?, ?, ?, ?, ?, ?, 'New', ?, 'website', ?, ?, ?)
-    `).run(leadId, account.workspace_id, account.workspace_id, name, phone, email, message, account.id, now, now);
+    `).run(leadId, ownerId, account.workspace_id, name, phone, email, message, account.id, now, now);
 
     if (message) {
-      db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp) VALUES (?, ?, ?, ?, 0, ?)`).run(generateId(), leadId, account.workspace_id, message, now);
+      db.prepare(`INSERT INTO messages (id, lead_id, user_id, body, from_me, timestamp) VALUES (?, ?, ?, ?, 0, ?)`).run(generateId(), leadId, ownerId, message, now);
     }
 
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
@@ -5557,12 +5571,7 @@ app.post('/api/website-form/:formToken/submit', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.options('/api/website-form/:formToken/submit', (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.sendStatus(204);
-});
+// (CORS preflight for this route is answered near the top of the file, before cors().)
 
 // ════════════════════════════════════════════════════════════
 //  CONNECTED CHANNELS / RELATIONS / TIMELINE
