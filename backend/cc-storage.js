@@ -2,7 +2,9 @@
 
 // ════════════════════════════════════════════════════════════════════════════
 //  COMMAND CENTER — STORAGE DASHBOARD  (Final Vision · Phase 10)
-//  Founder + per-workspace storage analytics from the per-asset storage_size /
+//  Founder + per-workspace storage analytics. Bytes = COALESCE(storage_size, size_bytes)
+//  — the same definition storage-enforce.usedBytes() enforces (legacy rows predate
+//  storage_size and used to count as 0 here). From the per-asset storage_size /
 //  storage_provider tracking. Mounted by command-center.js (platform auth).
 //   • GET /api/cc/storage/overview     — global: total, by-provider, R2 GB, est. cost, growth
 //   • GET /api/cc/storage/workspaces   — top-20 largest workspaces
@@ -20,12 +22,12 @@ module.exports = function mountCcStorage(app, deps = {}) {
   // ── Founder: global storage overview ────────────────────────────────────────
   app.get('/api/cc/storage/overview', platformAuth, (req, res) => {
     try {
-      const byProvider = safeAll("SELECT COALESCE(storage_provider,'local') AS provider, COUNT(*) AS files, COALESCE(SUM(storage_size),0) AS bytes FROM ms_assets WHERE deleted_at IS NULL GROUP BY provider");
+      const byProvider = safeAll("SELECT COALESCE(storage_provider,'local') AS provider, COUNT(*) AS files, COALESCE(SUM(COALESCE(storage_size, size_bytes)),0) AS bytes FROM ms_assets WHERE deleted_at IS NULL GROUP BY provider");
       const total = byProvider.reduce((s, r) => s + r.bytes, 0);
       const r2Bytes = (byProvider.find(p => p.provider === 'r2') || {}).bytes || 0;
       const r2GB = r2Bytes / GB;
       const estCost = Math.max(0, r2GB - FREE_GB) * R2_RATE;
-      const growth = one("SELECT COALESCE(SUM(storage_size),0) AS bytes FROM ms_assets WHERE uploaded_at >= datetime('now','-30 days')").bytes || 0;
+      const growth = one("SELECT COALESCE(SUM(COALESCE(storage_size, size_bytes)),0) AS bytes FROM ms_assets WHERE uploaded_at >= datetime('now','-30 days')").bytes || 0;
       // Linear forecast from the trailing-30d rate. New uploads land on the active
       // provider, so project R2 GB (and therefore cost) forward by the same growth.
       const growthRateGbPerDay = (growth / GB) / 30;
@@ -48,7 +50,7 @@ module.exports = function mountCcStorage(app, deps = {}) {
   // ── Founder: top-20 largest workspaces ──────────────────────────────────────
   app.get('/api/cc/storage/workspaces', platformAuth, (req, res) => {
     try {
-      const rows = safeAll("SELECT workspace_id, COUNT(*) AS files, COALESCE(SUM(storage_size),0) AS bytes FROM ms_assets WHERE deleted_at IS NULL GROUP BY workspace_id ORDER BY bytes DESC LIMIT 20");
+      const rows = safeAll("SELECT workspace_id, COUNT(*) AS files, COALESCE(SUM(COALESCE(storage_size, size_bytes)),0) AS bytes FROM ms_assets WHERE deleted_at IS NULL GROUP BY workspace_id ORDER BY bytes DESC LIMIT 20");
       res.json({ workspaces: rows });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -59,7 +61,7 @@ module.exports = function mountCcStorage(app, deps = {}) {
       const rows = safeAll(`SELECT COALESCE(wp.plan,'creator') AS plan,
           COUNT(DISTINCT a.workspace_id) AS workspaces,
           COUNT(a.id) AS files,
-          COALESCE(SUM(a.storage_size),0) AS bytes
+          COALESCE(SUM(COALESCE(a.storage_size, a.size_bytes)),0) AS bytes
         FROM ms_assets a LEFT JOIN workspace_plan wp ON wp.workspace_id = a.workspace_id
         WHERE a.deleted_at IS NULL GROUP BY plan ORDER BY bytes DESC`);
       res.json({ by_plan: rows });
@@ -69,7 +71,7 @@ module.exports = function mountCcStorage(app, deps = {}) {
   // ── Founder: fastest-growing workspaces (trailing 30 days) ──────────────────
   app.get('/api/cc/storage/fastest-growing', platformAuth, (req, res) => {
     try {
-      const rows = safeAll("SELECT workspace_id, COUNT(*) AS files, COALESCE(SUM(storage_size),0) AS growth_bytes FROM ms_assets WHERE deleted_at IS NULL AND uploaded_at >= datetime('now','-30 days') GROUP BY workspace_id ORDER BY growth_bytes DESC LIMIT 20");
+      const rows = safeAll("SELECT workspace_id, COUNT(*) AS files, COALESCE(SUM(COALESCE(storage_size, size_bytes)),0) AS growth_bytes FROM ms_assets WHERE deleted_at IS NULL AND uploaded_at >= datetime('now','-30 days') GROUP BY workspace_id ORDER BY growth_bytes DESC LIMIT 20");
       res.json({ workspaces: rows });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -78,15 +80,15 @@ module.exports = function mountCcStorage(app, deps = {}) {
   app.get('/api/cc/storage/workspace/:id', platformAuth, (req, res) => {
     try {
       const ws = req.params.id;
-      const total = one("SELECT COALESCE(SUM(storage_size),0) AS bytes, COUNT(*) AS files FROM ms_assets WHERE workspace_id = ? AND deleted_at IS NULL", ws);
+      const total = one("SELECT COALESCE(SUM(COALESCE(storage_size, size_bytes)),0) AS bytes, COUNT(*) AS files FROM ms_assets WHERE workspace_id = ? AND deleted_at IS NULL", ws);
       let limitGb = null;
       try { const ent = entitlements && entitlements.getEntitlements(db, ws); limitGb = ent && ent.limits ? ent.limits.storage_gb : null; } catch {}
       const limitBytes = (limitGb && limitGb > 0) ? limitGb * GB : null;
       const pct = limitBytes ? Math.round((total.bytes / limitBytes) * 100) : null;
-      const growth = one("SELECT COALESCE(SUM(storage_size),0) AS bytes FROM ms_assets WHERE workspace_id = ? AND uploaded_at >= datetime('now','-30 days')", ws).bytes || 0;
-      const largestProjects = safeAll("SELECT p.id, p.title, COALESCE(SUM(a.storage_size),0) AS bytes, COUNT(a.id) AS files FROM ms_projects p LEFT JOIN ms_assets a ON a.project_id = p.id AND a.deleted_at IS NULL WHERE p.workspace_id = ? GROUP BY p.id ORDER BY bytes DESC LIMIT 10", ws);
-      const largestGalleries = safeAll("SELECT g.id, g.title, COALESCE(SUM(a.storage_size),0) AS bytes FROM ms_galleries g LEFT JOIN ms_gallery_assets ga ON ga.gallery_id = g.id LEFT JOIN ms_assets a ON a.id = ga.asset_id AND a.deleted_at IS NULL WHERE g.workspace_id = ? GROUP BY g.id ORDER BY bytes DESC LIMIT 10", ws);
-      const largestVideos = safeAll("SELECT id, filename, COALESCE(storage_size,0) AS bytes FROM ms_assets WHERE workspace_id = ? AND type = 'video' AND deleted_at IS NULL ORDER BY bytes DESC LIMIT 10", ws);
+      const growth = one("SELECT COALESCE(SUM(COALESCE(storage_size, size_bytes)),0) AS bytes FROM ms_assets WHERE workspace_id = ? AND uploaded_at >= datetime('now','-30 days')", ws).bytes || 0;
+      const largestProjects = safeAll("SELECT p.id, p.title, COALESCE(SUM(COALESCE(a.storage_size, a.size_bytes)),0) AS bytes, COUNT(a.id) AS files FROM ms_projects p LEFT JOIN ms_assets a ON a.project_id = p.id AND a.deleted_at IS NULL WHERE p.workspace_id = ? GROUP BY p.id ORDER BY bytes DESC LIMIT 10", ws);
+      const largestGalleries = safeAll("SELECT g.id, g.title, COALESCE(SUM(COALESCE(a.storage_size, a.size_bytes)),0) AS bytes FROM ms_galleries g LEFT JOIN ms_gallery_assets ga ON ga.gallery_id = g.id LEFT JOIN ms_assets a ON a.id = ga.asset_id AND a.deleted_at IS NULL WHERE g.workspace_id = ? GROUP BY g.id ORDER BY bytes DESC LIMIT 10", ws);
+      const largestVideos = safeAll("SELECT id, filename, COALESCE(storage_size, size_bytes, 0) AS bytes FROM ms_assets WHERE workspace_id = ? AND type = 'video' AND deleted_at IS NULL ORDER BY bytes DESC LIMIT 10", ws);
       res.json({
         workspace_id: ws, used_bytes: total.bytes, files: total.files,
         limit_gb: limitGb, limit_bytes: limitBytes, pct_used: pct, growth_30d_bytes: growth,

@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, TrendingUp, Pause, Sparkles, Flag, X } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Pause, Sparkles, Flag, X, UserPlus, LifeBuoy, Wallet, HardDrive } from 'lucide-react';
+import { useConfirm } from '@/lib/confirm';
 import { ccApi } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
 import { clickable } from '@/lib/a11y';
@@ -11,11 +12,16 @@ const KIND_META = {
   churn_risk: { icon: AlertTriangle, label: 'Churn risk' },
   expansion: { icon: TrendingUp, label: 'Expansion' },
   ai_cost: { icon: Sparkles, label: 'AI cost' },
+  new_signup: { icon: UserPlus, label: 'New signup' },
+  support_ticket: { icon: LifeBuoy, label: 'Support' },
+  billing_overdue: { icon: Wallet, label: 'Overdue' },
+  storage_full: { icon: HardDrive, label: 'Storage full' },
 };
 const SEV_TONE = { high: 'red', medium: 'amber', low: 'blue', info: 'neutral' };
 
 export default function FounderInbox() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
 
@@ -25,7 +31,7 @@ export default function FounderInbox() {
   if (err) return <div style={{ color: '#f87171' }}>{err}</div>;
   if (!d) return <div style={{ color: 'var(--text-dim,#666)' }}>Loading…</div>;
 
-  const dismiss = async (id) => { try { await ccApi.dismissInbox(id); load(); } catch (e) { alert(e.response?.data?.error || 'Failed'); } };
+  const dismiss = async (id) => { try { await ccApi.dismissInbox(id); load(); } catch (e) { confirm({ title: 'Could not dismiss', message: e.response?.data?.error || 'Try again', alertOnly: true, tone: 'danger' }); } };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -38,10 +44,10 @@ export default function FounderInbox() {
           {d.counts.info ? <Pill tone="neutral">{d.counts.info} info</Pill> : null}
         </div>
       </div>
-      <p style={{ fontSize: 12.5, color: 'var(--text-dim,#666)', margin: 0 }}>What needs your attention — synthesized from suspensions, churn/expansion scores, AI spend, and flagged items. Computed signals resolve automatically when the condition clears.</p>
+      <p style={{ fontSize: 12.5, color: 'var(--text-dim,#666)', margin: 0 }}>What needs you: new signups, support requests, overdue payments, customers at their storage limit, suspensions, churn and expansion signals, AI spend. Signals clear themselves when the condition does; dismiss the rest when handled.</p>
 
       <Card style={{ padding: 0 }}>
-        {!d.items.length && <div style={{ padding: 24, color: 'var(--text-dim,#666)', fontSize: 13 }}>📭 Inbox zero — nothing needs attention. (At-risk/expansion signals appear after a health rollup.)</div>}
+        {!d.items.length && <div style={{ padding: 24, color: 'var(--text-dim,#666)', fontSize: 13 }}>Inbox zero — nothing needs your attention right now.</div>}
         {d.items.map((it, i) => {
           const meta = KIND_META[it.kind] || { icon: Flag, label: it.kind };
           const Icon = meta.icon;

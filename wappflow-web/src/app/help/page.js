@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { MODULE_SECTIONS } from './sections-modules';
+import SupportDesk from './SupportDesk';
 import { useScrollActiveIntoView } from '@/lib/sidenav';
 
 // The module sections live in their own file: this page was written when the
@@ -277,10 +278,11 @@ export default function HelpPage() {
 
           {/* Content */}
           <div className="wf-sidenav-content" style={{ flex: 1, minWidth: 0, alignSelf: 'stretch' }}>
+            {!search && <SupportDesk />}
             {search && filtered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '60px 0' }}>
                 <Search size={40} color="var(--border)" style={{ margin: '0 auto 12px' }} />
-                <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 6px' }}>No results for "{search}"</p>
+                <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: '0 0 6px' }}>No results for “{search}”</p>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Try different keywords or browse by category.</p>
               </div>
             ) : search ? (

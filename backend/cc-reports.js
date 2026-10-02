@@ -32,11 +32,11 @@ module.exports = function(app, deps) {
     if (dataset === 'customers') {
       const where = [], params = [];
       if (f.q) { where.push('(w.name LIKE ? OR u.email LIKE ? OR u.business_name LIKE ?)'); params.push(`%${f.q}%`, `%${f.q}%`, `%${f.q}%`); }
-      if (f.plan) { where.push("COALESCE(wp.plan,'free') = ?"); params.push(f.plan); }
+      if (f.plan) { where.push("COALESCE(wp.plan,'creator') = ?"); params.push(f.plan); }
       if (f.status) { where.push("COALESCE(w.status,'active') = ?"); params.push(f.status); }
       const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
       return safeAll(`SELECT w.id, w.name, u.email AS owner_email, u.business_name AS owner_name,
-        COALESCE(wp.plan,'free') AS plan, COALESCE(w.status,'active') AS status,
+        COALESCE(wp.plan,'creator') AS plan, COALESCE(w.status,'active') AS status,
         (SELECT COUNT(*) FROM workspace_members m WHERE m.workspace_id = w.id) AS users,
         (SELECT COUNT(*) FROM leads l WHERE l.workspace_id = w.id AND (l.is_deleted = 0 OR l.is_deleted IS NULL)) AS leads,
         (SELECT COALESCE(SUM(a.size_bytes),0) FROM ms_assets a WHERE a.workspace_id = w.id) AS storage_bytes,
@@ -44,7 +44,7 @@ module.exports = function(app, deps) {
         FROM workspaces w LEFT JOIN users u ON u.id = w.owner_id LEFT JOIN workspace_plan wp ON wp.workspace_id = w.id
         ${whereSql} ORDER BY w.name LIMIT 10000`, ...params);
     } else if (dataset === 'health') {
-      return safeAll(`SELECT w.id, w.name, COALESCE(wp.plan,'free') AS plan, COALESCE(w.status,'active') AS status,
+      return safeAll(`SELECT w.id, w.name, COALESCE(wp.plan,'creator') AS plan, COALESCE(w.status,'active') AS status,
         s.health, s.churn, s.expansion, s.activity, s.risk_factors
         FROM workspaces w LEFT JOIN workspace_plan wp ON wp.workspace_id = w.id LEFT JOIN workspace_scores s ON s.workspace_id = w.id
         ORDER BY (s.churn IS NULL), s.churn DESC LIMIT 10000`)

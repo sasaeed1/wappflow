@@ -369,8 +369,25 @@ function applyOverrides(db, workspaceId, features, limits, sources) {
     const val = safeJson(o.value, o.value);
     if (o.kind === 'limit') { limits[o.key] = val; sources[o.key] = 'override:limit'; }
     else if (o.kind === 'feature' || o.kind === 'module') { features[o.key] = val; sources[o.key] = 'override:' + o.kind; }
-    // kind 'grace' is tracked in cc_grace_periods and consumed elsewhere
+    // kind 'grace' lives in cc_grace_periods — see applyGrace below
   }
+}
+
+// A Command Center grace period lifts every numeric limit (→ -1, unlimited) until
+// it ends, so a customer over their plan keeps working while billing or an upgrade
+// is sorted out. Features are untouched. Before PROP-005 grace was recorded and
+// shown but nothing read it — granting one changed nothing.
+function applyGrace(db, workspaceId, limits, sources) {
+  let row = null;
+  try {
+    row = db.prepare(`SELECT ends_at FROM cc_grace_periods WHERE workspace_id = ? AND status = 'active'
+      AND (ends_at IS NULL OR datetime(ends_at) > datetime('now')) ORDER BY datetime(ends_at) DESC LIMIT 1`).get(workspaceId);
+  } catch { return null; } // table absent (Command Center not mounted)
+  if (!row) return null;
+  for (const k of Object.keys(limits)) {
+    if (typeof limits[k] === 'number' && limits[k] !== -1) { limits[k] = -1; sources[k] = 'grace'; }
+  }
+  return row.ends_at || null;
 }
 
 // ── The resolver ────────────────────────────────────────────────────────────
@@ -407,6 +424,8 @@ function getEntitlements(db, workspaceId, { fresh = false } = {}) {
   const sources = {};
   try { applyFlags(db, workspaceId, features, sources); } catch {}
   try { applyOverrides(db, workspaceId, features, limits, sources); } catch {}
+  let graceUntil = null;
+  try { graceUntil = applyGrace(db, workspaceId, limits, sources); } catch {}
 
   // Sold-but-unbuilt guard: force off regardless of plan/flag/override (see UNBUILT_FEATURES).
   for (const k of UNBUILT_FEATURES) { if (features[k]) { features[k] = false; sources[k] = 'unbuilt'; } }
@@ -415,6 +434,7 @@ function getEntitlements(db, workspaceId, { fresh = false } = {}) {
     plan: planKey,
     name: (PLAN_DEFINITIONS[planKey] || {}).name || planKey,
     features, limits, sources,
+    grace_until: graceUntil,
   };
   _cache.set(workspaceId, { data, exp: Date.now() + CACHE_TTL_MS });
   return data;

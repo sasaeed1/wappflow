@@ -734,3 +734,11 @@ export const pinsAPI = {
 };
 
 export default api;
+
+// ── In-app help desk (PROP-005 §E) — the customer side of Command Center support ──
+export const supportAPI = {
+  list:   ()         => api.get('/support/tickets'),
+  create: (data)     => api.post('/support/tickets', data),
+  get:    (id)       => api.get(`/support/tickets/${id}`),
+  reply:  (id, body) => api.post(`/support/tickets/${id}/reply`, { body }),
+};

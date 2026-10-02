@@ -288,6 +288,13 @@ const auth = (req, res, next) => {
     // carries an `imp` claim so we can flag the session and tag every action as
     // impersonated (audit). Read-only enforcement happens below (default mode = read).
     if (decoded.imp) { req.impersonatedBy = decoded.imp.admin_id; req.impersonation = decoded.imp; }
+    // An impersonation that was ended (banner Exit, or by an admin) is refused even
+    // though its 30-minute token has not expired yet (PROP-005).
+    if (decoded.imp?.imp_id) {
+      let ended = null;
+      try { ended = db.prepare('SELECT ended_at FROM cc_impersonations WHERE id = ?').get(decoded.imp.imp_id)?.ended_at; } catch {}
+      if (ended) return res.status(401).json({ error: 'This support session has ended.', impersonation_ended: true });
+    }
 
     // Workspace context
     const user = db.prepare('SELECT workspace_id, business_name, full_name, token_version FROM users WHERE id = ?').get(decoded.userId);
@@ -6858,7 +6865,8 @@ console.log('🗄️  Storage route mounted (/api/storage/file/:key) · provider
 //  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.
 // ════════════════════════════════════════════════════════════
 require('./command-center')(app, db, {
-  auth, generateId, broadcastToUser, broadcastToWorkspace, logAudit, JWT_SECRET,
+  auth, generateId, broadcastToUser, broadcastToWorkspace, logAudit, JWT_SECRET, notify,
+  sendPlatformMail: require('./platform-mail').sendPlatformMail,
   // Reuse the workspace-owner SMTP seam so scheduled reports can be emailed.
   sendEmail: async ({ workspaceOwnerId, to, subject, html, text }) => {
     const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(workspaceOwnerId);

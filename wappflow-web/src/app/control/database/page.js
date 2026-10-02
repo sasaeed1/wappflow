@@ -1,12 +1,10 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { ccApi, ccAuth, fmtNum } from '@/lib/ccApi';
+import { ccApi, fmtNum, isElevated } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
 import { clickable } from '@/lib/a11y';
-import { usePrompt } from '@/lib/confirm';
 
 export default function Database() {
-  const ask = usePrompt();
   // ── Explorer state ──
   const [tables, setTables] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -20,7 +18,6 @@ export default function Database() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [sqlError, setSqlError] = useState('');
-  const [elevatedToken, setElevatedToken] = useState(null);
 
   const loadTables = useCallback(() => {
     ccApi.dbTables().then((r) => setTables(r.data.tables || [])).catch(() => setTables([]));
@@ -31,36 +28,20 @@ export default function Database() {
     setSelected(name); setOffset(off); setLoadingDetail(true);
     ccApi.dbTable(name, { limit, offset: off })
       .then((r) => setDetail(r.data))
-      .catch(() => setDetail(null))
+      .catch((e) => setDetail({ error: e.response?.data?.error || 'Could not open this table' }))
       .finally(() => setLoadingDetail(false));
   }, []);
 
-  // Runs the query. Pass an explicit token when retrying right after step-up
-  // (state updates are async, so we can't rely on elevatedToken yet).
-  const runQuery = async (tokenOverride) => {
+  // Step-up (password + authenticator code) is handled by the shared client: a
+  // 403 need_step_up opens the confirm dialog and the request retries itself.
+  const runQuery = async () => {
     if (!sql.trim()) return;
     setRunning(true); setSqlError(''); setResult(null);
     try {
-      const r = await ccApi.sqlQuery(sql, tokenOverride || elevatedToken);
+      const r = await ccApi.sqlQuery(sql);
       setResult(r.data);
     } catch (e) {
-      const data = e.response?.data;
-      if (e.response?.status === 403 && data?.need_step_up) {
-        // type=password: the native prompt this replaces echoed the password in plain text.
-        const pw = await ask({ title: 'Confirm it’s you', message: 'Founder-level SQL needs your password again.', label: 'Password', type: 'password', confirmLabel: 'Continue' });
-        if (!pw) { setRunning(false); return; }
-        try {
-          const su = await ccAuth.stepUp(pw);
-          const token = su.data.token;
-          setElevatedToken(token);
-          setRunning(false);
-          return runQuery(token); // retry with the fresh elevated token
-        } catch (se) {
-          setSqlError(se.response?.data?.error || 'Step-up failed');
-        }
-      } else {
-        setSqlError(data?.error || 'Query failed');
-      }
+      setSqlError(e.response?.data?.need_step_up ? 'Confirmation cancelled.' : (e.response?.data?.error || 'Query failed'));
     }
     setRunning(false);
   };
@@ -101,12 +82,13 @@ export default function Database() {
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border,#1e1e26)', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 700, fontSize: 15 }}>{selected}</span>
-                {detail && <span style={{ fontSize: 12.5, color: 'var(--text-dim,#666)' }}>{fmtNum(detail.rowCount)} rows</span>}
+                {detail && !detail.error && <span style={{ fontSize: 12.5, color: 'var(--text-dim,#666)' }}>{fmtNum(detail.rowCount)} rows</span>}
               </div>
 
               {loadingDetail && <div style={{ padding: 18, fontSize: 13, color: 'var(--text-dim,#666)' }}>Loading…</div>}
 
-              {!loadingDetail && detail && (
+              {!loadingDetail && detail?.error && <div style={{ padding: 16, fontSize: 13, color: '#f87171' }}>{detail.error}</div>}
+              {!loadingDetail && detail && !detail.error && (
                 <div>
                   {/* Columns */}
                   <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border,#1e1e26)' }}>
@@ -175,7 +157,7 @@ export default function Database() {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 700, fontSize: 15 }}>SQL Console</span>
           <Pill tone="amber">read-only</Pill>
-          {elevatedToken && <Pill tone="green">elevated</Pill>}
+          {isElevated() && <Pill tone="green">confirmed</Pill>}
           <span style={{ fontSize: 12, color: 'var(--text-dim,#666)' }}>
             Only SELECT / WITH / EXPLAIN / PRAGMA run here — writes are blocked at the database level and every query is audited.
           </span>

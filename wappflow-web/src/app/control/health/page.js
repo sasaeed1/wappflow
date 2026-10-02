@@ -1,4 +1,5 @@
 'use client';
+import { useConfirm } from '@/lib/confirm';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ccApi } from '@/lib/ccApi';
@@ -12,6 +13,8 @@ const RISK_LABELS = {
 };
 
 export default function Health() {
+  const confirmDialog = useConfirm();
+  const alert = (message) => confirmDialog({ title: 'Something went wrong', message, alertOnly: true, tone: 'danger' });
   const router = useRouter();
   const [rows, setRows] = useState([]);
   const [computed, setComputed] = useState(true);

@@ -121,6 +121,13 @@ function warn(db, ws, notify) {
       if (copy) {
         const body = `${s.used_gb} GB of ${s.limit_gb} GB used (${s.pct}%). ${copy.tail}`;
         try { notify(ws, { type: 'storage', title: copy.title, body, url: '/settings/storage', icon: copy.icon }); } catch {}
+        // Tell the platform operator too when a customer hits the wall (Founder Inbox).
+        if (s.level === 'reached') {
+          try {
+            db.prepare(`INSERT INTO cc_inbox (id, kind, workspace_id, severity, title, body, link)
+              VALUES (lower(hex(randomblob(16))), 'storage_full', ?, 'medium', 'A customer reached their storage limit', ?, '/control/customers/' || ?)`).run(ws, body, ws);
+          } catch { /* Command Center not mounted */ }
+        }
         fired = s.level;
       }
     }
