@@ -13,21 +13,27 @@
 module.exports = function metering(db, deps = {}) {
   let cron = null; try { cron = require('node-cron'); } catch {}
 
-  const safeAll = (sql) => { try { return db.prepare(sql).all(); } catch { return []; } };
+  const safeAll = (sql, ...a) => { try { return db.prepare(sql).all(...a); } catch { return []; } };
   const mapBy = (rows, key) => { const m = {}; rows.forEach((r) => { m[r[key]] = r; }); return m; };
   const clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
 
   // ── Daily usage snapshot ──────────────────────────────────────────────────
-  function runRollup() {
-    const date = new Date().toISOString().slice(0, 10); // UTC, matches date('now')
-    const leads = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c FROM leads WHERE date(created_at)=date('now') GROUP BY workspace_id"), 'ws');
-    const msgs = mapBy(safeAll("SELECT l.workspace_id ws, COUNT(*) c FROM messages m JOIN leads l ON l.id=m.lead_id WHERE date(m.timestamp)=date('now') GROUP BY l.workspace_id"), 'ws');
-    const ai = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c, COALESCE(SUM(est_cost),0) cost FROM ai_usage WHERE date(ts)=date('now') AND workspace_id IS NOT NULL GROUP BY workspace_id"), 'ws');
-    const storage = mapBy(safeAll("SELECT workspace_id ws, COALESCE(SUM(size_bytes),0) b FROM ms_assets GROUP BY workspace_id"), 'ws');
+  // `dayOffset` 0 = today (running), -1 = yesterday (complete). The nightly job
+  // used to run at 02:00 UTC and snapshot only "today" — i.e. the first two hours —
+  // and never revisit it, so every stored day was a systematic undercount. runAll()
+  // now writes yesterday in full and today so far; both upsert, so re-runs are safe.
+  function runRollup(dayOffset = 0) {
+    const mod = `${dayOffset >= 0 ? '+' : ''}${dayOffset} days`;
+    const date = new Date(Date.now() + dayOffset * 86400000).toISOString().slice(0, 10); // UTC, matches date('now', mod)
+    const leads = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c FROM leads WHERE date(created_at)=date('now', ?) GROUP BY workspace_id", mod), 'ws');
+    const msgs = mapBy(safeAll("SELECT l.workspace_id ws, COUNT(*) c FROM messages m JOIN leads l ON l.id=m.lead_id WHERE date(m.timestamp)=date('now', ?) GROUP BY l.workspace_id", mod), 'ws');
+    const ai = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c, COALESCE(SUM(est_cost),0) cost FROM ai_usage WHERE date(ts)=date('now', ?) AND workspace_id IS NOT NULL GROUP BY workspace_id", mod), 'ws');
+    // Same bytes definition as storage-enforce.usedBytes (live assets, provider size first).
+    const storage = mapBy(safeAll("SELECT workspace_id ws, COALESCE(SUM(COALESCE(storage_size, size_bytes)),0) b FROM ms_assets WHERE deleted_at IS NULL GROUP BY workspace_id"), 'ws');
     const active = mapBy(safeAll("SELECT l.workspace_id ws, COUNT(DISTINCT m.user_id) c FROM messages m JOIN leads l ON l.id=m.lead_id WHERE m.from_me=1 AND m.timestamp >= datetime('now','-7 days') GROUP BY l.workspace_id"), 'ws');
-    const contracts = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c FROM cs_documents WHERE date(created_at)=date('now') GROUP BY workspace_id"), 'ws');
-    const bookings = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c FROM bookings WHERE date(created_at)=date('now') GROUP BY workspace_id"), 'ws');
-    const galleries = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c FROM ms_galleries WHERE date(created_at)=date('now') GROUP BY workspace_id"), 'ws');
+    const contracts = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c FROM cs_documents WHERE date(created_at)=date('now', ?) GROUP BY workspace_id", mod), 'ws');
+    const bookings = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c FROM bookings WHERE date(created_at)=date('now', ?) GROUP BY workspace_id", mod), 'ws');
+    const galleries = mapBy(safeAll("SELECT workspace_id ws, COUNT(*) c FROM ms_galleries WHERE date(created_at)=date('now', ?) GROUP BY workspace_id", mod), 'ws');
     const wss = safeAll('SELECT id FROM workspaces');
 
     const up = db.prepare(`INSERT INTO workspace_usage_daily
@@ -79,8 +85,8 @@ module.exports = function metering(db, deps = {}) {
           const activity = clamp(100 - dsa * 5);
           const volume = clamp(Math.log10(1 + leadsC + msgsC) * 33);
           const health = clamp(0.4 * activity + 0.35 * adoption + 0.25 * volume);
-          const plan = plans[id]?.plan || 'free';
-          const lowPlan = plan === 'free' || plan === 'starter';
+          const plan = plans[id]?.plan || 'creator';
+          const lowPlan = plan === 'creator' || plan === 'free' || plan === 'starter'; // entry tier (+ legacy keys)
           let churn = clamp(0.6 * (100 - activity) + 0.4 * (100 - adoption));
           if (lowPlan && dsa > 14) churn = clamp(churn + 10);
           const expansion = clamp(volume * (lowPlan ? 1 : 0.4) * (adoption / 100 + 0.3));
@@ -98,13 +104,16 @@ module.exports = function metering(db, deps = {}) {
     return wss.length;
   }
 
-  function runAll() { const n = runRollup(); computeScores(); return n; }
+  function runAll() { runRollup(-1); const n = runRollup(0); computeScores(); return n; }
 
+  // Calls go through `api.runAll` so a caller can wrap it (the Command Center's
+  // System Health wraps it to record every run).
   function start() {
-    if (cron) { try { cron.schedule('0 2 * * *', runAll); } catch {} }
-    const t = setTimeout(() => { try { runAll(); } catch {} }, 8000);
+    if (cron) { try { cron.schedule('0 2 * * *', () => { try { api.runAll(); } catch (e) { console.error('rollup:', e.message); } }); } catch {} }
+    const t = setTimeout(() => { try { api.runAll(); } catch {} }, 8000);
     if (t && t.unref) t.unref();
   }
 
-  return { runRollup, computeScores, runAll, start };
+  const api = { runRollup, computeScores, runAll, start };
+  return api;
 };

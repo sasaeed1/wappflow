@@ -50,7 +50,7 @@ module.exports = function (app, deps) {
       const current = {
         name: w.name || null,
         status: w.status || 'active',
-        plan: (wp && wp.plan) || 'free',
+        plan: (wp && wp.plan) || 'creator',
       };
 
       // ── timeline (merge platform_events + cc_audit) ───────────────────────────

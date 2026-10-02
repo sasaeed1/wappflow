@@ -1,15 +1,20 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-// Impersonation handoff: applies a Command Center impersonation token into the normal
+// Impersonation handoff: applies a Command Center impersonation token (left in
+// localStorage by the Command Center) into the normal
 // app session (preserving any prior session for restore on exit), then opens the app
 // as the workspace owner. Writes are blocked server-side in read mode.
 export default function Impersonate() {
   const [msg, setMsg] = useState('Starting impersonation…');
 
   useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get('token');
-    if (!token) { setMsg('Missing impersonation token.'); return; }
+    // The Command Center hands the token over through localStorage (same origin),
+    // never the URL — a session token in a URL lands in history and server logs.
+    // It is read once and removed immediately.
+    let token = null;
+    try { token = localStorage.getItem('cc_imp_handoff'); localStorage.removeItem('cc_imp_handoff'); } catch {}
+    if (!token) { setMsg('This support session link has expired. Start it again from the Command Center.'); return; }
     (async () => {
       try {
         // Preserve the current (admin's own) session so "Exit impersonation" can restore it.

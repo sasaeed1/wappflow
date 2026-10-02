@@ -17,6 +17,9 @@ db.prepare("INSERT INTO ms_assets VALUES ('a1','ws1','p1','video','r2',?,NULL,da
 db.prepare("INSERT INTO ms_assets VALUES ('a2','ws1','p1','photo','r2',?,NULL,datetime('now'),'p.jpg')").run(5 * 1e6);
 db.prepare("INSERT INTO ms_assets VALUES ('a3','ws2',NULL,'photo','local',?,NULL,datetime('now','-60 days'),'old.jpg')").run(5 * GB);
 db.prepare("INSERT INTO ms_assets VALUES ('a4','ws1','p1','photo','r2',?,datetime('now'),datetime('now'),'deleted.jpg')").run(99 * GB); // deleted → excluded
+// The real ms_assets also has the legacy size_bytes column (storage_size was added
+// later); the dashboard reads COALESCE(storage_size, size_bytes), as enforcement does.
+db.exec('ALTER TABLE ms_assets ADD COLUMN size_bytes INTEGER');
 
 const app = express();
 const platformAuth = (req, res, next) => next();

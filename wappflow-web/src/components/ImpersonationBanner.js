@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 
 // Persistent banner shown in the normal app while a platform admin is impersonating
-// a workspace. Exit restores the admin's prior session and returns to Command Center.
+// a workspace. Exit ends the session server-side, restores the admin's prior session
+// and returns to Command Center.
 export default function ImpersonationBanner() {
   const [on, setOn] = useState(false);
   const [name, setName] = useState('');
@@ -25,7 +26,13 @@ export default function ImpersonationBanner() {
 
   const isWrite = mode === 'write';
 
-  const exit = () => {
+  const exit = async () => {
+    // End the support session on the server first, so the impersonation token stops
+    // working right now — not just in this browser — even though it has not expired.
+    try {
+      const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+      await fetch(`${api}/cc/impersonation/end`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
+    } catch { /* still leave locally */ }
     const pt = localStorage.getItem('cc_prev_token');
     const pu = localStorage.getItem('cc_prev_user');
     const pw = localStorage.getItem('cc_prev_workspace');

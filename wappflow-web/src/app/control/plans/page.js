@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { ccApi } from '@/lib/ccApi';
-import { Card, Pill } from '@/components/control/ControlShell';
+import { Card, Pill, useCc } from '@/components/control/ControlShell';
+import { FormDialog } from '@/components/control/kit';
 import { useConfirm, usePrompt } from '@/lib/confirm';
 
 export default function Plans() {
@@ -11,6 +12,9 @@ export default function Plans() {
   const prompt = (title, defaultValue = '') => ask({ title, defaultValue, required: false });
   const alert = (message) => confirmDialog({ title: 'Something went wrong', message, alertOnly: true, tone: 'danger' });
 
+  const { can } = useCc();
+  const edit = can('manage_plans');
+  const [cloneOf, setCloneOf] = useState(null);
   const [plans, setPlans] = useState([]);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState('');
@@ -46,13 +50,13 @@ export default function Plans() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Plans</h1>
         {msg && <span style={{ fontSize: 12.5, color: '#34d399' }}>{msg}</span>}
         <div style={{ flex: 1 }} />
-        <button onClick={newPlan} style={btn('#818cf8')}>+ New plan</button>
+        {edit && <button onClick={newPlan} style={btn('#818cf8')}>+ New plan</button>}
       </div>
-      <p style={{ fontSize: 12.5, color: 'var(--text-dim,#666)', margin: 0 }}>Configuration as data — edits to limits/features here resolve through <code>getEntitlements()</code> and take effect across the app immediately (no deploy).</p>
+      <p style={{ fontSize: 12.5, color: 'var(--text-dim,#666)', margin: 0 }}>Limits, features and prices for each plan. Saving applies to every customer on that plan within 30 seconds. Founding prices are the 50%-off rate locked in for the first 100 customers.{!edit && ' Your role can view plans but not change them.'}</p>
 
       {plans.map((p) => (
         <Card key={p.key}>
@@ -63,10 +67,12 @@ export default function Plans() {
               <option value="active">active</option><option value="archived">archived</option><option value="retired">retired</option>
             </select>
             <div style={{ flex: 1 }} />
-            <button disabled={busy === p.key} onClick={() => save(p)} style={btn('#34d399')}>{busy === p.key ? 'Saving…' : 'Save plan'}</button>
+            {edit && <button onClick={() => setCloneOf(p)} style={btn('#a78bfa')}>Duplicate</button>}
+            {edit && <button disabled={busy === p.key} onClick={() => save(p)} style={btn('#34d399')}>{busy === p.key ? 'Saving…' : 'Save plan'}</button>}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+          <fieldset disabled={!edit} style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 18 }}>
             <div>
               <div style={secHdr}><span>Limits</span><button onClick={() => addLimit(p.key)} style={mini}>+ add</button></div>
               {Object.entries(p.limits).map(([k, v]) => (
@@ -82,7 +88,7 @@ export default function Plans() {
               <div style={{ ...secHdr, marginTop: 16 }}><span>Pricing</span><button onClick={() => addPrice(p.key)} style={mini}>+ add</button></div>
               {p.prices.map((pr, i) => (
                 <div key={i} style={kvRow}>
-                  <span style={{ color: 'var(--text-muted,#9a9aa5)' }}>{pr.interval}</span>
+                  <span style={{ color: 'var(--text-muted,#9a9aa5)' }}>{pr.interval}{pr.is_founding ? <Pill tone="amber">founding</Pill> : null}{pr.region && pr.region !== 'default' ? ` · ${pr.region}` : ''}</span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     ${' '}<input type="number" value={pr.amount} onChange={(e) => patch(p.key, (x) => { x.prices = x.prices.map((q, j) => j === i ? { ...q, amount: parseFloat(e.target.value) || 0 } : q); return x; })} style={{ ...inp, width: 90, textAlign: 'right' }} />
                     <button onClick={() => patch(p.key, (x) => { x.prices = x.prices.filter((_, j) => j !== i); return x; })} style={xBtn}>×</button>
@@ -109,8 +115,15 @@ export default function Plans() {
               </div>
             </div>
           </div>
+          </fieldset>
         </Card>
       ))}
+
+      <FormDialog open={!!cloneOf} title={`Duplicate ${cloneOf?.name || ''}`} description="Copies its limits, features and prices into a new private plan you can then edit."
+        initial={{ key: cloneOf ? `${cloneOf.key}_copy` : '', name: cloneOf ? `${cloneOf.name} (copy)` : '' }}
+        fields={[{ name: 'key', label: 'New plan key', required: true, hint: 'Lowercase letters, numbers and underscores.' }, { name: 'name', label: 'Display name', required: true }]}
+        submitLabel="Duplicate" onClose={() => setCloneOf(null)}
+        onSubmit={async (v) => { await ccApi.clonePlan(cloneOf.key, { key: v.key, name: v.name }); setCloneOf(null); toast(`Created ${v.name}.`); load(); }} />
     </div>
   );
 }

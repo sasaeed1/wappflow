@@ -20,6 +20,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const entitlements = require('./entitlements');
+const sec = require('./cc-security');
 
 const AUD = 'command-center';
 
@@ -130,6 +131,20 @@ function ensureSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_platform_events_ws ON platform_events(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_ai_usage_ws ON ai_usage(workspace_id);
   `);
+  // PROP-005 columns (guarded — ALTER can't be IF NOT EXISTS).
+  const addCol = (table, col, ddl) => {
+    try { db.prepare(`SELECT ${col} FROM ${table} LIMIT 1`).get(); }
+    catch { try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`); } catch {} }
+  };
+  addCol('cc_admins', 'token_version', 'INTEGER DEFAULT 0');   // bump → every session for this admin ends
+  addCol('cc_admins', 'mfa_enabled', 'INTEGER DEFAULT 0');
+  addCol('cc_admins', 'mfa_recovery', 'TEXT');                  // JSON array of SHA-256 hashes
+  addCol('cc_tickets', 'requester_user_id', 'TEXT');            // customer help desk
+  addCol('cc_tickets', 'customer_visible', 'INTEGER DEFAULT 0');
+  addCol('cc_tickets', 'updated_at', 'TIMESTAMP');
+  addCol('cc_ticket_comments', 'author_type', "TEXT DEFAULT 'admin'");
+  addCol('cc_ticket_comments', 'author_user_id', 'TEXT');
+
   // A workspace status column for suspend/restore (guarded — ALTER can't be IF NOT EXISTS).
   try { db.prepare('SELECT status FROM workspaces LIMIT 1').get(); }
   catch { try { db.exec("ALTER TABLE workspaces ADD COLUMN status TEXT DEFAULT 'active'"); } catch {} }
@@ -173,24 +188,35 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
 
   const rid = generateId;
 
-  // ── IP allowlist ────────────────────────────────────────────────────────────
+  // ── IP allowlist (optional; 2FA is the primary control) ─────────────────────
+  // Uses req.ip, which Express resolves through the configured `trust proxy` hops
+  // (server.js). It used to read the raw X-Forwarded-For header's FIRST entry —
+  // client-supplied, so anyone could claim an allowlisted address — and matched
+  // with endsWith, so "1.2.3.4" also admitted "11.2.3.4". Exact or CIDR only now.
+  const clientIp = (req) => sec.normIp(req.ip || req.socket?.remoteAddress || '');
   function ipAllowed(req) {
     const allow = (process.env.CC_IP_ALLOWLIST || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (!allow.length) return true; // unset = allow (dev)
-    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
-    return allow.some(a => ip === a || ip.endsWith(a));
+    if (!allow.length) return true; // unset = no network restriction
+    return sec.ipMatches(clientIp(req), allow);
   }
+  const sessionToken = (admin, extra = {}) =>
+    jwt.sign({ adminId: admin.id, aud: AUD, tv: admin.token_version || 0, ...extra }, JWT_SECRET, { expiresIn: extra.elevated ? '5m' : '12h' });
 
   // ── Platform auth middleware ─────────────────────────────────────────────────
   function platformAuth(req, res, next) {
     try {
       if (!ipAllowed(req)) return res.status(403).json({ error: 'Not allowed from this network' });
-      const token = req.header('Authorization')?.replace('Bearer ', '') || req.query.token;
+      // Header only. Platform tokens used to be accepted from ?token= on every
+      // route, which put 12-hour cross-tenant credentials into browser history and
+      // access logs. Exports now download via fetch; the live stream uses a
+      // 60-second stream ticket (see /api/cc/events/stream-ticket).
+      const token = req.header('Authorization')?.replace('Bearer ', '');
       if (!token) throw new Error('no token');
       const decoded = jwt.verify(token, JWT_SECRET);
       if (decoded.aud !== AUD || !decoded.adminId) throw new Error('bad audience');
-      const admin = db.prepare('SELECT * FROM cc_admins WHERE id = ? AND status = "active"').get(decoded.adminId);
+      const admin = db.prepare("SELECT * FROM cc_admins WHERE id = ? AND status = 'active'").get(decoded.adminId);
       if (!admin) throw new Error('no admin');
+      if ((decoded.tv || 0) < (admin.token_version || 0)) throw new Error('revoked');
       req.admin = admin;
       req.adminPerms = permsFor(admin.cc_role, admin.cc_permissions);
       req.elevated = !!decoded.elevated;
@@ -214,7 +240,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
         VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
         id, req.admin?.id || null, action, target_type, target_id || null, workspace_id,
         before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null, reason,
-        (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || null,
+        clientIp(req) || null,
         req.headers['user-agent'] || null
       );
     } catch (e) { console.error('ccAudit:', e.message); }
@@ -237,6 +263,29 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
     broadcastToAdmins('event', { event: { ...ev, ts: new Date().toISOString() } });
   }
 
+  const billingRef = { current: null }; // set once cc-billing mounts (below)
+
+  // ── storage: ONE definition (storage-enforce.usedBytes) ──────────────────────
+  // Non-deleted assets at COALESCE(storage_size, size_bytes) plus export bundles.
+  // Overview, Customers, Workspace 360 and the Storage dashboard used to use three
+  // different sums (legacy rows counted 0 on one of them). The SQL fragment below
+  // is the same expression, guarded for databases where a column/table is absent.
+  const hasCol = (t, c) => { try { return db.prepare(`PRAGMA table_info(${t})`).all().some((r) => r.name === c); } catch { return false; } };
+  const hasTable = (t) => { try { return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t); } catch { return false; } };
+  const ASSET_BYTES = hasCol('ms_assets', 'storage_size') ? 'COALESCE(a.storage_size, a.size_bytes)' : 'a.size_bytes';
+  const ASSET_LIVE = hasCol('ms_assets', 'deleted_at') ? 'AND a.deleted_at IS NULL' : '';
+  const usedBytesSql = (wsExpr) => `((SELECT COALESCE(SUM(${ASSET_BYTES}),0) FROM ms_assets a WHERE a.workspace_id = ${wsExpr} ${ASSET_LIVE})`
+    + (hasTable('ms_exports') ? ` + (SELECT COALESCE(SUM(x.size_bytes),0) FROM ms_exports x WHERE x.workspace_id = ${wsExpr}))` : ')');
+  const storageEnforce = require('./storage-enforce');
+
+  // ── Product event spine: DB triggers → platform_events (+ live push) ─────────
+  try {
+    const spine = require('./cc-spine');
+    const installed = spine.installTriggers(db);
+    spine.startPoller(db, broadcastToAdmins);
+    if (installed.length) console.log(`🛰️  Command Center event spine: ${installed.length} trigger(s)`);
+  } catch (e) { console.error('cc-spine:', e.message); }
+
   // ── helpers ──────────────────────────────────────────────────────────────────
   const num = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
   const safeCount = (sql, ...args) => { try { return db.prepare(sql).get(...args)?.c || 0; } catch { return 0; } };
@@ -245,35 +294,142 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   // ════════════════════════════════════════════════════════════════════════════
   //  AUTH
   // ════════════════════════════════════════════════════════════════════════════
+  // Login is two steps: password → 6-digit authenticator code. An admin who has
+  // not set up 2FA yet is walked through enrolment first; no session token is
+  // ever issued on a password alone. The intermediate token (aud cc-mfa) is good
+  // for 10 minutes and for nothing except the steps below.
+  const MFA_AUD = 'cc-mfa';
+  const adminPublic = (a) => ({ id: a.id, email: a.email, name: a.name, role: a.cc_role, permissions: permsFor(a.cc_role, a.cc_permissions), mfa_enabled: !!a.mfa_enabled });
+  const auditAs = (req, admin, entry) => { req.admin = admin; return ccAudit(req, entry); };
+  const issueSession = (req, admin) => {
+    db.prepare('UPDATE cc_admins SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(admin.id);
+    auditAs(req, admin, { action: 'admin_login', target_type: 'admin', target_id: admin.id });
+    return { token: sessionToken(admin), admin: adminPublic(admin) };
+  };
+  function mfaAdmin(req) {
+    const t = req.body?.mfa_token;
+    const d = jwt.verify(String(t || ''), JWT_SECRET);
+    if (d.aud !== MFA_AUD || !d.adminId) throw new Error('bad mfa token');
+    const admin = db.prepare("SELECT * FROM cc_admins WHERE id = ? AND status = 'active'").get(d.adminId);
+    if (!admin) throw new Error('no admin');
+    return admin;
+  }
+  // Failed-attempt throttle per admin (in memory): 8 wrong codes → 15 min lockout.
+  const fails = new Map();
+  const locked = (id) => { const f = fails.get(id); return f && f.n >= 8 && Date.now() - f.t < 15 * 60000; };
+  const fail = (id) => { const f = fails.get(id) || { n: 0, t: Date.now() }; f.n += 1; f.t = Date.now(); fails.set(id, f); };
+
   app.post('/api/cc/login', (req, res) => {
     try {
       if (!ipAllowed(req)) return res.status(403).json({ error: 'Not allowed from this network' });
       const { email, password } = req.body || {};
-      const admin = db.prepare('SELECT * FROM cc_admins WHERE email = ? AND status = "active"').get(String(email || '').toLowerCase());
+      const admin = db.prepare("SELECT * FROM cc_admins WHERE email = ? AND status = 'active'").get(String(email || '').toLowerCase());
       if (!admin || !bcrypt.compareSync(String(password || ''), admin.password_hash)) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
-      const token = jwt.sign({ adminId: admin.id, aud: AUD }, JWT_SECRET, { expiresIn: '12h' });
-      db.prepare('UPDATE cc_admins SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(admin.id);
-      ccAudit(req, { action: 'admin_login', target_type: 'admin', target_id: admin.id });
-      res.json({ token, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.cc_role, permissions: permsFor(admin.cc_role, admin.cc_permissions) } });
+      const mfa_token = jwt.sign({ adminId: admin.id, aud: MFA_AUD }, JWT_SECRET, { expiresIn: '10m' });
+      if (admin.mfa_enabled) return res.json({ mfa_required: true, mfa_token });
+      return res.json({ mfa_setup_required: true, mfa_token });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Step 2 — verify a TOTP code (or a one-time recovery code) → session.
+  app.post('/api/cc/login/mfa', (req, res) => {
+    try {
+      if (!ipAllowed(req)) return res.status(403).json({ error: 'Not allowed from this network' });
+      let admin; try { admin = mfaAdmin(req); } catch { return res.status(401).json({ error: 'Your sign-in expired — enter your password again.' }); }
+      if (!admin.mfa_enabled) return res.status(400).json({ error: 'Two-step verification is not set up yet.' });
+      if (locked(admin.id)) return res.status(429).json({ error: 'Too many wrong codes. Wait 15 minutes and try again.' });
+      const code = String(req.body?.code || '').trim();
+      let ok = false;
+      try { ok = sec.verifyTotp(sec.unseal(admin.mfa_secret, JWT_SECRET), code); } catch {}
+      if (!ok && code.replace(/[\s-]/g, '').length === 8) {
+        const rest = sec.consumeRecoveryCode(admin.mfa_recovery, code);
+        if (rest) {
+          db.prepare('UPDATE cc_admins SET mfa_recovery = ? WHERE id = ?').run(JSON.stringify(rest), admin.id);
+          auditAs(req, admin, { action: 'admin_recovery_code_used', target_type: 'admin', target_id: admin.id, after: { remaining: rest.length } });
+          ok = true;
+        }
+      }
+      if (!ok) { fail(admin.id); return res.status(401).json({ error: 'That code is not right. Check your authenticator app and try again.' }); }
+      fails.delete(admin.id);
+      res.json(issueSession(req, admin));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Enrolment, step A — a new secret (sealed, not yet active) + otpauth URI + QR.
+  app.post('/api/cc/mfa/setup', async (req, res) => {
+    try {
+      let admin; try { admin = mfaAdmin(req); } catch { return res.status(401).json({ error: 'Your sign-in expired — enter your password again.' }); }
+      if (admin.mfa_enabled) return res.status(400).json({ error: 'Two-step verification is already on.' });
+      const secret = sec.newTotpSecret();
+      db.prepare('UPDATE cc_admins SET mfa_secret = ? WHERE id = ?').run(sec.seal(secret, JWT_SECRET), admin.id);
+      const uri = sec.otpauthUri(secret, admin.email);
+      let qr = null; try { qr = await require('qrcode').toDataURL(uri, { margin: 1, width: 240 }); } catch {}
+      res.json({ secret, uri, qr });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Enrolment, step B — confirm a code from the app → 2FA on, recovery codes shown ONCE, session issued.
+  app.post('/api/cc/mfa/enable', (req, res) => {
+    try {
+      let admin; try { admin = mfaAdmin(req); } catch { return res.status(401).json({ error: 'Your sign-in expired — enter your password again.' }); }
+      if (admin.mfa_enabled) return res.status(400).json({ error: 'Two-step verification is already on.' });
+      if (locked(admin.id)) return res.status(429).json({ error: 'Too many wrong codes. Wait 15 minutes and try again.' });
+      let ok = false;
+      try { ok = sec.verifyTotp(sec.unseal(admin.mfa_secret, JWT_SECRET), req.body?.code); } catch {}
+      if (!ok) { fail(admin.id); return res.status(401).json({ error: 'That code is not right. Make sure your phone’s clock is set automatically, then try the newest code.' }); }
+      const { codes, hashes } = sec.newRecoveryCodes(10);
+      db.prepare('UPDATE cc_admins SET mfa_enabled = 1, mfa_recovery = ? WHERE id = ?').run(JSON.stringify(hashes), admin.id);
+      auditAs(req, admin, { action: 'admin_mfa_enabled', target_type: 'admin', target_id: admin.id });
+      const fresh = db.prepare('SELECT * FROM cc_admins WHERE id = ?').get(admin.id);
+      res.json({ ...issueSession(req, fresh), recovery_codes: codes });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   app.get('/api/cc/me', platformAuth, (req, res) => {
-    res.json({ id: req.admin.id, email: req.admin.email, name: req.admin.name, role: req.admin.cc_role, permissions: req.adminPerms });
+    res.json({ ...adminPublic(req.admin), recovery_codes_left: (() => { try { return JSON.parse(req.admin.mfa_recovery || '[]').length; } catch { return 0; } })() });
   });
 
-  // Step-up: re-verify password → short-lived elevated token for destructive actions.
+  // Logout ends EVERY session this admin has (token_version bump).
+  app.post('/api/cc/logout', platformAuth, (req, res) => {
+    try {
+      db.prepare('UPDATE cc_admins SET token_version = COALESCE(token_version,0) + 1 WHERE id = ?').run(req.admin.id);
+      ccAudit(req, { action: 'admin_logout', target_type: 'admin', target_id: req.admin.id });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // New recovery codes (old ones stop working). Requires a current authenticator code.
+  app.post('/api/cc/mfa/recovery-codes', platformAuth, (req, res) => {
+    try {
+      let ok = false;
+      try { ok = sec.verifyTotp(sec.unseal(req.admin.mfa_secret, JWT_SECRET), req.body?.code); } catch {}
+      if (!ok) return res.status(401).json({ error: 'That code is not right.' });
+      const { codes, hashes } = sec.newRecoveryCodes(10);
+      db.prepare('UPDATE cc_admins SET mfa_recovery = ? WHERE id = ?').run(JSON.stringify(hashes), req.admin.id);
+      ccAudit(req, { action: 'admin_recovery_codes_regenerated', target_type: 'admin', target_id: req.admin.id });
+      res.json({ recovery_codes: codes });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Step-up: password AND a current authenticator code → 5-minute elevated token
+  // for the high-risk actions (SQL, table browser, message explorer, bulk, destructive).
   app.post('/api/cc/step-up', platformAuth, (req, res) => {
     try {
       const ok = bcrypt.compareSync(String(req.body?.password || ''), req.admin.password_hash);
-      if (!ok) return res.status(401).json({ error: 'Invalid password' });
-      const token = jwt.sign({ adminId: req.admin.id, aud: AUD, elevated: true }, JWT_SECRET, { expiresIn: '5m' });
+      if (!ok) return res.status(401).json({ error: 'Wrong password' });
+      if (req.admin.mfa_enabled) {
+        let codeOk = false;
+        try { codeOk = sec.verifyTotp(sec.unseal(req.admin.mfa_secret, JWT_SECRET), req.body?.code); } catch {}
+        if (!codeOk) return res.status(401).json({ error: 'Wrong authenticator code' });
+      }
       ccAudit(req, { action: 'admin_step_up', target_type: 'admin', target_id: req.admin.id });
-      res.json({ token });
+      res.json({ token: sessionToken(req.admin, { elevated: true }), expires_in: 300 });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
+  // Middleware for routes that need a recent step-up.
+  const requireElevated = (req, res, next) => (req.elevated ? next() : res.status(403).json({ error: 'Confirm it’s you to continue', need_step_up: true }));
 
   // ════════════════════════════════════════════════════════════════════════════
   //  SECTION 1 — EXECUTIVE OVERVIEW  (implied MRR; real billing is not built)
@@ -281,7 +437,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   app.get('/api/cc/overview', platformAuth, (req, res) => {
     try {
       const totalWorkspaces = safeCount('SELECT COUNT(*) AS c FROM workspaces');
-      const byPlan = safeAll(`SELECT COALESCE(wp.plan,'free') AS plan, COUNT(*) AS c
+      const byPlan = safeAll(`SELECT COALESCE(wp.plan,'creator') AS plan, COUNT(*) AS c
         FROM workspaces w LEFT JOIN workspace_plan wp ON wp.workspace_id = w.id GROUP BY plan`);
       const byStatus = safeAll(`SELECT COALESCE(status,'active') AS status, COUNT(*) AS c FROM workspaces GROUP BY status`);
 
@@ -298,7 +454,8 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
         contracts: safeCount('SELECT COUNT(*) AS c FROM cs_documents'),
         galleries: safeCount('SELECT COUNT(*) AS c FROM ms_galleries'),
         bookings: safeCount('SELECT COUNT(*) AS c FROM bookings'),
-        storage_bytes: (() => { try { return db.prepare('SELECT COALESCE(SUM(size_bytes),0) AS c FROM ms_assets').get().c || 0; } catch { return 0; } })(),
+        storage_bytes: (() => { try { return db.prepare(`SELECT COALESCE(SUM(${ASSET_BYTES}),0) AS c FROM ms_assets a WHERE 1=1 ${ASSET_LIVE}`).get().c
+          + (hasTable('ms_exports') ? (db.prepare('SELECT COALESCE(SUM(size_bytes),0) AS c FROM ms_exports').get().c || 0) : 0); } catch { return 0; } })(),
       };
       const ai = {
         calls: safeCount('SELECT COUNT(*) AS c FROM ai_usage'),
@@ -306,7 +463,15 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
         metered: safeCount('SELECT COUNT(*) AS c FROM ai_usage') > 0,
       };
       res.json({
-        revenue: { implied_mrr: impliedMrr, implied_arr: impliedMrr * 12, note: 'Implied from plan list price — real MRR requires live subscription billing (not built).' },
+        revenue: (() => {
+          let b = null; try { b = billingRef.current?.overview(); } catch {}
+          return {
+            mrr: b ? b.mrr : 0, arr: b ? b.arr : 0, paying: b ? b.paying : 0, outstanding: b ? b.outstanding_total : 0,
+            collected_30d: b ? b.collected_30d : 0,
+            implied_mrr: impliedMrr, implied_arr: impliedMrr * 12,
+            note: 'MRR = recorded subscriptions (Billing). Implied = every workspace at its plan’s list price.',
+          };
+        })(),
         workspaces: { total: totalWorkspaces, by_plan: byPlan, by_status: byStatus },
         totals, ai,
       });
@@ -323,7 +488,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       const offset = num(req.query.offset, 0);
       const where = [], params = [];
       if (q) { where.push('(w.name LIKE ? OR u.email LIKE ? OR u.business_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
-      if (plan) { where.push("COALESCE(wp.plan,'free') = ?"); params.push(plan); }
+      if (plan) { where.push("COALESCE(wp.plan,'creator') = ?"); params.push(plan); }
       if (status) { where.push("COALESCE(w.status,'active') = ?"); params.push(status); }
       const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
       const sortCol = ({ last_active: 'last_active', name: 'w.name', plan: 'plan', users: 'users', leads: 'leads', storage: 'storage_bytes' })[sort] || 'last_active';
@@ -331,10 +496,10 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       const rows = safeAll(`
         SELECT w.id, w.name, w.owner_id, COALESCE(w.status,'active') AS status,
           u.email AS owner_email, u.business_name AS owner_name,
-          COALESCE(wp.plan,'free') AS plan, wp.trial_ends_at,
+          COALESCE(wp.plan,'creator') AS plan, wp.trial_ends_at,
           (SELECT COUNT(*) FROM workspace_members m WHERE m.workspace_id = w.id) AS users,
           (SELECT COUNT(*) FROM leads l WHERE l.workspace_id = w.id AND (l.is_deleted = 0 OR l.is_deleted IS NULL)) AS leads,
-          (SELECT COALESCE(SUM(a.size_bytes),0) FROM ms_assets a WHERE a.workspace_id = w.id) AS storage_bytes,
+          ${usedBytesSql('w.id')} AS storage_bytes,
           (SELECT MAX(l.last_contacted_at) FROM leads l WHERE l.workspace_id = w.id) AS last_active
         FROM workspaces w
         LEFT JOIN users u ON u.id = w.owner_id
@@ -359,7 +524,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       if (!w) return res.status(404).json({ error: 'Workspace not found' });
       const owner = db.prepare('SELECT id, email, business_name, full_name, phone, created_at FROM users WHERE id = ?').get(w.owner_id);
       const members = safeAll('SELECT user_id, role, full_name, invite_email, invite_status FROM workspace_members WHERE workspace_id = ?', wid);
-      const wp = db.prepare('SELECT * FROM workspace_plan WHERE workspace_id = ?').get(wid) || { plan: 'free' };
+      const wp = db.prepare('SELECT * FROM workspace_plan WHERE workspace_id = ?').get(wid) || { plan: 'creator' };
       const ent = entitlements.getEntitlements(db, wid, { fresh: true });
       const counts = {
         leads: safeCount('SELECT COUNT(*) AS c FROM leads WHERE workspace_id = ? AND (is_deleted=0 OR is_deleted IS NULL)', wid),
@@ -370,7 +535,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
         contracts: safeCount('SELECT COUNT(*) AS c FROM cs_documents WHERE workspace_id = ?', wid),
         bookings: safeCount('SELECT COUNT(*) AS c FROM bookings WHERE workspace_id = ?', wid),
         invoices: safeCount('SELECT COUNT(*) AS c FROM invoices i JOIN leads l ON l.id = i.lead_id WHERE l.workspace_id = ?', wid),
-        storage_bytes: (() => { try { return db.prepare('SELECT COALESCE(SUM(size_bytes),0) AS c FROM ms_assets WHERE workspace_id = ?').get(wid).c || 0; } catch { return 0; } })(),
+        storage_bytes: storageEnforce.usedBytes(db, wid),
       };
       const overrides = safeAll('SELECT * FROM entitlement_overrides WHERE workspace_id = ? AND revoked_at IS NULL ORDER BY created_at DESC', wid);
       const grace = safeAll("SELECT * FROM cc_grace_periods WHERE workspace_id = ? AND status = 'active' ORDER BY created_at DESC", wid);
@@ -380,14 +545,14 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       res.json({
         workspace: { ...w, status: w.status || 'active' },
         owner, members,
-        plan: { key: wp.plan || 'free', trial_ends_at: wp.trial_ends_at || null },
+        plan: { key: wp.plan || 'creator', trial_ends_at: wp.trial_ends_at || null },
         entitlements: ent, counts, overrides, grace, notes, scores, activity,
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   // ── Customer write actions (audited) ─────────────────────────────────────────
-  app.post('/api/cc/workspaces/:id/suspend', platformAuth, requirePerm('manage_overrides'), (req, res) => {
+  app.post('/api/cc/workspaces/:id/suspend', platformAuth, requirePerm('manage_overrides'), requireElevated, (req, res) => {
     try {
       const wid = req.params.id;
       const before = db.prepare('SELECT status FROM workspaces WHERE id = ?').get(wid);
@@ -395,7 +560,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       db.prepare("UPDATE workspaces SET status = 'suspended' WHERE id = ?").run(wid);
       ccAudit(req, { action: 'workspace_suspend', target_type: 'workspace', target_id: wid, workspace_id: wid, before, after: { status: 'suspended' }, reason: req.body?.reason });
       emit({ workspace_id: wid, actor_id: req.admin.id, type: 'workspace_suspended', entity_type: 'workspace', entity_id: wid });
-      res.json({ ok: true, status: 'suspended', note: 'Login enforcement for suspended workspaces is a follow-up rewire (see spec §6).' });
+      res.json({ ok: true, status: 'suspended' });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.post('/api/cc/workspaces/:id/restore', platformAuth, requirePerm('manage_overrides'), (req, res) => {
@@ -407,14 +572,71 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       res.json({ ok: true, status: 'active' });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  app.post('/api/cc/workspaces/:id/notes', platformAuth, (req, res) => {
+  // Admin notes on a customer. Writing needs a real role (not readonly); the author
+  // or a founder can delete.
+  const notesWrite = (req, res, next) => (req.adminPerms.manage_support || req.adminPerms.manage_overrides || req.admin.cc_role === 'founder')
+    ? next() : res.status(403).json({ error: 'Your role can’t write notes' });
+  app.post('/api/cc/workspaces/:id/notes', platformAuth, notesWrite, (req, res) => {
     try {
+      const body = String(req.body?.body || '').trim();
+      if (!body) return res.status(400).json({ error: 'Write something first' });
       const id = rid();
       db.prepare('INSERT INTO cc_notes (id, workspace_id, admin_id, body, pinned) VALUES (?,?,?,?,?)')
-        .run(id, req.params.id, req.admin.id, String(req.body?.body || ''), req.body?.pinned ? 1 : 0);
+        .run(id, req.params.id, req.admin.id, body.slice(0, 5000), req.body?.pinned ? 1 : 0);
       ccAudit(req, { action: 'note_add', target_type: 'workspace', target_id: req.params.id, workspace_id: req.params.id });
       res.json({ ok: true, id });
     } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.patch('/api/cc/notes/:noteId', platformAuth, notesWrite, (req, res) => {
+    try {
+      const n = db.prepare('SELECT * FROM cc_notes WHERE id = ?').get(req.params.noteId);
+      if (!n) return res.status(404).json({ error: 'Not found' });
+      db.prepare('UPDATE cc_notes SET pinned = ? WHERE id = ?').run(req.body?.pinned ? 1 : 0, n.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.delete('/api/cc/notes/:noteId', platformAuth, (req, res) => {
+    try {
+      const n = db.prepare('SELECT * FROM cc_notes WHERE id = ?').get(req.params.noteId);
+      if (!n) return res.status(404).json({ error: 'Not found' });
+      if (n.admin_id !== req.admin.id && req.admin.cc_role !== 'founder') return res.status(403).json({ error: 'Only the author or a founder can delete a note' });
+      db.prepare('DELETE FROM cc_notes WHERE id = ?').run(n.id);
+      ccAudit(req, { action: 'note_delete', target_type: 'workspace', target_id: n.workspace_id, workspace_id: n.workspace_id, before: n });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Daily usage (workspace_usage_daily — written nightly, finally read somewhere).
+  app.get('/api/cc/workspaces/:id/usage', platformAuth, (req, res) => {
+    const days = Math.min(Math.max(num(req.query.days, 30), 7), 365);
+    res.json({ days, rows: safeAll(`SELECT date, leads, messages, ai_calls, ai_cost, storage_bytes, active_users, contracts, bookings, galleries
+      FROM workspace_usage_daily WHERE workspace_id = ? AND date >= date('now', ?) ORDER BY date`, req.params.id, `-${days} days`) });
+  });
+  app.get('/api/cc/usage/platform', platformAuth, (req, res) => {
+    const days = Math.min(Math.max(num(req.query.days, 30), 7), 365);
+    res.json({ days, rows: safeAll(`SELECT date, SUM(leads) AS leads, SUM(messages) AS messages, SUM(ai_calls) AS ai_calls,
+      SUM(ai_cost) AS ai_cost, SUM(contracts) AS contracts, SUM(bookings) AS bookings, SUM(galleries) AS galleries,
+      COUNT(CASE WHEN leads + messages + contracts + bookings > 0 THEN 1 END) AS active_workspaces
+      FROM workspace_usage_daily WHERE date >= date('now', ?) GROUP BY date ORDER BY date`, `-${days} days`) });
+  });
+
+  // Saved views (per admin): named filter sets for a surface, e.g. the Customers list.
+  app.get('/api/cc/views/:surface', platformAuth, (req, res) => {
+    res.json({ views: safeAll('SELECT id, name, query, created_at FROM cc_saved_views WHERE admin_id = ? AND surface = ? ORDER BY name', req.admin.id, req.params.surface)
+      .map((v) => ({ ...v, query: (() => { try { return JSON.parse(v.query); } catch { return {}; } })() })) });
+  });
+  app.post('/api/cc/views/:surface', platformAuth, (req, res) => {
+    try {
+      const name = String(req.body?.name || '').trim().slice(0, 60);
+      if (!name) return res.status(400).json({ error: 'Name the view' });
+      const id = rid();
+      db.prepare('INSERT INTO cc_saved_views (id, admin_id, surface, name, query) VALUES (?,?,?,?,?)').run(id, req.admin.id, req.params.surface, name, JSON.stringify(req.body?.query || {}));
+      res.json({ ok: true, id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.delete('/api/cc/views/:viewId', platformAuth, (req, res) => {
+    db.prepare('DELETE FROM cc_saved_views WHERE id = ? AND admin_id = ?').run(req.params.viewId, req.admin.id);
+    res.json({ ok: true });
   });
 
   // Change a workspace's plan tier (enforces immediately via the resolver).
@@ -442,6 +664,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
         || db.prepare('SELECT owner_id AS user_id FROM workspaces WHERE id = ?').get(wid);
       if (!owner?.user_id) return res.status(404).json({ error: 'No owner to impersonate' });
       const writeMode = req.body?.mode === 'write' && req.adminPerms.impersonate_write;
+      if (writeMode && !req.elevated) return res.status(403).json({ error: 'Confirm it’s you to open write mode', need_step_up: true });
       const auditId = ccAudit(req, { action: 'impersonate_start', target_type: 'workspace', target_id: wid, workspace_id: wid, after: { mode: writeMode ? 'write' : 'read' } });
       const impId = rid();
       db.prepare('INSERT INTO cc_impersonations (id, admin_id, workspace_id, audit_id, mode, reason) VALUES (?,?,?,?,?,?)')
@@ -456,7 +679,33 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       try { tv = db.prepare('SELECT token_version FROM users WHERE id = ?').get(owner.user_id)?.token_version || 0; } catch {}
       const token = jwt.sign({ userId: owner.user_id, tv, imp: { admin_id: req.admin.id, audit_id: auditId, imp_id: impId, mode: writeMode ? 'write' : 'read' } }, JWT_SECRET, { expiresIn: '30m' });
       emit({ workspace_id: wid, actor_id: req.admin.id, type: 'impersonation_started', entity_type: 'workspace', entity_id: wid, payload: { mode: writeMode ? 'write' : 'read' } });
-      res.json({ token, mode: writeMode ? 'write' : 'read', expires_in: 1800 });
+      res.json({ token, mode: writeMode ? 'write' : 'read', expires_in: 1800, impersonation_id: impId });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // End an impersonation for real. Called with the IMPERSONATION token itself (the
+  // in-app banner's Exit button), it stamps ended_at; the core auth middleware then
+  // refuses that token even though it has not expired. Admins can also end any
+  // open session from the Command Center.
+  app.post('/api/cc/impersonation/end', (req, res) => {
+    try {
+      const t = req.header('Authorization')?.replace('Bearer ', '');
+      const d = jwt.verify(String(t || ''), JWT_SECRET);
+      if (!d.imp?.imp_id) return res.status(400).json({ error: 'Not an impersonation session' });
+      db.prepare('UPDATE cc_impersonations SET ended_at = CURRENT_TIMESTAMP WHERE id = ? AND ended_at IS NULL').run(d.imp.imp_id);
+      res.json({ ok: true });
+    } catch { res.status(401).json({ error: 'Invalid session' }); }
+  });
+  app.get('/api/cc/impersonations', platformAuth, (req, res) => {
+    res.json({ sessions: safeAll(`SELECT i.*, a.email AS admin_email, w.name AS workspace_name FROM cc_impersonations i
+      LEFT JOIN cc_admins a ON a.id = i.admin_id LEFT JOIN workspaces w ON w.id = i.workspace_id
+      WHERE i.ended_at IS NULL AND i.started_at >= datetime('now','-30 minutes') ORDER BY i.started_at DESC`) });
+  });
+  app.post('/api/cc/impersonations/:id/end', platformAuth, (req, res) => {
+    try {
+      db.prepare('UPDATE cc_impersonations SET ended_at = CURRENT_TIMESTAMP WHERE id = ? AND ended_at IS NULL').run(req.params.id);
+      ccAudit(req, { action: 'impersonate_end', target_type: 'impersonation', target_id: req.params.id });
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -468,7 +717,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       const plans = safeAll('SELECT * FROM plans ORDER BY sort_order');
       const out = plans.map(p => ({
         ...p,
-        prices: safeAll('SELECT * FROM plan_prices WHERE plan_key = ? AND active = 1', p.key),
+        prices: safeAll('SELECT * FROM plan_prices WHERE plan_key = ? ORDER BY is_founding, interval', p.key),
         limits: Object.fromEntries(safeAll('SELECT key, value FROM plan_limits WHERE plan_key = ?', p.key).map(r => [r.key, r.value])),
         features: Object.fromEntries(safeAll('SELECT feature_key, enabled FROM plan_features WHERE plan_key = ?', p.key).map(r => { try { return [r.feature_key, JSON.parse(r.enabled)]; } catch { return [r.feature_key, r.enabled]; } })),
       }));
@@ -519,14 +768,40 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
         }
         if (Array.isArray(prices)) {
           db.prepare('DELETE FROM plan_prices WHERE plan_key = ?').run(key);
-          const ins = db.prepare('INSERT INTO plan_prices (id, plan_key, interval, currency, amount, active) VALUES (?,?,?,?,?,1)');
-          prices.forEach(p => ins.run(rid(), key, p.interval || 'month', p.currency || 'USD', Number(p.amount) || 0));
+          // Keep is_founding + region. They used to be dropped here, so saving a plan
+          // turned its Founding-100 price into a second STANDARD price — and the site
+          // shows the lowest standard price, so it started advertising half price.
+          const ins = db.prepare('INSERT INTO plan_prices (id, plan_key, interval, region, currency, amount, is_founding, active) VALUES (?,?,?,?,?,?,?,?)');
+          prices.forEach(p => ins.run(rid(), key, p.interval || 'month', p.region || 'default', p.currency || 'USD', Number(p.amount) || 0, p.is_founding ? 1 : 0, p.active === 0 ? 0 : 1));
         }
       })();
       entitlements.invalidate(); // global — a plan edit affects every workspace on that plan
       ccAudit(req, { action: 'plan_update', target_type: 'plan', target_id: key, before, after: { name, status, limits } });
       emit({ actor_id: req.admin.id, type: 'plan_updated', entity_type: 'plan', entity_id: key });
       res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Copy a plan (limits, features, prices) under a new key — the start of a new tier.
+  app.post('/api/cc/plans/:key/clone', platformAuth, requirePerm('manage_plans'), (req, res) => {
+    try {
+      const src = db.prepare('SELECT * FROM plans WHERE key = ?').get(req.params.key);
+      if (!src) return res.status(404).json({ error: 'Plan not found' });
+      const key = String(req.body?.key || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      if (!key) return res.status(400).json({ error: 'Give the new plan a key' });
+      if (db.prepare('SELECT key FROM plans WHERE key = ?').get(key)) return res.status(409).json({ error: 'That plan key already exists' });
+      db.transaction(() => {
+        db.prepare('INSERT INTO plans (id, key, name, status, visibility, sort_order) VALUES (?,?,?,?,?,?)').run(rid(), key, req.body?.name || `${src.name} (copy)`, 'active', 'private', (src.sort_order || 0) + 1);
+        db.prepare('INSERT INTO plan_limits (plan_key, key, value) SELECT ?, key, value FROM plan_limits WHERE plan_key = ?').run(key, src.key);
+        db.prepare('INSERT INTO plan_features (plan_key, feature_key, enabled) SELECT ?, feature_key, enabled FROM plan_features WHERE plan_key = ?').run(key, src.key);
+        for (const pr of safeAll('SELECT * FROM plan_prices WHERE plan_key = ?', src.key)) {
+          db.prepare('INSERT INTO plan_prices (id, plan_key, interval, region, currency, amount, is_founding, active) VALUES (?,?,?,?,?,?,?,?)')
+            .run(rid(), key, pr.interval, pr.region || 'default', pr.currency, pr.amount, pr.is_founding || 0, pr.active ?? 1);
+        }
+      })();
+      entitlements.invalidate();
+      ccAudit(req, { action: 'plan_clone', target_type: 'plan', target_id: key, after: { from: src.key } });
+      res.json({ ok: true, key });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -582,6 +857,62 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Kill switch: a flag OFF everywhere, immediately (global off assignment + no rollout).
+  app.post('/api/cc/flags/:key/kill', platformAuth, requirePerm('manage_flags'), (req, res) => {
+    try {
+      const f = db.prepare('SELECT * FROM feature_flags WHERE key = ?').get(req.params.key);
+      if (!f) return res.status(404).json({ error: 'Flag not found' });
+      db.transaction(() => {
+        db.prepare('UPDATE feature_flags SET default_state = 0, rollout_pct = 0 WHERE key = ?').run(f.key);
+        db.prepare("UPDATE flag_assignments SET ends_at = CURRENT_TIMESTAMP WHERE flag_key = ? AND (ends_at IS NULL OR ends_at > CURRENT_TIMESTAMP)").run(f.key);
+        db.prepare('INSERT INTO flag_assignments (id, flag_key, scope, scope_id, state, set_by) VALUES (?,?,?,?,?,?)').run(rid(), f.key, 'global', null, 0, req.admin.id);
+      })();
+      entitlements.invalidate();
+      ccAudit(req, { action: 'flag_kill', target_type: 'flag', target_id: f.key, before: f, reason: req.body?.reason || null });
+      emit({ actor_id: req.admin.id, type: 'flag_killed', entity_type: 'flag', entity_id: f.key });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Bulk actions across customers (step-up; one audit row per workspace) ────
+  const BULK = {
+    plan: 'manage_plans', suspend: 'manage_overrides', restore: 'manage_overrides', grace: 'manage_overrides', flag: 'manage_flags',
+  };
+  app.post('/api/cc/bulk', platformAuth, requirePerm('bulk_actions'), requireElevated, (req, res) => {
+    try {
+      const { action, workspace_ids = [], params = {} } = req.body || {};
+      if (!BULK[action]) return res.status(400).json({ error: 'Unknown bulk action' });
+      if (!req.adminPerms[BULK[action]]) return res.status(403).json({ error: `Missing permission: ${BULK[action]}` });
+      const ids = [...new Set((Array.isArray(workspace_ids) ? workspace_ids : []).map(String))].slice(0, 500);
+      if (!ids.length) return res.status(400).json({ error: 'Select at least one customer' });
+      if (action === 'plan' && !db.prepare('SELECT key FROM plans WHERE key = ?').get(params.plan)) return res.status(400).json({ error: 'Unknown plan' });
+      if (action === 'flag' && !db.prepare('SELECT key FROM feature_flags WHERE key = ?').get(params.flag)) return res.status(400).json({ error: 'Unknown flag' });
+      const days = Math.min(Math.max(num(params.days, 7), 1), 365);
+      let done = 0;
+      db.transaction(() => {
+        for (const wid of ids) {
+          if (!db.prepare('SELECT id FROM workspaces WHERE id = ?').get(wid)) continue;
+          if (action === 'plan') {
+            db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, ?) ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, updated_at = CURRENT_TIMESTAMP`).run(wid, params.plan);
+          } else if (action === 'suspend' || action === 'restore') {
+            db.prepare('UPDATE workspaces SET status = ? WHERE id = ?').run(action === 'suspend' ? 'suspended' : 'active', wid);
+          } else if (action === 'grace') {
+            db.prepare('INSERT INTO cc_grace_periods (id, workspace_id, days, reason, admin_id, ends_at) VALUES (?,?,?,?,?,?)')
+              .run(rid(), wid, days, params.reason || 'bulk grace', req.admin.id, new Date(Date.now() + days * 86400000).toISOString());
+          } else if (action === 'flag') {
+            db.prepare('INSERT INTO flag_assignments (id, flag_key, scope, scope_id, state, set_by) VALUES (?,?,?,?,?,?)').run(rid(), params.flag, 'workspace', wid, params.state === false ? 0 : 1, req.admin.id);
+          }
+          ccAudit(req, { action: `bulk_${action}`, target_type: 'workspace', target_id: wid, workspace_id: wid, after: params, reason: params.reason || null });
+          done++;
+        }
+      })();
+      entitlements.invalidate();
+      ids.forEach((wid) => { try { broadcastToWorkspace(wid, 'plan_updated', {}); } catch {} });
+      emit({ actor_id: req.admin.id, type: `bulk_${action}`, entity_type: 'workspace', payload: { count: done, ...params } });
+      res.json({ ok: true, count: done });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ════════════════════════════════════════════════════════════════════════════
   //  SECTIONS 6/8/9 — OVERRIDES + GRACE PERIODS + MODULE CONTROL
   // ════════════════════════════════════════════════════════════════════════════
@@ -615,14 +946,28 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   });
   app.post('/api/cc/workspaces/:id/grace', platformAuth, requirePerm('manage_overrides'), (req, res) => {
     try {
-      const days = num(req.body?.days, 7);
+      const days = Math.min(Math.max(num(req.body?.days, 7), 1), 365);
       const id = rid();
       const ends = new Date(Date.now() + days * 86400000).toISOString();
       db.prepare('INSERT INTO cc_grace_periods (id, workspace_id, days, reason, admin_id, ends_at) VALUES (?,?,?,?,?,?)')
         .run(id, req.params.id, days, req.body?.reason || null, req.admin.id, ends);
-      ccAudit(req, { action: 'grace_grant', target_type: 'workspace', target_id: req.params.id, workspace_id: req.params.id, after: { days, ends_at: ends } });
+      entitlements.invalidate(req.params.id);
+      ccAudit(req, { action: 'grace_grant', target_type: 'workspace', target_id: req.params.id, workspace_id: req.params.id, after: { days, ends_at: ends }, reason: req.body?.reason || null });
       emit({ workspace_id: req.params.id, actor_id: req.admin.id, type: 'grace_granted', entity_type: 'workspace', entity_id: req.params.id, payload: { days } });
+      try { broadcastToWorkspace(req.params.id, 'plan_updated', {}); } catch {}
       res.json({ ok: true, id, ends_at: ends });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/cc/grace/:graceId/end', platformAuth, requirePerm('manage_overrides'), (req, res) => {
+    try {
+      const g = db.prepare('SELECT * FROM cc_grace_periods WHERE id = ?').get(req.params.graceId);
+      if (!g) return res.status(404).json({ error: 'Not found' });
+      db.prepare("UPDATE cc_grace_periods SET status = 'ended', ends_at = CURRENT_TIMESTAMP WHERE id = ?").run(g.id);
+      entitlements.invalidate(g.workspace_id);
+      ccAudit(req, { action: 'grace_end', target_type: 'workspace', target_id: g.workspace_id, workspace_id: g.workspace_id, before: g });
+      try { broadcastToWorkspace(g.workspace_id, 'plan_updated', {}); } catch {}
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -655,18 +1000,43 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       const limit = Math.min(num(req.query.limit, 100), 500);
       const { type = '', workspace_id = '' } = req.query;
       const where = [], params = [];
-      if (type) { where.push('type = ?'); params.push(type); }
-      if (workspace_id) { where.push('workspace_id = ?'); params.push(workspace_id); }
+      if (type) { where.push('e.type = ?'); params.push(type); }
+      if (workspace_id) { where.push('e.workspace_id = ?'); params.push(workspace_id); }
       const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
-      const events = safeAll(`SELECT * FROM platform_events ${whereSql} ORDER BY ts DESC LIMIT ?`, ...params, limit);
-      // Until modules fully adopt emit(), also surface recent core audit_logs as events.
-      const legacy = safeAll(`SELECT id, created_at AS ts, workspace_id, 'user' AS actor_type, user_id AS actor_id,
-        action AS type, entity_type, entity_id, details AS payload, 'audit_logs' AS source FROM audit_logs ORDER BY created_at DESC LIMIT ?`, limit);
-      const merged = [...events, ...legacy].sort((a, b) => new Date(b.ts) - new Date(a.ts)).slice(0, limit);
+      const events = safeAll(`SELECT e.*, w.name AS workspace_name FROM platform_events e LEFT JOIN workspaces w ON w.id = e.workspace_id
+        ${whereSql} ORDER BY e.ts DESC LIMIT ?`, ...params, limit);
+      // Workspace activity from the core audit_logs too — with the SAME filters
+      // (they used to be applied to platform_events only, so filtering by one
+      // workspace still listed every other workspace's audit rows).
+      const lw = [], lp = [];
+      if (type) { lw.push('a.action = ?'); lp.push(type); }
+      if (workspace_id) { lw.push('a.workspace_id = ?'); lp.push(workspace_id); }
+      const legacy = safeAll(`SELECT a.id, a.created_at AS ts, a.workspace_id, w.name AS workspace_name, 'user' AS actor_type, a.user_id AS actor_id,
+        a.action AS type, a.entity_type, a.entity_id, a.details AS payload, 'audit_logs' AS source
+        FROM audit_logs a LEFT JOIN workspaces w ON w.id = a.workspace_id ${lw.length ? 'WHERE ' + lw.join(' AND ') : ''}
+        ORDER BY a.created_at DESC LIMIT ?`, ...lp, limit);
+      const ts = (v) => new Date(String(v || '').replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(v || '')) ? '' : 'Z')).getTime() || 0;
+      const merged = [...events, ...legacy].sort((a, b) => ts(b.ts) - ts(a.ts)).slice(0, limit);
       res.json({ events: merged });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  app.get('/api/cc/events/stream', platformAuth, (req, res) => {
+  // EventSource cannot send an Authorization header. Instead of a 12-hour session
+  // token in the URL, the page asks for a 60-second ticket that is only valid for
+  // opening this one stream.
+  app.post('/api/cc/events/stream-ticket', platformAuth, (req, res) => {
+    res.json({ ticket: jwt.sign({ adminId: req.admin.id, aud: 'cc-stream', tv: req.admin.token_version || 0 }, JWT_SECRET, { expiresIn: '60s' }) });
+  });
+  const streamAuth = (req, res, next) => {
+    try {
+      if (!ipAllowed(req)) return res.status(403).end();
+      const d = jwt.verify(String(req.query.ticket || ''), JWT_SECRET);
+      if (d.aud !== 'cc-stream') throw new Error();
+      const admin = db.prepare("SELECT * FROM cc_admins WHERE id = ? AND status = 'active'").get(d.adminId);
+      if (!admin || (d.tv || 0) < (admin.token_version || 0)) throw new Error();
+      req.admin = admin; next();
+    } catch { res.status(401).end(); }
+  };
+  app.get('/api/cc/events/stream', streamAuth, (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*', 'X-Accel-Buffering': 'no' });
     res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
     ccSse.add(res);
@@ -729,7 +1099,9 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   // ════════════════════════════════════════════════════════════════════════════
   //  SECTIONS 10/11 — USAGE ROLLUPS + HEALTH / ADOPTION
   // ════════════════════════════════════════════════════════════════════════════
+  const { tracked } = require('./cc-system');
   const metering = require('./cc-metering')(db, { generateId: rid });
+  metering.runAll = tracked(db, 'usage_rollup', metering.runAll.bind(metering));
   try { metering.start(); } catch (e) { console.error('metering start:', e.message); }
 
   app.post('/api/cc/rollup/run', platformAuth, (req, res) => {
@@ -743,7 +1115,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   app.get('/api/cc/health', platformAuth, (req, res) => {
     try {
       const sortCol = ({ churn: 's.churn', health: 's.health', expansion: 's.expansion', activity: 's.activity' })[req.query.sort] || 's.churn';
-      const rows = safeAll(`SELECT w.id, w.name, COALESCE(wp.plan,'free') AS plan, COALESCE(w.status,'active') AS status,
+      const rows = safeAll(`SELECT w.id, w.name, COALESCE(wp.plan,'creator') AS plan, COALESCE(w.status,'active') AS status,
         s.health, s.churn, s.expansion, s.activity, s.risk_factors, s.computed_at
         FROM workspaces w
         LEFT JOIN workspace_plan wp ON wp.workspace_id = w.id
@@ -838,19 +1210,19 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       if (dataset === 'customers') {
         const where = [], params = [];
         if (req.query.q) { where.push('(w.name LIKE ? OR u.email LIKE ? OR u.business_name LIKE ?)'); params.push(`%${req.query.q}%`, `%${req.query.q}%`, `%${req.query.q}%`); }
-        if (req.query.plan) { where.push("COALESCE(wp.plan,'free') = ?"); params.push(req.query.plan); }
+        if (req.query.plan) { where.push("COALESCE(wp.plan,'creator') = ?"); params.push(req.query.plan); }
         if (req.query.status) { where.push("COALESCE(w.status,'active') = ?"); params.push(req.query.status); }
         const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
         rows = safeAll(`SELECT w.id, w.name, u.email AS owner_email, u.business_name AS owner_name,
-          COALESCE(wp.plan,'free') AS plan, COALESCE(w.status,'active') AS status,
+          COALESCE(wp.plan,'creator') AS plan, COALESCE(w.status,'active') AS status,
           (SELECT COUNT(*) FROM workspace_members m WHERE m.workspace_id = w.id) AS users,
           (SELECT COUNT(*) FROM leads l WHERE l.workspace_id = w.id AND (l.is_deleted = 0 OR l.is_deleted IS NULL)) AS leads,
-          (SELECT COALESCE(SUM(a.size_bytes),0) FROM ms_assets a WHERE a.workspace_id = w.id) AS storage_bytes,
+          ${usedBytesSql('w.id')} AS storage_bytes,
           (SELECT MAX(l.last_contacted_at) FROM leads l WHERE l.workspace_id = w.id) AS last_active
           FROM workspaces w LEFT JOIN users u ON u.id = w.owner_id LEFT JOIN workspace_plan wp ON wp.workspace_id = w.id
           ${whereSql} ORDER BY w.name LIMIT 10000`, ...params);
       } else if (dataset === 'health') {
-        rows = safeAll(`SELECT w.id, w.name, COALESCE(wp.plan,'free') AS plan, COALESCE(w.status,'active') AS status,
+        rows = safeAll(`SELECT w.id, w.name, COALESCE(wp.plan,'creator') AS plan, COALESCE(w.status,'active') AS status,
           s.health, s.churn, s.expansion, s.activity, s.risk_factors
           FROM workspaces w LEFT JOIN workspace_plan wp ON wp.workspace_id = w.id LEFT JOIN workspace_scores s ON s.workspace_id = w.id
           ORDER BY (s.churn IS NULL), s.churn DESC LIMIT 10000`).map((r) => ({ ...r, risk_factors: (() => { try { return JSON.parse(r.risk_factors || '[]').join('; '); } catch { return ''; } })() }));
@@ -876,7 +1248,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
 
   // ── Mounted sub-modules (additive; share the platform auth/audit/event seams) ─
   //  Database Explorer + SQL console, Support ops, Time Machine, Report engine.
-  const ccDeps = { db, platformAuth, requirePerm, ccAudit, emit, rid, safeAll, safeCount, broadcastToWorkspace, sendEmail: deps.sendEmail, entitlements };
+  const ccDeps = { db, platformAuth, requirePerm, requireElevated, ccAudit, emit, rid, safeAll, safeCount, broadcastToWorkspace, sendEmail: deps.sendEmail, notify: deps.notify, sendPlatformMail: deps.sendPlatformMail, auth: deps.auth, logAudit: deps.logAudit, entitlements, JWT_SECRET, clientIp, sec };
   try { require('./cc-explorer')(app, ccDeps); } catch (e) { console.error('cc-explorer mount:', e.message); }
   try { require('./cc-desktop')(app, { db, auth: deps.auth, platformAuth, requirePerm, ccAudit, emit }); } catch (e) { console.error('cc-desktop mount:', e.message); }
   try { require('./cc-storage')(app, ccDeps); } catch (e) { console.error('cc-storage mount:', e.message); }
@@ -886,7 +1258,8 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
     const reportsApi = require('./cc-reports')(app, ccDeps);
     if (reportsApi && typeof reportsApi.runDue === 'function') {
       let cron = null; try { cron = require('node-cron'); } catch {}
-      if (cron) { try { cron.schedule('0 3 * * *', () => { try { reportsApi.runDue(); } catch (e) { console.error('reports runDue:', e.message); } }); } catch {} }
+      const runReports = tracked(db, 'reports', () => reportsApi.runDue());
+      if (cron) { try { cron.schedule('0 3 * * *', () => { try { runReports(); } catch (e) { console.error('reports runDue:', e.message); } }); } catch {} }
     }
   } catch (e) { console.error('cc-reports mount:', e.message); }
 
@@ -895,15 +1268,34 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   // resumes. Runs once on boot (catches missed schedules across restarts) + nightly.
   function sweepExpiredGrace() {
     try {
-      const r = db.prepare("UPDATE cc_grace_periods SET status = 'expired' WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at < CURRENT_TIMESTAMP").run();
+      // datetime() on both sides: ends_at is stored as ISO ('…T…Z') and a plain
+      // string compare against CURRENT_TIMESTAMP ('… …') was off by up to a day.
+      const due = db.prepare("SELECT DISTINCT workspace_id FROM cc_grace_periods WHERE status = 'active' AND ends_at IS NOT NULL AND datetime(ends_at) <= datetime('now')").all();
+      const r = db.prepare("UPDATE cc_grace_periods SET status = 'expired' WHERE status = 'active' AND ends_at IS NOT NULL AND datetime(ends_at) <= datetime('now')").run();
+      due.forEach((d) => entitlements.invalidate(d.workspace_id));
       if (r.changes > 0) console.log(`⏳ Command Center: expired ${r.changes} grace period(s)`);
     } catch (e) { console.error('grace sweep:', e.message); }
   }
-  try { sweepExpiredGrace(); } catch {}
+  const sweepGrace = tracked(db, 'grace_sweep', () => { sweepExpiredGrace(); return { ok: true }; });
+  try { sweepGrace(); } catch {}
   try {
     let cron = null; try { cron = require('node-cron'); } catch {}
-    if (cron) { cron.schedule('5 3 * * *', sweepExpiredGrace); }
+    if (cron) { cron.schedule('5 3 * * *', () => { try { sweepGrace(); } catch {} }); }
   } catch (e) { console.error('grace cron:', e.message); }
+
+  // ── PROP-005 modules: billing · system health · admins · message explorer ────
+  let billing = null;
+  try {
+    billing = require('./cc-billing')(app, ccDeps);
+    const runBilling = tracked(db, 'billing_daily', () => billing.runDaily());
+    let cron = null; try { cron = require('node-cron'); } catch {}
+    if (cron) { cron.schedule('0 4 * * *', () => { try { runBilling(); } catch (e) { console.error('billing daily:', e.message); } }); }
+    const t = setTimeout(() => { try { runBilling(); } catch {} }, 15000); if (t.unref) t.unref();
+  } catch (e) { console.error('cc-billing mount:', e.message); }
+  try { require('./cc-system')(app, ccDeps); } catch (e) { console.error('cc-system mount:', e.message); }
+  try { require('./cc-admins')(app, ccDeps); } catch (e) { console.error('cc-admins mount:', e.message); }
+  try { require('./cc-messages')(app, ccDeps); } catch (e) { console.error('cc-messages mount:', e.message); }
+  billingRef.current = billing;
 
   console.log('🛡️  Command Center mounted at /api/cc/* (+ explorer/support/timemachine/reports)');
   return { platformAuth, emit, ccAudit, ensureSchema };
@@ -913,4 +1305,5 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
 module.exports.ensureSchema = ensureSchema;
 module.exports.createOrUpdateAdmin = createOrUpdateAdmin;
 module.exports.CC_ROLE_PERMISSIONS = CC_ROLE_PERMISSIONS;
+module.exports.permsFor = permsFor;
 module.exports.toCSV = toCSV;

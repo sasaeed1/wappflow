@@ -19,9 +19,13 @@ const Database = require('better-sqlite3');
 
 module.exports = function (app, deps) {
   const {
-    db, platformAuth, requirePerm, ccAudit, emit, rid,
-    safeAll, safeCount, broadcastToWorkspace, sendEmail, entitlements,
+    db, platformAuth, requirePerm, requireElevated, ccAudit, emit, rid,
+    safeAll, safeCount, broadcastToWorkspace, sendEmail, entitlements, sec,
   } = deps;
+  // Columns holding credentials or key material are never shown, in the table
+  // browser or the console: password hashes, 2FA secrets, recovery codes, tokens,
+  // API keys, push keys, session data.
+  const redact = (rows) => sec.redactRows(rows);
 
   // ── Separate READ-ONLY connection ──────────────────────────────────────────
   // deps.db.name is the on-disk path of the primary better-sqlite3 connection.
@@ -54,7 +58,11 @@ module.exports = function (app, deps) {
   // ════════════════════════════════════════════════════════════════════════════
 
   // List user tables with row counts.
-  app.get('/api/cc/db/tables', platformAuth, (req, res) => {
+  // The table browser reads the same data the SQL console does, so it carries the
+  // same gate: run_sql. Listing names/counts needs run_sql; reading rows also needs
+  // a step-up. It used to need nothing beyond being signed in — a read-only admin
+  // could page through every customer's messages and every password hash.
+  app.get('/api/cc/db/tables', platformAuth, requirePerm('run_sql'), (req, res) => {
     try {
       const tables = roDb.prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
@@ -69,7 +77,7 @@ module.exports = function (app, deps) {
   });
 
   // Inspect one table: columns, indexes, row count, paginated sample rows.
-  app.get('/api/cc/db/tables/:name', platformAuth, (req, res) => {
+  app.get('/api/cc/db/tables/:name', platformAuth, requirePerm('run_sql'), requireElevated, (req, res) => {
     try {
       const name = validTable(req.params.name);
       if (!name) return res.status(404).json({ error: 'Table not found' });
@@ -87,7 +95,8 @@ module.exports = function (app, deps) {
       let rowCount = 0;
       try { rowCount = roDb.prepare(`SELECT COUNT(*) AS c FROM ${qid(name)}`).get().c || 0; } catch {}
 
-      const rows = roDb.prepare(`SELECT * FROM ${qid(name)} LIMIT ? OFFSET ?`).all(limit, offset);
+      const rows = redact(roDb.prepare(`SELECT * FROM ${qid(name)} LIMIT ? OFFSET ?`).all(limit, offset));
+      ccAudit(req, { action: 'db_table_view', target_type: 'table', target_id: name, after: { limit, offset } });
 
       res.json({ name, columns, indexes, rowCount, rows, limit, offset });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -138,7 +147,7 @@ module.exports = function (app, deps) {
 
       const rows = stmt.all();
       const truncated = rows.length > 1000;
-      const out = rows.slice(0, 1000);
+      const out = redact(rows.slice(0, 1000));
       const columns = out[0] ? Object.keys(out[0]) : [];
 
       ccAudit(req, { action: 'sql_query', target_type: 'sql', after: { sql, rows: rows.length } });

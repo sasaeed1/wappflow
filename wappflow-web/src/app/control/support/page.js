@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
+import { useConfirm } from '@/lib/confirm';
 import { ccApi, fmtNum } from '@/lib/ccApi';
 import { Card, Pill, Stat } from '@/components/control/ControlShell';
 import { clickableRow, clickable } from '@/lib/a11y';
@@ -51,6 +52,8 @@ export default function Support() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadStats(); }, [loadStats]);
+  // ?ticket=<id> opens it (links from the Founder Inbox and the event stream).
+  useEffect(() => { try { const t = new URLSearchParams(window.location.search).get('ticket'); if (t) setSelId(t); } catch {} }, []);
 
   const refresh = () => { load(); loadStats(); };
   const countFor = (s) => (stats?.byStatus || []).find((x) => x.status === s)?.c || 0;
@@ -58,12 +61,13 @@ export default function Support() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Support Operations</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Support</h1>
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowNew(true)} style={primaryBtn}>+ New ticket</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-dim,#666)', margin: 0 }}>Customers open requests from Help → Contact support in the app. Public replies reach them by notification and email; internal notes never do.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 12 }}>
         <Stat label="Open" value={fmtNum(countFor('open'))} accent="#fbbf24" />
         <Stat label="In progress" value={fmtNum(countFor('in_progress'))} accent="#60a5fa" />
         <Stat label="Resolved" value={fmtNum(countFor('resolved'))} accent="#34d399" />
@@ -78,7 +82,8 @@ export default function Support() {
       </div>
 
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 680 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--text-dim,#666)', fontSize: 11.5, textTransform: 'uppercase', letterSpacing: .4 }}>
               {['Subject', 'Workspace', 'Kind', 'Priority', 'Status', 'Age'].map((h) => (
@@ -92,8 +97,14 @@ export default function Support() {
             {tickets.map((t) => (
               <tr key={t.id} {...clickableRow(() => setSelId(t.id))} style={{ cursor: 'pointer', borderBottom: '1px solid var(--border,#1e1e26)' }}
                 onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg,#0a0a0f)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-                <td style={td}><div style={{ fontWeight: 600 }}>{t.subject || 'Untitled'}</div></td>
-                <td style={{ ...td, color: 'var(--text-muted,#9a9aa5)' }}>{t.workspace_name || '—'}</td>
+                <td style={td}>
+                  <div style={{ fontWeight: 600 }}>{t.subject || 'Untitled'}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-dim,#666)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {t.source === 'customer' ? <Pill tone="blue">from customer</Pill> : <Pill>internal</Pill>}
+                    {t.last_author === 'customer' && t.status !== 'resolved' && t.status !== 'closed' ? <Pill tone="amber">awaiting reply</Pill> : null}
+                  </div>
+                </td>
+                <td style={{ ...td, color: 'var(--text-muted,#9a9aa5)' }}>{t.workspace_name || '—'}{t.requester_email ? <div style={{ fontSize: 11.5, color: 'var(--text-dim,#666)' }}>{t.requester_email}</div> : null}</td>
                 <td style={td}><Pill tone={kindTone(t.kind)}>{t.kind}</Pill></td>
                 <td style={td}><Pill tone={prioTone(t.priority)}>{t.priority}</Pill></td>
                 <td style={td}><Pill tone={statusTone(t.status)}>{statusLabel(t.status)}</Pill></td>
@@ -102,6 +113,7 @@ export default function Support() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
 
       {showNew && <NewTicketModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); refresh(); }} />}
@@ -111,6 +123,8 @@ export default function Support() {
 }
 
 function NewTicketModal({ onClose, onCreated }) {
+  const confirmDialog = useConfirm();
+  const alert = (message) => confirmDialog({ title: 'Something went wrong', message, alertOnly: true, tone: 'danger' });
   const [wsQ, setWsQ] = useState('');
   const [wsResults, setWsResults] = useState([]);
   const [workspace, setWorkspace] = useState(null);
@@ -191,9 +205,11 @@ function NewTicketModal({ onClose, onCreated }) {
 }
 
 function TicketDetail({ id, onClose, onChanged }) {
+  const confirmDialog = useConfirm();
+  const alert = (message) => confirmDialog({ title: 'Something went wrong', message, alertOnly: true, tone: 'danger' });
   const [data, setData] = useState(null);
   const [comment, setComment] = useState('');
-  const [internal, setInternal] = useState(true);
+  const [internal, setInternal] = useState(null); // null = default for the ticket type
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -211,13 +227,15 @@ function TicketDetail({ id, onClose, onChanged }) {
   const addComment = async () => {
     if (!comment.trim()) return;
     setBusy(true);
-    try { await ccApi.ticketComment(id, { body: comment.trim(), internal }); setComment(''); load(); }
+    try { await ccApi.ticketComment(id, { body: comment.trim(), internal: isInternal }); setComment(''); load(); }
     catch (e) { alert(e.response?.data?.error || 'Failed'); }
     setBusy(false);
   };
 
   const t = data?.ticket;
   const comments = data?.comments || [];
+  // Customer requests default to a public reply; internal tickets to a note.
+  const isInternal = internal ?? !t?.customer_visible;
 
   return (
     <Modal title={t?.subject || 'Ticket'} onClose={onClose} wide>
@@ -229,7 +247,7 @@ function TicketDetail({ id, onClose, onChanged }) {
             <Pill tone={prioTone(t.priority)}>{t.priority}</Pill>
             <Pill tone={statusTone(t.status)}>{statusLabel(t.status)}</Pill>
             {t.workspace_name && <span style={{ fontSize: 12, color: 'var(--text-muted,#9a9aa5)' }}>· {t.workspace_name}</span>}
-            <span style={{ fontSize: 12, color: 'var(--text-dim,#666)' }}>· opened {age(t.created_at)} ago{t.admin_email ? ` by ${t.admin_email}` : ''}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-dim,#666)' }}>· opened {age(t.created_at)} ago{t.requester_email ? ` by ${t.requester_name || t.requester_email} (customer)` : t.admin_email ? ` by ${t.admin_email}` : ''}</span>
           </div>
 
           {t.body && (
@@ -251,8 +269,8 @@ function TicketDetail({ id, onClose, onChanged }) {
               {comments.map((c) => (
                 <div key={c.id} style={{ borderLeft: `2px solid ${c.internal ? '#fbbf2455' : '#34d39955'}`, padding: '4px 0 4px 12px' }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 3 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>{c.admin_email || 'admin'}</span>
-                    <Pill tone={c.internal ? 'amber' : 'green'}>{c.internal ? 'internal' : 'public'}</Pill>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{c.author_type === 'customer' ? (c.customer_name || c.customer_email || 'Customer') : (c.admin_email || 'admin')}</span>
+                    <Pill tone={c.author_type === 'customer' ? 'blue' : c.internal ? 'amber' : 'green'}>{c.author_type === 'customer' ? 'customer' : c.internal ? 'internal note' : 'reply sent'}</Pill>
                     <span style={{ fontSize: 11, color: 'var(--text-dim,#666)' }}>{age(c.created_at)} ago</span>
                   </div>
                   <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{c.body}</div>
@@ -262,13 +280,13 @@ function TicketDetail({ id, onClose, onChanged }) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment…" rows={3} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
+            <textarea aria-label="Reply" value={comment} onChange={(e) => setComment(e.target.value)} placeholder={isInternal ? 'Internal note — only admins see this' : (t.customer_visible ? 'Reply to the customer…' : 'Add a comment…')} rows={3} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text-muted,#9a9aa5)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} /> Internal note
+                <input type="checkbox" checked={isInternal} onChange={(e) => setInternal(e.target.checked)} /> Internal note{t.customer_visible ? ' (customer won’t see it)' : ''}
               </label>
               <div style={{ flex: 1 }} />
-              <button disabled={busy || !comment.trim()} onClick={addComment} style={primaryBtn}>Add comment</button>
+              <button disabled={busy || !comment.trim()} onClick={addComment} style={primaryBtn}>{isInternal ? 'Add note' : t.customer_visible ? 'Send reply' : 'Add comment'}</button>
             </div>
           </div>
         </div>

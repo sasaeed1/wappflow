@@ -9,7 +9,10 @@
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const DATA_DIR = process.env.NODE_ENV === 'production' ? '/data' : path.join(__dirname, '..');
+// Same database the server opens: load backend/.env, then honour DATA_DIR exactly
+// like server.js does. (Ignoring DATA_DIR wrote the admin into the wrong database.)
+try { require('dotenv').config({ path: path.join(__dirname, '..', '.env') }); } catch {}
+const DATA_DIR = process.env.DATA_DIR || (process.env.NODE_ENV === 'production' ? '/data' : path.join(__dirname, '..'));
 const db = new Database(path.join(DATA_DIR, 'wappflow.db'));
 db.pragma('journal_mode = WAL');
 
