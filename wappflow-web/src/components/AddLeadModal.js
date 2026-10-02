@@ -89,7 +89,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded }) {
             type="tel"
             value={formData.customer_phone}
             onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
-            placeholder="+92 300 1234567"
+            placeholder="+1 415 555 0123"
             required
           />
         </Field>

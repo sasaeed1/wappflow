@@ -9,12 +9,14 @@
    each step creating the next. The page is built around demonstrating that
    chain rather than listing features beside it.
 
-   POSITIONING (2026-08-25): WappFlow is presented CRM-FIRST. The CRM — leads,
-   conversations, pipeline, timeline, AI, team — is the core; everything else
-   (contracts, booking, payments, portals, Media Studio…) is a module around
-   it. Media Studio stays showcased, but as ONE module, never the identity.
-   Platform-level copy stays industry-agnostic; vertical language belongs only
-   inside module-scoped content and the worked example in the hero demo.
+   POSITIONING (2026-10-02, owner direction): WappFlow is ONE PLATFORM FOR EVERY
+   BUSINESS — real estate, salons, training institutes, e-commerce, agencies,
+   studios. The core is industry-agnostic: CRM, conversations, AI, Contracts
+   Studio, booking, invoicing, client portal, team. INDUSTRY MODULES sit on top
+   and add the vertical tools one trade needs. Photography & Video is the first
+   (live); further industries are shown as roadmap, never as shipped.
+   The audience is international: prices in USD, and worked examples are set in
+   Europe, North America and the Middle East.
 
    Ground rules for anything added here:
      • Only claim what ships. Parked and beta work is labelled as such.
@@ -36,7 +38,7 @@ import {
   Palette, Images, Crown, Star, Mic, Instagram, Facebook, Globe2, PenLine,
   Receipt, ShoppingBag, Aperture, HardDrive, ScrollText, RefreshCw,
   Smartphone, Monitor, FolderOpen, Eye, KeyRound, Wallet, BadgeCheck,
-  Timer, Share2, Bell,
+  Timer, Share2, Bell, Building2, Scissors, GraduationCap, ShoppingCart, MapPin,
 } from 'lucide-react';
 
 import LandingStyles from '@/components/landing/LandingStyles';
@@ -90,7 +92,7 @@ function SectionHead({ eyebrow, icon: Icon, title, sub }) {
 /* ══════════════════════════════════ NAV ══════════════════════════════════ */
 
 const NAV = [
-  { href: '#chain', label: 'How it works' },
+  { href: '#industries', label: 'Industries' },
   { href: '#modules', label: 'Platform' },
   { href: '#ai', label: 'AI' },
   { href: '#security', label: 'Security' },
@@ -174,11 +176,11 @@ const STAGES = [
     key: 'lead',
     tab: 'A message arrives',
     bubbles: [
-      { side: 'in', text: <>Hi! Do you shoot weddings in December? We need two days of coverage in Lahore.{T('10:42')}</> },
+      { side: 'in', text: <>Hi! Do you shoot weddings in December? We need two days of coverage in Doha.{T('10:42')}</> },
     ],
     artifacts: [
       { icon: Users, title: 'Lead created', tag: 'AUTOMATIC',
-        body: 'Ayesha Malik · WhatsApp · captured from the message itself. No form to fill in, nothing to copy across.' },
+        body: 'Layla Haddad · WhatsApp · captured from the message itself. No form to fill in, nothing to copy across.' },
     ],
     note: 'Every WhatsApp, Instagram DM, Facebook message and website enquiry lands in one shared inbox — and becomes a lead the moment it arrives.',
   },
@@ -187,8 +189,8 @@ const STAGES = [
     tab: 'AI reads it',
     chip: 'Lead intelligence · high intent · wedding · December · 2 days',
     bubbles: [
-      { side: 'in', text: <>Hi! Do you shoot weddings in December? We need two days of coverage in Lahore.{T('10:42')}</> },
-      { side: 'out', text: <>Congratulations Ayesha! December books out early, and we still have two dates. Our two-day wedding coverage starts at $1,400 — shall I send the full package?{T('10:43')}</> },
+      { side: 'in', text: <>Hi! Do you shoot weddings in December? We need two days of coverage in Doha.{T('10:42')}</> },
+      { side: 'out', text: <>Congratulations Layla! December books out early, and we still have two dates. Our two-day wedding coverage starts at $1,400 — shall I send the full package?{T('10:43')}</> },
     ],
     artifacts: [
       { icon: Brain, title: 'Lead scored', tag: 'AI',
@@ -224,7 +226,7 @@ const STAGES = [
     ],
     artifacts: [
       { icon: Receipt, title: 'Invoice raised', tag: 'AUTOMATIC', body: '$1,400 · deposit terms taken straight from the signed contract.' },
-      { icon: Camera, title: 'Shoot created', tag: 'AUTOMATIC', body: 'Two-day wedding project, client attached, ready for the crew.' },
+      { icon: Camera, title: 'Shoot created', tag: 'PHOTO MODULE', body: 'Two-day wedding project, client attached, ready for the crew.' },
       { icon: Calendar, title: 'Dates held', tag: 'AUTOMATIC', body: '12–13 December blocked. Double-bookings refused, blackout dates respected.' },
       { icon: Globe2, title: 'Client portal opened', tag: 'AUTOMATIC', body: 'One branded link: contract, invoice, booking and — later — the gallery.' },
     ],
@@ -281,8 +283,9 @@ function ChainDemo() {
     <div className="lp-chain" id="chain">
       <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--lp-text-muted)', margin: '0 0 18px', lineHeight: 1.6 }}>
         From one WhatsApp message to a delivered job — the whole relationship, without
-        leaving the thread. This example follows a photography studio; the same chain
-        runs for whatever your business sells.
+        leaving the thread. This example follows a photography studio in Doha using the
+        Photography &amp; Video module. The same chain runs for any business: see your
+        industry below.
       </p>
       <div className="lp-chain-rail" role="tablist" aria-label="Walk through one client, end to end">
         {STAGES.map((s, n) => (
@@ -311,9 +314,9 @@ function ChainDemo() {
         {/* The phone is a picture of the product, not the product. */}
         <div className="lp-phone" aria-hidden="true" tabIndex={-1}>
           <div className="lp-phone-top">
-            <div className="lp-avatar">AM</div>
+            <div className="lp-avatar">LH</div>
             <div>
-              <div className="lp-phone-name">Ayesha Malik</div>
+              <div className="lp-phone-name">Layla Haddad</div>
               <div className="lp-phone-meta"><span className="lp-dot" /> online</div>
             </div>
             <span className="lp-chan">WHATSAPP</span>
@@ -332,7 +335,7 @@ function ChainDemo() {
           </div>
 
           <div className="lp-composer">
-            <span className="lp-composer-fake">Message Ayesha…</span>
+            <span className="lp-composer-fake">Message Layla…</span>
             <span className="lp-composer-btn"><Mic size={15} /></span>
             <span className="lp-composer-btn"><Send size={15} /></span>
           </div>
@@ -372,8 +375,8 @@ function Hero({ authed }) {
         <div className="lp-hero-head">
           <Reveal>
             <span className="lp-badge">
-              <span className="lp-badge-pill">EVERY CHANNEL</span>
-              WhatsApp, Instagram, Facebook and your website — into one CRM
+              <span className="lp-badge-pill">EVERY BUSINESS</span>
+              One CRM for any industry, with modules built for yours
             </span>
           </Reveal>
 
@@ -386,10 +389,11 @@ function Hero({ authed }) {
 
           <Reveal delay={120}>
             <p className="lp-lead">
-              A WhatsApp thread at 11pm. An Instagram DM. A Facebook message. A form on your
-              site. Enquiries arrive everywhere and get lost the same way. WappFlow captures
-              every one as an organised CRM lead the moment it lands, then keeps the whole
-              relationship connected: pipeline, contracts, booking, invoices and delivery.
+              A WhatsApp at 11pm. An Instagram DM. A Facebook message. A form on your site.
+              Whether you sell apartments, haircuts, courses or products, enquiries arrive
+              everywhere and get lost the same way. WappFlow captures every one as a CRM lead
+              the moment it lands, then carries the client through contracts, bookings,
+              invoices and payment in one place.
             </p>
           </Reveal>
 
@@ -404,8 +408,8 @@ function Hero({ authed }) {
                   Start free <ArrowRight size={17} />
                 </Link>
               )}
-              <a href="#chain" className="lp-btn lp-btn-ghost lp-btn-lg">
-                See how it works
+              <a href="#industries" className="lp-btn lp-btn-ghost lp-btn-lg">
+                See it for your industry
               </a>
             </div>
           </Reveal>
@@ -439,8 +443,8 @@ function Hero({ authed }) {
               <ArrowRight size={16} className="lp-flow-arrow" aria-hidden="true" />
               <span className="lp-flow-step">
                 <Layers size={15} />
-                <b>Modules take it from there</b>
-                <em>Contracts, booking, invoices, delivery</em>
+                <b>The platform takes it from there</b>
+                <em>Contracts, booking, invoices, plus your industry module</em>
               </span>
             </div>
           </Reveal>
@@ -549,13 +553,13 @@ function Problem() {
             <p className="lp-section-sub" style={{ maxWidth: 540, margin: '0 auto' }}>
               WhatsApp, Instagram, Facebook, email, your website — each becomes a lead the
               second it arrives. From there it is one client record: conversations and
-              pipeline at the core, with contracts, bookings, invoices, portals and
-              galleries as modules around them, sharing one database and one timeline.
+              pipeline at the core, contracts, bookings, invoices and a client portal built
+              in, and an industry module on top for the work your trade does.
             </p>
             <div className="lp-unified-list">
               <span>CRM &amp; pipeline</span><span>Shared inbox</span><span>AI</span>
               <span>Contracts Studio</span><span>Booking</span><span>Invoicing &amp; ledger</span>
-              <span>Client portal</span><span>Media Studio</span><span>Print store</span><span>Portfolio</span>
+              <span>Client portal</span><span>Team</span><span>+ your industry module</span>
             </div>
             <div className="lp-cost-row">
               <span>From <b>$29/month</b></span>
@@ -622,14 +626,14 @@ const SPINE = [
   },
   {
     n: 'Produce',
-    sub: 'The right module for the work',
-    h: 'Where a specialist module carries the load',
-    p: 'Delivery looks different in every business, so it belongs to a module. For creative work that module is Media Studio: AI-assisted culling and hero-shot picks, client proofing, collections, expiring galleries and a print store that bills through the same ledger. Whichever module does the work, it writes back to the same client.',
+    sub: 'Your industry module does the work',
+    h: 'Where an industry module carries the load',
+    p: 'Delivery looks different in every trade, so it belongs to an industry module that plugs into the same core. The first is Photography & Video: AI-assisted culling, client proofing, galleries, albums and a print store. Real estate, salons, education and e-commerce modules are on the roadmap. Whichever module does the work, it writes back to the same client.',
     items: [
-      { t: 'AI culling & scoring', b: 'Faces, smiles, sharpness — the obvious rejects, gone.' },
-      { t: 'Client proofing', b: 'Favourites and comments land on the project.' },
-      { t: 'Gallery expiry', b: 'Delivery windows that close on their own.' },
-      { t: 'Print store', b: 'Orders become invoices and payments automatically.' },
+      { t: 'Photography & Video — live', b: 'Culling, galleries, proofing, albums, reels and prints.' },
+      { t: 'Real estate — roadmap', b: 'Listings, viewings and offers on the same client record.' },
+      { t: 'Salons & education — roadmap', b: 'Appointments, memberships, cohorts and enrolments.' },
+      { t: 'Same core underneath', b: 'Every module shares the CRM, billing and timeline.' },
     ],
   },
   {
@@ -704,14 +708,14 @@ function Spine() {
 
 /* ═════════════════════════════ MODULE GRID ═══════════════════════════════ */
 
-// The core — what WappFlow *is*, whatever the business sells; everything in
-// MODULES below plugs into it. Cards describe the platform at full capability;
-// tier placement (what is Creator vs Studio vs up) is disclosed in the pricing
-// table, so don't headline these as universal per-plan claims.
+// The core — what WappFlow *is*, whatever the business sells. Every business on
+// every plan gets all of this; INDUSTRY modules below add one trade's tools on
+// top. Cards describe the platform at full capability; tier placement is
+// disclosed in the pricing table, so don't headline these as per-plan claims.
 const CORE = [
   {
     icon: TrendingUp, title: 'CRM & Pipeline', pill: null,
-    body: 'The system of record. Enquiry to won to delivered, with the conversation attached to every card — every module below reads and writes this.',
+    body: 'The system of record. Enquiry to won to paid, with the conversation attached to every card.',
     list: ['Multi-pipeline and saved views', 'Safe client merge', 'Source and revenue reporting', 'Clients, not just leads'],
   },
   {
@@ -720,54 +724,74 @@ const CORE = [
     list: ['Assignment, tags and snoozing', 'Voice notes transcribed', 'Templates and quick replies', 'Broadcasts and groups'],
   },
   {
-    icon: ScrollText, title: 'Timeline, AI & automation', pill: null,
-    body: 'One activity spine per client, AI that scores leads and drafts replies, and automations that keep the next step moving.',
-    list: ['Universal client timeline', 'Lead scoring and reply drafts', 'Next best actions', 'Auto-replies and workflows'],
+    icon: ScrollText, title: 'AI & automation', pill: null,
+    body: 'AI that scores leads and drafts replies from your own knowledge base, and automations that keep the next step moving.',
+    list: ['Lead scoring and reply drafts', 'Next best actions', 'Universal client timeline', 'Auto-replies and workflows'],
   },
-  {
-    icon: Users, title: 'Team & workspace', pill: null,
-    body: 'Everyone works the same record without stepping on each other — and you can always see who did what.',
-    list: ['Roles and permissions', 'Shared assignment', 'One login, every module', 'Full data export'],
-  },
-];
-
-// The modules — each one optional, all of them writing to the core above.
-const MODULES = [
   {
     icon: FileText, title: 'Contracts Studio', pill: null,
-    body: 'Draft, negotiate and sign real contracts over WhatsApp and email — with the audit trail to back them up.',
-    list: ['Clause library and templates', 'Version history and redlines', 'Approval workflows', 'Bulk send'],
-  },
-  {
-    icon: Aperture, title: 'Media Studio', pill: null,
-    body: 'Culling, proofing, collections and delivery for shoots that run to thousands of frames.',
-    list: ['AI culling and hero-shot picks', 'Story sections and collections', 'Client proofing and favourites', 'Expiring galleries'],
+    body: 'Proposals, agreements, quotes and terms for any business, sent over WhatsApp and email and e-signed on a phone.',
+    list: ['Clause library and templates', 'Version history and redlines', 'Approval workflows', 'Tamper-evident audit trail'],
   },
   {
     icon: Calendar, title: 'Booking', pill: null,
-    body: 'A branded booking page that respects your real hours, buffers, blackout dates and existing commitments.',
-    list: ['Server-enforced availability', 'Two-way Google Calendar sync', 'Real business-timezone handling', 'Turns into a project and invoice'],
+    body: 'Viewings, appointments, consultations or classes: a branded booking page that respects your real hours.',
+    list: ['Server-enforced availability', 'Two-way Google Calendar sync', 'Your business’s own timezone', 'Reminders over WhatsApp'],
   },
   {
     icon: CreditCard, title: 'Invoicing & Payments', pill: null,
-    body: 'Invoices raised from signed terms, payment links your client can open in the thread, and one ledger behind it all.',
-    list: ['Deposits and balances', 'Shareable payment links', 'Reconciled payments ledger', 'Outstanding at a glance'],
+    body: 'Invoices raised from signed terms, payment links the client opens in the chat, and one ledger behind it all.',
+    list: ['Deposits and balances', 'Any currency you bill in', 'Reconciled payments ledger', 'Outstanding at a glance'],
   },
   {
     icon: Globe2, title: 'Client Portal', pill: null,
-    body: 'One branded link where the client finds their contract, invoice, booking and gallery. No account, no app.',
+    body: 'One branded link where the client finds their contract, invoice and booking. No account, no app.',
     list: ['Your logo, colour and name', 'Everything for the job in one place', 'Works on any phone', 'Nothing to install'],
   },
   {
-    icon: ShoppingBag, title: 'Print Store', pill: null,
-    body: 'Sell prints and albums from the gallery the client is already looking at.',
-    list: ['Your products and pricing', 'Orders become invoices', 'Paid through the same ledger', 'Revenue on the timeline'],
+    icon: Users, title: 'Team & workspace', pill: null,
+    body: 'Everyone works the same record without stepping on each other, and you can always see who did what.',
+    list: ['Roles and permissions', 'Shared assignment', 'Audit log', 'Full data export'],
+  },
+];
+
+// Industry modules — one trade's tools on top of the core. Only Photography &
+// Video ships today; the rest are labelled ROADMAP and must never read as live.
+const INDUSTRY = [
+  {
+    icon: Aperture, title: 'Photography & Video', pill: 'LIVE',
+    body: 'For studios, photographers and filmmakers: from thousands of frames to a delivered gallery, on the same client record.',
+    list: ['Media Studio: AI culling and hero shots', 'Client galleries, proofing and favourites', 'Albums, reels and expiring galleries', 'Print store and public portfolio'],
   },
   {
-    icon: Palette, title: 'Portfolio', pill: null,
-    body: 'A public portfolio on your own vanity link, built from work already in the system.',
-    list: ['Ten themes', 'Publish straight from a project', 'Enquiries land in the inbox', 'No separate website to maintain'],
+    icon: Building2, title: 'Real Estate', pill: 'ROADMAP',
+    body: 'For agencies and brokers: listings matched to buyers, viewings booked from the chat.',
+    list: ['Listings on the client record', 'Viewing scheduling', 'Offers and commissions'],
   },
+  {
+    icon: Scissors, title: 'Salons & Spas', pill: 'ROADMAP',
+    body: 'For salons, clinics and studios that run on appointments and repeat visits.',
+    list: ['Staff calendars', 'Packages and memberships', 'No-show protection'],
+  },
+  {
+    icon: GraduationCap, title: 'Education & Training', pill: 'ROADMAP',
+    body: 'For institutes, academies and coaches: enquiry to enrolment to attendance.',
+    list: ['Courses and cohorts', 'Enrolments and attendance', 'Certificates'],
+  },
+  {
+    icon: ShoppingCart, title: 'E-commerce & Retail', pill: 'ROADMAP',
+    body: 'For online shops and showrooms that sell in the chat as much as at the checkout.',
+    list: ['Catalogue in the conversation', 'Orders and wholesale quotes', 'Repeat-purchase follow-ups'],
+  },
+  {
+    icon: Sparkles, title: 'Your industry', pill: null,
+    body: 'Running a clinic, gym, agency or something else entirely? The core already works for you. Tell us which module you need next.',
+    list: ['Email hello@wappflow.app', 'Founding customers shape the roadmap'],
+  },
+];
+
+// Ways to work — the same workspace on every surface.
+const MODULES = [
   {
     icon: Video, title: 'Video Huddles', pill: 'WEB',
     body: 'Jump on a call with a client or your team without a third-party meeting link.',
@@ -775,7 +799,7 @@ const MODULES = [
   },
   {
     icon: Monitor, title: 'Desktop App', pill: 'BETA',
-    body: 'A desktop shell for teams with heavy local libraries, and a local AI engine for on-machine scoring.',
+    body: 'A desktop shell for teams with heavy media libraries, and a local AI engine for on-machine scoring.',
     list: ['One login, same workspace', 'Local AI scoring on your hardware', 'Built for large media volumes'],
   },
   {
@@ -784,6 +808,146 @@ const MODULES = [
     list: ['Home-screen install', 'Push notifications', 'Fully responsive down to 375px'],
   },
 ];
+
+/* ═══════════════════════ INDUSTRIES — same core, any trade ═══════════════ */
+
+// One enquiry per industry, each in a different city, to show the core doing
+// the same job for very different businesses. Only the photography row uses an
+// industry module; everything else is the core as it ships today.
+const INDUSTRIES = [
+  {
+    key: 'realestate', icon: Building2, tab: 'Real estate', city: 'Dubai', who: 'Omar Al-Mansouri', initials: 'OA', chan: 'WHATSAPP',
+    msg: 'Hi, is the 2-bed in Dubai Marina still available? Could I view it this Saturday?',
+    out: [
+      { icon: Users, title: 'Lead created', tag: 'AUTOMATIC', body: '2-bed · Dubai Marina · wants a viewing · from WhatsApp.' },
+      { icon: Calendar, title: 'Viewing booked', tag: 'BOOKING', body: 'Saturday 11:00, Gulf time, on the agent’s calendar with a reminder the day before.' },
+      { icon: FileText, title: 'Reservation agreement sent', tag: 'CONTRACTS', body: 'From your template, signed on his phone before he leaves the building.' },
+      { icon: Receipt, title: 'Deposit invoice', tag: 'AUTOMATIC', body: '$5,000 holding deposit, payment link sent in the same chat.' },
+    ],
+    note: 'Runs on the core today. A dedicated Real Estate module (listings, offers, commissions) is on the roadmap.',
+  },
+  {
+    key: 'salon', icon: Scissors, tab: 'Salon & spa', city: 'London', who: 'Charlotte Evans', initials: 'CE', chan: 'INSTAGRAM',
+    msg: 'Do you have anything for balayage next Friday afternoon? And how much is it?',
+    out: [
+      { icon: Users, title: 'Lead created', tag: 'AUTOMATIC', body: 'Balayage · next Friday · from an Instagram DM.' },
+      { icon: Sparkles, title: 'Reply drafted from your price list', tag: 'AI', body: '“Balayage starts at $180. Friday 2pm or 4pm with Mia?” You check it and press send.' },
+      { icon: Calendar, title: 'Appointment booked', tag: 'BOOKING', body: 'Friday 14:00 with Mia. Reminder goes out over Instagram the day before.' },
+      { icon: Wallet, title: 'Deposit taken', tag: 'LEDGER', body: '$40 to hold the slot, the balance paid on the day.' },
+    ],
+    note: 'Runs on the core today. A Salons & Spas module (staff calendars, memberships, no-show protection) is on the roadmap.',
+  },
+  {
+    key: 'training', icon: GraduationCap, tab: 'Training institute', city: 'Toronto', who: 'Daniel Okafor', initials: 'DO', chan: 'FACEBOOK',
+    msg: 'Is there still space in the January data analytics cohort? My employer might pay for it.',
+    out: [
+      { icon: Brain, title: 'Lead scored 91', tag: 'AI', body: 'January intake · employer-sponsored · ready to decide this month.' },
+      { icon: FileText, title: 'Enrolment agreement sent', tag: 'CONTRACTS', body: 'Signed by Daniel and countersigned by his employer, with a full audit trail.' },
+      { icon: Receipt, title: 'Invoice to the employer', tag: 'AUTOMATIC', body: '$2,400, net 30, raised from the signed terms.' },
+      { icon: Calendar, title: 'Intake session booked', tag: 'BOOKING', body: 'Orientation on 6 January, Eastern time.' },
+    ],
+    note: 'Runs on the core today. An Education & Training module (cohorts, attendance, certificates) is on the roadmap.',
+  },
+  {
+    key: 'ecommerce', icon: ShoppingCart, tab: 'E-commerce', city: 'Berlin', who: 'Lena Fischer', initials: 'LF', chan: 'WEBSITE',
+    msg: 'Do you ship to Austria? I’d like 20 of the linen sets for my boutique.',
+    out: [
+      { icon: Users, title: 'Lead created', tag: 'AUTOMATIC', body: 'Wholesale · 20 units · Austria · from your website form.' },
+      { icon: FileText, title: 'Wholesale quote sent', tag: 'CONTRACTS', body: '$1,900 including shipping, accepted with one tap.' },
+      { icon: Receipt, title: 'Invoice raised', tag: 'AUTOMATIC', body: 'Payment link in the email thread she started.' },
+      { icon: Target, title: 'Reorder reminder set', tag: 'AI', body: 'A nudge to follow up in eight weeks, when stock usually runs low.' },
+    ],
+    note: 'Runs on the core today. An E-commerce & Retail module (catalogue, orders, repeat purchases) is on the roadmap.',
+  },
+  {
+    key: 'photo', icon: Aperture, tab: 'Photography', city: 'Lisbon', who: 'Sofia Almeida', initials: 'SA', chan: 'WHATSAPP',
+    msg: 'Are you free for our wedding on 14 June in Sintra? We’d love an album too.',
+    out: [
+      { icon: Users, title: 'Lead created', tag: 'AUTOMATIC', body: 'Wedding · 14 June · Sintra · album requested.' },
+      { icon: FileText, title: 'Contract signed', tag: 'CONTRACTS', body: 'Coverage and album, signed in the chat.' },
+      { icon: Camera, title: 'Shoot created', tag: 'PHOTO MODULE', body: 'The project is ready for upload the night of the wedding.' },
+      { icon: Images, title: 'Gallery delivered', tag: 'PHOTO MODULE', body: 'AI-culled, proofed by the couple, prints ordered from the gallery.' },
+    ],
+    note: 'Uses the Photography & Video module, live today, on top of the same core.',
+  },
+];
+
+function Industries() {
+  const [i, setI] = useState(0);
+  const ind = INDUSTRIES[i];
+
+  return (
+    <section className="lp-section" id="industries">
+      <div className="lp-container">
+        <SectionHead
+          eyebrow="Any business" icon={Globe}
+          title={<>One CRM. <span className="lp-gradient">Every industry.</span></>}
+          sub="The core is built for any business that wins clients in conversations. Pick an industry to see the same enquiry-to-payment flow in a different trade and city."
+        />
+
+        <div className="lp-chain">
+          <div className="lp-chain-rail" role="tablist" aria-label="Choose an industry">
+            {INDUSTRIES.map((x, n) => (
+              <button
+                key={x.key}
+                type="button"
+                role="tab"
+                id={`lp-ind-tab-${x.key}`}
+                aria-selected={n === i}
+                aria-controls="lp-ind-stage"
+                className={`lp-chain-tab ${n === i ? 'active' : ''}`}
+                onClick={() => setI(n)}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><x.icon size={14} /> {x.tab}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="lp-chain-stage" id="lp-ind-stage" role="tabpanel" aria-labelledby={`lp-ind-tab-${ind.key}`}>
+            <div className="lp-phone" aria-hidden="true" tabIndex={-1}>
+              <div className="lp-phone-top">
+                <div className="lp-avatar">{ind.initials}</div>
+                <div>
+                  <div className="lp-phone-name">{ind.who}</div>
+                  <div className="lp-phone-meta"><MapPin size={11} style={{ verticalAlign: -1 }} /> {ind.city}</div>
+                </div>
+                <span className="lp-chan">{ind.chan}</span>
+              </div>
+              <div className="lp-thread">
+                <div key={ind.key} className="lp-bubble lp-bubble-in">{ind.msg}</div>
+              </div>
+              <div className="lp-composer">
+                <span className="lp-composer-fake">Message {ind.who.split(' ')[0]}…</span>
+                <span className="lp-composer-btn"><Mic size={15} /></span>
+                <span className="lp-composer-btn"><Send size={15} /></span>
+              </div>
+            </div>
+
+            <div className="lp-out">
+              <div className="lp-out-head">
+                <span>What WappFlow did</span>
+                <span className="lp-out-line" />
+              </div>
+              {ind.out.map((a, n) => (
+                <div key={`${ind.key}-${a.title}`} className="lp-artifact" style={{ animationDelay: `${80 + n * 110}ms` }}>
+                  <span className="lp-artifact-icon"><a.icon size={18} /></span>
+                  <div>
+                    <div className="lp-artifact-title">
+                      {a.title}
+                      <span className={`lp-tagpill ${/AUTO|AI/.test(a.tag) ? 'lp-tagpill-auto' : ''}`}>{a.tag}</span>
+                    </div>
+                    <div className="lp-artifact-body">{a.body}</div>
+                  </div>
+                </div>
+              ))}
+              <p className="lp-stage-note">{ind.note}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function Modules() {
   const onMove = useCallback((e) => {
@@ -799,7 +963,7 @@ function Modules() {
         <h3 className="lp-mod-title">
           {m.title}
           {m.pill && (
-            <span className={`lp-mini-pill ${m.pill === 'BETA' ? 'lp-mini-pill-beta' : ''}`}>{m.pill}</span>
+            <span className={`lp-mini-pill ${m.pill === 'BETA' ? 'lp-mini-pill-beta' : ''} ${m.pill === 'LIVE' ? 'lp-mini-pill-new' : ''}`}>{m.pill}</span>
           )}
         </h3>
         <p className="lp-mod-body">{m.body}</p>
@@ -817,19 +981,23 @@ function Modules() {
       <div className="lp-container">
         <SectionHead
           eyebrow="The platform" icon={Layers}
-          title={<>One CRM. <span className="lp-gradient">Every client.</span> Everything connected.</>}
-          sub="Start with the CRM every business runs on — leads, conversations, pipeline, one timeline per client. Then add the modules you need around it: each optional, all of them sharing the same clients, the same billing and the same history. Nothing to wire together."
+          title={<>A core for every business. <span className="lp-gradient">Modules for yours.</span></>}
+          sub="Every workspace gets the full core: CRM, conversations, AI, contracts, booking, invoicing and a client portal. On top of it, industry modules add the specialist tools one trade needs, sharing the same clients, billing and history."
         />
 
-        <Reveal><div className="lp-fire-h" style={{ marginBottom: 14 }}>The core — what every module plugs into</div></Reveal>
+        <Reveal><div className="lp-fire-h" style={{ marginBottom: 14 }}>The core — for every business</div></Reveal>
         <div className="lp-mods">{CORE.map(card)}</div>
 
-        <Reveal><div className="lp-fire-h" style={{ marginTop: 38, marginBottom: 14 }}>The modules — add what fits your business</div></Reveal>
+        <Reveal><div className="lp-fire-h" style={{ marginTop: 38, marginBottom: 14 }}>Industry modules — built for one trade, plugged into the core</div></Reveal>
+        <div className="lp-mods">{INDUSTRY.map(card)}</div>
+
+        <Reveal><div className="lp-fire-h" style={{ marginTop: 38, marginBottom: 14 }}>Work from anywhere</div></Reveal>
         <div className="lp-mods">{MODULES.map(card)}</div>
 
         <Reveal>
           <p className="lp-limits" style={{ marginTop: 30 }}>
-            New modules land on the same core — the platform grows without your CRM ever changing shape.
+            Photography &amp; Video is live today. Modules marked roadmap are in planning and not yet available;
+            each one lands on the same core, so your CRM never changes shape.
           </p>
         </Reveal>
       </div>
@@ -855,7 +1023,7 @@ const AI_TABS = [
   {
     icon: Aperture, t: 'Culling & hero shots',
     h: 'Four thousand frames, sorted before coffee',
-    p: 'Inside the Media Studio module, AI scores frames on faces, smiles, eyes and sharpness, throws out the obvious rejects and proposes the hero shot for the gallery cover. You keep the final say on every pick.',
+    p: 'Inside the Photography & Video module, AI scores frames on faces, smiles, eyes and sharpness, throws out the obvious rejects and proposes the hero shot for the gallery cover. You keep the final say on every pick.',
     demo: 'cull',
   },
   {
@@ -865,7 +1033,7 @@ const AI_TABS = [
     demo: 'nba',
   },
   {
-    icon: Wand2, t: 'Studio brain',
+    icon: Wand2, t: 'Business brain',
     h: 'Your packages, policies and past answers',
     p: 'Feed it your pricing, FAQs and the way you talk about your work. Everything the AI writes comes back sounding like your business instead of a chatbot.',
     demo: 'brain',
@@ -877,9 +1045,9 @@ function AiDemo({ kind }) {
     return (
       <div className="lp-ai-demo">
         {[
-          { t: 'Ayesha M. — December wedding, 2 days', b: 'Named a date, named a budget, asked for availability', s: '94', mid: false },
-          { t: 'Bilal R. — “how much for photos?”', b: 'No date, no service, no budget signal', s: '31', mid: true },
-          { t: 'Hina S. — corporate headshots, 40 staff', b: 'Volume, decision-maker, timeline this month', s: '88', mid: false },
+          { t: 'Omar A. — 2-bed viewing, Dubai Marina', b: 'Named the property, asked for a date, ready to visit', s: '94', mid: false },
+          { t: 'Marco R. — “how much?”', b: 'No service, no date, no budget signal', s: '31', mid: true },
+          { t: 'Emma S. — team training, 40 staff, Toronto', b: 'Volume, decision-maker, start date this month', s: '88', mid: false },
         ].map((r) => (
           <div key={r.t} className="lp-ai-row">
             <div style={{ flex: 1 }}>
@@ -922,10 +1090,10 @@ function AiDemo({ kind }) {
     return (
       <div className="lp-ai-demo">
         {[
-          { i: Send, t: 'Send the December wedding package', b: 'Ayesha asked for pricing 41 minutes ago' },
-          { i: FileText, t: 'Contract is unsigned after 6 days', b: 'Hina opened it twice and never signed — nudge her' },
-          { i: Receipt, t: 'Balance due in 3 days', b: 'Bilal’s final payment on the corporate shoot' },
-          { i: Star, t: 'Ask for a review', b: 'Gallery delivered 9 days ago and fully downloaded' },
+          { i: Send, t: 'Send the price list', b: 'Charlotte asked about balayage 41 minutes ago' },
+          { i: FileText, t: 'Agreement unsigned after 6 days', b: 'Emma opened it twice and never signed — nudge her' },
+          { i: Receipt, t: 'Balance due in 3 days', b: 'Lena’s wholesale order to Vienna' },
+          { i: Star, t: 'Ask for a review', b: 'Omar moved into the apartment 9 days ago' },
         ].map((r) => (
           <div key={r.t} className="lp-ai-row">
             <span className="lp-artifact-icon" style={{ width: 30, height: 30 }}><r.i size={14} /></span>
@@ -943,8 +1111,8 @@ function AiDemo({ kind }) {
     return (
       <div className="lp-ai-demo">
         {[
-          { t: 'Packages & pricing', b: 'Wedding, corporate, portrait — what each includes and what it costs' },
-          { t: 'Policies', b: 'Deposits, rescheduling, travel, turnaround times' },
+          { t: 'Services & pricing', b: 'What you sell, what each option includes and what it costs' },
+          { t: 'Policies', b: 'Deposits, cancellations, delivery, opening hours' },
           { t: 'Voice', b: 'How your business actually talks to clients' },
           { t: 'Past answers', b: 'The replies that worked, reused' },
         ].map((r) => (
@@ -964,11 +1132,11 @@ function AiDemo({ kind }) {
   return (
     <div className="lp-ai-demo">
       <div className="lp-thread" style={{ padding: 0, gap: 10 }} aria-hidden="true">
-        <div className="lp-bubble lp-bubble-in">Do you travel to Islamabad? And what’s the turnaround on the album?</div>
+        <div className="lp-bubble lp-bubble-in">Can I pay for the course in two instalments? And is there a weekend option?</div>
         <div className="lp-ai-chip"><Sparkles size={12} /> Suggested reply — from your knowledge base</div>
         <div className="lp-bubble lp-bubble-out">
-          We do travel to Islamabad — travel is included for two-day bookings. Albums are
-          hand-finished and take four to six weeks from your final selection.
+          Yes — two instalments of $1,200, the second due at the halfway point. The weekend
+          cohort runs Saturdays, 10am to 4pm Eastern, starting 11 January.
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
@@ -990,7 +1158,7 @@ function Ai() {
         <SectionHead
           eyebrow="Artificial intelligence" icon={Sparkles}
           title={<>AI that does the <span className="lp-gradient">actual work</span>.</>}
-          sub="Not a chatbot bolted to the corner of the screen. AI that reads your conversations, scores your leads and drafts in your voice — and, inside the Media Studio module, sorts thousands of frames. Always leaving the decision with you."
+          sub="Not a chatbot bolted to the corner of the screen. AI that reads your conversations, scores your leads and drafts in your voice, whatever you sell. Industry modules add their own: the Photography & Video module sorts thousands of frames. The decision always stays with you."
         />
 
         <div className="lp-ai-wrap">
@@ -1017,8 +1185,8 @@ function Ai() {
             <p className="lp-ai-panel-p">{t.p}</p>
             <AiDemo kind={t.demo} />
             <p style={{ fontSize: 12, color: 'var(--lp-text-muted)', margin: '10px 0 0', lineHeight: 1.6 }}>
-              The demos continue the photography-studio example from above — the AI reads
-              whatever your business actually talks about.
+              Examples are drawn from different businesses. The AI reads whatever your
+              business actually talks about, in the languages your clients write in.
             </p>
             <p className="lp-byok">
               <KeyRound size={14} style={{ verticalAlign: -2, marginRight: 6, color: 'var(--lp-accent-2)' }} />
@@ -1034,15 +1202,17 @@ function Ai() {
 
 /* ══════════════════════ CONTRACTS — live configurator ════════════════════ */
 
+// The configurator deliberately uses a different industry from the hero demo:
+// Contracts Studio is core, and works for anything a business sells.
 const PACKAGES = [
-  { t: 'Half day', b: '4 hours · 1 photographer · 200 edited images', p: 700 },
-  { t: 'Full day', b: '8 hours · 2 photographers · 500 edited images', p: 1400 },
-  { t: 'Two-day wedding', b: 'Mehndi + Barat · 3 crew · full album', p: 2600 },
+  { t: 'Evening cohort', b: '12 weeks · two evenings a week · live online', p: 1200 },
+  { t: 'Full-time bootcamp', b: '8 weeks · weekdays · Toronto campus', p: 2400 },
+  { t: 'Corporate team', b: '5 seats · private cohort · your schedule', p: 9500 },
 ];
 
 const ADDONS = [
-  { t: 'Cinematic highlight film', b: '3–5 minute edit, delivered in 3 weeks', p: 600 },
-  { t: 'Hand-finished album', b: '30 spreads, leather bound', p: 450 },
+  { t: 'Career coaching', b: 'Four one-to-one sessions after graduation', p: 300 },
+  { t: 'Certification exam voucher', b: 'Industry exam fee, booked for you', p: 250 },
 ];
 
 function Contracts() {
@@ -1057,8 +1227,8 @@ function Contracts() {
   // chain the hero demo walks through, only here the visitor triggers it.
   const FIRE = [
     { t: `Invoice raised — ${money(total)}`, i: Receipt },
-    { t: 'Shoot created and linked to the client', i: Camera },
-    { t: 'Dates held on the studio calendar', i: Calendar },
+    { t: 'Enrolment created and linked to the client', i: FolderOpen },
+    { t: 'Start date held on the calendar', i: Calendar },
     { t: 'Client portal unlocked', i: Globe2 },
     { t: 'Written to the client timeline', i: ScrollText },
   ];
@@ -1069,7 +1239,7 @@ function Contracts() {
         <SectionHead
           eyebrow="Contracts Studio" icon={FileText}
           title={<>Sign the deal <span className="lp-gradient">in the chat</span>.</>}
-          sub="Have a go — choose a package, add what you like, then sign. The example continues the same fictional photography studio; your contracts carry your services and your prices. Watch what a signature is supposed to set off."
+          sub="Contracts Studio works for anything you sell: property reservations, treatment plans, enrolments, wholesale terms, shoots. Have a go with this fictional training institute: choose an option, add extras, then sign, and watch what a signature sets off."
         />
 
         <div className="lp-cfg">
@@ -1077,18 +1247,18 @@ function Contracts() {
             <div className="lp-doc">
               <div className="lp-doc-bar">
                 <FileText size={15} style={{ color: 'var(--lp-accent)' }} />
-                <span className="lp-doc-title">Wedding Photography Agreement</span>
+                <span className="lp-doc-title">Enrolment Agreement · Data Analytics</span>
                 <span className="lp-tagpill" style={{ marginLeft: 'auto' }}>
                   {signed ? 'SIGNED' : 'AWAITING SIGNATURE'}
                 </span>
               </div>
 
               <div className="lp-doc-body">
-                <h3 className="lp-doc-h">Coverage &amp; deliverables</h3>
-                <p className="lp-doc-meta">Prepared for Ayesha Malik · 12–13 December</p>
+                <h3 className="lp-doc-h">Programme &amp; fees</h3>
+                <p className="lp-doc-meta">Prepared for Daniel Okafor · January intake</p>
 
                 <fieldset style={{ border: 'none', padding: 0, margin: '0 0 18px' }}>
-                  <legend className="lp-fire-h" style={{ marginBottom: 10 }}>Choose your coverage</legend>
+                  <legend className="lp-fire-h" style={{ marginBottom: 10 }}>Choose your programme</legend>
                   {PACKAGES.map((p, n) => (
                     <button key={p.t} type="button" className={`lp-opt ${pkg === n ? 'on' : ''}`}
                             aria-pressed={pkg === n} onClick={() => { setPkg(n); setSigned(false); }}>
@@ -1121,7 +1291,7 @@ function Contracts() {
                 <div className={`lp-sign-zone ${signed ? 'done' : ''}`}>
                   {signed ? (
                     <>
-                      <div className="lp-sign-script">Ayesha Malik</div>
+                      <div className="lp-sign-script">Daniel Okafor</div>
                       <div className="lp-doc-meta" style={{ marginTop: 8, marginBottom: 0 }}>
                         Signed · audit trail recorded · IP and device captured
                       </div>
@@ -1187,13 +1357,13 @@ function MediaStudio() {
       <div className="lp-container lp-split">
         <Reveal>
           <div>
-            <div className="lp-section-eyebrow"><Aperture size={13} /> Module spotlight — Media Studio</div>
+            <div className="lp-section-eyebrow"><Aperture size={13} /> Industry module — Photography &amp; Video</div>
             <h2 className="lp-split-h">Four thousand frames in. One gallery out.</h2>
             <p className="lp-split-p">
-              One module, shown in depth. If the work you sell is creative, Media Studio
-              takes the heaviest part of the job: score and cull with AI, review by touch,
-              arrange the story, and deliver a gallery that carries your name instead of
-              somebody else’s — all of it written back to the same client record.
+              The first industry module, shown in depth. For photographers, studios and
+              filmmakers, its Media Studio takes the heaviest part of the job: score and cull
+              with AI, review by touch, arrange the story, and deliver a gallery that carries
+              your name, all of it written back to the same client record.
             </p>
             <div className="lp-feat-list">
               {[
@@ -1220,7 +1390,7 @@ function MediaStudio() {
           <div className="lp-card" style={{ padding: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
               <Images size={16} style={{ color: 'var(--lp-accent)' }} />
-              <span className="lp-doc-title">Malik Wedding · Day 1</span>
+              <span className="lp-doc-title">Haddad Wedding · Day 1</span>
               <span className="lp-tagpill" style={{ marginLeft: 'auto' }}>DELIVERED</span>
             </div>
             <div className="lp-gallery" aria-hidden="true">
@@ -1328,9 +1498,9 @@ const PLANS = [
     key: 'creator', name: 'Creator', price: 29, founding: 14,
     for: 'Solo operators running the whole business themselves.',
     feats: [
-      'The CRM core plus every module, end to end',
-      'CRM, Contracts Studio, Media Studio, Booking',
-      'Client portal, print store and portfolio',
+      'The full core: CRM, Contracts Studio, booking, invoicing',
+      'Client portal and AI reply drafts',
+      'Photography & Video module included',
       'WhatsApp inbox with voice-note transcription',
       'Basic AI · 200 leads · 50 GB · 1 seat',
     ],
@@ -1342,7 +1512,7 @@ const PLANS = [
       'Everything in Creator, plus',
       'Instagram, Facebook and website capture',
       'Team collaboration, permissions and multi-pipeline',
-      'Full AI: lead intelligence and next best actions, plus Media Studio culling and hero shots',
+      'Full AI: lead intelligence and next best actions, plus AI culling in the Photography module',
       'Contract depth: clause library, redlines, approvals, bulk send',
       'Analytics, reports and Google Calendar sync',
       '5 seats · 500 leads · 250 GB · desktop app (beta)',
@@ -1355,7 +1525,7 @@ const PLANS = [
       'Everything in Studio, plus',
       'White label — remove every trace of WappFlow',
       'Desktop sync and the local AI engine',
-      'Media Studio depth: style profiles and the story engine',
+      'Photography module depth: style profiles and the story engine',
       'Priority support',
       '15 seats · 5,000 leads · 1 TB',
     ],
@@ -1411,7 +1581,7 @@ function Pricing({ authed, currentPlan }) {
         <SectionHead
           eyebrow="Pricing" icon={CreditCard}
           title={<>One subscription instead of <span className="lp-gradient">seven</span>.</>}
-          sub="Every plan includes the whole platform — the tiers differ in how much AI, team and depth you get, not in whether the modules exist."
+          sub="Every plan includes the whole core and every live industry module. Tiers differ in how much AI, team and depth you get. Priced in US dollars, for businesses anywhere."
         />
 
         {founding.open && (
@@ -1515,9 +1685,10 @@ function Pricing({ authed, currentPlan }) {
 
         <Reveal>
           <p className="lp-limits">
-            Prices in {currency}, billed monthly. Every plan includes the CRM core — inbox,
-            pipeline, timeline — plus every module: Contracts Studio, Media Studio, booking,
-            client portal, print store and portfolio.
+            Prices in {currency}, billed monthly. Every plan includes the full core (inbox,
+            pipeline, timeline, Contracts Studio, booking, invoicing and client portal) plus
+            the Photography &amp; Video module. You invoice your own clients in whatever
+            currency you choose.
             <br />
             Cancel any time and export everything you have put in.
           </p>
@@ -1535,8 +1706,12 @@ const FAQS = [
     a: 'Connect the channels your buyers already use — the WhatsApp number they message, your Instagram and Facebook accounts, your website. When someone new writes in on any of them, a lead is created from that conversation on arrival: name, contact, which channel it came from, and the message itself, straight onto your pipeline. You do not fill in a form or copy anything across. The thread IS the record, and it stays attached to that client through contracts, invoices, bookings and delivery.',
   },
   {
-    q: 'Is WappFlow only for photographers?',
-    a: 'No. The core is an industry-agnostic CRM — leads, conversations, pipeline, one timeline per client — and everything else is a module on top of it. Media Studio is the module for businesses that ship creative work; if that is not you, you simply lean on the others: contracts, booking, invoicing, portals. New modules land on the same core, so the platform grows without the CRM ever changing shape.',
+    q: 'Which businesses is WappFlow for?',
+    a: 'Any business that wins clients in conversations: real estate agencies, salons and spas, clinics, training institutes, e-commerce brands, agencies, consultants and creative studios. The core (CRM, inbox, AI, Contracts Studio, booking, invoicing and client portal) is built for all of them. Industry modules add one trade’s specialist tools on top. Photography & Video is live today; real estate, salons, education and e-commerce are on the roadmap.',
+  },
+  {
+    q: 'Does it work in my country and currency?',
+    a: 'Yes. WappFlow is priced in US dollars and built for businesses anywhere, from Europe and North America to the Gulf. You invoice your own clients in your currency (dollars, euros, pounds, dirhams, riyals and more), and bookings run in your business’s own timezone.',
   },
   {
     q: 'Do I need a new phone number for WhatsApp?',
@@ -1567,8 +1742,8 @@ const FAQS = [
     a: 'From the Studio plan up. Shared inbox with assignment, role-based permissions and team collaboration on projects — everyone working the same client record without stepping on each other.',
   },
   {
-    q: 'We ship creative work — what about really large shoots?',
-    a: 'Media Studio is built for volume — bulk culling, scoring, collections and expiring galleries. Studios with heavy local libraries can add the desktop app (in beta) to run AI scoring on their own hardware.',
+    q: 'I run a photography or video business. What about really large shoots?',
+    a: 'The Photography & Video module’s Media Studio is built for volume — bulk culling, scoring, collections and expiring galleries. Studios with heavy local libraries can add the desktop app (in beta) to run AI scoring on their own hardware.',
   },
 ];
 
@@ -1662,20 +1837,20 @@ function Footer() {
               WappFlow
             </Link>
             <p className="lp-footer-about">
-              One CRM at the core of your business, with the modules you need connected
-              around it. One client record, one timeline — from the first message to the
-              final delivery.
+              One platform for every business: a CRM core that turns every conversation into a
+              client, and industry modules built for your trade. One record, one timeline,
+              from the first message to the final payment.
             </p>
           </div>
 
           <div>
             <div className="lp-footer-h">Platform</div>
             <div className="lp-footer-col">
-              <a href="#modules">Modules</a>
-              <a href="#chain">How it works</a>
+              <a href="#modules">Platform</a>
+              <a href="#industries">Industries</a>
               <a href="#ai">AI</a>
               <a href="#contracts">Contracts Studio</a>
-              <a href="#studio">Media Studio</a>
+              <a href="#studio">Photography module</a>
               {/* The page names the desktop app in a plan tier and in the FAQ.
                   Until this link existed it was being sold with nowhere to get it. */}
               <Link href="/download">Desktop app</Link>
@@ -1767,6 +1942,7 @@ export default function Landing() {
       <main id="lp-main">
         <Hero authed={authed} />
         <Strip />
+        <Industries />
         <Problem />
         {/* What it IS (core + modules) before HOW it works — the hierarchy is the message. */}
         <Modules />

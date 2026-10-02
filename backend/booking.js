@@ -220,7 +220,7 @@ module.exports = function mountBooking(app, db, deps = {}) {
       // load-bearing now - slots, guards, messages and the calendar push all read
       // it - so an unusable value must be refused rather than silently ignored.
       if (settings.timezone && !studioTime.isValidZone(settings.timezone)) {
-        return res.status(400).json({ error: `"${settings.timezone}" is not a timezone. Use an IANA name like Asia/Karachi.` });
+        return res.status(400).json({ error: `"${settings.timezone}" is not a timezone. Use an IANA name like Europe/London or America/New_York.` });
       }
       let slug = (cur && cur.slug) || slugify(req.body.slug || brand(req.workspaceId).name || 'studio');
       // ensure unique

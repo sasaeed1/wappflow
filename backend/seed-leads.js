@@ -109,26 +109,26 @@ const URGENCIES = ['low', 'medium', 'high', 'critical'];
 
 const leadTemplates = [
   // WhatsApp (real phone numbers)
-  { name: 'Ahmed Ali',         phone: '+923001234567', platform: 'whatsapp',  slot: 0, status: 'New',          msgs: ['Hi, are you available?', 'I need a 5-marla plot in Bahria Town'], est: 8500000, score: 7, sentiment: 'positive',   urgency: 'medium', intent: 'product_inquiry' },
-  { name: 'Sara Khan',         phone: '+923215567890', platform: 'whatsapp',  slot: 0, status: 'Interested',   msgs: ['Can you send pricing?', 'Looking for a 10-marla home'], est: 22000000, score: 8, sentiment: 'positive',   urgency: 'high', intent: 'pricing_inquiry' },
-  { name: 'Bilal Hussain',     phone: '+923331122334', platform: 'whatsapp',  slot: 1, status: 'Negotiating',  msgs: ['That price is too high', 'Can you do 18M?'], est: 19000000, score: 9, sentiment: 'neutral',    urgency: 'high', intent: 'pricing_inquiry' },
-  { name: 'Ayesha Tariq',      phone: '+923009988776', platform: 'whatsapp',  slot: 1, status: 'Contacted',    msgs: ['Hello, saw your ad', 'When can I visit?'], est: 0, score: 5, sentiment: 'positive',   urgency: 'low', intent: 'appointment_booking' },
-  { name: 'Hassan Raza',       phone: '+923214455667', platform: 'whatsapp',  slot: 0, status: 'Closed - Won', msgs: ['Deal closed, thanks!'], est: 0, sale: 14500000, score: 10, sentiment: 'positive', urgency: 'low', intent: 'follow_up' },
-  { name: 'Fatima Sheikh',     phone: '+923009876543', platform: 'whatsapp',  slot: 0, status: 'Closed - Lost', msgs: ['Going with another agent'], est: 12000000, score: 2, sentiment: 'negative', urgency: 'low', intent: 'not_interested' },
+  { name: 'Omar Haddad',       phone: '+971501234567', platform: 'whatsapp',  slot: 0, status: 'New',          msgs: ['Hi, are you available?', 'Looking for a 1-bed in Dubai Marina'], est: 450000, score: 7, sentiment: 'positive',   urgency: 'medium', intent: 'product_inquiry' },
+  { name: 'Sarah Mitchell',    phone: '+447700900123', platform: 'whatsapp',  slot: 0, status: 'Interested',   msgs: ['Can you send pricing?', 'Looking for a 3-bed villa'], est: 1200000, score: 8, sentiment: 'positive',   urgency: 'high', intent: 'pricing_inquiry' },
+  { name: 'Lukas Weber',       phone: '+4915112345678', platform: 'whatsapp', slot: 1, status: 'Negotiating',  msgs: ['That price is too high', 'Can you do 950k?'], est: 980000, score: 9, sentiment: 'neutral',    urgency: 'high', intent: 'pricing_inquiry' },
+  { name: 'Noura Al-Qasimi',   phone: '+966501234567', platform: 'whatsapp',  slot: 1, status: 'Contacted',    msgs: ['Hello, saw your ad', 'When can I visit?'], est: 0, score: 5, sentiment: 'positive',   urgency: 'low', intent: 'appointment_booking' },
+  { name: 'Daniel Brooks',     phone: '+14155550123', platform: 'whatsapp',  slot: 0, status: 'Closed - Won', msgs: ['Deal closed, thanks!'], est: 0, sale: 725000, score: 10, sentiment: 'positive', urgency: 'low', intent: 'follow_up' },
+  { name: 'Elena Rossi',       phone: '+393401234567', platform: 'whatsapp',  slot: 0, status: 'Closed - Lost', msgs: ['Going with another agent'], est: 600000, score: 2, sentiment: 'negative', urgency: 'low', intent: 'not_interested' },
 
   // Instagram (platform IDs - these should display as "Instagram user" thanks to displayPhone fix)
-  { name: 'Marketing Inquiry', phone: '17893456789012', platform: 'instagram', slot: 0, status: 'New',          msgs: ['Hi! Saw your reels', 'Do you have studios available?'], est: 5500000, score: 6, sentiment: 'positive', urgency: 'medium', intent: 'product_inquiry' },
-  { name: 'Zara M.',           phone: '18234567890123', platform: 'instagram', slot: 0, status: 'Interested',   msgs: ['DMing about the 2BR listing', 'Price?'], est: 7800000, score: 7, sentiment: 'positive', urgency: 'high', intent: 'pricing_inquiry' },
+  { name: 'Marketing Inquiry', phone: '17893456789012', platform: 'instagram', slot: 0, status: 'New',          msgs: ['Hi! Saw your reels', 'Do you have studios available?'], est: 280000, score: 6, sentiment: 'positive', urgency: 'medium', intent: 'product_inquiry' },
+  { name: 'Zara M.',           phone: '18234567890123', platform: 'instagram', slot: 0, status: 'Interested',   msgs: ['DMing about the 2BR listing', 'Price?'], est: 390000, score: 7, sentiment: 'positive', urgency: 'high', intent: 'pricing_inquiry' },
   { name: 'Brand Collab Lead', phone: '19345678901234', platform: 'instagram', slot: 0, status: 'Contacted',    msgs: ['Interested in partnership'], est: 0, score: 4, sentiment: 'neutral', urgency: 'low', intent: 'general_inquiry' },
 
   // Facebook (also platform IDs)
-  { name: 'Imran K.',          phone: '114387880816838', platform: 'facebook', slot: 0, status: 'New',          msgs: ['Asked about commercial space'], est: 35000000, score: 8, sentiment: 'positive', urgency: 'high', intent: 'product_inquiry' },
-  { name: 'Nadia Page Visitor', phone: '215489732144908', platform: 'facebook', slot: 0, status: 'Interested',   msgs: ['Saw your page', 'When can we meet?'], est: 4200000, score: 6, sentiment: 'positive', urgency: 'medium', intent: 'appointment_booking' },
-  { name: 'Frustrated Buyer',  phone: '318492734598234', platform: 'facebook', slot: 0, status: 'Contacted',    msgs: ['Been waiting 3 days for response', 'This is ridiculous'], est: 9500000, score: 4, sentiment: 'frustrated', urgency: 'critical', intent: 'complaint' },
+  { name: 'James K.',          phone: '114387880816838', platform: 'facebook', slot: 0, status: 'New',          msgs: ['Asked about commercial space'], est: 1750000, score: 8, sentiment: 'positive', urgency: 'high', intent: 'product_inquiry' },
+  { name: 'Nadia Page Visitor', phone: '215489732144908', platform: 'facebook', slot: 0, status: 'Interested',   msgs: ['Saw your page', 'When can we meet?'], est: 210000, score: 6, sentiment: 'positive', urgency: 'medium', intent: 'appointment_booking' },
+  { name: 'Frustrated Buyer',  phone: '318492734598234', platform: 'facebook', slot: 0, status: 'Contacted',    msgs: ['Been waiting 3 days for response', 'This is ridiculous'], est: 475000, score: 4, sentiment: 'frustrated', urgency: 'critical', intent: 'complaint' },
 
   // Website (mixed identifiers)
   { name: 'Form Submission #1', phone: 'web-form-001',   platform: 'website',  slot: 0, status: 'New',          msgs: ['Submitted contact form from /pricing'], est: 0, score: 5, sentiment: 'neutral', urgency: 'medium', intent: 'general_inquiry' },
-  { name: 'Live Chat Visitor', phone: 'web-chat-7842',  platform: 'website',   slot: 0, status: 'Negotiating',  msgs: ['Chatted on landing page', 'Wants enterprise plan'], est: 480000, score: 9, sentiment: 'positive', urgency: 'high', intent: 'pricing_inquiry' },
+  { name: 'Live Chat Visitor', phone: 'web-chat-7842',  platform: 'website',   slot: 0, status: 'Negotiating',  msgs: ['Chatted on landing page', 'Wants enterprise plan'], est: 24000, score: 9, sentiment: 'positive', urgency: 'high', intent: 'pricing_inquiry' },
 ];
 
 // ── Insert leads + messages ────────────────────────────────────

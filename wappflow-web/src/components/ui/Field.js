@@ -8,7 +8,7 @@ import { createContext, useContext, useId } from 'react';
 // page-local Toggles existed — Rule of Three).
 //
 //   <Field label="Phone Number" required error={errors.phone}>
-//     <Input type="tel" value={v} onChange={...} placeholder="+92 300 1234567" />
+//     <Input type="tel" value={v} onChange={...} placeholder="+1 415 555 0123" />
 //   </Field>
 //
 // Every control sets data-ui, which opts it OUT of the legacy global

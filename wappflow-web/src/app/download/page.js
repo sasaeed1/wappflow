@@ -5,7 +5,7 @@ import DownloadClient from './DownloadClient';
 // component below it. Same split as app/page.js.
 export const metadata = {
   title: 'Download WappFlow Desktop',
-  description: 'The desktop app for studios with heavy local libraries — local AI scoring on your own hardware, background uploads, and everything the web app does.',
+  description: 'The desktop app for teams with heavy media libraries — local AI scoring on your own hardware, background uploads, and everything the web app does.',
 };
 
 export default function DownloadPage() {

@@ -40,12 +40,12 @@ const CURRENCIES = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
   { code: 'EUR', symbol: '€', name: 'Euro' },
   { code: 'GBP', symbol: '£', name: 'British Pound' },
-  { code: 'PKR', symbol: 'Rs', name: 'Pakistani Rupee' },
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
   { code: 'AED', symbol: 'AED', name: 'UAE Dirham' },
   { code: 'SAR', symbol: 'SAR', name: 'Saudi Riyal' },
   { code: 'CAD', symbol: 'CA$', name: 'Canadian Dollar' },
   { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  { code: 'PKR', symbol: 'Rs', name: 'Pakistani Rupee' },
   { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
   { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
   { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
@@ -3065,7 +3065,7 @@ function AICommandTab({ showToast }) {
               value={profile.business_description || ''}
               onChange={e => setProfile(p => ({ ...p, business_description: e.target.value }))}
               rows={3}
-              placeholder="e.g. We're a Pakistan-based real estate brokerage focused on Bahria Town and DHA. We help clients buy, sell, and rent residential plots and homes."
+              placeholder="e.g. We're a Dubai real estate agency focused on Dubai Marina and Downtown. We help clients buy, sell and rent apartments and villas."
               style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
             />
           </div>

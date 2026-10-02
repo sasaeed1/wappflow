@@ -304,7 +304,7 @@ function seed() {
           { name: 'DEMO · Portrait session', duration: 90, price: 150, is_shoot: true },
         ],
         hours: { mon: [9, 17], tue: [9, 17], wed: [9, 17], thu: [9, 17], fri: [9, 17] },
-        buffer_min: 15, timezone: 'Asia/Karachi',
+        buffer_min: 15, timezone: 'Europe/London',
       }),
       updated_at: stamp(0),
     });

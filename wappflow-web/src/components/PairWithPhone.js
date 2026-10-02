@@ -50,7 +50,7 @@ export default function PairWithPhone({ endpoint }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <input id="wa-pair-phone" inputMode="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !busy) request(); }}
-              placeholder="923001234567" style={{ flex: 1, minWidth: 0, padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 14 }} />
+              placeholder="14155550123" style={{ flex: 1, minWidth: 0, padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 14 }} />
             <button type="button" onClick={request} disabled={busy || phone.replace(/\D/g, '').length < 8}
               style={{ padding: '0 16px', borderRadius: 10, border: 'none', background: '#25d366', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: busy || phone.replace(/\D/g, '').length < 8 ? 0.5 : 1 }}>
               {busy ? '…' : 'Get code'}

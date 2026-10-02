@@ -982,7 +982,7 @@ class WhatsAppService {
     if (this.isReady) throw new Error('This WhatsApp number is already connected');
     if (!this.client || !this.client.pupPage) throw new Error('WhatsApp is still starting — wait for the QR code, then try again');
     const digits = String(phone || '').replace(/\D/g, '');
-    if (digits.length < 8 || digits.length > 15) throw new Error('Enter the full number with country code, e.g. 923001234567');
+    if (digits.length < 8 || digits.length > 15) throw new Error('Enter the full number with country code, e.g. 14155550123');
     return await this.client.requestPairingCode(digits, true);
   }
 
