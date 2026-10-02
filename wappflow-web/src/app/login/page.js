@@ -134,7 +134,7 @@ function LoginContent() {
               {[0,1,2,3,4].map(i => <Star key={i} size={12} fill="#fbbf24" stroke="#fbbf24" />)}
             </div>
             <p>{`"We were losing 40% of WhatsApp leads to "I'll get back to you" replies. WappFlow's AI drafts the response before the customer finishes typing."`}</p>
-            <div className="auth-test-meta">— Sales lead, Karachi real estate</div>
+            <div className="auth-test-meta">— Sales lead, Dubai real estate</div>
           </div>
         </div>
 

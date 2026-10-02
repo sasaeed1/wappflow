@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════════════════
-//  PLAN CATALOG — spec 2026-06-21 (PKR). Creator → Studio → Studio+ → Enterprise.
+//  PLAN CATALOG — spec 2026-06-21, repriced in USD. Creator → Studio → Studio+ → Enterprise.
 //  This is the seed + fallback for the data-driven plan_* tables. Feature sets use
 //  inheritance (each tier spreads the one below + its additions) so the catalog
 //  stays maintainable; everything still resolves through the plan_* tables at
@@ -115,7 +115,7 @@ const PLAN_DEFINITIONS = {
   },
 };
 
-// Standard monthly list price (PKR). enterprise = custom (null).
+// Standard monthly list price (USD). enterprise = custom (null).
 const PLAN_MONTHLY_PRICE = { creator: 29, studio: 59, studio_plus: 119, enterprise: null };
 // Founding 100 price (USD) — 50% off, locked permanently for the first 100 paying
 // customers. Stored as is_founding rows in plan_prices.

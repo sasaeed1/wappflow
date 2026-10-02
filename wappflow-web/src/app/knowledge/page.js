@@ -496,7 +496,7 @@ export default function KnowledgePage() {
                       </div>
                       <div style={{ marginBottom: 16 }}>
                         <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Value</label>
-                        <textarea value={memoryForm.value} onChange={e => setMemoryForm(p => ({ ...p, value: e.target.value }))} placeholder="e.g. 45,000 PKR" rows={2}
+                        <textarea value={memoryForm.value} onChange={e => setMemoryForm(p => ({ ...p, value: e.target.value }))} placeholder="e.g. $450" rows={2}
                           style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                       </div>
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

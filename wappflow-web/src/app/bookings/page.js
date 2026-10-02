@@ -15,7 +15,7 @@ const DOW = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sa
 const ZONES = (() => {
   let all = [];
   try { all = (Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : []) || []; } catch { all = []; }
-  if (!all.length) all = ['Asia/Karachi', 'Asia/Dubai', 'Asia/Kolkata', 'Europe/London', 'America/New_York', 'UTC'];
+  if (!all.length) all = ['America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Riyadh', 'UTC'];
   let mine = '';
   try { mine = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch {}
   return mine && all.includes(mine) ? [mine, ...all.filter(z => z !== mine)] : all;

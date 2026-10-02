@@ -4593,7 +4593,7 @@ You are a business knowledge extractor. Extract structured facts from this busin
 Return a JSON array of memory objects. Each object must have:
 - memory_type: one of "pricing", "service", "policy", "course", "product", "contact", "schedule", "faq", "other"
 - key: short label (e.g. "Graphic Design Course Fee", "Refund Policy", "Office Hours")
-- value: the actual information (e.g. "45,000 PKR", "No refunds after 7 days", "9 AM - 6 PM")
+- value: the actual information (e.g. "$450", "No refunds after 7 days", "9 AM - 6 PM")
 - confidence: number 0-100
 
 Return JSON array only, no explanation, no markdown. Maximum 20 items.
@@ -4631,7 +4631,7 @@ Extract reusable business facts — things staff say repeatedly about pricing, s
 Return a JSON array of memory objects. Each object must have:
 - memory_type: one of "pricing", "service", "policy", "course", "product", "contact", "schedule", "faq", "other"
 - key: short label (e.g. "Graphic Design Course Fee", "Office Hours", "Refund Policy")
-- value: the actual information (e.g. "45,000 PKR for 3 months", "9 AM – 6 PM Mon–Sat", "No refunds after 7 days")
+- value: the actual information (e.g. "$450 for 3 months", "9 AM – 6 PM Mon–Sat", "No refunds after 7 days")
 - confidence: number 0-100
 
 Rules:

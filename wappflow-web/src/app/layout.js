@@ -6,13 +6,13 @@ export const metadata = {
     default: 'WappFlow',
     template: '%s · WappFlow',
   },
-  description: 'Never lose a lead again, wherever it came from. WappFlow captures enquiries from WhatsApp, Instagram, Facebook and your website as CRM leads automatically — then connects contracts, booking, invoicing, portals and more as modules around that one client record.',
+  description: 'Never lose a lead again, wherever it came from. WappFlow is the CRM for any business: enquiries from WhatsApp, Instagram, Facebook and your website become leads automatically, with contracts, booking, invoicing and a client portal built in, and industry modules for your trade.',
   applicationName: 'WappFlow',
   authors: [{ name: 'RemoteOps' }],
   metadataBase: new URL('https://wappflow.remoteops.co'),
   openGraph: {
     title: 'WappFlow — never lose a lead again, wherever it came from',
-    description: 'Enquiries from WhatsApp, Instagram, Facebook and your website become tracked CRM leads automatically. One CRM at the core, business modules connected around it.',
+    description: 'The CRM for any business. Enquiries from WhatsApp, Instagram, Facebook and your website become leads automatically, with contracts, booking and invoicing built in.',
     url: 'https://wappflow.remoteops.co',
     siteName: 'WappFlow',
     type: 'website',
@@ -20,7 +20,7 @@ export const metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'WappFlow — never lose a lead again, wherever it came from',
-    description: 'Enquiries from WhatsApp, Instagram, Facebook and your website become tracked CRM leads automatically. One CRM at the core, business modules connected around it.',
+    description: 'The CRM for any business. Enquiries from WhatsApp, Instagram, Facebook and your website become leads automatically, with contracts, booking and invoicing built in.',
   },
 }
 

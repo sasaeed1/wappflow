@@ -268,7 +268,7 @@ export default function ShopPage() {
                         <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="sh-input" placeholder="Your name" />
                       </Field>
                       <div className="sh-two">
-                        <Field label="Phone"><input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className="sh-input" placeholder="+92 300 0000000" /></Field>
+                        <Field label="Phone"><input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className="sh-input" placeholder="+1 415 555 0123" /></Field>
                         <Field label="Email"><input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className="sh-input" placeholder="you@example.com" /></Field>
                       </div>
                       <p style={{ fontSize: 11.5, color: DIM, margin: '-4px 0 0' }}>A phone number or an email — whichever you prefer to be reached on.</p>

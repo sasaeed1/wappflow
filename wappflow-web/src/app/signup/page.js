@@ -113,7 +113,7 @@ function SignupContent() {
               {[0,1,2,3,4].map(i => <Star key={i} size={12} fill="#fbbf24" stroke="#fbbf24" />)}
             </div>
             <p>{`"The unified inbox alone was worth switching. My team used to flip between three phones. Now everything is one tab."`}</p>
-            <div className="auth-test-meta">— Sales lead, e-commerce brand</div>
+            <div className="auth-test-meta">— Sales lead, e-commerce brand, Berlin</div>
           </div>
         </div>
 

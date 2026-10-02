@@ -124,15 +124,15 @@ const nextLead = () => (leadCursor < leads.length ? leads[leadCursor++].id : nul
 //    masonry wall has rhythm. picsum seeds keep images stable across re-runs. ─
 const L = [1600, 1067], P = [1000, 1500], S = [1200, 1200], W = [1800, 1000]; // landscape/portrait/square/wide
 const shoots = [
-  { title: 'Ayesha & Bilal — The Wedding', type: 'wedding', status: 'delivery', loc: 'Lahore',
+  { title: 'Layla & Karim — The Wedding', type: 'wedding', status: 'delivery', loc: 'Doha',
     dims: [W, P, L, S, P, L, P, S, L, P, L, S, P, L] },
   { title: 'Sara — Editorial Portrait', type: 'portrait', status: 'culling', loc: 'Studio 4',
     dims: [W, P, P, S, P, L, P, S, P, L] },
-  { title: 'Hassan & Mariam — Engagement', type: 'event', status: 'delivered', loc: 'Islamabad',
+  { title: 'Sofia & Tomás — Engagement', type: 'event', status: 'delivered', loc: 'Lisbon',
     dims: [W, P, L, P, S, L, P, L, S, P, L] },
-  { title: 'Nova Athleisure — Lookbook', type: 'commercial', status: 'shooting', loc: 'Karachi',
+  { title: 'Nova Athleisure — Lookbook', type: 'commercial', status: 'shooting', loc: 'Berlin',
     dims: [W, S, P, L, S, P, L, P, S] },
-  { title: 'The Pearl Residence — Listing', type: 'real_estate', status: 'delivered', loc: 'DHA Phase 6',
+  { title: 'The Pearl Residence — Listing', type: 'real_estate', status: 'delivered', loc: 'Dubai Marina',
     dims: [W, L, L, S, L, P, L, S] },
 ];
 

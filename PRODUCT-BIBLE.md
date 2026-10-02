@@ -6,9 +6,19 @@
 > and *why*. It **evolves intentionally** — changes are deliberate, not incidental.
 
 ## The one-sentence product
-WappFlow is the **Creative Business Operating System**: one place where a photo/video studio runs its
-entire business — finding clients, signing them, scheduling shoots, culling and delivering media,
-getting paid, and keeping every conversation and record connected to the customer.
+WappFlow is the **Business Operating System for any business that wins clients in conversations**:
+one place to capture every enquiry, close it, schedule it, deliver it and get paid, with every
+conversation and record connected to the customer.
+
+**Shape (owner direction, 2026-10-02):**
+- **The core is industry-agnostic** and serves every business — e-commerce, real estate, salons,
+  clinics, training institutes, agencies, studios. Core = CRM, Conversations, AI, **Contracts Studio**,
+  Booking, Invoices/Payments, Client Portal, Team.
+- **Industry modules** sit on top and add one trade's specialist tools. The first is
+  **Photography & Video** (Media Studio, galleries, albums, reels, print store, portfolio). Real
+  estate, salons, education and e-commerce modules are roadmap, and are never marketed as shipped.
+- **Market: international.** Prices in USD; examples and demo data set in Europe, North America and
+  the Middle East. Businesses invoice their own clients in their own currency.
 
 ## What we are becoming (and what we are not)
 We are **not** competing on feature count. We are becoming the platform a studio **never wants to
@@ -35,9 +45,9 @@ every decision:
 | Module | What it does |
 |---|---|
 | **CRM** | Leads & pipeline → clients; conversations, follow-up, the customer record. |
-| **Media Studio** | Projects → upload → AI-assisted cull → edit/auto-edit → deliver. Photo + video/reel. |
-| **Galleries / Portfolio** | Client-facing delivery galleries, album proofing, public portfolio. |
-| **Contracts Studio** | Template → draft → send (WhatsApp + email) → e-sign → vault. |
+| **Contracts Studio** *(core)* | Template → draft → send (WhatsApp + email) → e-sign → vault. For any business. |
+| **Media Studio** *(Photography & Video module)* | Projects → upload → AI-assisted cull → edit/auto-edit → deliver. Photo + video/reel. |
+| **Galleries / Portfolio** *(Photography & Video module)* | Client-facing delivery galleries, album proofing, public portfolio. |
 | **Booking** | Public booking page → scheduling → manage/reschedule. |
 | **Invoices / Payments / Store** | Invoice → pay; print store; one money ledger as the source of truth. |
 | **Client Portal** | The unified, branded client-side experience across gallery/store/pay/booking. |

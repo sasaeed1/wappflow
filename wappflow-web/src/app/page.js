@@ -12,10 +12,10 @@ import Landing from '@/components/landing/Landing';
 
 const TITLE = 'WappFlow — never lose a lead again, wherever it came from';
 const DESCRIPTION =
-  'Capture leads from WhatsApp, Instagram, Facebook and your website as organised '
-  + 'CRM leads automatically — no more enquiries dying in the scroll. One CRM at '
-  + 'the core: pipeline, conversations, activity and AI, with contracts, booking, '
-  + 'invoicing and client portals as modules connected around it.';
+  'The CRM for any business. Capture enquiries from WhatsApp, Instagram, Facebook '
+  + 'and your website as leads automatically, then close and get paid with contracts, '
+  + 'booking, invoicing and a client portal built in, plus industry modules for your '
+  + 'trade, starting with Photography & Video.';
 
 export const metadata = {
   title: TITLE,
