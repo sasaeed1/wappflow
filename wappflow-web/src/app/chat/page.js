@@ -115,13 +115,13 @@ function ChannelModal({ onSave, onClose }) {
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Channel Name</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1.5px solid var(--border)', borderRadius: 10, padding: '8px 12px', focus: 'outline:none' }}>
             <Hash size={14} color="#9ca3af" />
-            <input value={name} onChange={e => setName(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+            <input aria-label="Channel Name" value={name} onChange={e => setName(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
               placeholder="channel-name" style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, color: 'var(--text)' }} />
           </div>
         </div>
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Description (optional)</label>
-          <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="What's this channel for?"
+          <input aria-label="Description (optional)" value={desc} onChange={e => setDesc(e.target.value)} placeholder="What's this channel for?"
             style={{ width: '100%', border: '1.5px solid var(--border)', borderRadius: 10, padding: '8px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }} />
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 20 }}>
@@ -193,7 +193,7 @@ function MessageBubble({ msg, currentUserId, onReact, onDelete, onReplyTo, onPin
         {/* Body (or inline editor) */}
         {isEditing ? (
           <div style={{ maxWidth: '80%' }}>
-            <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+            <textarea aria-label="Edit message" autoFocus value={draft} onChange={e => setDraft(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEditSave(msg.id, draft); } if (e.key === 'Escape') onEditCancel(); }}
               style={{ width: '100%', minHeight: 60, padding: '8px 12px', borderRadius: 10, border: '1.5px solid #c7d2fe', background: 'var(--surface)', color: 'var(--text)', fontSize: 14, lineHeight: 1.5, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
             <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
@@ -822,7 +822,7 @@ export default function ChatPage() {
           {/* My presence state (online / away / do-not-disturb) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
             <span style={{ width: 8, height: 8, borderRadius: 999, flexShrink: 0, background: myPresence === 'dnd' ? '#f87171' : myPresence === 'away' ? '#fbbf24' : '#34d399' }} />
-            <select value={myPresence} onChange={e => { const s = e.target.value; setMyPresence(s); commsAPI.setPresence(s).catch(() => {}); }}
+            <select aria-label="Your status" value={myPresence} onChange={e => { const s = e.target.value; setMyPresence(s); commsAPI.setPresence(s).catch(() => {}); }}
               style={{ flex: 1, padding: '5px 8px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, color: 'white', fontSize: 12, outline: 'none', cursor: 'pointer' }}>
               <option value="online">🟢 Active</option>
               <option value="away">🟡 Away</option>
@@ -832,7 +832,7 @@ export default function ChatPage() {
           {/* Search */}
           <div style={{ position: 'relative', marginTop: 10 }}>
             <Search size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search channels..."
+            <input aria-label="Search channels" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search channels..."
               style={{ width: '100%', padding: '7px 10px 7px 26px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, color: 'white', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
           </div>
         </div>
@@ -973,7 +973,7 @@ export default function ChatPage() {
             <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '10px 20px' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-dim)' }} />
-                <input autoFocus value={msgQuery} onChange={e => runMsgSearch(e.target.value)} placeholder="Search all messages…"
+                <input aria-label="Search all messages" autoFocus value={msgQuery} onChange={e => runMsgSearch(e.target.value)} placeholder="Search all messages…"
                   style={{ width: '100%', padding: '8px 12px 8px 32px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
               </div>
               {msgQuery.trim().length >= 2 && (
@@ -1249,7 +1249,7 @@ export default function ChatPage() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--border)' }}>
-              <input value={threadReply} onChange={e => setThreadReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendThreadReply(); } }}
+              <input aria-label="Reply in thread" value={threadReply} onChange={e => setThreadReply(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendThreadReply(); } }}
                 placeholder="Reply in thread…" style={{ flex: 1, padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
               <button aria-label="Send" onClick={sendThreadReply} disabled={!threadReply.trim()} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 9, padding: '0 14px', cursor: threadReply.trim() ? 'pointer' : 'default', opacity: threadReply.trim() ? 1 : 0.5 }}><Send size={15} /></button>
             </div>

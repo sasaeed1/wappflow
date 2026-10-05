@@ -80,7 +80,7 @@ check('the shared keyboard helper exists and handles both activation keys', () =
 });
 
 // ── Open, with a budget that may only go down ───────────────────────────────
-const BUDGET = { unlabelledInput: 53, placeholderOnly: 131 };
+const BUDGET = { unlabelledInput: 0, placeholderOnly: 0 }; // both closed in PROP-006 — keep them at zero
 
 check(`form fields with no name at all stay within budget (${BUDGET.unlabelledInput})`, () => {
   const n = findings.unlabelledInput.length;

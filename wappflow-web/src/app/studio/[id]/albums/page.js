@@ -30,7 +30,7 @@ function NewAlbumModal({ projectId, onClose, onCreated }) {
           <button aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
         </div>
         <label style={labelStyle}>Album name</label>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Wedding Album" style={inputStyle} autoFocus />
+        <input aria-label="Album name" value={title} onChange={e => setTitle(e.target.value)} placeholder="Wedding Album" style={inputStyle} autoFocus />
         <label style={labelStyle}>Size</label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
           {SIZES.map((s, i) => (

@@ -328,7 +328,7 @@ export default function KnowledgePage() {
               <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Learn from a website</p>
               <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: '2px 0 0' }}>The AI crawls the site + its sub-pages and extracts pricing, services, policies &amp; more.</p>
             </div>
-            <input
+            <input aria-label="Website address"
               type="text"
               value={crawlUrl}
               onChange={e => setCrawlUrl(e.target.value)}
@@ -455,9 +455,9 @@ export default function KnowledgePage() {
                 <div>
                   {/* Toolbar */}
                   <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search memories..."
+                    <input aria-label="Search memories" value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search memories..."
                       style={{ padding: '9px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', width: 220 }} />
-                    <select value={filterType} onChange={e => setFilterType(e.target.value)}
+                    <select aria-label="Search memories" value={filterType} onChange={e => setFilterType(e.target.value)}
                       style={{ padding: '9px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', background: 'var(--surface)', cursor: 'pointer' }}>
                       <option value="all">All Types</option>
                       {MEMORY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -491,12 +491,12 @@ export default function KnowledgePage() {
                       </div>
                       <div style={{ marginBottom: 12 }}>
                         <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Key (Label)</label>
-                        <input value={memoryForm.key} onChange={e => setMemoryForm(p => ({ ...p, key: e.target.value }))} placeholder="e.g. Graphic Design Course Fee"
+                        <input aria-label="Key (Label)" value={memoryForm.key} onChange={e => setMemoryForm(p => ({ ...p, key: e.target.value }))} placeholder="e.g. Graphic Design Course Fee"
                           style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                       </div>
                       <div style={{ marginBottom: 16 }}>
                         <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Value</label>
-                        <textarea value={memoryForm.value} onChange={e => setMemoryForm(p => ({ ...p, value: e.target.value }))} placeholder="e.g. $450" rows={2}
+                        <textarea aria-label="Value" value={memoryForm.value} onChange={e => setMemoryForm(p => ({ ...p, value: e.target.value }))} placeholder="e.g. $450" rows={2}
                           style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                       </div>
                       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

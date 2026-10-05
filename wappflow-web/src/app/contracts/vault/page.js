@@ -38,7 +38,7 @@ export default function VaultPage() {
 
         <div style={{ position: 'relative', marginBottom: 20, maxWidth: 360 }}>
           <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients…" style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+          <input aria-label="Search clients" value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients…" style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
         </div>
 
         {/* Batch E: Skeleton only — this page's `.catch(() => setClients([]))` also turns a

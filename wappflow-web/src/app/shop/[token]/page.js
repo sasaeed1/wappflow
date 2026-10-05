@@ -231,7 +231,7 @@ export default function ShopPage() {
           </div>
 
           {cartOpen && (
-            <div className="sh-scrim" onClick={() => { if (!busy) { setCartOpen(false); setCheckout(false); } }}>
+            <div className="sh-scrim" data-dismiss onClick={(e) => { if (e.target === e.currentTarget && !busy) { setCartOpen(false); setCheckout(false); } }}>
               <aside className="sh-drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Your order">
                 <div className="sh-drawer-head">
                   <h2 className="sh-display" style={{ fontSize: 22, fontWeight: 400, color: '#fff', margin: 0 }}>{checkout ? 'Your details' : 'Your order'}</h2>
@@ -303,7 +303,8 @@ export default function ShopPage() {
       )}
 
       {zoom && picked && (
-        <div className="sh-scrim" onClick={() => setZoom(false)} style={{ alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div className="sh-scrim" data-dismiss onClick={(e) => { if (e.target === e.currentTarget) setZoom(false); }} role="dialog" aria-label="Enlarged photo" style={{ alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <button type="button" onClick={() => setZoom(false)} aria-label="Close" style={{ position: 'absolute', top: 16, right: 16, width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 22, cursor: 'pointer' }}>×</button>
           <img src={mediaUrl(picked.web || picked.thumb)} alt="" style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 10, boxShadow: '0 40px 120px rgba(0,0,0,0.7)' }} />
         </div>
       )}

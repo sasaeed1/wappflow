@@ -88,14 +88,14 @@ function CreateGalleryModal({ onClose, onCreate }) {
     finally { setSaving(false); }
   };
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 440 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
           <h2>New gallery</h2>
           <button aria-label="Close" onClick={onClose} className="ms-iconbtn" style={{ border: 'none' }}><X size={18} /></button>
         </div>
         <label className="ms-label">Gallery name</label>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Highlights" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
+        <input aria-label="Gallery name" value={title} onChange={e => setTitle(e.target.value)} placeholder="Highlights" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
         <label className="ms-label">Visibility</label>
         <div style={{ display: 'flex', gap: 8, marginBottom: 22 }}>
           {[['private', Lock, 'Private'], ['password', Lock, 'Password'], ['public', Globe, 'Public']].map(([v, Icon, lbl]) => (
@@ -103,7 +103,7 @@ function CreateGalleryModal({ onClose, onCreate }) {
           ))}
         </div>
         {visibility === 'password' && (
-          <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Gallery password" className="ms-input" style={{ marginBottom: 22 }} />
+          <input aria-label="Gallery password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Gallery password" className="ms-input" style={{ marginBottom: 22 }} />
         )}
         <label className="ms-label">Downloads</label>
         <div style={{ display: 'flex', gap: 8, marginBottom: 28 }}>
@@ -208,7 +208,7 @@ function ProofingRequestModal({ gallery, onClose, onCreate }) {
     finally { setSaving(false); }
   };
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 440 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Request selections</h2>
@@ -216,11 +216,11 @@ function ProofingRequestModal({ gallery, onClose, onCreate }) {
         </div>
         <p className="ms-modal-sub" style={{ marginBottom: 22 }}>Your client picks their favourites right inside the gallery, then submits.</p>
         <label className="ms-label">Prompt</label>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Select your favourites" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
+        <input aria-label="Prompt" value={title} onChange={e => setTitle(e.target.value)} placeholder="Select your favourites" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
         <label className="ms-label">How many? (optional)</label>
-        <input type="number" min="1" value={quota} onChange={e => setQuota(e.target.value)} placeholder="40" className="ms-input" style={{ marginBottom: 22 }} />
+        <input aria-label="How many? (optional)" type="number" min="1" value={quota} onChange={e => setQuota(e.target.value)} placeholder="40" className="ms-input" style={{ marginBottom: 22 }} />
         <label className="ms-label">Instructions (optional)</label>
-        <textarea value={instructions} onChange={e => setInstructions(e.target.value)} rows={2} placeholder="Anything they should know…" className="ms-input" style={{ resize: 'vertical', marginBottom: 28 }} />
+        <textarea aria-label="Instructions (optional)" value={instructions} onChange={e => setInstructions(e.target.value)} rows={2} placeholder="Anything they should know…" className="ms-input" style={{ resize: 'vertical', marginBottom: 28 }} />
         <button onClick={submit} disabled={saving} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center' }}>{saving ? 'Sending…' : 'Send selection request'}</button>
       </div>
     </div>
@@ -502,7 +502,7 @@ export default function ProjectPage() {
               <p className="ms-hero-sub">{photoCount} photo{photoCount === 1 ? '' : 's'}{videoCount > 0 ? ` · ${videoCount} video${videoCount === 1 ? '' : 's'}` : ''} · {galleries.length} galler{galleries.length === 1 ? 'y' : 'ies'}</p>
             </div>
             <div className="ms-hero-actions" style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-              <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
+              <input aria-label="Upload photos and videos" ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/cull`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><ListChecks size={15} /> Cull</button>}
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/albums`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><BookOpen size={15} /> Albums</button>}
               {assets.length > 0 && <button onClick={() => router.push(`/studio/${id}/video`)} className="ms-btn-ghost" style={{ borderColor: 'rgba(255,255,255,0.32)', color: '#fff' }}><Film size={15} /> Reels</button>}
@@ -756,7 +756,7 @@ export default function ProjectPage() {
             {editing.visibility === 'password' && (
               <>
                 <label style={wmLbl}>Password</label>
-                <input type="text" value={editing.password} placeholder="Leave blank to keep the current one"
+                <input aria-label="Password" type="text" value={editing.password} placeholder="Leave blank to keep the current one"
                        onChange={(e) => setEditing(s => ({ ...s, password: e.target.value }))} style={wmInp} />
               </>
             )}
@@ -870,7 +870,7 @@ function WatermarkModal({ projectId, count, initial, sampleUrl, onClose, onApply
         {cfg.type === 'text' ? (
           <>
             <label style={wmLbl}>Text</label>
-            <input value={cfg.text} onChange={e => set({ text: e.target.value })} placeholder="PROOF" style={wmInp} />
+            <input aria-label="Text" value={cfg.text} onChange={e => set({ text: e.target.value })} placeholder="PROOF" style={wmInp} />
             <label style={wmLbl}>Color</label>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               {[['white', 'White'], ['black', 'Black']].map(([c, l]) => <button key={c} onClick={() => set({ color: c })} style={{ flex: 1, padding: '9px', borderRadius: 9, border: `1.5px solid ${cfg.color === c ? '#0ea5e9' : 'var(--ms-line,#ddd)'}`, background: c === 'white' ? '#fff' : '#14120f', color: c === 'white' ? '#14120f' : '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>{l}</button>)}
@@ -953,14 +953,14 @@ function StudioAIModal({ projectId, onClose, onGallery, setBanner }) {
 
         <div style={aiLbl}>Album draft</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <select value={pages} onChange={e => setPages(Number(e.target.value))} style={aiSel}>{[20, 30, 40, 60].map(n => <option key={n} value={n}>{n} pages</option>)}</select>
+          <select aria-label="Album length" value={pages} onChange={e => setPages(Number(e.target.value))} style={aiSel}>{[20, 30, 40, 60].map(n => <option key={n} value={n}>{n} pages</option>)}</select>
           <button onClick={album} disabled={!!busy} style={chip}>{busy === 'album' ? 'Generating…' : 'Generate album'}</button>
           {albumId && <a href={`/studio/${projectId}/albums/${albumId}`} style={{ ...chip, textDecoration: 'none', background: 'var(--ms-ink,#14120f)', color: '#fff', border: 'none' }}>Open editor →</a>}
         </div>
 
         <div style={aiLbl}>Reel (Story Engine)</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <select value={reelLen} onChange={e => setReelLen(Number(e.target.value))} style={aiSel}>{[15, 30, 60, 90].map(n => <option key={n} value={n}>{n}s</option>)}</select>
+          <select aria-label="Reel length" value={reelLen} onChange={e => setReelLen(Number(e.target.value))} style={aiSel}>{[15, 30, 60, 90].map(n => <option key={n} value={n}>{n}s</option>)}</select>
           <button onClick={makeReel} disabled={!!busy} style={chip}>{busy === 'reel' ? 'Planning…' : 'Generate reel plan'}</button>
         </div>
         {reel && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 12.5, color: 'var(--ms-ink-3,#888)' }}>{reel.plan.timeline.length} clips · {reel.plan.aspect} · {reel.plan.length_s}s{reel.template ? ` · ${reel.template}` : ''}</span><a href={`/studio/${projectId}/video/${reel.timeline_id || reel.reel_id}`} style={{ ...chip, textDecoration: 'none', background: 'var(--ms-ink,#14120f)', color: '#fff', border: 'none', padding: '6px 12px' }}>Edit timeline →</a></div>}

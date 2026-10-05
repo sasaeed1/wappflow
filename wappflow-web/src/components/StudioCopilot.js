@@ -131,7 +131,7 @@ export default function StudioCopilot() {
 
           {/* input */}
           <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--ms-line)' }}>
-            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()}
+            <input aria-label="Ask your copilot" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()}
               placeholder="Ask your copilot…" className="ms-input" style={{ flex: 1, marginBottom: 0 }} />
             <button aria-label="Send" onClick={() => send()} disabled={busy || !input.trim()} className="ms-btn-ink" style={{ padding: '0 16px' }}><Send size={15} /></button>
           </div>

@@ -944,7 +944,7 @@ export default function DashboardPage() {
           {/* Search */}
           <div className="dash-subbar-search" style={{ flex: 1, maxWidth: 380, position: 'relative', minWidth: 200 }}>
             <Search style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--text-dim)' }} />
-            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            <input aria-label="Search leads" type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search leads…"
               style={{ width: '100%', padding: '8px 12px 8px 34px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
             />

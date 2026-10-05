@@ -163,7 +163,7 @@ export default function Database() {
           </span>
         </div>
 
-        <textarea
+        <textarea aria-label="SQL query"
           value={sql}
           onChange={(e) => setSql(e.target.value)}
           spellCheck={false}

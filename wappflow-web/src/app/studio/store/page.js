@@ -79,17 +79,17 @@ export default function StudioStorePage() {
           {products.map((p, i) => (
             <div key={p.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
               <div className="r-wrap" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <input value={p.name} onChange={e => patch(i, { name: e.target.value })} placeholder="Product name" style={{ flex: 1, ...fld }} />
-                <select value={p.kind} onChange={e => patch(i, { kind: e.target.value })} style={{ ...fld, textTransform: 'capitalize' }}>{KINDS.map(k => <option key={k} value={k}>{k}</option>)}</select>
+                <input aria-label="Product name" value={p.name} onChange={e => patch(i, { name: e.target.value })} placeholder="Product name" style={{ flex: 1, ...fld }} />
+                <select aria-label="Product type" value={p.kind} onChange={e => patch(i, { kind: e.target.value })} style={{ ...fld, textTransform: 'capitalize' }}>{KINDS.map(k => <option key={k} value={k}>{k}</option>)}</select>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text-muted)' }}><input type="checkbox" checked={!!p.active} onChange={e => patch(i, { active: e.target.checked })} /> Active</label>
               </div>
-              <input value={p.description || ''} onChange={e => patch(i, { description: e.target.value })} placeholder="Short description (optional)" style={{ width: '100%', ...fld, marginBottom: 10 }} />
+              <input aria-label="Product description" value={p.description || ''} onChange={e => patch(i, { description: e.target.value })} placeholder="Short description (optional)" style={{ width: '100%', ...fld, marginBottom: 10 }} />
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 6 }}>Options &amp; pricing</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {(p.options || []).map((o, oi) => (
                   <div key={oi} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input value={o.label} onChange={e => setOpt(i, oi, 'label', e.target.value)} placeholder="e.g. 8×10" style={{ flex: 1, ...fld }} />
-                    <input type="number" value={o.price} onChange={e => setOpt(i, oi, 'price', e.target.value)} style={{ width: 90, ...fld }} />
+                    <input aria-label="Option name" value={o.label} onChange={e => setOpt(i, oi, 'label', e.target.value)} placeholder="e.g. 8×10" style={{ flex: 1, ...fld }} />
+                    <input aria-label="Option price" type="number" value={o.price} onChange={e => setOpt(i, oi, 'price', e.target.value)} style={{ width: 90, ...fld }} />
                     <button aria-label="Delete" className="wf-tap" onClick={() => delOpt(i, oi)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'inline-flex', borderRadius: 8 }}><Trash2 size={14} /></button>
                   </div>
                 ))}
@@ -113,7 +113,7 @@ export default function StudioStorePage() {
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{o.customer_name} · <span style={{ color: 'var(--accent)' }}>{o.currency_symbol}{Number(o.total).toLocaleString()}</span></div>
                     <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{(o.items || []).map(it => `${it.qty}× ${it.name}${it.option ? ` (${it.option})` : ''}`).join(', ')}</div>
                   </div>
-                  <select value={o.status} onChange={e => setOrderStatus(o.id, e.target.value)} style={{ ...fld, textTransform: 'capitalize' }}>{ORDER_STATUS.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}</select>
+                  <select aria-label="Order status" value={o.status} onChange={e => setOrderStatus(o.id, e.target.value)} style={{ ...fld, textTransform: 'capitalize' }}>{ORDER_STATUS.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}</select>
                   {o.lead_id && <button onClick={() => router.push(`/leads/${o.lead_id}`)} style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Lead →</button>}
                 </div>
               </div>

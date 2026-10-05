@@ -698,7 +698,10 @@ export default function VideoEditor() {
                     </div>}
 
                     {/* phones seek on tap (click), so a swipe scrolls the timeline instead of scrubbing it */}
-                    <div className="ms-ve-tl-lane" style={{ width: laneW }} onPointerDown={isPhone ? undefined : scrubTo} onClick={isPhone ? scrubTo : undefined}>
+                    <div className="ms-ve-tl-lane" style={{ width: laneW }} onPointerDown={isPhone ? undefined : scrubTo} onClick={isPhone ? scrubTo : undefined}
+                      role="slider" tabIndex={0} aria-label="Timeline position" aria-valuemin={0} aria-valuemax={Math.round(duration)} aria-valuenow={Math.round(playhead)}
+                      aria-valuetext={`${(playhead / 1000).toFixed(1)} seconds`}
+                      onKeyDown={(e) => { if (e.key === 'Home') { e.preventDefault(); setPlayhead(0); } else if (e.key === 'End') { e.preventDefault(); setPlayhead(duration); } }}>
                       {tr.clips.length === 0 && (
                         <div className="ms-ve-tl-empty">
                           {isSpine ? (isPhone ? 'Tap Media below to build your reel' : 'Click media on the left to build your reel') : `Empty ${meta.label.toLowerCase()} track`}
@@ -924,7 +927,7 @@ function MusicModal({ projectId, audioAssets, current, onClose, onPick, onUpload
   };
 
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 480 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -1171,7 +1174,7 @@ function TextInspector({ clip, patch, onDelete, onDup }) {
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ms-ink)' }}>Text</span>
       </div>
 
-      <textarea value={t.content || ''} onChange={e => setText('content', e.target.value)} rows={2} placeholder="Your text"
+      <textarea aria-label="Text" value={t.content || ''} onChange={e => setText('content', e.target.value)} rows={2} placeholder="Your text"
         className="ms-input" style={{ width: '100%', resize: 'vertical', marginBottom: 14, fontFamily: 'var(--ms-font-ui)' }} autoFocus />
 
       <Field label="Style">
@@ -1198,7 +1201,7 @@ function TextInspector({ clip, patch, onDelete, onDup }) {
       <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ms-ink-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>Color</div>
-          <input type="color" value={t.color || '#ffffff'} onChange={e => setText('color', e.target.value)} style={{ width: 44, height: 30, borderRadius: 7, border: '1px solid var(--ms-line)', background: 'none', cursor: 'pointer' }} />
+          <input aria-label="Text colour" type="color" value={t.color || '#ffffff'} onChange={e => setText('color', e.target.value)} style={{ width: 44, height: 30, borderRadius: 7, border: '1px solid var(--ms-line)', background: 'none', cursor: 'pointer' }} />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ms-ink-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>Align</div>
@@ -1222,7 +1225,7 @@ function TextInspector({ clip, patch, onDelete, onDup }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>Horizontal</span></div>
         <input type="range" min={-45} max={45} value={Math.round((tf.x || 0) * 100)} onChange={e => setTf('x', Number(e.target.value) / 100)} onDoubleClick={() => setTf('x', 0)} style={{ width: '100%', marginBottom: 8 }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>Vertical</span></div>
-        <input type="range" min={-45} max={45} value={Math.round((tf.y || 0) * 100)} onChange={e => setTf('y', Number(e.target.value) / 100)} onDoubleClick={() => setTf('y', 0)} style={{ width: '100%' }} />
+        <input aria-label="Vertical position" type="range" min={-45} max={45} value={Math.round((tf.y || 0) * 100)} onChange={e => setTf('y', Number(e.target.value) / 100)} onDoubleClick={() => setTf('y', 0)} style={{ width: '100%' }} />
       </Field>
 
       <Field label={`Duration · ${(clip.duration / 1000).toFixed(1)}s`}>
@@ -1244,7 +1247,7 @@ function ColorSlider({ label, value, onChange, min = -100, max = 100 }) {
         <span style={{ fontSize: 11.5, color: 'var(--ms-ink-2)' }}>{label}</span>
         <span style={{ fontSize: 10.5, color: 'var(--ms-ink-3)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(value * 100)}</span>
       </div>
-      <input type="range" min={min} max={max} value={Math.round(value * 100)} onChange={e => onChange(Number(e.target.value) / 100)} onDoubleClick={() => onChange(0)} style={{ width: '100%' }} />
+      <input aria-label={label} type="range" min={min} max={max} value={Math.round(value * 100)} onChange={e => onChange(Number(e.target.value) / 100)} onDoubleClick={() => onChange(0)} style={{ width: '100%' }} />
     </div>
   );
 }
@@ -1288,7 +1291,7 @@ function ExportModal({ timelineId, aspect, duration, onClose }) {
   const failed = exp && exp.status === 'failed';
 
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
           <div><h2>Export reel</h2><p className="ms-modal-sub">{fmtClock(duration)} · MP4 / H.264</p></div>

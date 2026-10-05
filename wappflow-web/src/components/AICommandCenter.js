@@ -167,7 +167,7 @@ export default function AICommandCenter({ enabled = true }) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--surface)', borderRadius: 12, border: '1.5px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                 <Search size={14} color="#9ca3af" />
-                <input
+                <input aria-label="Ask WappFlow AI"
                   ref={inputRef}
                   value={command}
                   onChange={e => setCommand(e.target.value)}

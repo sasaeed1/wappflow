@@ -59,14 +59,14 @@ function InlineEditField({ icon: Icon, color, bg, label, value, display, type = 
   if (editing) {
     const fieldStyle = { padding: '6px 9px', border: `1.5px solid ${color || 'var(--accent)'}`, borderRadius: 8, fontSize: 13, outline: 'none', background: 'var(--surface)', color: 'var(--text)', boxSizing: 'border-box' };
     const field = type === 'select' ? (
-      <select autoFocus value={draft} disabled={saving}
+      <select aria-label={label} autoFocus value={draft} disabled={saving}
         onChange={e => { setDraft(e.target.value); commitValue(e.target.value); }}
         onKeyDown={e => { if (e.key === 'Escape') cancel(); }}
         style={{ ...fieldStyle, flex: 1, minWidth: 0 }}>
         {(selectOptions || []).map(o => <option key={String(o.value)} value={o.value}>{o.label}</option>)}
       </select>
     ) : (
-      <input autoFocus type={type} value={draft} placeholder={placeholder || label} disabled={saving}
+      <input aria-label={label} autoFocus type={type} value={draft} placeholder={placeholder || label} disabled={saving}
         onChange={e => setDraft(e.target.value)} onBlur={() => commitValue(draft)}
         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } else if (e.key === 'Escape') cancel(); }}
         style={{ ...fieldStyle, flex: 1, minWidth: 0, textAlign: heading ? 'center' : 'left', fontWeight: heading ? 800 : 400, fontSize: heading ? 16 : 13 }} />
@@ -247,7 +247,7 @@ function WonModal({ name, onConfirm, onCancel, loading, currencySymbol }) {
       <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Sale Amount</label>
       <div style={{ display: 'flex', border: '1.5px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
         <span style={{ padding: '12px 16px', background: 'var(--surface2)', color: 'var(--text-muted)', fontWeight: 700, fontSize: 14, borderRight: '1.5px solid var(--border)' }}>{currencySymbol}</span>
-        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Enter amount..." autoFocus
+        <input aria-label="Sale Amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Enter amount..." autoFocus
           style={{ flex: 1, padding: '12px 16px', border: 'none', outline: 'none', fontSize: 16, fontWeight: 700 }} />
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
@@ -422,15 +422,15 @@ function InvoiceModal({ lead, company, invoice, seed, onClose, onSaved }) {
             {items.map((item, i) => (
               <tr key={i}>
                 <td style={{ padding: '6px 4px' }}>
-                  <input value={item.description} onChange={e => updateItem(i, 'description', e.target.value)} placeholder="Item description..."
+                  <input aria-label="Item description" value={item.description} onChange={e => updateItem(i, 'description', e.target.value)} placeholder="Item description..."
                     style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
                 </td>
                 <td style={{ padding: '6px 4px', width: 70 }}>
-                  <input type="number" value={item.qty} onChange={e => updateItem(i, 'qty', e.target.value)} min="1"
+                  <input aria-label="Quantity" type="number" value={item.qty} onChange={e => updateItem(i, 'qty', e.target.value)} min="1"
                     style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none' }} />
                 </td>
                 <td style={{ padding: '6px 4px', width: 110 }}>
-                  <input type="number" value={item.rate} onChange={e => updateItem(i, 'rate', e.target.value)} min="0" step="0.01"
+                  <input aria-label="Rate" type="number" value={item.rate} onChange={e => updateItem(i, 'rate', e.target.value)} min="0" step="0.01"
                     style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none' }} />
                 </td>
                 <td style={{ padding: '6px 10px', fontWeight: 700, color: 'var(--text)', fontSize: 13 }}>
@@ -462,7 +462,7 @@ function InvoiceModal({ lead, company, invoice, seed, onClose, onSaved }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{company?.tax_name || 'Tax'}</span>
-              <input type="number" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} min="0" max="100" step="0.1"
+              <input aria-label="Tax rate (%)" type="number" value={taxRate} onChange={e => setTaxRate(parseFloat(e.target.value) || 0)} min="0" max="100" step="0.1"
                 style={{ width: 60, padding: '4px 8px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12, outline: 'none' }} />
               <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>%</span>
             </div>
@@ -483,7 +483,7 @@ function InvoiceModal({ lead, company, invoice, seed, onClose, onSaved }) {
           </div>
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: 6 }}>Notes</label>
-            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Payment terms, notes..."
+            <input aria-label="Notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Payment terms, notes..."
               style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
           </div>
         </div>
@@ -1737,7 +1737,7 @@ useEffect(() => {
             </div>
             {addingChannel && (
               <div style={{ background: 'rgba(139,92,246,0.12)', border: '1.5px solid #ddd6fe', borderRadius: 12, padding: 12, marginBottom: 10 }}>
-                <select value={newChannel.platform} onChange={e => setNewChannel(p => ({ ...p, platform: e.target.value }))}
+                <select aria-label="Channel platform" value={newChannel.platform} onChange={e => setNewChannel(p => ({ ...p, platform: e.target.value }))}
                   style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #ddd6fe', borderRadius: 8, fontSize: 12, marginBottom: 6, background: 'var(--surface)', outline: 'none' }}>
                   <option value="whatsapp">WhatsApp</option>
                   <option value="instagram">Instagram</option>
@@ -1745,7 +1745,7 @@ useEffect(() => {
                   <option value="email">Email</option>
                   <option value="phone">Phone</option>
                 </select>
-                <input value={newChannel.identifier} onChange={e => setNewChannel(p => ({ ...p, identifier: e.target.value }))} placeholder="Phone / username / email..."
+                <input aria-label="Channel identifier" value={newChannel.identifier} onChange={e => setNewChannel(p => ({ ...p, identifier: e.target.value }))} placeholder="Phone / username / email..."
                   style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #ddd6fe', borderRadius: 8, fontSize: 12, marginBottom: 8, boxSizing: 'border-box', outline: 'none' }} />
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button onClick={() => setAddingChannel(false)} style={{ flex: 1, padding: '6px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
@@ -2252,7 +2252,7 @@ useEffect(() => {
                   </div>
                   {addingNote && (
                     <div style={{ background: 'var(--warning-bg)', border: '1.5px solid var(--warning-border)', borderRadius: 14, padding: 16, marginBottom: 14 }}>
-                      <textarea value={newNote} onChange={e => setNewNote(e.target.value)} rows={3} placeholder="Write your note..."
+                      <textarea aria-label="New note" value={newNote} onChange={e => setNewNote(e.target.value)} rows={3} placeholder="Write your note..."
                         style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #fde68a', borderRadius: 10, fontSize: 14, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: 'var(--surface)' }} />
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
                         <button onClick={() => setAddingNote(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
@@ -2291,7 +2291,7 @@ useEffect(() => {
                       </div>
                       <div style={{ marginBottom: 12 }}>
                         <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>Note</label>
-                        <input type="text" value={newReminder.message} onChange={e => setNewReminder(p => ({ ...p, message: e.target.value }))} placeholder="Follow up with customer..."
+                        <input aria-label="Note" type="text" value={newReminder.message} onChange={e => setNewReminder(p => ({ ...p, message: e.target.value }))} placeholder="Follow up with customer..."
                           style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #ddd6fe', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface)' }} />
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -2608,7 +2608,7 @@ useEffect(() => {
                               {/* Edit message */}
                               {editingActionMsg === action.id && (
                                 <div style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border)' }}>
-                                  <textarea
+                                  <textarea aria-label="Message to send"
                                     value={customActionMsg}
                                     onChange={e => setCustomActionMsg(e.target.value)}
                                     rows={3}
@@ -3083,13 +3083,13 @@ function EmailComposeModal({ lead, onClose, onSent }) {
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>To</label>
-          <input value={form.to_email} onChange={e => setForm(f => ({ ...f, to_email: e.target.value }))} placeholder="recipient@email.com" type="email"
+          <input aria-label="To" value={form.to_email} onChange={e => setForm(f => ({ ...f, to_email: e.target.value }))} placeholder="recipient@email.com" type="email"
             style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }} />
         </div>
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Subject</label>
-          <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Email subject"
+          <input aria-label="Subject" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Email subject"
             style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', color: 'var(--text)' }} />
         </div>
 

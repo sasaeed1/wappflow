@@ -60,7 +60,7 @@ export default function ForgotPasswordPage() {
               <label style={lbl}>Email</label>
               <div style={inputWrap}>
                 <Mail size={16} />
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                <input aria-label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                        placeholder="you@studio.com" autoComplete="email" style={input} />
               </div>
               {err && <p role="alert" style={errStyle}>{err}</p>}

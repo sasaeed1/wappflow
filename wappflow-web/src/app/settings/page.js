@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Building2, Globe, Mail, Phone, MapPin, DollarSign,
@@ -155,7 +155,7 @@ function CompanyTab({ company, setCompany, onSave, saving }) {
               {uploading ? <RefreshCw size={14} className="spin" /> : <Upload size={14} />}
               {uploading ? 'Uploading...' : company.company_logo ? 'Change Logo' : 'Upload Logo'}
             </button>
-            <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
+            <input aria-label="Upload logo" ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
           </div>
         </div>
 
@@ -339,7 +339,7 @@ function PresetsTab({ showToast }) {
           <Input label="Preset Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Follow Up, Welcome, Pricing..." />
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Message Body</label>
-            <textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4}
+            <textarea aria-label="Message Body" value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4}
               placeholder="Hi {name}, thanks for reaching out!..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
             <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Tip: Use *bold*, _italic_ for WhatsApp formatting.</p>
           </div>
@@ -416,7 +416,7 @@ function LostReasonsTab({ showToast }) {
   return (
     <SectionCard icon={AlertCircle} title="Lost Reasons" subtitle="Predefined reasons shown when a lead is marked as Closed - Lost" color="#ef4444">
       <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
-        <input value={newReason} onChange={e => setNewReason(e.target.value)}
+        <input aria-label="New lost reason" value={newReason} onChange={e => setNewReason(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
           placeholder="e.g. Too expensive, Went with competitor, No budget…"
           style={{ flex: 1, padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
@@ -519,7 +519,7 @@ function EmailTemplatesTab({ showToast }) {
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Email Body</label>
-            <textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={6}
+            <textarea aria-label="Email Body" value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={6}
               placeholder="Dear {name},&#10;&#10;I wanted to follow up on your recent inquiry..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
             <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Variables: {'{name}'}, {'{phone}'}, {'{email}'}, {'{company}'}</p>
           </div>
@@ -631,7 +631,7 @@ function AutoReplyTab({ showToast }) {
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Auto Reply Message</label>
-            <textarea value={form.reply_message} onChange={e => setForm(p => ({ ...p, reply_message: e.target.value }))} rows={4}
+            <textarea aria-label="Auto Reply Message" value={form.reply_message} onChange={e => setForm(p => ({ ...p, reply_message: e.target.value }))} rows={4}
               placeholder="Thanks for reaching out! We'll get back to you shortly..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -720,7 +720,7 @@ function TagsTab({ showToast }) {
                 boxShadow: form.color === c ? `0 0 0 2px white, 0 0 0 4px ${c}` : 'none',
               }} />
             ))}
-            <input type="color" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
+            <input aria-label="Custom colour" type="color" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
               style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0 }} />
           </div>
           <div style={{ marginBottom: 16 }}>
@@ -1218,7 +1218,7 @@ function IntegrationsContent({ showToast }) {
           )}
 
           <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input
+            <input aria-label="Value"
               type="url"
               value={calendlyDraft}
               onChange={(e) => setCalendlyDraft(e.target.value)}
@@ -2133,7 +2133,7 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
           <div>
             {editingName ? (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input value={nameVal} onChange={e => setNameVal(e.target.value)} autoFocus
+                <input aria-label="Name" value={nameVal} onChange={e => setNameVal(e.target.value)} autoFocus
                   style={{ padding: '5px 10px', border: '1.5px solid #25d366', borderRadius: 8, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface)', width: 160 }}
                   onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
                 />
@@ -2338,7 +2338,7 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
         <div style={{ padding: '0 18px 18px', borderTop: '1px solid var(--border)' }}>
           <div style={{ marginTop: 16, marginBottom: 14 }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>Account Name</label>
-            <input value={form.account_name || ''} onChange={e => setForm(f => ({ ...f, account_name: e.target.value }))} placeholder="e.g. Main Business Account"
+            <input aria-label="Account Name" value={form.account_name || ''} onChange={e => setForm(f => ({ ...f, account_name: e.target.value }))} placeholder="e.g. Main Business Account"
               style={{ width: '100%', padding: '10px 13px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
             />
           </div>
@@ -2368,7 +2368,7 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
             <div key={field.key} style={{ marginBottom: 14 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>{field.label}</label>
               <div style={{ position: 'relative' }}>
-                <input
+                <input aria-label="Value"
                   type={field.secret && !showSecrets[field.key] ? 'password' : 'text'}
                   value={form[field.key] || ''}
                   onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
@@ -2730,22 +2730,22 @@ function EmailSendingTab({ showToast }) {
       <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
         <div style={{ paddingRight: 16 }}>
           <SettingsField label="SMTP Host" hint="e.g. smtp.gmail.com">
-            <input value={form.smtp_host} onChange={e => setForm(f => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.gmail.com"
+            <input aria-label="SMTP Host" value={form.smtp_host} onChange={e => setForm(f => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.gmail.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
           <SettingsField label="SMTP Username / Email" hint="Usually your email address">
-            <input value={form.smtp_user} onChange={e => setForm(f => ({ ...f, smtp_user: e.target.value }))} placeholder="you@gmail.com"
+            <input aria-label="SMTP Username / Email" value={form.smtp_user} onChange={e => setForm(f => ({ ...f, smtp_user: e.target.value }))} placeholder="you@gmail.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
           <SettingsField label="From Name">
-            <input value={form.from_name} onChange={e => setForm(f => ({ ...f, from_name: e.target.value }))} placeholder="Your Business Name"
+            <input aria-label="From Name" value={form.from_name} onChange={e => setForm(f => ({ ...f, from_name: e.target.value }))} placeholder="Your Business Name"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
         </div>
         <div style={{ paddingLeft: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <SettingsField label="Port" hint="Usually 587 or 465">
-              <input type="number" value={form.smtp_port} onChange={e => setForm(f => ({ ...f, smtp_port: e.target.value }))} placeholder="587"
+              <input aria-label="Port" type="number" value={form.smtp_port} onChange={e => setForm(f => ({ ...f, smtp_port: e.target.value }))} placeholder="587"
                 style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
             </SettingsField>
             <SettingsField label="Encryption">
@@ -2761,7 +2761,7 @@ function EmailSendingTab({ showToast }) {
           </div>
           <SettingsField label="SMTP Password / App Password" hint="For Gmail: use an App Password">
             <div style={{ position: 'relative' }}>
-              <input type={showPass ? 'text' : 'password'} value={form.smtp_pass} onChange={e => setForm(f => ({ ...f, smtp_pass: e.target.value }))} placeholder="App password"
+              <input aria-label="SMTP Password / App Password" type={showPass ? 'text' : 'password'} value={form.smtp_pass} onChange={e => setForm(f => ({ ...f, smtp_pass: e.target.value }))} placeholder="App password"
                 style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
               <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -2769,7 +2769,7 @@ function EmailSendingTab({ showToast }) {
             </div>
           </SettingsField>
           <SettingsField label="From Email Address" hint="Email address recipients will see">
-            <input value={form.from_email} onChange={e => setForm(f => ({ ...f, from_email: e.target.value }))} placeholder="noreply@yourbusiness.com"
+            <input aria-label="From Email Address" value={form.from_email} onChange={e => setForm(f => ({ ...f, from_email: e.target.value }))} placeholder="noreply@yourbusiness.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
         </div>
@@ -2937,12 +2937,12 @@ function EmailReceivingTab({ showToast }) {
         <div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>IMAP Host</label>
-            <input value={form.imap_host} onChange={e => setForm(f => ({ ...f, imap_host: e.target.value }))} placeholder="imap.gmail.com"
+            <input aria-label="IMAP Host" value={form.imap_host} onChange={e => setForm(f => ({ ...f, imap_host: e.target.value }))} placeholder="imap.gmail.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Email Address</label>
-            <input value={form.imap_user} onChange={e => setForm(f => ({ ...f, imap_user: e.target.value }))} placeholder="you@gmail.com"
+            <input aria-label="Email Address" value={form.imap_user} onChange={e => setForm(f => ({ ...f, imap_user: e.target.value }))} placeholder="you@gmail.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </div>
         </div>
@@ -2950,7 +2950,7 @@ function EmailReceivingTab({ showToast }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Port</label>
-              <input type="number" value={form.imap_port} onChange={e => setForm(f => ({ ...f, imap_port: e.target.value }))} placeholder="993"
+              <input aria-label="Port" type="number" value={form.imap_port} onChange={e => setForm(f => ({ ...f, imap_port: e.target.value }))} placeholder="993"
                 style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
             </div>
             <div>
@@ -2969,7 +2969,7 @@ function EmailReceivingTab({ showToast }) {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>App Password</label>
             <div style={{ position: 'relative' }}>
-              <input type={showPass ? 'text' : 'password'} value={form.imap_pass} onChange={e => setForm(f => ({ ...f, imap_pass: e.target.value }))} placeholder="16-character app password"
+              <input aria-label="App Password" type={showPass ? 'text' : 'password'} value={form.imap_pass} onChange={e => setForm(f => ({ ...f, imap_pass: e.target.value }))} placeholder="16-character app password"
                 style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
               <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -3191,7 +3191,7 @@ function AICommandTab({ showToast }) {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Business Description</label>
-            <textarea
+            <textarea aria-label="Business Description"
               value={profile.business_description || ''}
               onChange={e => setProfile(p => ({ ...p, business_description: e.target.value }))}
               rows={3}
@@ -3213,7 +3213,7 @@ function AICommandTab({ showToast }) {
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Language</label>
-              <input
+              <input aria-label="Language"
                 value={profile.language || ''}
                 onChange={e => setProfile(p => ({ ...p, language: e.target.value }))}
                 placeholder="English / Urdu / Spanish..."
@@ -3224,7 +3224,7 @@ function AICommandTab({ showToast }) {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Do's — things the AI should always do</label>
-            <textarea
+            <textarea aria-label="Do's — things the AI should always do"
               value={profile.dos || ''}
               onChange={e => setProfile(p => ({ ...p, dos: e.target.value }))}
               rows={3}
@@ -3235,7 +3235,7 @@ function AICommandTab({ showToast }) {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Don'ts — things the AI must avoid</label>
-            <textarea
+            <textarea aria-label="Don'ts — things the AI must avoid"
               value={profile.donts || ''}
               onChange={e => setProfile(p => ({ ...p, donts: e.target.value }))}
               rows={3}
@@ -3246,7 +3246,7 @@ function AICommandTab({ showToast }) {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Signature</label>
-            <input
+            <input aria-label="Signature"
               value={profile.signature || ''}
               onChange={e => setProfile(p => ({ ...p, signature: e.target.value }))}
               placeholder="e.g. Best regards, Sales Team"

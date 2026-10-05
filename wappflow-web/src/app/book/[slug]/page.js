@@ -160,27 +160,27 @@ export default function BookingPage() {
               <PublicStep n="4" title="Your details" />
               <div className="pub-card" style={{ display: 'grid', gap: 13 }}>
                 <PublicField label="Full name" required>
-                  <input className="pub-input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Your name" />
+                  <input aria-label="Full name" className="pub-input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Your name" />
                 </PublicField>
                 <div className="pub-two">
                   <PublicField label="Phone">
-                    <input className="pub-input" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="For your confirmation" />
+                    <input aria-label="Phone" className="pub-input" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="For your confirmation" />
                   </PublicField>
                   <PublicField label="Email">
-                    <input className="pub-input" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="you@example.com" />
+                    <input aria-label="Email" className="pub-input" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="you@example.com" />
                   </PublicField>
                 </div>
                 <p className="pub-dim" style={{ fontSize: 11.5, margin: '-5px 0 0' }}>A phone number or an email — whichever suits you.</p>
 
                 {(data.intake || []).map((q, i) => (
                   <PublicField key={i} label={q.label} required={!!q.required}>
-                    <input className="pub-input" value={intake[q.label] || ''}
+                    <input aria-label={q.label} className="pub-input" value={intake[q.label] || ''}
                       onChange={(e) => setIntake((s) => ({ ...s, [q.label]: e.target.value }))} />
                   </PublicField>
                 ))}
 
                 <PublicField label="Anything we should know?">
-                  <textarea className="pub-input" style={{ resize: 'vertical' }} rows={3} value={form.notes}
+                  <textarea aria-label="Notes" className="pub-input" style={{ resize: 'vertical' }} rows={3} value={form.notes}
                     onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Optional" />
                 </PublicField>
 

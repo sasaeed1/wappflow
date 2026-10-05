@@ -82,15 +82,15 @@ function useControlProps({ tone, className = '', invalid }) {
 }
 
 export function Input({ tone, className, invalid, ...rest }) {
-  return <input {...rest} {...useControlProps({ tone, className, invalid })} />;
+  return <input aria-label={rest['aria-label']} {...rest} {...useControlProps({ tone, className, invalid })} />;
 }
 
 export function Textarea({ tone, className, invalid, rows = 3, ...rest }) {
-  return <textarea rows={rows} {...rest} {...useControlProps({ tone, className, invalid })} />;
+  return <textarea aria-label={rest['aria-label']} rows={rows} {...rest} {...useControlProps({ tone, className, invalid })} />;
 }
 
 export function Select({ tone, className, invalid, children, ...rest }) {
-  return <select {...rest} {...useControlProps({ tone, className, invalid })}>{children}</select>;
+  return <select aria-label={rest['aria-label']} {...rest} {...useControlProps({ tone, className, invalid })}>{children}</select>;
 }
 
 /**

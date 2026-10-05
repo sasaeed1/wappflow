@@ -150,7 +150,7 @@ export default function AlbumEditor() {
                     onSlot={(i) => setActive({ pageId: p.id, index: i })} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)' }}>#{idx + 1}</span>
-                    <select value={p.layout_template} onChange={e => changeLayout(p.id, e.target.value)} style={{ flex: 1, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12 }}>
+                    <select aria-label={`Layout for page ${idx + 1}`} value={p.layout_template} onChange={e => changeLayout(p.id, e.target.value)} style={{ flex: 1, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12 }}>
                       {LAYOUT_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                     <button onClick={() => movePage(idx, -1)} disabled={idx === 0} style={iconBtn} title="Move up"><ChevronUp size={14} /></button>

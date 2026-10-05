@@ -196,7 +196,7 @@ export default function ProfilePage() {
                   : <Camera size={13} />
                 }
               </button>
-              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
+              <input aria-label="Upload profile photo" ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
             </div>
 
             {/* Read-only identity */}

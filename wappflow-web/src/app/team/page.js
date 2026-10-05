@@ -131,12 +131,12 @@ function InviteModal({ onSave, onClose }) {
     <Modal open onClose={() => onClose(false)} title="Invite Team Member" description="They'll get a link to set up their account" size="sm" style={{ maxWidth: 480 }}>
         <div style={{ marginBottom:14 }}>
           <label style={{ fontSize:12, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:8 }}>Full Name</label>
-          <input value={form.full_name} onChange={e => setForm(p => ({...p, full_name:e.target.value}))} placeholder="John Smith"
+          <input aria-label="Full Name" value={form.full_name} onChange={e => setForm(p => ({...p, full_name:e.target.value}))} placeholder="John Smith"
             style={{ width:'100%', padding:'11px 14px', border:'1.5px solid var(--border)', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }} />
         </div>
         <div style={{ marginBottom:14 }}>
           <label style={{ fontSize:12, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.5px', display:'block', marginBottom:8 }}>Email Address</label>
-          <input value={form.email} onChange={e => setForm(p => ({...p, email:e.target.value}))} placeholder="john@company.com" type="email" autoFocus
+          <input aria-label="Email Address" value={form.email} onChange={e => setForm(p => ({...p, email:e.target.value}))} placeholder="john@company.com" type="email" autoFocus
             style={{ width:'100%', padding:'11px 14px', border:'1.5px solid var(--border)', borderRadius:11, fontSize:14, outline:'none', boxSizing:'border-box' }} />
         </div>
         <div style={{ marginBottom:24 }}>
@@ -279,7 +279,7 @@ function MemberPermissionsModal({ member, roleDefaults, onSave, onClose }) {
             <div style={{ background:'rgba(16,185,129,0.10)', border:'1.5px dashed #86efac', borderRadius:12, padding:16, marginBottom:20 }}>
               <p style={{ fontSize:12, fontWeight:700, color:'#166534', margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'0.4px' }}>Add Custom Permission</p>
               <div style={{ display:'flex', gap:8 }}>
-                <input value={customKey} onChange={e=>setCustomKey(e.target.value)} placeholder="e.g. export_data" onKeyDown={e=>e.key==='Enter'&&addCustomPerm()}
+                <input aria-label="Add Custom Permission" value={customKey} onChange={e=>setCustomKey(e.target.value)} placeholder="e.g. export_data" onKeyDown={e=>e.key==='Enter'&&addCustomPerm()}
                   style={{ flex:1, padding:'9px 12px', border:'1.5px solid #86efac', borderRadius:10, fontSize:13, outline:'none', background:'var(--surface)', boxSizing:'border-box' }} />
                 <button onClick={addCustomPerm} disabled={!customKey.trim()} style={{ padding:'9px 16px', borderRadius:10, border:'none', background:'#10b981', color:'white', fontWeight:700, cursor:'pointer', fontSize:13 }}>Add</button>
               </div>
@@ -380,7 +380,7 @@ function PermissionsTab({ permissions, onSaveRole, currentRole }) {
                 <>
                   {addingKey === role ? (
                     <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-                      <input value={newKey} onChange={e=>setNewKey(e.target.value)} placeholder="custom_permission_key" autoFocus
+                      <input aria-label="Custom permission key" value={newKey} onChange={e=>setNewKey(e.target.value)} placeholder="custom_permission_key" autoFocus
                         onKeyDown={e=>{if(e.key==='Enter')addCustomPerm(role);if(e.key==='Escape'){setAddingKey(null);setNewKey('');}}}
                         style={{ flex:1, padding:'7px 10px', border:'1.5px solid #6366f1', borderRadius:8, fontSize:12, outline:'none', boxSizing:'border-box' }} />
                       <button onClick={()=>addCustomPerm(role)} style={{ padding:'7px 12px', borderRadius:8, border:'none', background:'#10b981', color:'white', fontWeight:700, cursor:'pointer', fontSize:12 }}>Add</button>
@@ -610,7 +610,7 @@ export default function TeamPage() {
                 {/* Search */}
                 <div style={{ background:'var(--surface)', borderRadius:14, border:'1.5px solid var(--border)', padding:'10px 14px', marginBottom:14, display:'flex', alignItems:'center', gap:10, maxWidth:380 }}>
                   <Search size={15} color="#9ca3af" />
-                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search members..."
+                  <input aria-label="Search members" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search members..."
                     style={{ border:'none', outline:'none', fontSize:14, color:'var(--text)', flex:1, background:'transparent' }} />
                 </div>
 

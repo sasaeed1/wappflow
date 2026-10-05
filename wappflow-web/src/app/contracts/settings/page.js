@@ -82,13 +82,13 @@ export default function ContractsSettingsPage() {
         </Card>
 
         <Card icon={Clock} title="Default link expiry" sub="Suggested expiry preselected when you send a document.">
-          <select value={settings.default_expire_days ?? 0} onChange={e => save({ default_expire_days: Number(e.target.value) })} style={{ padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, outline: 'none' }}>
+          <select aria-label="Default link expiry" value={settings.default_expire_days ?? 0} onChange={e => save({ default_expire_days: Number(e.target.value) })} style={{ padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, outline: 'none' }}>
             <option value={0}>Never</option><option value={3}>3 days</option><option value={7}>7 days</option><option value={14}>14 days</option><option value={30}>30 days</option>
           </select>
         </Card>
 
         <Card icon={FileText} title="Sender name" sub="Shown to clients on delivery emails (defaults to your company name).">
-          <input value={settings.sender_name || ''} onChange={e => setSettings(s => ({ ...s, sender_name: e.target.value }))} onBlur={e => save({ sender_name: e.target.value })} placeholder="e.g. Sami Studios" style={{ width: '100%', maxWidth: 360, padding: '10px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+          <input aria-label="Business name on documents" value={settings.sender_name || ''} onChange={e => setSettings(s => ({ ...s, sender_name: e.target.value }))} onBlur={e => save({ sender_name: e.target.value })} placeholder="e.g. Sami Studios" style={{ width: '100%', maxWidth: 360, padding: '10px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
         </Card>
 
         <Card icon={FileText} title="Clause library" sub="Reusable clauses you can drop into any document from the builder.">
@@ -97,10 +97,10 @@ export default function ContractsSettingsPage() {
             {clauses.map(c => (
               <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                  <input value={c.title} onChange={e => patchClause(c.id, { title: e.target.value })} onBlur={() => saveClause(c)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, fontWeight: 600, outline: 'none' }} />
+                  <input aria-label="Clause title" value={c.title} onChange={e => patchClause(c.id, { title: e.target.value })} onBlur={() => saveClause(c)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13.5, fontWeight: 600, outline: 'none' }} />
                   <button aria-label="Delete" onClick={() => delClause(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={15} /></button>
                 </div>
-                <textarea value={c.body} onChange={e => patchClause(c.id, { body: e.target.value })} onBlur={() => saveClause(c)} rows={2} placeholder="Clause text…" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+                <textarea aria-label="Clause text" value={c.body} onChange={e => patchClause(c.id, { body: e.target.value })} onBlur={() => saveClause(c)} rows={2} placeholder="Clause text…" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
               </div>
             ))}
           </div>

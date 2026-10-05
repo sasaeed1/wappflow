@@ -28,19 +28,19 @@ export function FormDialog({ open, title, description, fields = [], initial = {}
       <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
         {fields.map((f) => {
           const id = `fd-${f.name}`;
-          const common = { id, value: vals[f.name] ?? '', onChange: (e) => set(f.name, e.target.value), style: fieldInp, placeholder: f.placeholder };
+          const common = { id, 'aria-label': f.label, value: vals[f.name] ?? '', onChange: (e) => set(f.name, e.target.value), style: fieldInp, placeholder: f.placeholder };
           return (
             <div key={f.name} style={{ display: 'grid', gap: 5 }}>
               <label htmlFor={id} style={fieldLbl}>{f.label}</label>
-              {f.type === 'textarea' ? <textarea rows={f.rows || 3} {...common} />
-                : f.type === 'select' ? <select {...common}>{f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-                : <input type={f.type || 'text'} min={f.min} max={f.max} step={f.step} inputMode={f.type === 'number' ? 'decimal' : undefined} {...common} />}
+              {f.type === 'textarea' ? <textarea aria-label={f.label} rows={f.rows || 3} {...common} />
+                : f.type === 'select' ? <select aria-label={f.label} {...common}>{f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                : <input aria-label={f.label} type={f.type || 'text'} min={f.min} max={f.max} step={f.step} inputMode={f.type === 'number' ? 'decimal' : undefined} {...common} />}
               {f.hint && <span style={{ fontSize: 11.5, color: 'var(--text-dim,#666)' }}>{f.hint}</span>}
             </div>
           );
         })}
         {err && <div role="alert" style={{ color: '#f87171', fontSize: 13 }}>{err}</div>}
-        <button type="submit" hidden />
+        <button type="submit" hidden aria-label="Save" />
       </form>
     </Modal>
   );

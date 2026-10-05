@@ -210,7 +210,7 @@ export default function ClientGalleryPage() {
           </div>
         )}
         <div style={{ marginTop: 18, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 }}>
-          <input value={contact} onChange={e => saveContact(e.target.value)} placeholder="Your name (optional)"
+          <input aria-label="Your name" value={contact} onChange={e => saveContact(e.target.value)} placeholder="Your name (optional)"
             style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid #2a2a33', background: '#15151b', color: '#fff', fontSize: 12.5, outline: 'none', width: 200 }} />
           {data?.download_policy !== 'none' && (
             <button onClick={downloadAll} disabled={dl?.status === 'pending'} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 10, border: 'none', cursor: dl?.status === 'pending' ? 'wait' : 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 700, fontSize: 13 }}>
@@ -352,7 +352,7 @@ function CommentModal({ onClose, onSend }) {
     <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ background: '#15151b', border: '1px solid #2a2a33', borderRadius: 16, padding: 22, maxWidth: 380, width: '100%' }}>
         <h3 style={{ fontSize: 16, fontWeight: 800, color: '#fff', margin: '0 0 12px' }}>Leave a note</h3>
-        <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Tell your photographer what you think…" rows={3}
+        <textarea aria-label="Your comment" value={body} onChange={e => setBody(e.target.value)} placeholder="Tell your photographer what you think…" rows={3}
           style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid #2a2a33', background: '#0b0b0f', color: '#fff', fontSize: 13.5, outline: 'none', resize: 'vertical', boxSizing: 'border-box', marginBottom: 14 }} autoFocus />
         <button onClick={() => onSend(body)} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', cursor: 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 700, fontSize: 13.5 }}>Send</button>
       </div>

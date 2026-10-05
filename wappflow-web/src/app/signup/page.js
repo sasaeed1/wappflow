@@ -169,7 +169,7 @@ function SignupContent() {
               <label>Business name</label>
               <div className="auth-input-wrap">
                 <Building2 size={16} />
-                <input
+                <input aria-label="Business name"
                   type="text"
                   required
                   value={formData.businessName}
@@ -184,7 +184,7 @@ function SignupContent() {
               <label>Email</label>
               <div className="auth-input-wrap">
                 <Mail size={16} />
-                <input
+                <input aria-label="Email"
                   type="email"
                   required
                   value={formData.email}
@@ -199,7 +199,7 @@ function SignupContent() {
               <label>Password</label>
               <div className="auth-input-wrap">
                 <Lock size={16} />
-                <input
+                <input aria-label="Password"
                   type={showPwd ? 'text' : 'password'}
                   required
                   minLength={8}

@@ -181,7 +181,7 @@ export default function ScheduleMeetingModal({ open, onClose, lead, onScheduled 
 
               <div className="sm-field">
                 <label>Notes (optional)</label>
-                <textarea
+                <textarea aria-label="Notes"
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   rows={3}

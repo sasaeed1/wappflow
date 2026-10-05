@@ -45,7 +45,7 @@ function EditSlider({ label, value, onChange, min = -100, max = 100 }) {
         <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>{label}</span>
         <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(value * 100)}</span>
       </div>
-      <input type="range" min={min} max={max} value={Math.round(value * 100)}
+      <input aria-label={label} type="range" min={min} max={max} value={Math.round(value * 100)}
         onChange={e => onChange(Number(e.target.value) / 100)}
         onDoubleClick={() => onChange(0)}
         style={{ width: '100%' }} />
@@ -546,7 +546,7 @@ export default function CullPage() {
         <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)' }}>Straighten</span>
         <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{(pending.rotate - Math.round(pending.rotate / 90) * 90).toFixed(1)}°</span>
       </div>
-      <input type="range" min={-15} max={15} step={0.5} value={pending.rotate - Math.round(pending.rotate / 90) * 90}
+      <input aria-label="Straighten" type="range" min={-15} max={15} step={0.5} value={pending.rotate - Math.round(pending.rotate / 90) * 90}
         onChange={e => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 + Number(e.target.value) }))}
         onDoubleClick={() => setPending(p => ({ ...p, rotate: Math.round(p.rotate / 90) * 90 }))}
         style={{ width: '100%', marginBottom: 12 }} />
@@ -1073,7 +1073,7 @@ function GalleryFromKeepersModal({ projectId, keepers, onClose, onDone }) {
   };
 
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 420 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: 'var(--ms-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Images size={18} color="var(--ms-on-accent)" /></div>
@@ -1083,14 +1083,14 @@ function GalleryFromKeepersModal({ projectId, keepers, onClose, onDone }) {
           </div>
         </div>
         <label className="ms-label">Gallery name</label>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Keepers" className="ms-input" style={{ marginBottom: 18 }} autoFocus />
+        <input aria-label="Gallery name" value={title} onChange={e => setTitle(e.target.value)} placeholder="Keepers" className="ms-input" style={{ marginBottom: 18 }} autoFocus />
         <label className="ms-label">Visibility</label>
         <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
           {['private', 'password', 'public'].map(v => (
             <button key={v} onClick={() => setVisibility(v)} className={`ms-chip${visibility === v ? ' ms-chip-active' : ''}`} style={{ flex: 1 }}>{v}</button>
           ))}
         </div>
-        {visibility === 'password' && <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Gallery password" className="ms-input" style={{ marginBottom: 18 }} />}
+        {visibility === 'password' && <input aria-label="Gallery password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Gallery password" className="ms-input" style={{ marginBottom: 18 }} />}
         {err && <p style={{ color: '#d4564a', fontSize: 12.5, margin: '0 0 12px' }}>{err}</p>}
         <button onClick={submit} disabled={saving} className="ms-btn-ink" style={{ width: '100%', justifyContent: 'center' }}>
           {saving ? 'Creating…' : `Create gallery with ${keepers} photo${keepers === 1 ? '' : 's'}`}
