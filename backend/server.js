@@ -5727,17 +5727,12 @@ app.get('/api/workspace/plan', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Plans, limits and trials are set only from Command Center (/api/cc/*), which is
+// audited and tied to billing. This route used to write whatever the caller sent,
+// so any signed-in user of any role could make their own workspace Enterprise with
+// unlimited limits. Nothing in the app calls it; it now refuses every write.
 app.put('/api/workspace/plan', auth, (req, res) => {
-  try {
-    const { plan, features, limits, trial_ends_at } = req.body || {};
-    db.prepare(`INSERT INTO workspace_plan (workspace_id, plan, features, limits, trial_ends_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(workspace_id) DO UPDATE SET
-        plan = excluded.plan, features = excluded.features, limits = excluded.limits, trial_ends_at = excluded.trial_ends_at, updated_at = CURRENT_TIMESTAMP
-    `).run(req.workspaceId, plan || entitlements.DEFAULT_PLAN, features ? JSON.stringify(features) : null, limits ? JSON.stringify(limits) : null, trial_ends_at || null);
-    try { entitlements.invalidate(req.workspaceId); } catch {}
-    res.json({ plan: db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  res.status(403).json({ error: 'Plans are managed by WappFlow. Contact support to change your plan.' });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
