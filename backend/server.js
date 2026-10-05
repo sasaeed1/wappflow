@@ -218,10 +218,41 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const DEFAULT_ROLE_PERMISSIONS = {
   super_admin: { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: true, view_reports: true, manage_settings: true, manage_team: true, manage_invoices: true, manage_whatsapp: true },
-  admin:       { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: true, view_reports: true, manage_settings: true, manage_team: true, manage_invoices: true, manage_whatsapp: false },
+  // manage_whatsapp is ON for admins (PROP-006): it was never enforced, so admins have
+  // always connected numbers; turning enforcement on must not take that away.
+  admin:       { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: true, view_reports: true, manage_settings: true, manage_team: true, manage_invoices: true, manage_whatsapp: true },
   manager:     { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: false, view_reports: true, manage_settings: false, manage_team: false, manage_invoices: true, manage_whatsapp: false },
   user:        { view_all_leads: false, create_lead: true, edit_lead: true, delete_lead: false, view_reports: false, manage_settings: false, manage_team: false, manage_invoices: false, manage_whatsapp: false },
 };
+
+// Effective permissions (PROP-006): role default → the workspace's saved settings for
+// that role (Team → Roles) → this member's own overrides. Previously a member override
+// REPLACED the defaults wholesale and the workspace's role settings were ignored by
+// auth entirely, so what the Team page showed was not what applied.
+function effectivePermissions(workspaceId, role, memberJson) {
+  const base = { ...(DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.user) };
+  try {
+    const row = db.prepare('SELECT permissions FROM workspace_role_permissions WHERE workspace_id = ? AND role = ?').get(workspaceId, role);
+    if (row?.permissions) Object.assign(base, JSON.parse(row.permissions));
+  } catch {}
+  try { if (memberJson) Object.assign(base, JSON.parse(memberJson)); } catch {}
+  if (role === 'super_admin') for (const k of Object.keys(base)) base[k] = true; // the owner can never be locked out
+  return base;
+}
+
+// Route guard for one permission. The UI hides what a role can't do, but the API is
+// the boundary — before PROP-006 only view_all_leads was checked here, so a "user"
+// could delete leads, read revenue reports or connect WhatsApp by calling the API.
+const PERMISSION_LABELS = {
+  delete_lead: 'delete leads', view_reports: 'view reports', manage_settings: 'change workspace settings',
+  manage_invoices: 'manage invoices', manage_whatsapp: 'manage WhatsApp and connected accounts', manage_team: 'manage the team',
+};
+function requirePerm(key) {
+  return (req, res, next) => {
+    if (req.userPermissions && req.userPermissions[key]) return next();
+    res.status(403).json({ error: `Your role can't ${PERMISSION_LABELS[key] || key}. Ask your workspace admin.`, permission_denied: key });
+  };
+}
 
 // Auth Middleware — accepts token from Authorization header OR query string (for SSE/EventSource which can't set headers)
 // Issue a session token stamped with the user's CURRENT token_version, so a
@@ -325,7 +356,7 @@ const auth = (req, res, next) => {
     // Get role from workspace_members
     const member = db.prepare('SELECT role, permissions FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(workspaceId, decoded.userId);
     req.userRole = member?.role || 'super_admin';
-    req.userPermissions = member?.permissions ? JSON.parse(member.permissions) : DEFAULT_ROLE_PERMISSIONS[req.userRole] || {};
+    req.userPermissions = effectivePermissions(workspaceId, req.userRole, member?.permissions);
     // ONE lead-visibility rule (list + detail + sub-resources): custom per-member
     // view_all_leads wins when set; otherwise the role default applies.
     req.canViewAllLeads = req.userPermissions.view_all_leads
@@ -1452,7 +1483,7 @@ app.get('/api/auth/me', auth, (req, res) => {
     const cs = db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(req.workspaceId);
     const memberInfo = db.prepare('SELECT role, full_name FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(req.workspaceId, req.userId);
-    res.json({ user: { ...user, role: req.userRole }, company: cs, workspace, memberRole: memberInfo?.role, impersonation: req.impersonation || null });
+    res.json({ user: { ...user, role: req.userRole }, company: cs, workspace, memberRole: memberInfo?.role, permissions: req.userPermissions, impersonation: req.impersonation || null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1685,7 +1716,7 @@ app.get('/api/settings/company', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/settings/company', auth, (req, res) => {
+app.put('/api/settings/company', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const {
       company_name, company_address, company_email, company_phone,
@@ -1723,7 +1754,7 @@ app.put('/api/settings/company', auth, (req, res) => {
 });
 
 // Upload company logo
-app.post('/api/settings/logo', auth, (req, res) => {
+app.post('/api/settings/logo', auth, requirePerm('manage_settings'), (req, res) => {
   const doUpload = (req2, res2) => {
     // Rebuild multer with correct userId
     const logoUploadFn = multer({
@@ -2440,7 +2471,7 @@ app.delete('/api/leads/trash', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/leads/:id', auth, (req, res) => {
+app.delete('/api/leads/:id', auth, requirePerm('delete_lead'), (req, res) => {
   try {
     const result = db.prepare(`UPDATE leads SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
     if (result.changes === 0) return res.status(404).json({ error: 'Lead not found' });
@@ -2460,7 +2491,7 @@ app.post('/api/leads/:id/restore', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/leads/:id/permanent', auth, (req, res) => {
+app.delete('/api/leads/:id/permanent', auth, requirePerm('delete_lead'), (req, res) => {
   try {
     // Guard the lead BEFORE the cascade so child rows are never deleted cross-tenant.
     if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
@@ -2527,7 +2558,7 @@ app.get('/api/leads/duplicates', auth, (req, res) => {
 //   • reassigns every child row (any table with a lead_id column) to the primary
 //   • the survivor keeps/inherits the routing phone so inbound WhatsApp is unaffected
 //   • duplicates are soft-deleted (trash, restorable for 90 days), never hard-deleted
-app.post('/api/leads/merge', auth, (req, res) => {
+app.post('/api/leads/merge', auth, requirePerm('delete_lead'), (req, res) => {
   try {
     const { primary_id, duplicate_ids } = req.body || {};
     if (!primary_id || !Array.isArray(duplicate_ids) || duplicate_ids.length === 0) return res.status(400).json({ error: 'primary_id and duplicate_ids[] required' });
@@ -2763,7 +2794,7 @@ app.get('/api/invoices/bin', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/invoices/:id/restore', auth, (req, res) => {
+app.post('/api/invoices/:id/restore', auth, requirePerm('manage_invoices'), (req, res) => {
   try {
     const r = db.prepare(
       `UPDATE invoices SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL
@@ -2823,13 +2854,13 @@ function createInvoiceForLead(req, body) {
   return parseInvoice(db.prepare('SELECT * FROM invoices WHERE id = ?').get(id));
 }
 
-app.post('/api/invoices', auth, (req, res) => {
+app.post('/api/invoices', auth, requirePerm('manage_invoices'), (req, res) => {
   try {
     res.status(201).json({ invoice: createInvoiceForLead(req, req.body) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
-app.put('/api/invoices/:id', auth, (req, res) => {
+app.put('/api/invoices/:id', auth, requirePerm('manage_invoices'), (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address,
       items, subtotal, tax_rate, tax_amount, discount, total, due_date, notes, status } = req.body;
@@ -2858,7 +2889,7 @@ app.put('/api/invoices/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/invoices/:id', auth, (req, res) => {
+app.delete('/api/invoices/:id', auth, requirePerm('manage_invoices'), (req, res) => {
   try {
     // Phase 3: soft-delete. An invoice is a financial record — it goes to the bin and
     // stays restorable indefinitely (the retention sweep skips invoices by design).
@@ -2895,7 +2926,7 @@ async function renderInvoiceEmailHTML(invoice, company, baseUrl) {
 
 // POST /api/invoices/:id/email — send the invoice to the customer. Reuses the exact
 // SMTP/transporter pattern from POST /api/leads/:id/email (one email sender, no fork).
-app.post('/api/invoices/:id/email', auth, async (req, res) => {
+app.post('/api/invoices/:id/email', auth, requirePerm('manage_invoices'), async (req, res) => {
   try {
     const { to, subject, message } = req.body || {};
     if (!to || !/.+@.+\..+/.test(String(to))) return res.status(400).json({ error: 'A valid recipient email (to) is required' });
@@ -2947,7 +2978,7 @@ app.get('/api/email-templates', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/email-templates', auth, (req, res) => {
+app.post('/api/email-templates', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, subject, body, delay_days, trigger_event } = req.body;
     const id = generateId();
@@ -2957,7 +2988,7 @@ app.post('/api/email-templates', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/email-templates/:id', auth, (req, res) => {
+app.put('/api/email-templates/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, subject, body, delay_days, trigger_event } = req.body;
     db.prepare('UPDATE email_templates SET name=?, subject=?, body=?, delay_days=?, trigger_event=? WHERE id=? AND user_id=?')
@@ -2966,7 +2997,7 @@ app.put('/api/email-templates/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/email-templates/:id', auth, (req, res) => {
+app.delete('/api/email-templates/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     db.prepare('DELETE FROM email_templates WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
     res.json({ message: 'Deleted' });
@@ -2984,7 +3015,7 @@ app.get('/api/auto-reply', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/auto-reply', auth, (req, res) => {
+app.post('/api/auto-reply', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, keywords, reply_message, match_type } = req.body;
     const id = generateId();
@@ -2994,7 +3025,7 @@ app.post('/api/auto-reply', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/auto-reply/:id', auth, (req, res) => {
+app.put('/api/auto-reply/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, keywords, reply_message, match_type, is_active } = req.body;
     db.prepare('UPDATE auto_reply_rules SET name=?, keywords=?, reply_message=?, match_type=?, is_active=? WHERE id=? AND user_id=?')
@@ -3003,7 +3034,7 @@ app.put('/api/auto-reply/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/auto-reply/:id', auth, (req, res) => {
+app.delete('/api/auto-reply/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     db.prepare('DELETE FROM auto_reply_rules WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
     res.json({ message: 'Deleted' });
@@ -3014,7 +3045,7 @@ app.delete('/api/auto-reply/:id', auth, (req, res) => {
 //  ANALYTICS & REPORTS
 // ════════════════════════════════════════════════════════════
 
-app.get('/api/analytics', auth, (req, res) => {
+app.get('/api/analytics', auth, requirePerm('view_reports'), (req, res) => {
   try {
     const wid = req.workspaceId;
     const cs = db.prepare('SELECT currency_symbol FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
@@ -3067,7 +3098,7 @@ app.get('/api/analytics', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/reports/overview', auth, (req, res) => {
+app.get('/api/reports/overview', auth, requirePerm('view_reports'), (req, res) => {
   try {
     const wid = req.workspaceId;
     const { period = '30', start_date, end_date } = req.query;
@@ -3184,7 +3215,7 @@ app.get('/api/audit-logs', auth, (req, res) => {
 });
 
 // GET /api/workspace/export — full data export (portability / backup) as JSON
-app.get('/api/workspace/export', auth, (req, res) => {
+app.get('/api/workspace/export', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const ws = req.workspaceId, owner = req.workspaceOwnerId;
     const safe = (sql, ...args) => { try { return db.prepare(sql).all(...args); } catch { return []; } };
@@ -3219,11 +3250,39 @@ app.get('/api/workspace/export', auth, (req, res) => {
 //  TAGS & PRESETS
 // ════════════════════════════════════════════════════════════
 
+// Lost reasons (Settings → Lost Reasons; offered when a lead is closed as lost). The
+// UI and the lead page have called these routes for a long time but they were never
+// implemented, so the tab could neither load nor save (PROP-006).
+db.exec(`CREATE TABLE IF NOT EXISTS lost_reasons (
+  id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, reason TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_lost_reasons_ws ON lost_reasons(workspace_id)');
+app.get('/api/lost-reasons', auth, (req, res) => {
+  res.json({ reasons: db.prepare('SELECT id, reason, created_at FROM lost_reasons WHERE workspace_id = ? ORDER BY created_at').all(req.workspaceId) });
+});
+app.post('/api/lost-reasons', auth, requirePerm('manage_settings'), (req, res) => {
+  const reason = String(req.body?.text ?? req.body?.reason ?? '').trim().slice(0, 120);
+  if (!reason) return res.status(400).json({ error: 'Write a reason first' });
+  const n = db.prepare('SELECT COUNT(*) AS c FROM lost_reasons WHERE workspace_id = ?').get(req.workspaceId).c;
+  if (n >= 50) return res.status(400).json({ error: 'You can keep up to 50 lost reasons' });
+  const id = generateId();
+  db.prepare('INSERT INTO lost_reasons (id, workspace_id, reason) VALUES (?, ?, ?)').run(id, req.workspaceId, reason);
+  logAudit(req.workspaceId, req.userId, 'lost_reason_created', 'lost_reason', id, { reason });
+  res.json({ reason: { id, reason } });
+});
+app.delete('/api/lost-reasons/:id', auth, requirePerm('manage_settings'), (req, res) => {
+  const r = db.prepare('DELETE FROM lost_reasons WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
+  if (!r.changes) return res.status(404).json({ error: 'Not found' });
+  logAudit(req.workspaceId, req.userId, 'lost_reason_deleted', 'lost_reason', req.params.id, {});
+  res.json({ ok: true });
+});
+
 app.get('/api/tags', auth, (req, res) => {
   try { res.json({ tags: db.prepare('SELECT * FROM tags WHERE user_id=? ORDER BY name').all(req.workspaceOwnerId) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/tags', auth, (req, res) => {
+app.post('/api/tags', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, color } = req.body;
     const id = generateId();
@@ -3231,14 +3290,14 @@ app.post('/api/tags', auth, (req, res) => {
     res.status(201).json(db.prepare('SELECT * FROM tags WHERE id = ?').get(id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/tags/:id', auth, (req, res) => {
+app.put('/api/tags/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, color } = req.body;
     db.prepare('UPDATE tags SET name=?, color=? WHERE id=? AND user_id=?').run(name, color, req.params.id, req.workspaceOwnerId);
     res.json(db.prepare('SELECT * FROM tags WHERE id = ?').get(req.params.id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/tags/:id', auth, (req, res) => {
+app.delete('/api/tags/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     db.prepare('DELETE FROM lead_tags WHERE tag_id=?').run(req.params.id);
     db.prepare('DELETE FROM tags WHERE id=? AND user_id=?').run(req.params.id, req.workspaceOwnerId);
@@ -3266,7 +3325,7 @@ app.get('/api/presets', auth, (req, res) => {
   try { res.json({ presets: db.prepare('SELECT * FROM message_presets WHERE user_id=? ORDER BY created_at DESC').all(req.workspaceOwnerId) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/presets', auth, (req, res) => {
+app.post('/api/presets', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { title, body } = req.body;
     const id = generateId();
@@ -3274,14 +3333,14 @@ app.post('/api/presets', auth, (req, res) => {
     res.status(201).json(db.prepare('SELECT * FROM message_presets WHERE id = ?').get(id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/presets/:id', auth, (req, res) => {
+app.put('/api/presets/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { title, body } = req.body;
     db.prepare('UPDATE message_presets SET title=?, body=? WHERE id=? AND user_id=?').run(title, body, req.params.id, req.workspaceOwnerId);
     res.json(db.prepare('SELECT * FROM message_presets WHERE id = ?').get(req.params.id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/presets/:id', auth, (req, res) => {
+app.delete('/api/presets/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try { db.prepare('DELETE FROM message_presets WHERE id=? AND user_id=?').run(req.params.id, req.workspaceOwnerId); res.json({ message: 'Deleted' }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3311,7 +3370,7 @@ app.get('/api/whatsapp/accounts/:id/status', auth, (req, res) => {
   res.json({ ...status, account_id: req.params.id, account_name: account.account_name });
 });
 
-app.post('/api/whatsapp/accounts/:id/connect', auth, async (req, res) => {
+app.post('/api/whatsapp/accounts/:id/connect', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
   if (!account) return res.status(404).json({ error: 'Account not found' });
   try { await whatsappService.reconnect(req.params.id); res.json({ ok: true }); }
@@ -3321,7 +3380,7 @@ app.post('/api/whatsapp/accounts/:id/connect', auth, async (req, res) => {
 // Link by phone number: WhatsApp → Linked devices → Link with phone number
 // instead → type this 8-character code. The account must be connecting (QR
 // showing) — the code replaces the QR scan.
-app.post('/api/whatsapp/accounts/:id/pair-code', auth, async (req, res) => {
+app.post('/api/whatsapp/accounts/:id/pair-code', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
   if (!account) return res.status(404).json({ error: 'Account not found' });
   try {
@@ -3332,7 +3391,7 @@ app.post('/api/whatsapp/accounts/:id/pair-code', auth, async (req, res) => {
 });
 
 // Same, for the workspace's WhatsApp page (which works on "the" account).
-app.post('/api/whatsapp/pair-code', auth, async (req, res) => {
+app.post('/api/whatsapp/pair-code', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = resolveWorkspaceWaAccount(req.workspaceId);
   if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
   try {
@@ -3342,21 +3401,21 @@ app.post('/api/whatsapp/pair-code', auth, async (req, res) => {
   } catch (e) { res.status(400).json({ error: describeWaError(e).split('\n')[0] || e.message }); }
 });
 
-app.post('/api/whatsapp/accounts/:id/disconnect', auth, async (req, res) => {
+app.post('/api/whatsapp/accounts/:id/disconnect', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
   if (!account) return res.status(404).json({ error: 'Account not found' });
   try { await whatsappService.disconnect(req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/whatsapp/disconnect', auth, async (req, res) => {
+app.post('/api/whatsapp/disconnect', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = resolveWorkspaceWaAccount(req.workspaceId);
   if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
   try { await whatsappService.disconnect(account.id); res.json({ message: 'Disconnected' }); }
   catch (e) { res.status(500).json({ error: 'Failed to disconnect' }); }
 });
 
-app.post('/api/whatsapp/reconnect', auth, async (req, res) => {
+app.post('/api/whatsapp/reconnect', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = resolveWorkspaceWaAccount(req.workspaceId);
   if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
   try {
@@ -4525,7 +4584,7 @@ app.get('/api/ai/profile', auth, (req, res) => {
 });
 
 // PUT /api/ai/profile — update workspace AI command center settings
-app.put('/api/ai/profile', auth, (req, res) => {
+app.put('/api/ai/profile', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { business_description, tone, language, signature, dos, donts, auto_analyze } = req.body || {};
     db.prepare(`INSERT INTO workspace_ai_profile
@@ -4773,7 +4832,7 @@ app.get('/api/knowledge', auth, (req, res) => {
 });
 
 // POST /api/knowledge/upload — upload & process document
-app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (req, res) => {
+app.post('/api/knowledge/upload', auth, requirePerm('manage_settings'), knowledgeUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -4830,7 +4889,7 @@ app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (r
 });
 
 // DELETE /api/knowledge/:id — delete document + its memories
-app.delete('/api/knowledge/:id', auth, (req, res) => {
+app.delete('/api/knowledge/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const doc = db.prepare('SELECT * FROM knowledge_documents WHERE id = ?').get(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Not found' });
@@ -4853,7 +4912,7 @@ app.get('/api/knowledge/:id/memories', auth, (req, res) => {
 });
 
 // POST /api/knowledge/learn-from-messages — manually trigger learning from staff replies
-app.post('/api/knowledge/learn-from-messages', auth, async (req, res) => {
+app.post('/api/knowledge/learn-from-messages', auth, requirePerm('manage_settings'), async (req, res) => {
   try {
     // Get last 100 outgoing staff messages for this workspace
     const messages = db.prepare(`
@@ -5304,7 +5363,7 @@ app.get('/api/platform-accounts', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/platform-accounts', auth, (req, res) => {
+app.post('/api/platform-accounts', auth, requirePerm('manage_whatsapp'), (req, res) => {
   try {
     const { platform, account_name, slot_index } = req.body;
     if (!platform) return res.status(400).json({ error: 'platform required' });
@@ -5336,7 +5395,7 @@ app.post('/api/platform-accounts', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/platform-accounts/:id', auth, (req, res) => {
+app.put('/api/platform-accounts/:id', auth, requirePerm('manage_whatsapp'), (req, res) => {
   try {
     const { account_name, account_handle, credentials, status } = req.body;
     const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
@@ -5362,7 +5421,7 @@ app.put('/api/platform-accounts/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/platform-accounts/:id', auth, (req, res) => {
+app.delete('/api/platform-accounts/:id', auth, requirePerm('manage_whatsapp'), (req, res) => {
   try {
     const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
     if (!account) return res.status(404).json({ error: 'Account not found' });
@@ -6088,7 +6147,7 @@ app.patch('/api/whatsapp/groups/:groupId', auth, (req, res) => {
 // ════════════════════════════════════════════════════════════
 
 // POST /api/leads/bulk-trash — soft-delete many leads in one call
-app.post('/api/leads/bulk-trash', auth, (req, res) => {
+app.post('/api/leads/bulk-trash', auth, requirePerm('delete_lead'), (req, res) => {
   try {
     const { lead_ids } = req.body || {};
     if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
@@ -6758,6 +6817,17 @@ const bookingSend = async ({ lead, userId, text }) => {
   try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text, lead.workspace_id); } catch {}
   return { sent: true };
 };
+// Settings routes that live in their own modules get the same permission guard,
+// registered first so it runs before the module's handler (PROP-006).
+const settingsGuard = [auth, requirePerm('manage_settings'), (req, res, next) => next()];
+app.put('/api/booking/settings', ...settingsGuard);
+app.put('/api/cs/settings', ...settingsGuard);
+app.post('/api/cs/settings/letterhead', ...settingsGuard);
+app.delete('/api/cs/settings/letterhead', ...settingsGuard);
+app.post('/api/store/products', ...settingsGuard);
+app.put('/api/store/products/:id', ...settingsGuard);
+app.delete('/api/store/products/:id', ...settingsGuard);
+
 require('./booking')(app, db, {
   auth, generateId, broadcastToWorkspace, addContactHistory, notify,
   clientBaseUrl: process.env.FRONTEND_URL || '',

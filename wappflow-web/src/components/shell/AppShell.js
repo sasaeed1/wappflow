@@ -13,6 +13,7 @@ import { MODULES, isNavActive } from './modules';
 import { useSession, useSignOut, useAuthGuard } from './session';
 import { useSummary } from './summary';
 import { usePlan } from '@/lib/plan';
+import { usePermissions } from '@/lib/permissions';
 import { clickable } from '@/lib/a11y';
 
 // AppShell — ONE shell for every authenticated module (Phase 2).
@@ -82,6 +83,10 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
   const { helpOpen, setHelpOpen } = useShortcuts();
   const signOut = useSignOut();
   const plan = usePlan();
+  const perms = usePermissions();
+  // Items a member's role can't use are hidden, not locked: unlike a plan lock there is
+  // nothing for them to upgrade (PROP-006).
+  const navItems = (mod?.nav || []).filter((i) => !i.perm || perms.can(i.perm));
   const summary = useSummary();
   const [drawer, setDrawer] = useState(false);
   const fabsTucked = useFabsTuckedOnScroll();
@@ -170,7 +175,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
         </div>
 
         <nav className="wf-shell-nav" aria-label={`${mod.label} navigation`} style={{ display: 'flex', gap: 2, marginLeft: 6 }}>
-          {mod.nav.map((i) => navButton(i))}
+          {navItems.map((i) => navButton(i))}
         </nav>
 
         <div style={{ flex: 1 }} />
@@ -268,7 +273,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} title={mod.label}>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }} aria-label={`${mod.label} navigation`}>
-          {mod.nav.map((i) => navButton(i, true))}
+          {navItems.map((i) => navButton(i, true))}
         </nav>
       </Drawer>
 

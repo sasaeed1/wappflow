@@ -23,6 +23,7 @@ import { useSound, SOUND_KINDS } from '@/lib/sounds';
 import { usePlan, nextPlanLabel, formatMoney } from '@/lib/plan';
 import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
 import InstallAppCard from '@/components/InstallAppCard';
+import { usePermissions } from '@/lib/permissions';
 
 // Map of settings tab → required feature flag + required plan name.
 // If the user's plan doesn't have the feature, the tab is shown locked.
@@ -2350,6 +2351,7 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
 export default function SettingsPage() {
   const router = useRouter();
   const plan = usePlan();
+  const perms = usePermissions();
   const [activeTab, setActiveTab] = useState('connections');
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(true);
@@ -2465,6 +2467,11 @@ export default function SettingsPage() {
 
         {/* Content */}
         <div className="wf-sidenav-content" style={{ flex: 1, minWidth: 0 }}>
+          {!perms.can('manage_settings') && !['password', 'appearance', 'notifications', 'apps'].includes(activeTab) && (
+            <div role="status" style={{ marginBottom: 14, padding: '11px 14px', borderRadius: 12, background: 'var(--warning-bg)', color: 'var(--warning-fg)', fontSize: 13, fontWeight: 600 }}>
+              You can view these settings, but your role can&apos;t change them. Ask your workspace admin.
+            </div>
+          )}
           {loading ? (
             <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>Loading settings...</div>
           ) : activeTabLocked ? (

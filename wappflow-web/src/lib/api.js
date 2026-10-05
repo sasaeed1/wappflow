@@ -24,6 +24,11 @@ api.interceptors.response.use(
       localStorage.removeItem('user');
       window.location.href = '/login';
     }
+    // A role refusal (PROP-006) is the same everywhere: say plainly why, once, instead
+    // of each page showing a generic "failed". Loaded lazily — api.js has no UI deps.
+    if (err.response?.status === 403 && err.response?.data?.permission_denied && typeof window !== 'undefined') {
+      import('@/components/ui/Toast').then(({ toast }) => toast.warning(err.response.data.error || "Your role can't do that.")).catch(() => {});
+    }
     return Promise.reject(err);
   }
 );

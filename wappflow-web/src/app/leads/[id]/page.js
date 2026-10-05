@@ -34,6 +34,7 @@ import RoomPanel from '@/components/RoomPanel';
 import { buildInvoiceHTML } from '@/lib/invoiceDoc';
 import { useRealtime } from '@/components/shell/realtime';
 import { clickable } from '@/lib/a11y';
+import { usePermissions } from '@/lib/permissions';
 import { WaTicks, QuotedSnippet, SpecialContent, ReactionsRow, MessageActions, messageMeta, messageReactions } from '@/components/WaMessageParts';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
@@ -626,6 +627,7 @@ function LeadStudioSection({ leadId }) {
 }
 
 export default function LeadDetailPage() {
+  const perms = usePermissions();
   const router = useRouter();
   const confirm = useConfirm();
   const params = useParams();
@@ -1471,9 +1473,11 @@ useEffect(() => {
             >
               <MessageSquare size={14} /> Chat Bar
             </button>
+            {perms.can('delete_lead') && (
             <button onClick={() => setShowDeleteModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', border: '1.5px solid #fecaca', borderRadius: 10, background: 'var(--surface)', color: '#ef4444', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
               <Trash2 size={14} /> Trash
             </button>
+            )}
           </div>
         </div>
       </nav>
