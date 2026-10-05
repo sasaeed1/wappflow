@@ -123,7 +123,7 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
   const csUpload = multer({
     storage: multer.diskStorage({
       destination: csDir,
-      filename: (req, file, cb) => { const safe = (file.originalname || 'file').normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100); cb(null, `${Date.now()}-${Math.random().toString(16).slice(2, 8)}-${safe}`); },
+      filename: (req, file, cb) => { const safe = (file.originalname || 'file').normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100); cb(null, `${Date.now()}-${require('crypto').randomBytes(16).toString('hex')}-${safe}`); },
     }),
     limits: { fileSize: 50 * 1024 * 1024 },
   });

@@ -283,7 +283,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       filename: (req, file, cb) => {
         const safe = (file.originalname || 'file')
           .normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100);
-        cb(null, `${Date.now()}-${Math.random().toString(16).slice(2, 8)}-${safe}`);
+        cb(null, `${Date.now()}-${require('crypto').randomBytes(16).toString('hex')}-${safe}`);
       },
     }),
     limits: { fileSize: 200 * 1024 * 1024 }, // 200MB local cap; presigned R2 removes this ceiling
@@ -1545,13 +1545,48 @@ Only suggest actions that make sense for the question. If none make sense, retur
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
     return day < new Date().toISOString().slice(0, 10);
   }
-  function pwHash(galleryId, pw) {
+  // Gallery passwords (PROP-006). They were a single fast SHA-256 with unlimited
+  // guesses. New and changed passwords use bcrypt; an old SHA-256 hash still works
+  // and is upgraded the first time the right password is entered. Ten wrong guesses
+  // from one address lock that gallery for that address for 15 minutes.
+  const bcrypt = require('bcryptjs');
+  function legacyPwHash(galleryId, pw) {
     return crypto.createHash('sha256').update(`${galleryId}::${pw}`).digest('hex');
   }
-  function portalAllowed(gallery, providedPw) {
+  function pwHash(galleryId, pw) { return bcrypt.hashSync(String(pw), 10); }
+  const pwVerified = new Map();   // sha256(id|hash|pw) → expiry; avoids a bcrypt per click
+  const pwFailures = new Map();   // `${ip}|${galleryId}` → { n, until }
+  const PW_MAX_FAILS = 10, PW_LOCK_MS = 15 * 60 * 1000, PW_CACHE_MS = 10 * 60 * 1000;
+  function galleryLocked(gallery, req) {
+    const k = `${req?.ip || ''}|${gallery.id}`; const f = pwFailures.get(k);
+    if (f && f.until > Date.now() && f.n >= PW_MAX_FAILS) return true;
+    if (f && f.until <= Date.now()) pwFailures.delete(k);
+    return false;
+  }
+  function portalAllowed(gallery, providedPw, req) {
     if (gallery.visibility !== 'password') return true;
     if (!gallery.password_hash) return true;
-    return !!providedPw && pwHash(gallery.id, providedPw) === gallery.password_hash;
+    if (!providedPw || galleryLocked(gallery, req)) return false;
+    const pw = String(providedPw);
+    const ck = crypto.createHash('sha256').update(`${gallery.id}|${gallery.password_hash}|${pw}`).digest('hex');
+    const hit = pwVerified.get(ck);
+    if (hit && hit > Date.now()) return true;
+    let good = false;
+    if (gallery.password_hash.startsWith('$2')) good = bcrypt.compareSync(pw, gallery.password_hash);
+    else if (legacyPwHash(gallery.id, pw) === gallery.password_hash) {
+      good = true;
+      try { db.prepare('UPDATE ms_galleries SET password_hash = ? WHERE id = ?').run(pwHash(gallery.id, pw), gallery.id); } catch {}
+    }
+    if (good) {
+      if (pwVerified.size > 5000) pwVerified.clear();
+      pwVerified.set(ck, Date.now() + PW_CACHE_MS);
+      pwFailures.delete(`${req?.ip || ''}|${gallery.id}`);
+      return true;
+    }
+    const k = `${req?.ip || ''}|${gallery.id}`; const f = pwFailures.get(k) || { n: 0, until: 0 };
+    f.n += 1; f.until = Date.now() + PW_LOCK_MS; pwFailures.set(k, f);
+    if (pwFailures.size > 20000) pwFailures.clear();
+    return false;
   }
   // Public shape: web/thumb only; the full-res original is exposed solely when the
   // download policy allows it. (Pixel watermarking is a worker step added later.)
@@ -2841,7 +2876,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
       if (isGalleryExpired(g)) {
         return res.status(410).json({ error: 'This gallery has expired.', expired: true, expired_on: String(g.expires_at).slice(0, 10) });
       }
-      if (!portalAllowed(g, req.query.pw)) return res.status(401).json({ error: 'Password required', needs_password: true });
+      if (g.visibility === 'password' && g.password_hash && galleryLocked(g, req)) return res.status(429).json({ error: 'Too many wrong passwords. Try again in 15 minutes.', needs_password: true });
+      if (!portalAllowed(g, req.query.pw, req)) return res.status(401).json({ error: 'Password required', needs_password: true });
 
       let settings = {}; try { settings = JSON.parse(g.settings || '{}'); } catch {}
       const favCounts = {};
@@ -2907,7 +2943,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
-      if (!portalAllowed(g, req.body.pw)) return res.status(401).json({ error: 'Password required' });
+      if (!portalAllowed(g, req.body.pw, req)) return res.status(401).json({ error: 'Password required' });
       const { asset_id, contact } = req.body;
       if (!asset_id) return res.status(400).json({ error: 'asset_id required' });
       const who = (contact || 'guest').toString().slice(0, 120);
@@ -2926,7 +2962,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
-      if (!portalAllowed(g, req.body.pw)) return res.status(401).json({ error: 'Password required' });
+      if (!portalAllowed(g, req.body.pw, req)) return res.status(401).json({ error: 'Password required' });
       const who = (req.body.contact || 'guest').toString().slice(0, 120);
       const name = String(req.body.name || 'My selection').slice(0, 120);
       let assetIds = Array.isArray(req.body.asset_ids) && req.body.asset_ids.length ? req.body.asset_ids
@@ -2953,7 +2989,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
-      if (!portalAllowed(g, req.body.pw)) return res.status(401).json({ error: 'Password required' });
+      if (!portalAllowed(g, req.body.pw, req)) return res.status(401).json({ error: 'Password required' });
       const { asset_id, contact, body } = req.body;
       if (!body || !body.trim()) return res.status(400).json({ error: 'body required' });
       const id = generateId();
@@ -2970,7 +3006,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
-      if (!portalAllowed(g, req.body.pw)) return res.status(401).json({ error: 'Password required' });
+      if (!portalAllowed(g, req.body.pw, req)) return res.status(401).json({ error: 'Password required' });
       let settings = {}; try { settings = JSON.parse(g.settings || '{}'); } catch {}
       const policy = settings.download_policy || 'web';
       if (policy === 'none') return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
@@ -2996,7 +3032,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
-      if (!portalAllowed(g, req.body.pw)) return res.status(401).json({ error: 'Password required' });
+      if (!portalAllowed(g, req.body.pw, req)) return res.status(401).json({ error: 'Password required' });
       const s = db.prepare('SELECT * FROM ms_proofing_sets WHERE id = ? AND gallery_id = ?').get(req.params.setId, g.id);
       if (!s) return res.status(404).json({ error: 'Selection not found' });
       if (!['open', 'revision'].includes(s.status)) return res.status(409).json({ error: 'This selection is closed' });
@@ -3025,7 +3061,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
-      if (!portalAllowed(g, req.body.pw)) return res.status(401).json({ error: 'Password required' });
+      if (!portalAllowed(g, req.body.pw, req)) return res.status(401).json({ error: 'Password required' });
       const s = db.prepare('SELECT * FROM ms_proofing_sets WHERE id = ? AND gallery_id = ?').get(req.params.setId, g.id);
       if (!s) return res.status(404).json({ error: 'Selection not found' });
       const count = db.prepare('SELECT COUNT(*) n FROM ms_proofing_selections WHERE set_id = ?').get(s.id).n;

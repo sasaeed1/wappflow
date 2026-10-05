@@ -79,6 +79,38 @@ const register = async (email, name) => (await call('POST', '/auth/register', { 
     r = await call('POST', '/lost-reasons', { token: MT, body: { text: 'x' } });
     ok(r.status === 403, 'a User-role member cannot edit the list');
 
+    console.log('\n[3] Uploaded files cannot run as pages; names are unguessable');
+    fs.mkdirSync(path.join(DATA, 'uploads'), { recursive: true });
+    fs.writeFileSync(path.join(DATA, 'uploads', 'evil.html'), '<script>alert(1)</script>');
+    let u = await fetch(`${BASE}/uploads/evil.html`);
+    ok(/sandbox/.test(u.headers.get('content-security-policy') || '') && /attachment/.test(u.headers.get('content-disposition') || ''), 'an uploaded HTML file is served as a sandboxed download');
+    ok(u.headers.get('x-content-type-options') === 'nosniff', 'uploads are served with nosniff');
+    r = await call('GET', '/auth/me', { token: OT });
+    ok(/default-src 'none'/.test(r.headers.get('content-security-policy') || ''), 'API JSON carries a strict CSP');
+    const SRV = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+    ok(!/cb\(null, `voice-\$\{Date\.now\(\)\}\.\$\{ext\}`\)/.test(SRV) && /unguessable\(\)/.test(SRV), 'voice-note and file names carry random bits');
+
+    console.log('\n[4] Gallery passwords: bcrypt, legacy upgrade, lockout');
+    r = await call('POST', '/media/projects', { token: OT, body: { title: 'Dubai wedding' } });
+    const PID = r.data?.project?.id || r.data?.id;
+    r = await call('POST', `/media/projects/${PID}/galleries`, { token: OT, body: { title: 'Highlights', visibility: 'password', password: 'sunset-42' } });
+    const GID = r.data?.id || r.data?.gallery?.id;
+    ok(!!GID, 'password gallery created');
+    ok(db.prepare('SELECT password_hash FROM ms_galleries WHERE id = ?').get(GID).password_hash.startsWith('$2'), 'new gallery passwords are bcrypt');
+    db.prepare("INSERT INTO ms_assets (id, workspace_id, project_id, storage_key, filename, mime) VALUES ('a1', ?, ?, 'media/x.jpg', 'x.jpg', 'image/jpeg')").run(WS, PID);
+    db.prepare("INSERT INTO ms_gallery_assets (gallery_id, asset_id) VALUES (?, 'a1')").run(GID);
+    r = await call('POST', `/media/galleries/${GID}/publish`, { token: OT, body: { notify: false } });
+    const TOKEN = db.prepare('SELECT share_token FROM ms_galleries WHERE id = ?').get(GID).share_token;
+    ok(!!TOKEN, 'gallery published');
+    const legacy = require('crypto').createHash('sha256').update(`${GID}::old-pass`).digest('hex');
+    db.prepare('UPDATE ms_galleries SET password_hash = ? WHERE id = ?').run(legacy, GID);
+    r = await call('GET', `/media/portal/${TOKEN}?pw=old-pass`);
+    ok(r.status === 200, 'an old (SHA-256) password still opens the gallery');
+    ok(db.prepare('SELECT password_hash FROM ms_galleries WHERE id = ?').get(GID).password_hash.startsWith('$2'), '…and is upgraded to bcrypt on that visit');
+    for (let i = 0; i < 10; i++) await call('GET', `/media/portal/${TOKEN}?pw=wrong-${i}`);
+    r = await call('GET', `/media/portal/${TOKEN}?pw=old-pass`);
+    ok(r.status === 429, 'after 10 wrong guesses even the right password waits 15 minutes');
+
     if (globalThis.MORE_TESTS) await globalThis.MORE_TESTS({ call, db, OT, MT, WS, leadId, memberId, ok, API, BASE, DATA, register });
   } catch (e) {
     fails++; console.error('Test crashed:', e); console.error(log.slice(-3000));

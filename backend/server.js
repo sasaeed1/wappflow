@@ -90,6 +90,18 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// API responses are data, never pages: a JSON reply gets the strictest policy so
+// nothing in it can ever be rendered or framed as a document (PROP-006). Applied only
+// to JSON so file downloads (PDFs, exports) keep working in the browser's viewer.
+app.use('/api', (req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (!res.headersSent) res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+    return json(body);
+  };
+  next();
+});
+
 // Rate limiter — exempt the /uploads static path so loading a chat full of images
 // doesn't trip the per-IP limit and start returning 429s for legitimate media.
 const limiter = rateLimit({
@@ -135,9 +147,22 @@ app.use('/api/payments/webhook', express.raw({ type: () => true, limit: '1mb' })
 app.use(['/api/webhooks/instagram', '/api/webhooks/facebook'], express.raw({ type: () => true, limit: '2mb' }));
 app.use(express.json({ limit: '50mb' }));
 // Static uploads — add an explicit Access-Control-Allow-Origin so cross-origin <img> tags work.
+// Files under /uploads are reachable by anyone holding the link, so the link is the
+// secret: every new upload name carries 128 random bits (PROP-006; outgoing voice
+// notes were named by timestamp alone, lead and chat files by timestamp + the
+// original name). Anything that a browser could run as a page — HTML, SVG, XML — is
+// served as a download inside a sandbox, so an uploaded file can never execute
+// script on our origin.
+function unguessable() { return require('crypto').randomBytes(16).toString('hex'); }
+const ACTIVE_CONTENT = /\.(html?|xhtml|svgz?|xml|xsl|js|mjs)$/i;
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (ACTIVE_CONTENT.test(req.path)) {
+    res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+    res.setHeader('Content-Disposition', 'attachment');
+  }
   next();
 }, express.static(uploadsDir));
 
@@ -149,7 +174,7 @@ const upload = multer({
       const safe = (file.originalname || 'file')
         .normalize('NFKD').replace(/[^\w.\-]/g, '_')
         .slice(0, 100);
-      cb(null, `${Date.now()}-${safe}`);
+      cb(null, `${Date.now()}-${unguessable()}-${safe}`);
     }
   }),
   limits: { fileSize: 16 * 1024 * 1024 }
@@ -180,7 +205,7 @@ const voiceUpload = multer({
                 : mt.includes('mpeg') || mt.includes('mp3') ? 'mp3'
                 : (file.originalname && file.originalname.includes('.')) ? file.originalname.split('.').pop()
                 : 'ogg';
-      cb(null, `voice-${Date.now()}.${ext}`);
+      cb(null, `voice-${Date.now()}-${unguessable()}.${ext}`);
     }
   }),
   limits: { fileSize: 16 * 1024 * 1024 }
@@ -4625,7 +4650,7 @@ const mammoth = require('mammoth');
 const knowledgeUpload = multer({
   storage: multer.diskStorage({
     destination: uploadsDir,
-    filename: (req, file, cb) => cb(null, `knowledge-${Date.now()}-${file.originalname}`)
+    filename: (req, file, cb) => cb(null, `knowledge-${Date.now()}-${unguessable()}-${(file.originalname || 'file').normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100)}`)
   }),
   limits: { fileSize: 20 * 1024 * 1024 }
 });
