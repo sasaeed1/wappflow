@@ -29,7 +29,7 @@ function AcceptInviteContent() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (form.password.length < 8) { setError('Password must be at least 8 characters'); return; }
     if (form.password !== form.confirm) { setError('Passwords do not match'); return; }
     setSubmitting(true);
     try {
@@ -137,10 +137,10 @@ function AcceptInviteContent() {
                   <div style={{ position: 'relative' }}>
                     <Lock size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                     <Input
-                      type={showPwd ? 'text' : 'password'} required minLength={6}
+                      type={showPwd ? 'text' : 'password'} required minLength={8}
                       value={form.password}
                       onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                      placeholder="At least 6 characters"
+                      placeholder="At least 8 characters"
                       style={{ paddingLeft: 40, paddingRight: 44 }}
                     />
                     <button type="button" onClick={() => setShowPwd(s => !s)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}>

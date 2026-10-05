@@ -3265,7 +3265,8 @@ app.get('/api/reports/overview', auth, requirePerm('view_reports'), (req, res) =
 
     res.json({
       leadsOverTime, revenueOverTime, pipeline, sources, agentPerf,
-      avgResponseMinutes: responseTime?.avg_minutes || 0,
+      // null when nobody has replied yet, so the UI shows — rather than a fake "0m" (PROP-006).
+      avgResponseMinutes: responseTime?.avg_minutes ?? null,
       lostReasons, platforms, currencySymbol: cs?.currency_symbol || '$'
     });
   } catch (e) { res.status(500).json({ error: e.message }); }

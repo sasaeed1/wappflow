@@ -333,7 +333,7 @@ export default function KnowledgePage() {
               value={crawlUrl}
               onChange={e => setCrawlUrl(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleCrawl(); }}
-              placeholder="www.aitech.edu.pk"
+              placeholder="www.yourbusiness.com"
               style={{ flex: 1, minWidth: 220, padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 13, color: 'var(--text)', background: 'var(--surface)', outline: 'none' }}
             />
             <button onClick={handleCrawl} disabled={crawling} style={{

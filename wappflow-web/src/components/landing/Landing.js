@@ -37,7 +37,7 @@ import {
   MessageSquare, Mail, Database, Target, Wand2, Video,
   Palette, Images, Crown, Star, Mic, Instagram, Facebook, Globe2, PenLine,
   Receipt, ShoppingBag, Aperture, HardDrive, ScrollText, RefreshCw,
-  Smartphone, Monitor, FolderOpen, Eye, Wallet, BadgeCheck,
+  Smartphone, Monitor, FolderOpen, Eye, KeyRound, Wallet, BadgeCheck,
   Timer, Share2, Bell, Building2, Scissors, GraduationCap, ShoppingCart, MapPin,
 } from 'lucide-react';
 

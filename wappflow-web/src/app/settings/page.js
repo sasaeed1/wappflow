@@ -1666,7 +1666,7 @@ function PasswordTab({ showToast }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.new_password.length < 6) { showToast('New password must be at least 6 characters', 'error'); return; }
+    if (form.new_password.length < 8) { showToast('New password must be at least 8 characters', 'error'); return; }
     if (form.new_password !== form.confirm_password) { showToast('New passwords do not match', 'error'); return; }
     setSaving(true);
     try {
@@ -1709,7 +1709,7 @@ function PasswordTab({ showToast }) {
                 type={showNew ? 'text' : 'password'}
                 value={form.new_password}
                 onChange={e => setForm(f => ({ ...f, new_password: e.target.value }))}
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
                 required
                 style={{ paddingRight: 44 }}
               />
@@ -1721,10 +1721,10 @@ function PasswordTab({ showToast }) {
           {form.new_password.length > 0 && (
             <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
               {[...Array(4)].map((_, i) => (
-                <div key={i} style={{ height: 3, flex: 1, borderRadius: 2, background: form.new_password.length >= [6, 8, 10, 12][i] ? ['#ef4444','#f97316','#f59e0b','#10b981'][i] : 'var(--border)', transition: 'background 0.2s' }} />
+                <div key={i} style={{ height: 3, flex: 1, borderRadius: 2, background: form.new_password.length >= [8, 10, 12, 14][i] ? ['#ef4444','#f97316','#f59e0b','#10b981'][i] : 'var(--border)', transition: 'background 0.2s' }} />
               ))}
               <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 4, whiteSpace: 'nowrap' }}>
-                {form.new_password.length < 6 ? 'Too short' : form.new_password.length < 8 ? 'Weak' : form.new_password.length < 10 ? 'Fair' : form.new_password.length < 12 ? 'Good' : 'Strong'}
+                {form.new_password.length < 8 ? 'Too short' : form.new_password.length < 10 ? 'Weak' : form.new_password.length < 12 ? 'Fair' : form.new_password.length < 14 ? 'Good' : 'Strong'}
               </span>
             </div>
           )}
@@ -3216,7 +3216,7 @@ function AICommandTab({ showToast }) {
               <input aria-label="Language"
                 value={profile.language || ''}
                 onChange={e => setProfile(p => ({ ...p, language: e.target.value }))}
-                placeholder="English / Urdu / Spanish..."
+                placeholder="English / Arabic / Spanish..."
                 style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
               />
             </div>

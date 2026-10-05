@@ -98,6 +98,10 @@ module.exports = function mountSystem(app, deps) {
         { key: 'memory', label: 'Memory', value: `${mem.pct}% used`, level: level(mem.pct, 85, 95) },
         d ? { key: 'disk', label: 'Disk (data volume)', value: `${d.pct}% used`, level: level(d.pct, 80, 92) } : { key: 'disk', label: 'Disk', value: 'unavailable', level: 'unknown' },
         { key: 'backup', label: 'Newest backup', value: backup ? `${backup.age_hours} h ago` : 'none found', level: !backup ? 'critical' : level(backup.age_hours, 30, 72) },
+        // Password resets, email verification and support replies all depend on it,
+        // and every one of them fails quietly without it (PROP-006).
+        { key: 'mail', label: 'Platform email (resets, verification, support)', value: process.env.SMTP_HOST ? `via ${process.env.SMTP_HOST}` : 'not set up — add SMTP_* to .env', level: process.env.SMTP_HOST ? 'ok' : 'critical' },
+        { key: 'offsite', label: 'Off-site backups', value: process.env.BACKUP_R2_BUCKET ? `R2 bucket ${process.env.BACKUP_R2_BUCKET}` : 'off — set BACKUP_R2_BUCKET', level: process.env.BACKUP_R2_BUCKET && process.env.BACKUP_ENCRYPTION_KEY ? 'ok' : 'warn' },
         { key: 'wal', label: 'Database write-ahead log', value: `${Math.round(database.wal / 1048576)} MB`, level: level(database.wal / 1048576, 256, 1024) },
       ];
       const overall = checks.concat(jobs).some((c) => c.level === 'critical') ? 'critical'

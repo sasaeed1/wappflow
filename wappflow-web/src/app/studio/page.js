@@ -55,7 +55,7 @@ function NewProjectModal({ onClose, onCreated }) {
         </div>
 
         <label className="ms-label">Shoot name</label>
-        <input aria-label="Shoot name" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ayesha &amp; Bilal — Wedding" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
+        <input aria-label="Shoot name" value={title} onChange={e => setTitle(e.target.value)} placeholder="Sofia &amp; Daniel — Wedding" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
 
         <label className="ms-label">Type</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>

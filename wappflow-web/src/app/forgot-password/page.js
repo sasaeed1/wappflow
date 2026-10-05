@@ -48,8 +48,8 @@ export default function ForgotPasswordPage() {
               expires in an hour.
             </p>
             <p style={{ ...sub, fontSize: 12.5, marginTop: 14 }}>
-              Nothing arrived? Check spam, or ask your studio owner — if your workspace has
-              no email sending configured, they may need to set it up.
+              Nothing arrived after a few minutes? Check your spam folder, then ask your
+              workspace owner{process.env.NEXT_PUBLIC_SUPPORT_EMAIL ? <> or email <a href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL}`} style={{ color: 'var(--accent)' }}>{process.env.NEXT_PUBLIC_SUPPORT_EMAIL}</a></> : ' or WappFlow support'}.
             </p>
           </>
         ) : (
