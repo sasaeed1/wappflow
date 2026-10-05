@@ -763,3 +763,13 @@ export const accountAPI = {
   setTeamPolicy:   (require_2fa)   => api.put('/workspace/security', { require_2fa }),
   resendVerify:    ()              => api.post('/account/verify-email/send'),
 };
+
+// Pipelines (PROP-006) — separate boards over the one lead lifecycle.
+export const pipelinesAPI = {
+  list:      ()             => api.get('/pipelines'),
+  create:    (data)         => api.post('/pipelines', data),
+  update:    (id, data)     => api.put(`/pipelines/${id}`, data),
+  remove:    (id)           => api.delete(`/pipelines/${id}`),
+  moveLeads: (id, lead_ids) => api.post(`/pipelines/${id}/leads`, { lead_ids }),
+};
+

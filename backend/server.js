@@ -1941,6 +1941,13 @@ app.get('/api/leads', auth, (req, res) => {
     if (source) { query += ' AND lead_source = ?'; params.push(source); }
     if (platform && platform !== 'all') { query += ' AND platform_source = ?'; params.push(platform); }
     if (account_id) { query += ' AND platform_account_id = ?'; params.push(account_id); }
+    // Pipeline board (PROP-006): 'default' (or the default pipeline's id) = leads with no pipeline.
+    if (req.query.pipeline_id) {
+      const pid = String(req.query.pipeline_id);
+      const isDefault = pid === 'default' || !!db.prepare('SELECT 1 FROM pipelines WHERE id = ? AND workspace_id = ? AND is_default = 1').get(pid, req.workspaceId);
+      if (isDefault) query += ' AND pipeline_id IS NULL';
+      else { query += ' AND pipeline_id = ?'; params.push(pid); }
+    }
     query += ' ORDER BY last_message_at DESC';
 
     // Phase 4: opt-in paging. Without ?limit the response shape and contents are
@@ -2357,6 +2364,8 @@ app.post('/api/leads', auth, (req, res) => {
       INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, status, first_message, estimated_value, email, address, date_of_birth, lead_source)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(leadId, req.userId, req.workspaceId, customer_name, customer_phone, status || 'New', first_message, estimated_value, email, address, date_of_birth, lead_source);
+    // Created from a pipeline's board → it belongs on that board (PROP-006).
+    if (req.body.pipeline_id) pipelinesApi.assign(req.workspaceId, leadId, req.body.pipeline_id);
 
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
     addContactHistory(leadId, req.userId, 'created', 'Lead created');
@@ -2369,6 +2378,13 @@ app.post('/api/leads', auth, (req, res) => {
 
 app.put('/api/leads/:id', auth, (req, res) => {
   try {
+    // Same visibility rule as reading it: a member who can only see their assigned
+    // leads can't edit someone else's by id either (PROP-006).
+    if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
+    if (req.body.pipeline_id !== undefined) {
+      if (!pipelinesApi.assign(req.workspaceId, req.params.id, req.body.pipeline_id)) return res.status(400).json({ error: 'That pipeline does not exist' });
+      if (Object.keys(req.body).length === 1) return res.json({ ok: true, lead: db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id) });
+    }
     const allowed = ['customer_name', 'customer_phone', 'status', 'estimated_value', 'actual_sale',
       'email', 'address', 'date_of_birth', 'lead_source', 'assigned_to', 'lead_score'];
     const fields = [], params = [];
@@ -3308,6 +3324,13 @@ app.delete('/api/lost-reasons/:id', auth, requirePerm('manage_settings'), (req, 
   if (!r.changes) return res.status(404).json({ error: 'Not found' });
   logAudit(req.workspaceId, req.userId, 'lost_reason_deleted', 'lost_reason', req.params.id, {});
   res.json({ ok: true });
+});
+
+// Multiple pipelines (PROP-006) — boards over the one lifecycle; see pipelines.js.
+const pipelinesApi = require('./pipelines')(app, db, {
+  auth, requirePerm, generateId, logAudit, getScopedLead,
+  broadcastToWorkspace: (...a) => broadcastToWorkspace(...a),
+  hasFeature: (ws, key) => { try { return entitlements.getEntitlements(db, ws).features[key] !== false; } catch { return true; } },
 });
 
 app.get('/api/tags', auth, (req, res) => {

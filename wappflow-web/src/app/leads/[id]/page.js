@@ -35,6 +35,7 @@ import { buildInvoiceHTML } from '@/lib/invoiceDoc';
 import { useRealtime } from '@/components/shell/realtime';
 import { clickable } from '@/lib/a11y';
 import { usePermissions } from '@/lib/permissions';
+import { pipelinesAPI } from '@/lib/api';
 import { WaTicks, QuotedSnippet, SpecialContent, ReactionsRow, MessageActions, messageMeta, messageReactions } from '@/components/WaMessageParts';
 
 // Click-to-edit field — any lead detail can be edited in place (item 26):
@@ -628,6 +629,9 @@ function LeadStudioSection({ leadId }) {
 
 export default function LeadDetailPage() {
   const perms = usePermissions();
+  // Pipelines (PROP-006): shown only when the workspace has more than one board.
+  const [pipes, setPipes] = useState([]);
+  useEffect(() => { pipelinesAPI.list().then((r) => setPipes(r.data.pipelines || [])).catch(() => {}); }, []);
   const router = useRouter();
   const confirm = useConfirm();
   const params = useParams();
@@ -1541,6 +1545,14 @@ useEffect(() => {
                   type="select"
                   selectOptions={[{ value: '', label: 'Unassigned' }, ...teamMembers.map(m => ({ value: m.id, label: m.name }))]}
                   onSave={(v) => saveField('assigned_to', v)} />
+                {pipes.length > 1 && (
+                  <InlineEditField icon={Layers} color="#8b5cf6" bg="rgba(139,92,246,0.12)" label="Pipeline"
+                    value={lead.pipeline_id || pipes.find(p => p.is_default)?.id || ''}
+                    display={(pipes.find(p => p.id === lead.pipeline_id) || pipes.find(p => p.is_default))?.name || null}
+                    type="select"
+                    selectOptions={pipes.map(p => ({ value: p.id, label: p.name }))}
+                    onSave={async (v) => { await leadsAPI.update(leadId, { pipeline_id: v }); await fetchAll(); }} />
+                )}
 
                 <div style={{ height: 1, background: 'var(--surface2)', margin: '6px 0 2px' }} />
                 <InlineEditField icon={DollarSign} color={sc.dot} bg={sc.bg} label="Deal Value"

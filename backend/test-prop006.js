@@ -169,6 +169,44 @@ const register = async (email, name) => (await call('POST', '/auth/register', { 
     r = await call('POST', '/account/verify-email/send', { token: nu.token });
     ok(r.status === 200 && r.data.already, 'resending after confirming is a no-op');
 
+    console.log('\n[8] Multiple pipelines');
+    r = await call('GET', '/pipelines', { token: OT });
+    const DEF = r.data.pipelines?.find((p) => p.is_default);
+    ok(DEF && r.data.pipelines.length === 1 && r.data.stages.length === 6, 'every workspace starts with one default pipeline over the six stages');
+    ok(r.data.can_add === false, 'Creator cannot add a second pipeline');
+    r = await call('POST', '/pipelines', { token: OT, body: { name: 'Corporate' } });
+    ok(r.status === 402 && r.data.upgrade, '…and is told it needs Studio');
+    db.prepare("INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, 'studio') ON CONFLICT(workspace_id) DO UPDATE SET plan = 'studio'").run(WS);
+    await new Promise((res) => setTimeout(res, 31000)); // entitlements cache is 30 s
+    r = await call('POST', '/pipelines', { token: OT, body: { name: 'Corporate', stage_labels: { Interested: 'Proposal sent', New: 'New' } } });
+    ok(r.status === 201 && r.data.pipeline.stage_labels.Interested === 'Proposal sent' && !r.data.pipeline.stage_labels.New, 'Studio adds a pipeline with its own stage names');
+    const CORP = r.data.pipeline.id;
+    r = await call('POST', '/pipelines', { token: MT, body: { name: 'Sneaky' } });
+    ok(r.status === 403, 'a User-role member cannot add pipelines');
+    r = await call('POST', '/leads', { token: OT, body: { customer_name: 'Gulf Events LLC', customer_phone: '+971509998877', pipeline_id: CORP } });
+    const corpLead = r.data?.lead?.id || r.data?.id;
+    r = await call('GET', `/leads?pipeline_id=${CORP}`, { token: OT });
+    ok(r.data.leads.length === 1 && r.data.leads[0].id === corpLead, 'a lead created on a board lands on that board');
+    r = await call('GET', '/leads?pipeline_id=default', { token: OT });
+    ok(!r.data.leads.some((l) => l.id === corpLead), '…and not on the default board');
+    r = await call('PUT', `/leads/${corpLead}`, { token: OT, body: { pipeline_id: 'not-a-pipeline' } });
+    ok(r.status === 400, 'a lead cannot be moved to a pipeline that does not exist');
+    const other = await register('rival@other.test', 'Rival');
+    r = await call('POST', `/pipelines/${CORP}/leads`, { token: other.token, body: { lead_ids: [corpLead] } });
+    ok(r.status === 404 || (r.status === 200 && r.data.moved === 0), 'another workspace cannot touch this pipeline');
+    r = await call('DELETE', `/pipelines/${CORP}`, { token: OT });
+    ok(r.status === 200 && r.data.leads_moved_to_default === 1, 'deleting a pipeline moves its leads to the default');
+    r = await call('GET', '/leads?pipeline_id=default', { token: OT });
+    ok(r.data.leads.some((l) => l.id === corpLead), '…where they appear, nothing lost');
+    r = await call('DELETE', `/pipelines/${DEF.id}`, { token: OT });
+    ok(r.status === 400, 'the default pipeline cannot be deleted');
+
+    console.log('\n[9] Editing respects lead visibility');
+    const hidden = (await call('POST', '/leads', { token: OT, body: { customer_name: 'Unassigned Co', customer_phone: '+33612345678' } })).data;
+    const hiddenId = hidden?.lead?.id || hidden?.id;
+    r = await call('PUT', `/leads/${hiddenId}`, { token: MT, body: { customer_name: 'Renamed' } });
+    ok(r.status === 404, 'a member who only sees assigned leads cannot edit another lead by id');
+
     if (globalThis.MORE_TESTS) await globalThis.MORE_TESTS({ call, db, OT, MT, WS, leadId, memberId, ok, API, BASE, DATA, register });
   } catch (e) {
     fails++; console.error('Test crashed:', e); console.error(log.slice(-3000));
