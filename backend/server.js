@@ -1450,6 +1450,8 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Confirm the address (never blocks: mail may not be configured yet).
     if (accountSecurity) accountSecurity.sendVerification({ id: userId, email }).catch(() => {});
+    // Every new workspace starts on a 14-day Studio trial (owner decision, PROP-006).
+    try { ccMount?.trials?.startTrial(workspaceId); } catch {}
     const token = signSession(userId);
     res.status(201).json({
       token,
@@ -1461,6 +1463,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+let ccMount = null; // Command Center (mounted last); its trials API starts sign-up trials (PROP-006)
 let accountSecurity = null; // mounted below with the other account modules (PROP-006)
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
@@ -1609,6 +1612,7 @@ app.post('/api/auth/google', async (req, res) => {
         .run(generateId(), workspaceId, userId, name || wsName);
       db.prepare('INSERT OR IGNORE INTO company_settings (id, user_id, company_name) VALUES (?, ?, ?)').run(generateId(), userId, wsName);
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      try { ccMount?.trials?.startTrial(workspaceId); } catch {} // 14-day Studio trial (PROP-006)
     }
 
     // Google has already verified this address; two-step sign-in still applies.
@@ -2090,14 +2094,32 @@ app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
       if (!quoted) return res.status(400).json({ error: 'The message you are replying to is not in this conversation' });
     }
 
-    // Only WhatsApp has a real outbound send wired today. Other platforms persist the message
-    // locally so the user sees their draft in the chat history, but flag that delivery is pending.
+    // WhatsApp and (since PROP-006) Instagram/Facebook are sent for real. Anything
+    // that can't be delivered is kept as a draft in the chat, with the reason.
     let delivered = false;
     let waId = null;
+    let deliveryError = null;
     if (targetPlatform === 'whatsapp') {
       const opts = quoted && quoted.wa_message_id ? { quotedMessageId: quoted.wa_message_id } : {};
       waId = await whatsappService.sendMessage(lead.customer_phone, body, null, lead.workspace_id, opts) || null;
       delivered = true;
+    } else if (targetPlatform === 'instagram' || targetPlatform === 'facebook') {
+      // The contact's id on that platform: the lead itself if it came from there,
+      // otherwise a connected channel recorded on the lead.
+      let recipientId = null, accountId = null;
+      if (lead.platform_source === targetPlatform) { recipientId = lead.customer_phone; accountId = lead.platform_account_id; }
+      else {
+        const ch = db.prepare('SELECT identifier, platform_account_id FROM lead_channels WHERE lead_id = ? AND platform = ? LIMIT 1').get(leadId, targetPlatform);
+        if (ch) { recipientId = ch.identifier; accountId = ch.platform_account_id; }
+      }
+      const account = accountId
+        ? db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(accountId, req.workspaceId, targetPlatform)
+        : db.prepare('SELECT * FROM platform_accounts WHERE workspace_id = ? AND platform = ? ORDER BY slot_index LIMIT 1').get(req.workspaceId, targetPlatform);
+      if (!account) deliveryError = `No ${targetPlatform === 'instagram' ? 'Instagram' : 'Facebook'} account is connected (Settings → Connections).`;
+      else {
+        const r = await require('./meta-send').sendMetaText({ account, recipientId, text: body });
+        delivered = r.delivered; deliveryError = r.error || null;
+      }
     }
 
     const msgId = generateId();
@@ -2109,7 +2131,7 @@ app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
       last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
     addContactHistory(leadId, req.userId, 'message', `Sent ${targetPlatform} message: ${body.substring(0, 80)}${body.length > 80 ? '…' : ''}`);
 
-    res.json({ message: 'Sent', delivered, platform: targetPlatform, sent: db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId) });
+    res.json({ message: delivered ? 'Sent' : 'Saved as draft', delivered, delivery_error: deliveryError, platform: targetPlatform, sent: db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId) });
   } catch (e) { res.status(500).json({ error: e.message || e.toString() }); }
 });
 
@@ -2285,7 +2307,9 @@ app.post('/api/leads/:leadId/email-workflows', auth, (req, res) => {
     db.prepare(`
       INSERT INTO email_workflows (id, user_id, workspace_id, lead_id, template_id, template_name, template_subject, status, scheduled_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-    `).run(id, req.workspaceOwnerId, req.workspaceId, leadId, template_id, template.name, template.subject, scheduled_at || new Date().toISOString());
+    `).run(id, req.workspaceOwnerId, req.workspaceId, leadId, template_id, template.name, template.subject,
+      // The template's own "delay in days" now applies when no date is given (PROP-006).
+      scheduled_at || new Date(Date.now() + (Number(template.delay_days) || 0) * 86400000).toISOString());
     addContactHistory(leadId, req.userId, 'email', `Email workflow started: ${template.name}`);
     const wf = db.prepare('SELECT * FROM email_workflows WHERE id = ?').get(id);
     res.status(201).json({ workflow: wf });
@@ -2295,6 +2319,9 @@ app.post('/api/leads/:leadId/email-workflows', auth, (req, res) => {
 app.put('/api/email-workflows/:id/status', auth, (req, res) => {
   try {
     const { status } = req.body;
+    // Sending is the job's (email-workflows.js); a person can stop a scheduled email
+    // or put a failed one back in the queue, but can't mark one "sent" (PROP-006).
+    if (!['cancelled', 'pending'].includes(status)) return res.status(400).json({ error: 'You can cancel a scheduled email or retry a failed one' });
     db.prepare(`UPDATE email_workflows SET status = ?, sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE sent_at END WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`)
       .run(status, status, req.params.id, req.workspaceId, req.workspaceOwnerId);
     const wf = db.prepare('SELECT * FROM email_workflows WHERE id = ?').get(req.params.id);
@@ -5403,6 +5430,32 @@ Lead status: ${lead.status}
 //  PLATFORM ACCOUNTS — CRUD
 // ════════════════════════════════════════════════════════════
 
+// Connected-account credentials never go back to the browser in full (PROP-006):
+// the list was handing every member, of any role, each Meta page token and app
+// secret. Secret fields come back masked with a has_<field> flag; saving the mask
+// unchanged keeps the stored value, exactly like the SMTP password.
+const CRED_MASK = '••••••••';
+const SECRET_CRED = /secret|token|password|pass$|key$/i;
+function publicCredentials(raw) {
+  let c = {}; try { c = JSON.parse(raw || '{}'); } catch {}
+  const out = {};
+  for (const [k, v] of Object.entries(c)) {
+    if (SECRET_CRED.test(k)) { out[k] = v ? CRED_MASK : ''; out[`has_${k}`] = !!v; }
+    else out[k] = v;
+  }
+  return out;
+}
+function mergeCredentials(storedRaw, incoming) {
+  let stored = {}; try { stored = JSON.parse(storedRaw || '{}'); } catch {}
+  const next = { ...stored };
+  for (const [k, v] of Object.entries(incoming || {})) {
+    if (k.startsWith('has_')) continue;
+    if (SECRET_CRED.test(k) && v === CRED_MASK) continue; // untouched secret
+    next[k] = v;
+  }
+  return next;
+}
+
 app.get('/api/platform-accounts', auth, (req, res) => {
   try {
     const { platform } = req.query;
@@ -5410,10 +5463,7 @@ app.get('/api/platform-accounts', auth, (req, res) => {
     const params = [req.workspaceId];
     if (platform) { query += ' AND platform = ?'; params.push(platform); }
     query += ' ORDER BY platform, slot_index ASC';
-    const accounts = db.prepare(query).all(...params).map(a => ({
-      ...a,
-      credentials: (() => { try { return JSON.parse(a.credentials || '{}'); } catch { return {}; } })()
-    }));
+    const accounts = db.prepare(query).all(...params).map(a => ({ ...a, credentials: publicCredentials(a.credentials) }));
     res.json({ accounts });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -5466,13 +5516,13 @@ app.put('/api/platform-accounts/:id', auth, requirePerm('manage_whatsapp'), (req
     `).run(
       account_name || null,
       account_handle || null,
-      credentials ? JSON.stringify(credentials) : null,
+      credentials ? JSON.stringify(mergeCredentials(account.credentials, credentials)) : null,
       status || null,
       req.params.id
     );
 
     const updated = db.prepare('SELECT * FROM platform_accounts WHERE id = ?').get(req.params.id);
-    res.json({ account: { ...updated, credentials: (() => { try { return JSON.parse(updated.credentials || '{}'); } catch { return {}; } })() } });
+    res.json({ account: { ...updated, credentials: publicCredentials(updated.credentials) } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -6010,6 +6060,8 @@ app.get('/api/plans', (req, res) => {
 });
 
 // GET /api/message-queue — outbound queue status
+// DEPRECATED (PROP-006): nothing writes to outbound_message_queue — WhatsApp sends directly and
+// that flow is not to be touched — and no screen reads it. Kept per Article 11 (deprecate → remove).
 app.get('/api/message-queue', auth, (req, res) => {
   try {
     const items = db.prepare(`SELECT * FROM outbound_message_queue WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 100`).all(req.workspaceId);
@@ -6946,6 +6998,9 @@ require('./contracts-studio')(app, db, {
 //  COMMUNICATIONS 2.0  (additive — DMs/threads/mentions/pins/presence/search,
 //  real-time over SSE, + LiveKit voice/video/screenshare token minting)
 // ════════════════════════════════════════════════════════════
+// Email workflows are sent now — they were only ever recorded (PROP-006).
+require('./email-workflows')(app, db, { auth, generateId, getScopedLead, addContactHistory, logAudit, nodemailer, broadcastToWorkspace });
+
 commsApi = require('./comms')(app, db, {
   auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser, notify,
 });
@@ -7000,7 +7055,7 @@ console.log('🗄️  Storage route mounted (/api/storage/file/:key) · provider
 //  COMMAND CENTER  (platform control plane — additive, cross-tenant, own identity)
 //  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.
 // ════════════════════════════════════════════════════════════
-require('./command-center')(app, db, {
+ccMount = require('./command-center')(app, db, {
   auth, generateId, broadcastToUser, broadcastToWorkspace, logAudit, JWT_SECRET, notify,
   sendPlatformMail: require('./platform-mail').sendPlatformMail,
   // Reuse the workspace-owner SMTP seam so scheduled reports can be emailed.

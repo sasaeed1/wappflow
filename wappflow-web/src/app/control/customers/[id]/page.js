@@ -83,6 +83,11 @@ export default function Workspace360() {
         ) : <Pill tone="blue">{plan.key}</Pill>}
         <Pill tone={workspace.status === 'suspended' ? 'red' : 'green'}>{workspace.status}</Pill>
         {entitlements.grace_until && <Pill tone="amber">grace until {fmtWhen(entitlements.grace_until).split(',')[0]}</Pill>}
+        {plan.trial_ends_at && <Pill tone="blue">trial until {fmtWhen(plan.trial_ends_at).split(',')[0]}</Pill>}
+        {plan.trial_ends_at && can('manage_plans') && (<>
+          <Btn subtle color="#60a5fa" disabled={busy} onClick={() => act(() => ccApi.setTrial(id, 7))}>Extend trial 7 days</Btn>
+          <Btn subtle color="#9a9aa5" disabled={busy} onClick={async () => { if (await confirm({ title: 'End the trial now?', message: 'They move to Creator straight away and get a notice.', confirmLabel: 'End trial' })) act(() => ccApi.setTrial(id, 0)); }}>End trial</Btn>
+        </>)}
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

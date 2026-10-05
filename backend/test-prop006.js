@@ -170,6 +170,12 @@ const register = async (email, name) => (await call('POST', '/auth/register', { 
     ok(r.status === 200 && r.data.already, 'resending after confirming is a no-op');
 
     console.log('\n[8] Multiple pipelines');
+    r = await call('GET', '/workspace/plan-info', { token: OT });
+    ok((r.data.plan === 'studio' || r.data.plan_key === 'studio') && r.data.trial_ends_at && Math.round((new Date(r.data.trial_ends_at) - Date.now()) / 86400000) === 14, 'a new workspace starts on a 14-day Studio trial');
+    ok(r.data.features && r.data.features.sso !== true && r.data.features.api_access !== true && r.data.features.byok !== true, 'unbuilt Enterprise features are never switched on');
+    // The rest of this section exercises the Creator → Studio gate, so end the trial.
+    db.prepare("UPDATE workspace_plan SET plan = 'creator', trial_ends_at = NULL WHERE workspace_id = ?").run(WS);
+    await new Promise((res) => setTimeout(res, 31000)); // entitlements cache is 30 s
     r = await call('GET', '/pipelines', { token: OT });
     const DEF = r.data.pipelines?.find((p) => p.is_default);
     ok(DEF && r.data.pipelines.length === 1 && r.data.stages.length === 6, 'every workspace starts with one default pipeline over the six stages');
@@ -206,6 +212,17 @@ const register = async (email, name) => (await call('POST', '/auth/register', { 
     const hiddenId = hidden?.lead?.id || hidden?.id;
     r = await call('PUT', `/leads/${hiddenId}`, { token: MT, body: { customer_name: 'Renamed' } });
     ok(r.status === 404, 'a member who only sees assigned leads cannot edit another lead by id');
+
+    console.log('\n[10] Connected-account secrets stay on the server');
+    db.prepare("INSERT INTO platform_accounts (id, workspace_id, platform, account_name, account_handle, credentials, webhook_verify_token, status) VALUES ('ig1', ?, 'instagram', 'Studio IG', '1784', ?, 'vt-ig1', 'active')")
+      .run(WS, JSON.stringify({ app_id: '123', app_secret: 'APP-SECRET-XYZ', access_token: 'PAGE-TOKEN-XYZ' }));
+    r = await call('GET', '/platform-accounts', { token: MT });
+    const ig = r.data.accounts.find((a) => a.id === 'ig1');
+    ok(ig && !JSON.stringify(r.data).includes('PAGE-TOKEN-XYZ') && !JSON.stringify(r.data).includes('APP-SECRET-XYZ'), 'the list never returns page tokens or app secrets');
+    ok(ig.credentials.app_id === '123' && ig.credentials.has_access_token === true, '…but shows what is set');
+    r = await call('PUT', '/platform-accounts/ig1', { token: OT, body: { credentials: { ...ig.credentials, app_id: '456' } } });
+    const stored = JSON.parse(db.prepare("SELECT credentials FROM platform_accounts WHERE id = 'ig1'").get().credentials);
+    ok(stored.access_token === 'PAGE-TOKEN-XYZ' && stored.app_id === '456' && !('has_access_token' in stored), 'saving the form keeps the real secrets and changes the rest');
 
     if (globalThis.MORE_TESTS) await globalThis.MORE_TESTS({ call, db, OT, MT, WS, leadId, memberId, ok, API, BASE, DATA, register });
   } catch (e) {

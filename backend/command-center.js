@@ -646,8 +646,9 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
       const { plan } = req.body || {};
       if (!plan || !db.prepare('SELECT key FROM plans WHERE key = ?').get(plan)) return res.status(400).json({ error: 'Unknown plan' });
       const before = db.prepare('SELECT plan FROM workspace_plan WHERE workspace_id = ?').get(wid) || { plan: null };
+      // A deliberate plan change ends any running trial (PROP-006).
       db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, ?)
-        ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, updated_at = CURRENT_TIMESTAMP`).run(wid, plan);
+        ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, trial_ends_at = NULL, updated_at = CURRENT_TIMESTAMP`).run(wid, plan);
       entitlements.invalidate(wid);
       ccAudit(req, { action: 'workspace_plan_change', target_type: 'workspace', target_id: wid, workspace_id: wid, before, after: { plan } });
       emit({ workspace_id: wid, actor_id: req.admin.id, type: 'workspace_plan_changed', entity_type: 'workspace', entity_id: wid, payload: { plan } });
@@ -893,7 +894,7 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
         for (const wid of ids) {
           if (!db.prepare('SELECT id FROM workspaces WHERE id = ?').get(wid)) continue;
           if (action === 'plan') {
-            db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, ?) ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, updated_at = CURRENT_TIMESTAMP`).run(wid, params.plan);
+            db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, ?) ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, trial_ends_at = NULL, updated_at = CURRENT_TIMESTAMP`).run(wid, params.plan);
           } else if (action === 'suspend' || action === 'restore') {
             db.prepare('UPDATE workspaces SET status = ? WHERE id = ?').run(action === 'suspend' ? 'suspended' : 'active', wid);
           } else if (action === 'grace') {
@@ -1295,10 +1296,13 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   try { require('./cc-system')(app, ccDeps); } catch (e) { console.error('cc-system mount:', e.message); }
   try { require('./cc-admins')(app, ccDeps); } catch (e) { console.error('cc-admins mount:', e.message); }
   try { require('./cc-messages')(app, ccDeps); } catch (e) { console.error('cc-messages mount:', e.message); }
+  // 14-day Studio trials (PROP-006): started at sign-up, swept hourly, extendable here.
+  let trials = null;
+  try { trials = require('./trials')(app, db, { ...ccDeps, generateId: rid }); } catch (e) { console.error('trials mount:', e.message); }
   billingRef.current = billing;
 
   console.log('🛡️  Command Center mounted at /api/cc/* (+ explorer/support/timemachine/reports)');
-  return { platformAuth, emit, ccAudit, ensureSchema };
+  return { platformAuth, emit, ccAudit, ensureSchema, trials };
 };
 
 // Exposed for scripts/cc-create-admin.js

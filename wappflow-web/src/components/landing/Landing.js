@@ -37,7 +37,7 @@ import {
   MessageSquare, Mail, Database, Target, Wand2, Video,
   Palette, Images, Crown, Star, Mic, Instagram, Facebook, Globe2, PenLine,
   Receipt, ShoppingBag, Aperture, HardDrive, ScrollText, RefreshCw,
-  Smartphone, Monitor, FolderOpen, Eye, KeyRound, Wallet, BadgeCheck,
+  Smartphone, Monitor, FolderOpen, Eye, Wallet, BadgeCheck,
   Timer, Share2, Bell, Building2, Scissors, GraduationCap, ShoppingCart, MapPin,
 } from 'lucide-react';
 
@@ -200,7 +200,6 @@ const STAGES = [
       { icon: Target, title: 'Next best action', tag: 'AI',
         body: '“Send the December wedding package” — surfaced on the lead, not buried in a report.' },
     ],
-    note: 'Bring your own API key if you would rather the AI ran on your account. Enterprise customers usually do.',
   },
   {
     key: 'contract',
@@ -361,7 +360,7 @@ function ChainDemo() {
             </div>
           ))}
 
-          <p className="lp-stage-note">{stage.note}</p>
+          {stage.note && <p className="lp-stage-note">{stage.note}</p>}
         </div>
       </div>
     </div>
@@ -1188,11 +1187,7 @@ function Ai() {
               Examples are drawn from different businesses. The AI reads whatever your
               business actually talks about, in the languages your clients write in.
             </p>
-            <p className="lp-byok">
-              <KeyRound size={14} style={{ verticalAlign: -2, marginRight: 6, color: 'var(--lp-accent-2)' }} />
-              <strong>Bring your own key.</strong> Enterprise workspaces can run every AI feature on
-              their own provider account, so prompts and client data go where you decide they go.
-            </p>
+            {/* "Bring your own key" removed until it is built (PROP-006). */}
           </div>
         </div>
       </div>
@@ -1535,9 +1530,10 @@ const PLANS = [
     for: 'Groups, franchises and businesses with their own rules.',
     feats: [
       'Everything in Studio+, plus',
-      'API access and custom integrations',
-      'Bring your own AI keys (BYOK)',
-      'SSO and audit logs',
+      // API access, bring-your-own AI keys and SSO are not built yet; they come
+      // back here when they ship, never before (PROP-006).
+      'Custom integrations',
+      'Audit logs',
       'Dedicated support and custom branding',
       'Unlimited seats, leads and storage',
     ],

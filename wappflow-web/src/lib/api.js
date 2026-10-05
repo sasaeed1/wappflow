@@ -254,6 +254,9 @@ export const timelineAPI = {
   get: (leadId) => api.get(`/leads/${leadId}/timeline`),
 };
 
+/** @deprecated PROP-006 — nothing ever writes to the outbound queue (the WhatsApp flow sends
+ *  directly and is not to be touched), and no screen uses this. Kept per Article 11; remove
+ *  in the cleanup step. */
 export const messageQueueAPI = {
   getAll: () => api.get('/message-queue'),
   retry: (id) => api.post(`/message-queue/${id}/retry`),

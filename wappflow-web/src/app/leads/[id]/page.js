@@ -1078,10 +1078,10 @@ const [aiError, setAiError] = useState('');
     try {
       setSendingMessage(true);
       const res = await leadsAPI.sendMessage(leadId, newMessage, activePlatform, replyTo?.id);
-      // Outbound delivery is only wired for WhatsApp today. For other platforms the message
-      // is persisted locally so the user sees their draft, and the server returns delivered:false.
+      // WhatsApp, Instagram and Facebook send for real (PROP-006). When a message
+      // can't be delivered it is kept as a draft and the server says why.
       if (res.data?.delivered === false) {
-        showToast(`Saved as draft — ${activePlatform} sending isn't connected yet`, 'info');
+        showToast(res.data.delivery_error ? `Saved as draft — ${res.data.delivery_error}` : `Saved as draft — ${activePlatform} sending isn't available`, 'info');
       }
       setNewMessage('');
       setReplyTo(null);
@@ -2443,11 +2443,12 @@ useEffect(() => {
                     <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--border)' }}>
                       <Mail size={32} style={{ margin: '0 auto 8px' }} />
                       <p style={{ fontSize: 14, color: 'var(--text-dim)' }}>No email workflows yet</p>
-                      <p style={{ fontSize: 12, color: 'var(--border)' }}>Create email templates in Settings first.</p>
+                      <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>Create email templates in Settings first. Scheduled emails send automatically from your own mailbox (Settings → Email Sending).</p>
                     </div>
                   ) : emailWorkflows.map((wf, i) => {
-                    const statusColors = { pending: 'rgba(245,158,11,0.1)', sent: 'rgba(16,185,129,0.1)', failed: 'rgba(239,68,68,0.1)', skipped: 'var(--surface2)' };
-                    const statusText = { pending: '#92400e', sent: '#15803d', failed: '#b91c1c', skipped: '#6b7280' };
+                    const statusColors = { pending: 'rgba(245,158,11,0.1)', sending: 'rgba(245,158,11,0.1)', sent: 'rgba(16,185,129,0.1)', failed: 'rgba(239,68,68,0.1)', skipped: 'var(--surface2)', cancelled: 'var(--surface2)' };
+                    const statusText = { pending: '#92400e', sending: '#92400e', sent: '#15803d', failed: '#b91c1c', skipped: '#6b7280', cancelled: '#6b7280' };
+                    const statusLabel = { pending: 'scheduled', sending: 'sending', sent: 'sent', failed: 'not sent', skipped: 'skipped', cancelled: 'cancelled' };
                     return (
                       <div key={wf.id || i} style={{ display: 'flex', gap: 14, padding: '14px 16px', background: statusColors[wf.status] || 'var(--surface2)', borderRadius: 12, border: '1.5px solid var(--border)', marginBottom: 10 }}>
                         <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -2456,20 +2457,23 @@ useEffect(() => {
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                             <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{wf.template_name || 'Email'}</p>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: statusColors[wf.status], color: statusText[wf.status] }}>{wf.status}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: statusColors[wf.status], color: statusText[wf.status] }}>{statusLabel[wf.status] || wf.status}</span>
                           </div>
                           {wf.template_subject && <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 4px' }}>Subject: {wf.template_subject}</p>}
                           <div style={{ display: 'flex', gap: 12 }}>
                             {wf.scheduled_at && <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Scheduled: {formatSmart(wf.scheduled_at)}</p>}
                             {wf.sent_at && <p style={{ fontSize: 11, color: '#10b981', margin: 0 }}>Sent: {formatSmart(wf.sent_at)}</p>}
                           </div>
+                          {wf.status === 'failed' && wf.error && <p role="note" style={{ fontSize: 12, color: '#b91c1c', margin: '4px 0 0' }}>{wf.error}</p>}
                         </div>
                         {wf.status === 'pending' && (
+                          // Scheduled emails now send themselves at their time (PROP-006);
+                          // the only manual action left is to stop one.
                           <button onClick={async () => {
-                            await emailWorkflowsAPI.updateStatus(wf.id, 'sent');
+                            await emailWorkflowsAPI.updateStatus(wf.id, 'cancelled');
                             fetchAll();
-                          }} style={{ padding: '6px 12px', border: 'none', borderRadius: 8, background: '#6366f1', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                            Mark Sent
+                          }} style={{ padding: '6px 12px', border: '1.5px solid var(--border)', borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                            Cancel
                           </button>
                         )}
                       </div>

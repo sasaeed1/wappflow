@@ -241,6 +241,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
       {/* .wf-page is load-bearing: the mobile rules in globals.css key off it, as
           does the desktop FAB gutter. .wf-bleed opts a route out of that gutter —
           see isBleedRoute above. */}
+      <TrialBanner endsAt={plan.trialEndsAt} planName={plan.planName} />
       <VerifyEmailBanner show={perms.emailVerified === false} />
       <main
         id="wf-main"
@@ -305,6 +306,20 @@ function VerifyEmailBanner({ show }) {
       {!msg && <button type="button" onClick={resend} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 13 }}>Send the link</button>}
       <button type="button" aria-label="Dismiss" onClick={() => { setHidden(true); try { sessionStorage.setItem('wf_verify_dismissed', '1'); } catch {} }}
         style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+    </div>
+  );
+}
+
+// Trial countdown (PROP-006): new workspaces get 14 days of Studio, then Creator.
+function TrialBanner({ endsAt, planName }) {
+  if (!endsAt) return null;
+  const ms = new Date(String(endsAt).includes('T') ? endsAt : String(endsAt).replace(' ', 'T') + 'Z') - Date.now();
+  if (!(ms > 0)) return null;
+  const days = Math.ceil(ms / 86400000);
+  return (
+    <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 16px', fontSize: 13, background: 'var(--accent-bg)', color: 'var(--accent-fg)' }}>
+      <span style={{ flex: '1 1 220px' }}>{`You’re trying ${planName || 'Studio'}: ${days} day${days === 1 ? '' : 's'} left. After that you’ll move to Creator and keep all your data.`}</span>
+      <a href="/settings?tab=plan" style={{ color: 'inherit', fontWeight: 700 }}>See plans</a>
     </div>
   );
 }

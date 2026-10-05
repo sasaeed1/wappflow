@@ -112,6 +112,7 @@ export function PlanProvider({ children }) {
     quota: planInfo?.quota || {},
     allPlans: planInfo?.all_plans || [],
     founding: planInfo?.founding || null,
+    trialEndsAt: planInfo?.trial_ends_at || null,
     hasFeature,
     hasLimit,
     quotaFor,
