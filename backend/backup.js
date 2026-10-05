@@ -26,6 +26,10 @@
 //    node backup.js                 # take one, verify, prune old ones
 //    node backup.js --verify-only <file>
 //    node backup.js --list
+//    node backup.js --decrypt <file.enc> <out>   # restore an off-site copy
+//  Off-site: when BACKUP_R2_BUCKET is set, each verified file is encrypted and
+//  copied to R2 (backup-offsite.js). A failed upload fails the run, so the
+//  cron mail and Command Center's System Health show it.
 // ════════════════════════════════════════════════════════════════════════════
 
 const fs = require('fs');
@@ -138,6 +142,16 @@ function main() {
     return;
   }
 
+  if (args[0] === '--decrypt') {
+    const [src, out] = args.slice(1);
+    const cfg = require('./backup-offsite').config();
+    if (!src || !out || !cfg.key) { console.error('usage: BACKUP_ENCRYPTION_KEY=… node backup.js --decrypt <file.enc> <out>'); process.exitCode = 1; return; }
+    require('./backup-offsite').decryptFile(src, out, cfg.key)
+      .then(() => log(`✓ decrypted → ${out}. Check it with: node backup.js --verify-only ${out}`))
+      .catch((e) => { console.error('✗ could not decrypt:', e.message); process.exitCode = 1; });
+    return;
+  }
+
   if (args[0] === '--verify-only') {
     const target = args[1];
     if (!target || !fs.existsSync(target)) { console.error('give a backup file to verify'); process.exitCode = 1; return; }
@@ -179,6 +193,7 @@ function main() {
       const size = fs.statSync(target).size;
       log(`  ✓ database ${(size / 1048576).toFixed(2)}MB — opens, passes integrity_check, row counts match`);
 
+      const made = [target];
       // Uploads: the photographs. Losing the database loses the business; losing
       // these loses the client's wedding, which is worse.
       if (fs.existsSync(UPLOADS)) {
@@ -191,6 +206,7 @@ function main() {
           const rel = path.relative(DATA_DIR, tar).split(path.sep).join('/');
           execFileSync('tar', ['-czf', rel, 'uploads'], { cwd: DATA_DIR, stdio: 'pipe' });
           log(`  ✓ uploads  ${(fs.statSync(tar).size / 1048576).toFixed(1)}MB`);
+          made.push(tar);
         } catch (e) {
           console.error(`  ! uploads archive failed: ${e.message}`);
           process.exitCode = 1;
@@ -198,7 +214,11 @@ function main() {
       }
 
       prune();
-      log('done');
+      // A copy that lives on the same disk dies with it (PROP-006).
+      return require('./backup-offsite').uploadBackups(made, { log }).then((r) => {
+        if (r.skipped) log(`  · ${r.skipped}`);
+        log('done');
+      }).catch((e) => { console.error(`  ✗ off-site copy failed: ${e.message}`); process.exitCode = 1; });
     })
     .catch((e) => {
       try { src.close(); } catch {}

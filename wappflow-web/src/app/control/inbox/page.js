@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, TrendingUp, Pause, Sparkles, Flag, X, UserPlus, LifeBuoy, Wallet, HardDrive } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Pause, Sparkles, Flag, X, UserPlus, LifeBuoy, Wallet, HardDrive, DatabaseBackup, Clock } from 'lucide-react';
 import { useConfirm } from '@/lib/confirm';
 import { ccApi } from '@/lib/ccApi';
 import { Card, Pill } from '@/components/control/ControlShell';
@@ -16,6 +16,8 @@ const KIND_META = {
   support_ticket: { icon: LifeBuoy, label: 'Support' },
   billing_overdue: { icon: Wallet, label: 'Overdue' },
   storage_full: { icon: HardDrive, label: 'Storage full' },
+  backup_stale: { icon: DatabaseBackup, label: 'Backups' },
+  trial_ended: { icon: Clock, label: 'Trial ended' },
 };
 const SEV_TONE = { high: 'red', medium: 'amber', low: 'blue', info: 'neutral' };
 
