@@ -111,6 +111,64 @@ const register = async (email, name) => (await call('POST', '/auth/register', { 
     r = await call('GET', `/media/portal/${TOKEN}?pw=old-pass`);
     ok(r.status === 429, 'after 10 wrong guesses even the right password waits 15 minutes');
 
+    console.log('\n[5] Two-step sign-in for customers');
+    const sec = require('./cc-security');
+    const login = (email) => call('POST', '/auth/login', { body: { email, password: 'Passw0rd!long' } });
+    r = await login('owner@acme.test');
+    ok(r.status === 200 && r.data.token, 'without 2FA, sign-in is unchanged');
+    r = await call('POST', '/account/mfa/setup', { token: OT });
+    const SECRET = r.data.secret;
+    ok(/^[A-Z2-7]{32}$/.test(SECRET) && /^data:image\/png/.test(r.data.qr || ''), 'set-up returns a key and a QR code');
+    r = await call('POST', '/account/mfa/enable', { token: OT, body: { code: '000000' } });
+    ok(r.status === 401, 'a wrong code does not turn it on');
+    r = await call('POST', '/account/mfa/enable', { token: OT, body: { code: sec.totp(SECRET) } });
+    ok(r.status === 200 && r.data.recovery_codes?.length === 10, 'the right code turns it on and shows 10 recovery codes');
+    const RC = r.data.recovery_codes;
+    r = await login('owner@acme.test');
+    ok(r.data.mfa_required && !r.data.token, 'now the password alone gives no session');
+    const mt = r.data.mfa_token;
+    r = await call('POST', '/auth/login/mfa', { body: { mfa_token: mt, code: '123456' } });
+    ok(r.status === 401, 'a wrong code is refused');
+    r = await call('POST', '/auth/login/mfa', { body: { mfa_token: mt, code: sec.totp(SECRET) } });
+    ok(r.status === 200 && r.data.token && r.data.workspace, 'password + code signs in');
+    r = await login('owner@acme.test');
+    r = await call('POST', '/auth/login/mfa', { body: { mfa_token: r.data.mfa_token, code: RC[0] } });
+    ok(r.status === 200 && r.data.token, 'a recovery code signs in once');
+    r = await login('owner@acme.test');
+    r = await call('POST', '/auth/login/mfa', { body: { mfa_token: r.data.mfa_token, code: RC[0] } });
+    ok(r.status === 401, '…and never again');
+    r = await call('POST', '/auth/login/mfa', { body: { mfa_token: OT, code: sec.totp(SECRET) } });
+    ok(r.status === 401, 'a normal session token cannot stand in for the sign-in token');
+
+    console.log('\n[6] An owner can require it for the team');
+    r = await call('PUT', '/workspace/security', { token: MT, body: { require_2fa: true } });
+    ok(r.status === 403, 'only the owner can change the policy');
+    r = await call('PUT', '/workspace/security', { token: OT, body: { require_2fa: true } });
+    ok(r.status === 200, 'the owner requires it');
+    r = await login('agent@acme.test');
+    ok(r.data.mfa_setup_required && !r.data.token, 'a member without it must set it up at sign-in');
+    const mt2 = r.data.mfa_token;
+    r = await call('POST', '/auth/mfa/setup', { body: { mfa_token: mt2 } });
+    const S2 = r.data.secret;
+    r = await call('POST', '/auth/mfa/enable', { body: { mfa_token: mt2, code: sec.totp(S2) } });
+    ok(r.status === 200 && r.data.token && r.data.recovery_codes?.length === 10, 'set-up during sign-in finishes with a session and recovery codes');
+    r = await call('POST', '/account/mfa/disable', { token: r.data.token, body: { password: 'Passw0rd!long', code: sec.totp(S2) } });
+    ok(r.status === 400, 'members cannot turn it off while the workspace requires it');
+    r = await call('GET', '/auth/me', { token: OT });
+
+    console.log('\n[7] Email verification');
+    const nu = await register('new@acme.test', 'Newco');
+    const row = db.prepare('SELECT email_verified_at, email_verify_token FROM users WHERE email = ?').get('new@acme.test');
+    ok(!row.email_verified_at && /^[a-f0-9]{48}$/.test(row.email_verify_token || ''), 'sign-up creates an unconfirmed address with a link token');
+    r = await call('GET', '/auth/me', { token: nu.token });
+    ok(r.data.user && !r.data.user.email_verified_at, 'the app knows it is unconfirmed');
+    r = await call('POST', '/auth/verify-email', { body: { token: 'f'.repeat(48) } });
+    ok(r.status === 400, 'a made-up link is refused');
+    r = await call('POST', '/auth/verify-email', { body: { token: row.email_verify_token } });
+    ok(r.status === 200 && !!db.prepare('SELECT email_verified_at FROM users WHERE email = ?').get('new@acme.test').email_verified_at, 'the emailed link confirms it');
+    r = await call('POST', '/account/verify-email/send', { token: nu.token });
+    ok(r.status === 200 && r.data.already, 'resending after confirming is a no-op');
+
     if (globalThis.MORE_TESTS) await globalThis.MORE_TESTS({ call, db, OT, MT, WS, leadId, memberId, ok, API, BASE, DATA, register });
   } catch (e) {
     fails++; console.error('Test crashed:', e); console.error(log.slice(-3000));

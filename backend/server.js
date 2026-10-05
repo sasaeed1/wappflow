@@ -1448,6 +1448,8 @@ app.post('/api/auth/register', async (req, res) => {
     db.prepare(`INSERT OR IGNORE INTO company_settings (id, user_id, company_name) VALUES (?, ?, ?)`)
       .run(generateId(), userId, businessName);
 
+    // Confirm the address (never blocks: mail may not be configured yet).
+    if (accountSecurity) accountSecurity.sendVerification({ id: userId, email }).catch(() => {});
     const token = signSession(userId);
     res.status(201).json({
       token,
@@ -1459,6 +1461,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+let accountSecurity = null; // mounted below with the other account modules (PROP-006)
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1466,6 +1469,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+    // Second step when the account (or its team) uses an authenticator (PROP-006).
+    if (accountSecurity && accountSecurity.gate(user, res)) return;
     const token = signSession(user.id);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(user.workspace_id);
     const memberRow = db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(user.workspace_id || user.id, user.id);
@@ -1504,7 +1509,7 @@ app.put('/api/auth/password', auth, async (req, res) => {
 
 app.get('/api/auth/me', auth, (req, res) => {
   try {
-    const user = db.prepare('SELECT id, email, business_name, role, workspace_id FROM users WHERE id = ?').get(req.userId);
+    const user = db.prepare('SELECT id, email, business_name, role, workspace_id, email_verified_at, mfa_enabled FROM users WHERE id = ?').get(req.userId);
     const cs = db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(req.workspaceId);
     const memberInfo = db.prepare('SELECT role, full_name FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(req.workspaceId, req.userId);
@@ -1606,6 +1611,8 @@ app.post('/api/auth/google', async (req, res) => {
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     }
 
+    // Google has already verified this address; two-step sign-in still applies.
+    if (accountSecurity) { accountSecurity.markVerified(user.id); if (accountSecurity.gate({ ...user, ...db.prepare('SELECT mfa_enabled FROM users WHERE id = ?').get(user.id) }, res)) return; }
     const token = signSession(user.id);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(user.workspace_id);
     const memberRow = db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(user.workspace_id, user.id);
@@ -6881,6 +6888,13 @@ require('./account-recovery')(app, db, {
   bcrypt, nodemailer, generateId, logAudit,
   limiter: loginLimiter,
   clientBaseUrl: process.env.FRONTEND_URL || '',
+});
+
+// Two-step sign-in and email verification for customer accounts (PROP-006).
+accountSecurity = require('./account-security')(app, db, {
+  auth, signSession, JWT_SECRET, logAudit, loginLimiter,
+  sendPlatformMail: require('./platform-mail').sendPlatformMail,
+  frontendUrl: () => process.env.FRONTEND_URL || '',
 });
 
 require('./contracts-studio')(app, db, {

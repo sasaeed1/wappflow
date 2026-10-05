@@ -12,13 +12,14 @@ import {
   Link, Unlink, Copy, Wifi, WifiOff, Layers, QrCode, Key,
   Plug, Calendar, Video, Volume2, Play
 } from 'lucide-react';
+import { accountAPI } from '../../lib/api';
 import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, auditAPI, BASE_URL } from '../../lib/api';
 import { useScrollActiveIntoView } from '@/lib/sidenav';
 import PairWithPhone from '@/components/PairWithPhone';
 import { Send as SendIcon } from 'lucide-react';
 import { useConfirm } from '@/lib/confirm';
 import { toast } from '@/components/ui/Toast';
-import { Field, Input as UIInput } from '@/components/ui/Field';
+import { Field, Input as UIInput, Checkbox } from '@/components/ui/Field';
 import { useSound, SOUND_KINDS } from '@/lib/sounds';
 import { usePlan, nextPlanLabel, formatMoney } from '@/lib/plan';
 import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
@@ -76,7 +77,7 @@ const TABS = [
   { id: 'workspace', label: 'Workspace', icon: Users, color: '#8b5cf6' },
   { id: 'data', label: 'Data & Privacy', icon: Shield, color: '#0ea5e9' },
   { id: 'ai_command', label: 'AI Command', icon: Sparkles, color: '#8b5cf6' },
-  { id: 'password', label: 'Change Password', icon: Lock, color: '#ef4444' },
+  { id: 'password', label: 'Password & Security', icon: Lock, color: '#ef4444' },
 ];
 
 function SectionCard({ icon: Icon, title, subtitle, color, children }) {
@@ -1535,6 +1536,128 @@ function WorkspaceTab({ showToast, router }) {
 //  CHANGE PASSWORD TAB
 // ════════════════════════════════════════════════════════════
 
+// ── Two-step sign-in, recovery codes, team policy, email verification (PROP-006) ──
+function SecurityTab({ showToast }) {
+  const [st, setSt] = useState(null);
+  const [setup, setSetup] = useState(null);      // { qr, secret }
+  const [code, setCode] = useState('');
+  const [codes, setCodes] = useState(null);      // freshly issued recovery codes
+  const [disabling, setDisabling] = useState(false);
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { accountAPI.security().then((r) => setSt(r.data)).catch(() => setSt(null)); }, []);
+  useEffect(() => { load(); }, [load]);
+  const err = (e, f) => showToast(e?.response?.data?.error || f, 'error');
+  const run = async (fn) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
+
+  if (!st) return null;
+  const field = { width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, boxSizing: 'border-box' };
+  const btn = (primary) => ({ padding: '10px 18px', borderRadius: 10, border: primary ? 'none' : '1.5px solid var(--border)', background: primary ? 'var(--accent)' : 'var(--surface)', color: primary ? 'var(--on-accent, #fff)' : 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer' });
+
+  return (
+    <SectionCard icon={Shield} title="Sign-in security" subtitle="Two-step sign-in with an authenticator app, and your email address" color="#0ea5e9">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px' }}>Email {st.email_verified ? 'confirmed' : 'not confirmed yet'}</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{st.email}</p>
+          {!st.email_verified && (
+            <button type="button" style={{ ...btn(false), marginTop: 10 }} disabled={busy}
+              onClick={() => run(async () => { try { await accountAPI.resendVerify(); showToast('Confirmation email sent. Check your inbox.'); } catch (e) { err(e, 'Could not send the email'); } })}>
+              Send confirmation email
+            </button>
+          )}
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 18 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px' }}>Two-step sign-in: {st.mfa_enabled ? 'On' : 'Off'}</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 12px' }}>
+            {st.mfa_enabled ? `After your password, you also enter a code from your authenticator app. ${st.recovery_codes_left} recovery code${st.recovery_codes_left === 1 ? '' : 's'} left.` : 'Protect your account even if your password leaks: after your password, enter a code from an app on your phone.'}
+            {st.team_requires_2fa ? ' Your workspace requires it.' : ''}
+          </p>
+
+          {codes && (
+            <div role="status" style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 13, margin: '0 0 8px' }}>Save these recovery codes somewhere safe. Each works once if you lose your phone. They won&apos;t be shown again.</p>
+              <pre aria-label="Recovery codes" style={{ fontFamily: 'ui-monospace, monospace', fontSize: 14, lineHeight: 1.8, padding: 12, borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)', margin: 0, whiteSpace: 'pre-wrap' }}>{codes.join('\n')}</pre>
+              <button type="button" style={{ ...btn(false), marginTop: 10 }} onClick={() => setCodes(null)}>I&apos;ve saved them</button>
+            </div>
+          )}
+
+          {!st.mfa_enabled && !setup && (
+            <button type="button" style={btn(true)} disabled={busy}
+              onClick={() => run(async () => { try { const r = await accountAPI.mfaSetup(); setSetup(r.data); setCode(''); } catch (e) { err(e, 'Could not start set-up'); } })}>
+              Turn on two-step sign-in
+            </button>
+          )}
+
+          {!st.mfa_enabled && setup && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360 }}>
+              <p style={{ fontSize: 13, margin: 0 }}>Scan this with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password), then enter the 6-digit code it shows.</p>
+              {setup.qr && <img src={setup.qr} alt="QR code to add WappFlow to your authenticator app" width={180} height={180} style={{ borderRadius: 10, background: '#fff', padding: 8 }} />}
+              <p style={{ fontSize: 12, margin: 0, wordBreak: 'break-all' }}>Can&apos;t scan? Key: <code>{setup.secret}</code></p>
+              <label htmlFor="sec-mfa-code" style={{ fontSize: 12.5, fontWeight: 600 }}>Code from the app</label>
+              <input id="sec-mfa-code" style={field} value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={btn(true)} disabled={busy || !code.trim()}
+                  onClick={() => run(async () => { try { const r = await accountAPI.mfaEnable(code); setCodes(r.data.recovery_codes); setSetup(null); load(); showToast('Two-step sign-in is on'); } catch (e) { err(e, 'That code didn’t work'); } })}>
+                  Turn on
+                </button>
+                <button type="button" style={btn(false)} onClick={() => setSetup(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {st.mfa_enabled && !disabling && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={btn(false)} disabled={busy}
+                onClick={() => { setDisabling('codes'); setCode(''); }}>New recovery codes</button>
+              {!st.team_requires_2fa && <button type="button" style={btn(false)} onClick={() => { setDisabling('off'); setCode(''); setPw(''); }}>Turn off</button>}
+            </div>
+          )}
+
+          {st.mfa_enabled && disabling && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360 }}>
+              {disabling === 'off' && (<>
+                <label htmlFor="sec-pw" style={{ fontSize: 12.5, fontWeight: 600 }}>Your password</label>
+                <input id="sec-pw" type="password" style={field} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
+              </>)}
+              <label htmlFor="sec-code2" style={{ fontSize: 12.5, fontWeight: 600 }}>Current code from your app</label>
+              <input id="sec-code2" style={field} value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={btn(true)} disabled={busy || !code.trim()}
+                  onClick={() => run(async () => {
+                    try {
+                      if (disabling === 'off') { await accountAPI.mfaDisable(pw, code); showToast('Two-step sign-in is off'); }
+                      else { const r = await accountAPI.recoveryCodes(code); setCodes(r.data.recovery_codes); }
+                      setDisabling(false); load();
+                    } catch (e) { err(e, 'That didn’t work'); }
+                  })}>
+                  {disabling === 'off' ? 'Turn off' : 'Get new codes'}
+                </button>
+                <button type="button" style={btn(false)} onClick={() => setDisabling(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {st.can_set_team_policy && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 18 }}>
+            <Checkbox
+              label="Require two-step sign-in for everyone in this workspace"
+              checked={!!st.team_requires_2fa}
+              disabled={busy || (!st.mfa_enabled && !st.team_requires_2fa)}
+              onChange={(v) => run(async () => { try { await accountAPI.setTeamPolicy(typeof v === 'boolean' ? v : !st.team_requires_2fa); load(); showToast('Workspace sign-in policy saved'); } catch (e) { err(e, 'Could not save'); } })}
+            />
+            <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '6px 0 0' }}>
+              {st.mfa_enabled ? 'Members without it will be asked to set it up at their next sign-in.' : 'Turn it on for your own account first.'}
+            </p>
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 function PasswordTab({ showToast }) {
   const [form, setForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [showCurrent, setShowCurrent] = useState(false);
@@ -2502,7 +2625,7 @@ export default function SettingsPage() {
               {activeTab === 'workspace' && <WorkspaceTab showToast={showToast} router={router} />}
               {activeTab === 'data' && <DataPrivacyTab showToast={showToast} />}
               {activeTab === 'ai_command' && <AICommandTab showToast={showToast} />}
-              {activeTab === 'password' && <PasswordTab showToast={showToast} />}
+              {activeTab === 'password' && <><PasswordTab showToast={showToast} /><div style={{ height: 18 }} /><SecurityTab showToast={showToast} /></>}
             </>
           )}
         </div>

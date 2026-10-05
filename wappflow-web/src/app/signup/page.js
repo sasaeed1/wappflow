@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Zap, Mail, Lock, Building2, ArrowRight, Eye, EyeOff, CheckCircle2,
-  Sparkles, MessageCircle, Brain, Rocket, ShieldCheck, Star,
+  Sparkles, MessageCircle, Brain, Rocket, ShieldCheck,
 } from 'lucide-react';
 import { authAPI } from '@/lib/api';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
@@ -108,13 +108,7 @@ function SignupContent() {
             <Feature icon={<ShieldCheck size={16} />} title="Your data stays yours" desc="TLS everywhere. Full export. No lock-in." />
           </div>
 
-          <div className="auth-testimonial">
-            <div className="auth-stars">
-              {[0,1,2,3,4].map(i => <Star key={i} size={12} fill="#fbbf24" stroke="#fbbf24" />)}
-            </div>
-            <p>{`"The unified inbox alone was worth switching. My team used to flip between three phones. Now everything is one tab."`}</p>
-            <div className="auth-test-meta">— Sales lead, e-commerce brand, Berlin</div>
-          </div>
+          {/* An unattributed customer quote read as invented; removed until there is a real one (PROP-006). */}
         </div>
 
         <div className="auth-promo-foot">

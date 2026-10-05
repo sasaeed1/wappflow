@@ -35,6 +35,11 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login: (data) => api.post('/auth/login', data),
+  // Two-step sign-in (PROP-006): the second step, and enrolment when a team requires it.
+  loginMfa: (mfa_token, code) => api.post('/auth/login/mfa', { mfa_token, code }),
+  mfaSetup: (mfa_token) => api.post('/auth/mfa/setup', { mfa_token }),
+  mfaEnable: (mfa_token, code) => api.post('/auth/mfa/enable', { mfa_token, code }),
+  verifyEmail: (token) => api.post('/auth/verify-email', { token }),
   register: (data) => api.post('/auth/register', data),
   me: () => api.get('/auth/me'),
   google: (data) => api.post('/auth/google', data),
@@ -746,4 +751,15 @@ export const supportAPI = {
   create: (data)     => api.post('/support/tickets', data),
   get:    (id)       => api.get(`/support/tickets/${id}`),
   reply:  (id, body) => api.post(`/support/tickets/${id}/reply`, { body }),
+};
+
+// Account security (PROP-006) — two-step sign-in, recovery codes, team policy, email verification.
+export const accountAPI = {
+  security:        ()              => api.get('/account/security'),
+  mfaSetup:        ()              => api.post('/account/mfa/setup'),
+  mfaEnable:       (code)          => api.post('/account/mfa/enable', { code }),
+  mfaDisable:      (password, code) => api.post('/account/mfa/disable', { password, code }),
+  recoveryCodes:   (code)          => api.post('/account/mfa/recovery-codes', { code }),
+  setTeamPolicy:   (require_2fa)   => api.put('/workspace/security', { require_2fa }),
+  resendVerify:    ()              => api.post('/account/verify-email/send'),
 };

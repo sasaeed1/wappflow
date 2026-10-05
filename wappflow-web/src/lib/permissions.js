@@ -17,7 +17,7 @@ function load() {
   if (cache) return Promise.resolve(cache);
   if (!inflight) {
     inflight = authAPI.me()
-      .then((r) => { cache = { role: r.data?.user?.role || null, permissions: r.data?.permissions || null }; return cache; })
+      .then((r) => { cache = { role: r.data?.user?.role || null, permissions: r.data?.permissions || null, emailVerified: r.data?.user ? !!r.data.user.email_verified_at : null }; return cache; })
       .catch(() => ({ role: null, permissions: null }))
       .finally(() => { inflight = null; });
   }
@@ -35,6 +35,7 @@ export function usePermissions() {
   return {
     loaded: !!state,
     role: state?.role || null,
+    emailVerified: state ? state.emailVerified : null,
     can: (key) => !perms || perms[key] !== false,
   };
 }

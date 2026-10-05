@@ -241,6 +241,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
       {/* .wf-page is load-bearing: the mobile rules in globals.css key off it, as
           does the desktop FAB gutter. .wf-bleed opts a route out of that gutter —
           see isBleedRoute above. */}
+      <VerifyEmailBanner show={perms.emailVerified === false} />
       <main
         id="wf-main"
         className={[
@@ -286,3 +287,25 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
     </div>
   );
 }
+
+// A gentle, dismissible nudge until the account's email is confirmed (PROP-006).
+// Never blocks anything: mail may not even be configured on the server.
+function VerifyEmailBanner({ show }) {
+  const [hidden, setHidden] = useState(false);
+  const [msg, setMsg] = useState('');
+  useEffect(() => { try { setHidden(sessionStorage.getItem('wf_verify_dismissed') === '1'); } catch {} }, []);
+  if (!show || hidden) return null;
+  const resend = async () => {
+    try { const { accountAPI } = await import('@/lib/api'); await accountAPI.resendVerify(); setMsg('Sent. Check your inbox.'); }
+    catch (e) { setMsg(e?.response?.data?.error || 'Could not send it. Try again later.'); }
+  };
+  return (
+    <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 16px', fontSize: 13, background: 'var(--info-bg)', color: 'var(--info-fg)' }}>
+      <span style={{ flex: '1 1 220px' }}>{msg || 'Confirm your email address so we can reach you about your account.'}</span>
+      {!msg && <button type="button" onClick={resend} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 13 }}>Send the link</button>}
+      <button type="button" aria-label="Dismiss" onClick={() => { setHidden(true); try { sessionStorage.setItem('wf_verify_dismissed', '1'); } catch {} }}
+        style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+    </div>
+  );
+}
+

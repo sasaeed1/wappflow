@@ -86,16 +86,16 @@ function ResetPasswordInner() {
             <h1 style={h1}>Choose a new password</h1>
             <p style={sub}>This also signs you out on any other device, in case somebody else had your old one.</p>
             <form onSubmit={submit} style={{ marginTop: 20 }}>
-              <label style={lbl}>New password</label>
+              <label htmlFor="rp-new" style={lbl}>New password</label>
               <div style={inputWrap}>
                 <Lock size={16} />
-                <input type="password" required value={pw} onChange={(e) => setPw(e.target.value)}
+                <input id="rp-new" type="password" required value={pw} onChange={(e) => setPw(e.target.value)}
                        placeholder="At least 8 characters" autoComplete="new-password" style={input} />
               </div>
-              <label style={{ ...lbl, marginTop: 14 }}>Confirm it</label>
+              <label htmlFor="rp-confirm" style={{ ...lbl, marginTop: 14 }}>Confirm it</label>
               <div style={inputWrap}>
                 <Lock size={16} />
-                <input type="password" required value={pw2} onChange={(e) => setPw2(e.target.value)}
+                <input id="rp-confirm" type="password" required value={pw2} onChange={(e) => setPw2(e.target.value)}
                        placeholder="Type it again" autoComplete="new-password" style={input} />
               </div>
               {err && <p role="alert" style={errStyle}>{err}</p>}
