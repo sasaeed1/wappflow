@@ -312,8 +312,10 @@ function VerifyEmailBanner({ show }) {
 
 // Trial countdown (PROP-006): new workspaces get 14 days of Studio, then Creator.
 function TrialBanner({ endsAt, planName }) {
+  // Read the clock once per mount, not on every render (render stays pure).
+  const [now] = useState(() => Date.now());
   if (!endsAt) return null;
-  const ms = new Date(String(endsAt).includes('T') ? endsAt : String(endsAt).replace(' ', 'T') + 'Z') - Date.now();
+  const ms = new Date(String(endsAt).includes('T') ? endsAt : String(endsAt).replace(' ', 'T') + 'Z') - now;
   if (!(ms > 0)) return null;
   const days = Math.ceil(ms / 86400000);
   return (
