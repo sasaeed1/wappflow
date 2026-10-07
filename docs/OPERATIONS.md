@@ -68,3 +68,17 @@ and share the patch so it can be added to the repository properly.
 
 After confirming who they are: `cd /var/www/wappflow/backend && node scripts/reset-user-2fa.js their@email.com`
 (admins: `node scripts/cc-reset-2fa.js admin@email.com`).
+
+## 7. Changing a value in `backend/.env`
+
+pm2 can hold its own copy of `.env` values (any `--update-env` restart from a shell that had them
+exported stores them), and an inherited value wins over the file. So after editing an **existing**
+value, push the new copy into the API only, in a subshell so nothing leaks into your login shell:
+
+```bash
+cd /var/www/wappflow && ( set -a; . backend/.env; set +a; pm2 restart wappflow-api --update-env ) && pm2 save
+```
+
+Never restart **both** apps from a shell that has `backend/.env` loaded: the website would pick up
+`PORT=3001`, take the API's port, and nginx returns 502. `deploy.sh` pins the website to port 3000
+(`WEB_PORT` overrides), so a deploy is safe either way.

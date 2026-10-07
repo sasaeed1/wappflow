@@ -45,7 +45,12 @@ rm -rf .next.old
 cd ..
 
 echo "→ Restarting services…"
-pm2 restart wappflow-api wappflow-web --update-env
+# Pin the website's port. `--update-env` copies THIS shell's environment into both
+# apps, so a PORT exported in the shell (e.g. after sourcing backend/.env) once
+# moved the website onto the API's port and nginx returned 502. The API reads its
+# own port from backend/.env (dotenv override), so it needs no pin here.
+PORT="${WEB_PORT:-3000}" pm2 restart wappflow-web --update-env
+pm2 restart wappflow-api --update-env
 pm2 save
 
 echo "✓ Deployed cleanly."
