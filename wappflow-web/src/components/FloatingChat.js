@@ -159,7 +159,7 @@ export default function FloatingChat() {
           <div style={{ position: 'absolute', bottom: 60, right: 0, width: 300, background: 'var(--surface)', borderRadius: 16, boxShadow: '0 16px 48px rgba(0,0,0,0.18)', border: '1.5px solid var(--border)', overflow: 'hidden', zIndex: 9001 }}>
             <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
               <Search size={14} color="#9ca3af" />
-              <input autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads to chat…"
+              <input aria-label="Search leads to chat" autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads to chat…"
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: 'var(--text)' }} />
               <button aria-label="Close" onClick={() => setShowLeadSearch(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={14} /></button>
             </div>
@@ -234,7 +234,7 @@ export default function FloatingChat() {
           <div style={{ position: 'absolute', top: 56, left: 0, right: 0, background: 'var(--surface)', borderRadius: '0 0 16px 16px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', zIndex: 10, overflow: 'hidden' }}>
             <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
               <Search size={13} color="#9ca3af" />
-              <input autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads…"
+              <input aria-label="Search leads" autoFocus value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Search leads…"
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: 'var(--text)' }} />
               <button aria-label="Close" onClick={() => setShowLeadSearch(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>
             </div>
@@ -327,7 +327,7 @@ export default function FloatingChat() {
               <Paperclip size={16} />
             </button>
             <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
-            <textarea ref={inputRef} value={newMsg} onChange={e => setNewMsg(e.target.value)}
+            <textarea aria-label="Message" ref={inputRef} value={newMsg} onChange={e => setNewMsg(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder="Type a message…" rows={1}
               style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 20, padding: '7px 12px', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, minHeight: 34, maxHeight: 80, overflowY: 'auto', boxSizing: 'border-box' }}

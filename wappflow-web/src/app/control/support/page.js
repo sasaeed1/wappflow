@@ -163,7 +163,7 @@ function NewTicketModal({ onClose, onCreated }) {
             </div>
           ) : (
             <div style={{ position: 'relative' }}>
-              <input value={wsQ} onChange={(e) => setWsQ(e.target.value)} placeholder="Search workspace name / owner…" style={inp} />
+              <input aria-label="Search workspace name / owner" value={wsQ} onChange={(e) => setWsQ(e.target.value)} placeholder="Search workspace name / owner…" style={inp} />
               {wsResults.length > 0 && (
                 <div style={dropdown}>
                   {wsResults.map((w) => (

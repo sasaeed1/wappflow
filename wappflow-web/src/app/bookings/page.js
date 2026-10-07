@@ -129,7 +129,7 @@ export default function BookingsPage() {
         {url && (
           <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', marginBottom: 18 }}>
             <span style={{ fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Your booking link</span>
-            <input readOnly value={url} style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: 'var(--text)', outline: 'none' }} />
+            <input aria-label="Your booking link" readOnly value={url} style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: 'var(--text)', outline: 'none' }} />
             <button onClick={copy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: copied ? '#10b981' : 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 12.5 }}>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? 'Copied' : 'Copy'}</button>
             <a href={url} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', padding: '8px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--text-muted)' }}><ExternalLink size={14} /></a>
           </div>
@@ -140,7 +140,7 @@ export default function BookingsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(settings.services || []).map((s, i) => (
               <div key={i} className="r-wrap" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input value={s.name} onChange={e => setSvc(i, { name: e.target.value })} placeholder="Service name" style={{ flex: 1, ...fld }} />
+                <input aria-label="Service name" value={s.name} onChange={e => setSvc(i, { name: e.target.value })} placeholder="Service name" style={{ flex: 1, ...fld }} />
                 <input type="number" value={s.duration} onChange={e => setSvc(i, { duration: Number(e.target.value) })} style={{ width: 76, ...fld }} title="Minutes" />
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>min</span>
                 <input type="number" value={s.price} onChange={e => setSvc(i, { price: Number(e.target.value) })} style={{ width: 80, ...fld }} title="Price" />
@@ -167,8 +167,8 @@ export default function BookingsPage() {
                   <button onClick={() => toggleDay(dow)} style={{ width: 54, padding: '7px 0', borderRadius: 8, border: `1.5px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-light)' : 'transparent', color: on ? 'var(--accent)' : 'var(--text-muted)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{label}</button>
                   {on ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-muted)' }}>
-                      <input type="number" value={h[0]} onChange={e => setHours(dow, 0, e.target.value)} style={{ width: 60, ...fld }} />:00 to
-                      <input type="number" value={h[1]} onChange={e => setHours(dow, 1, e.target.value)} style={{ width: 60, ...fld }} />:00
+                      <input aria-label="Opening hour" type="number" value={h[0]} onChange={e => setHours(dow, 0, e.target.value)} style={{ width: 60, ...fld }} />:00 to
+                      <input aria-label="Closing hour" type="number" value={h[1]} onChange={e => setHours(dow, 1, e.target.value)} style={{ width: 60, ...fld }} />:00
                     </span>
                   ) : <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Closed</span>}
                 </div>
@@ -200,7 +200,7 @@ export default function BookingsPage() {
             )}
           </div>
           <label className="ms-label" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Blackout dates (YYYY-MM-DD, one per line)</label>
-          <textarea value={(settings.blackout || []).join('\n')} onChange={e => setSettings(s => ({ ...s, blackout: e.target.value.split(/\s+/).map(x => x.trim()).filter(Boolean) }))} rows={2} placeholder="2026-12-25" style={{ width: '100%', maxWidth: 320, ...fld, resize: 'vertical', boxSizing: 'border-box' }} />
+          <textarea aria-label="Blackout dates (YYYY-MM-DD, one per line)" value={(settings.blackout || []).join('\n')} onChange={e => setSettings(s => ({ ...s, blackout: e.target.value.split(/\s+/).map(x => x.trim()).filter(Boolean) }))} rows={2} placeholder="2026-12-25" style={{ width: '100%', maxWidth: 320, ...fld, resize: 'vertical', boxSizing: 'border-box' }} />
         </div>
 
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
@@ -208,7 +208,7 @@ export default function BookingsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(settings.intake || []).map((q, i) => (
               <div key={i} className="r-wrap" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input value={q.label} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} placeholder="e.g. What's the occasion?" style={{ flex: 1, ...fld }} />
+                <input aria-label="Intake question" value={q.label} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} placeholder="e.g. What's the occasion?" style={{ flex: 1, ...fld }} />
                 <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><input type="checkbox" checked={!!q.required} onChange={e => setSettings(s => ({ ...s, intake: s.intake.map((x, j) => j === i ? { ...x, required: e.target.checked } : x) }))} /> required</label>
                 <button aria-label="Delete" className="wf-tap" onClick={() => setSettings(s => ({ ...s, intake: s.intake.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 6, display: 'inline-flex', borderRadius: 8 }}><Trash2 size={15} /></button>
               </div>

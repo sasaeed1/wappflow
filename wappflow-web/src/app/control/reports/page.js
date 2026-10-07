@@ -103,7 +103,7 @@ export default function Reports() {
               {SCHEDULES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <label style={lbl}>Recipients (comma-separated emails)</label>
-            <input value={form.recipients} onChange={(e) => setForm({ ...form, recipients: e.target.value })} placeholder="you@studio.com" style={inp} />
+            <input aria-label="Recipients (comma-separated emails)" value={form.recipients} onChange={(e) => setForm({ ...form, recipients: e.target.value })} placeholder="you@studio.com" style={inp} />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button onClick={() => setShowNew(false)} style={btn('#9a9aa5')}>Cancel</button>
               <button onClick={create} style={btn('#34d399')}>Create</button>

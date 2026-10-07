@@ -92,7 +92,7 @@ export default function ContractsStudioPage() {
               </div>
               <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
                 <Search size={15} style={{ position: 'absolute', left: 12, top: 11, color: 'var(--text-muted)' }} />
-                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search documents…" style={{ width: '100%', height: 40, padding: '0 12px 0 36px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13.5, outline: 'none', boxSizing: 'border-box' }} />
+                <input aria-label="Search documents" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search documents…" style={{ width: '100%', height: 40, padding: '0 12px 0 36px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13.5, outline: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
 
@@ -237,7 +237,7 @@ function NewDocModal({ onClose, onCreated, say }) {
           {TYPES.map(t => <button key={t} onClick={() => setType(t)} style={{ padding: '6px 12px', borderRadius: 999, border: `1px solid ${type === t ? 'var(--accent)' : 'var(--border)'}`, background: type === t ? 'var(--accent-light)' : 'transparent', color: type === t ? 'var(--accent)' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{t}</button>)}
         </div>
         <label style={lbl}>Title</label>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Wedding Photography Proposal" style={inp} autoFocus />
+        <input aria-label="Title" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Wedding Photography Proposal" style={inp} autoFocus />
         <label style={lbl}>Or upload a file to sign (optional)</label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 9, border: `1px dashed ${file ? 'var(--accent)' : 'var(--border)'}`, background: file ? 'var(--accent-light)' : 'var(--bg)', cursor: 'pointer', marginBottom: 4 }}>
           <Upload size={15} style={{ color: 'var(--accent)', flexShrink: 0 }} />
@@ -248,7 +248,7 @@ function NewDocModal({ onClose, onCreated, say }) {
         <label style={lbl}>Client (optional)</label>
         <div style={{ position: 'relative', marginBottom: 6 }}>
           <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: 'var(--text-muted)' }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Link a client…" style={{ ...inp, paddingLeft: 34, marginBottom: 0 }} />
+          <input aria-label="Client (optional)" value={q} onChange={e => setQ(e.target.value)} placeholder="Link a client…" style={{ ...inp, paddingLeft: 34, marginBottom: 0 }} />
         </div>
         {q && !leadId && filtered.length > 0 && (
           <div style={{ maxHeight: 130, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 9, marginBottom: 8 }}>
@@ -304,7 +304,7 @@ function BulkSendModal({ onClose, say }) {
         <label style={lbl}>Clients ({picked.size} selected)</label>
         <div style={{ position: 'relative', marginBottom: 6 }}>
           <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: 'var(--text-muted)' }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients…" style={{ ...inp, paddingLeft: 34, marginBottom: 0 }} />
+          <input aria-label="Search clients" value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients…" style={{ ...inp, paddingLeft: 34, marginBottom: 0 }} />
         </div>
         <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 9, marginBottom: 14 }}>
           {filtered.map(l => (

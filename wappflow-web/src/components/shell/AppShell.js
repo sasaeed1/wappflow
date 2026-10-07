@@ -13,6 +13,7 @@ import { MODULES, isNavActive } from './modules';
 import { useSession, useSignOut, useAuthGuard } from './session';
 import { useSummary } from './summary';
 import { usePlan } from '@/lib/plan';
+import { usePermissions } from '@/lib/permissions';
 import { clickable } from '@/lib/a11y';
 
 // AppShell — ONE shell for every authenticated module (Phase 2).
@@ -82,6 +83,10 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
   const { helpOpen, setHelpOpen } = useShortcuts();
   const signOut = useSignOut();
   const plan = usePlan();
+  const perms = usePermissions();
+  // Items a member's role can't use are hidden, not locked: unlike a plan lock there is
+  // nothing for them to upgrade (PROP-006).
+  const navItems = (mod?.nav || []).filter((i) => !i.perm || perms.can(i.perm));
   const summary = useSummary();
   const [drawer, setDrawer] = useState(false);
   const fabsTucked = useFabsTuckedOnScroll();
@@ -170,7 +175,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
         </div>
 
         <nav className="wf-shell-nav" aria-label={`${mod.label} navigation`} style={{ display: 'flex', gap: 2, marginLeft: 6 }}>
-          {mod.nav.map((i) => navButton(i))}
+          {navItems.map((i) => navButton(i))}
         </nav>
 
         <div style={{ flex: 1 }} />
@@ -236,6 +241,8 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
       {/* .wf-page is load-bearing: the mobile rules in globals.css key off it, as
           does the desktop FAB gutter. .wf-bleed opts a route out of that gutter —
           see isBleedRoute above. */}
+      <TrialBanner endsAt={plan.trialEndsAt} planName={plan.planName} />
+      <VerifyEmailBanner show={perms.emailVerified === false} />
       <main
         id="wf-main"
         className={[
@@ -268,7 +275,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} title={mod.label}>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }} aria-label={`${mod.label} navigation`}>
-          {mod.nav.map((i) => navButton(i, true))}
+          {navItems.map((i) => navButton(i, true))}
         </nav>
       </Drawer>
 
@@ -281,3 +288,41 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
     </div>
   );
 }
+
+// A gentle, dismissible nudge until the account's email is confirmed (PROP-006).
+// Never blocks anything: mail may not even be configured on the server.
+function VerifyEmailBanner({ show }) {
+  const [hidden, setHidden] = useState(false);
+  const [msg, setMsg] = useState('');
+  useEffect(() => { try { setHidden(sessionStorage.getItem('wf_verify_dismissed') === '1'); } catch {} }, []);
+  if (!show || hidden) return null;
+  const resend = async () => {
+    try { const { accountAPI } = await import('@/lib/api'); await accountAPI.resendVerify(); setMsg('Sent. Check your inbox.'); }
+    catch (e) { setMsg(e?.response?.data?.error || 'Could not send it. Try again later.'); }
+  };
+  return (
+    <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 16px', fontSize: 13, background: 'var(--info-bg)', color: 'var(--info-fg)' }}>
+      <span style={{ flex: '1 1 220px' }}>{msg || 'Confirm your email address so we can reach you about your account.'}</span>
+      {!msg && <button type="button" onClick={resend} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 13 }}>Send the link</button>}
+      <button type="button" aria-label="Dismiss" onClick={() => { setHidden(true); try { sessionStorage.setItem('wf_verify_dismissed', '1'); } catch {} }}
+        style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+    </div>
+  );
+}
+
+// Trial countdown (PROP-006): new workspaces get 14 days of Studio, then Creator.
+function TrialBanner({ endsAt, planName }) {
+  // Read the clock once per mount, not on every render (render stays pure).
+  const [now] = useState(() => Date.now());
+  if (!endsAt) return null;
+  const ms = new Date(String(endsAt).includes('T') ? endsAt : String(endsAt).replace(' ', 'T') + 'Z') - now;
+  if (!(ms > 0)) return null;
+  const days = Math.ceil(ms / 86400000);
+  return (
+    <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 16px', fontSize: 13, background: 'var(--accent-bg)', color: 'var(--accent-fg)' }}>
+      <span style={{ flex: '1 1 220px' }}>{`You’re trying ${planName || 'Studio'}: ${days} day${days === 1 ? '' : 's'} left. After that you’ll move to Creator and keep all your data.`}</span>
+      <a href="/settings?tab=plan" style={{ color: 'inherit', fontWeight: 700 }}>See plans</a>
+    </div>
+  );
+}
+

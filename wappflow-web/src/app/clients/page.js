@@ -94,7 +94,7 @@ export default function ClientsPage() {
         {/* search */}
         <div style={{ position: 'relative', maxWidth: 380, marginBottom: 22 }}>
           <Search size={16} style={{ position: 'absolute', left: 13, top: 12, color: 'var(--text-muted)' }} />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search clients…"
+          <input aria-label="Search clients" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search clients…"
             style={{ width: '100%', height: 42, padding: '0 14px 0 38px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
         </div>
 

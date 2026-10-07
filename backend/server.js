@@ -90,6 +90,18 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// API responses are data, never pages: a JSON reply gets the strictest policy so
+// nothing in it can ever be rendered or framed as a document (PROP-006). Applied only
+// to JSON so file downloads (PDFs, exports) keep working in the browser's viewer.
+app.use('/api', (req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (!res.headersSent) res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+    return json(body);
+  };
+  next();
+});
+
 // Rate limiter — exempt the /uploads static path so loading a chat full of images
 // doesn't trip the per-IP limit and start returning 429s for legitimate media.
 const limiter = rateLimit({
@@ -135,9 +147,22 @@ app.use('/api/payments/webhook', express.raw({ type: () => true, limit: '1mb' })
 app.use(['/api/webhooks/instagram', '/api/webhooks/facebook'], express.raw({ type: () => true, limit: '2mb' }));
 app.use(express.json({ limit: '50mb' }));
 // Static uploads — add an explicit Access-Control-Allow-Origin so cross-origin <img> tags work.
+// Files under /uploads are reachable by anyone holding the link, so the link is the
+// secret: every new upload name carries 128 random bits (PROP-006; outgoing voice
+// notes were named by timestamp alone, lead and chat files by timestamp + the
+// original name). Anything that a browser could run as a page — HTML, SVG, XML — is
+// served as a download inside a sandbox, so an uploaded file can never execute
+// script on our origin.
+function unguessable() { return require('crypto').randomBytes(16).toString('hex'); }
+const ACTIVE_CONTENT = /\.(html?|xhtml|svgz?|xml|xsl|js|mjs)$/i;
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (ACTIVE_CONTENT.test(req.path)) {
+    res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+    res.setHeader('Content-Disposition', 'attachment');
+  }
   next();
 }, express.static(uploadsDir));
 
@@ -149,7 +174,7 @@ const upload = multer({
       const safe = (file.originalname || 'file')
         .normalize('NFKD').replace(/[^\w.\-]/g, '_')
         .slice(0, 100);
-      cb(null, `${Date.now()}-${safe}`);
+      cb(null, `${Date.now()}-${unguessable()}-${safe}`);
     }
   }),
   limits: { fileSize: 16 * 1024 * 1024 }
@@ -180,7 +205,7 @@ const voiceUpload = multer({
                 : mt.includes('mpeg') || mt.includes('mp3') ? 'mp3'
                 : (file.originalname && file.originalname.includes('.')) ? file.originalname.split('.').pop()
                 : 'ogg';
-      cb(null, `voice-${Date.now()}.${ext}`);
+      cb(null, `voice-${Date.now()}-${unguessable()}.${ext}`);
     }
   }),
   limits: { fileSize: 16 * 1024 * 1024 }
@@ -218,10 +243,41 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const DEFAULT_ROLE_PERMISSIONS = {
   super_admin: { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: true, view_reports: true, manage_settings: true, manage_team: true, manage_invoices: true, manage_whatsapp: true },
-  admin:       { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: true, view_reports: true, manage_settings: true, manage_team: true, manage_invoices: true, manage_whatsapp: false },
+  // manage_whatsapp is ON for admins (PROP-006): it was never enforced, so admins have
+  // always connected numbers; turning enforcement on must not take that away.
+  admin:       { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: true, view_reports: true, manage_settings: true, manage_team: true, manage_invoices: true, manage_whatsapp: true },
   manager:     { view_all_leads: true, create_lead: true, edit_lead: true, delete_lead: false, view_reports: true, manage_settings: false, manage_team: false, manage_invoices: true, manage_whatsapp: false },
   user:        { view_all_leads: false, create_lead: true, edit_lead: true, delete_lead: false, view_reports: false, manage_settings: false, manage_team: false, manage_invoices: false, manage_whatsapp: false },
 };
+
+// Effective permissions (PROP-006): role default → the workspace's saved settings for
+// that role (Team → Roles) → this member's own overrides. Previously a member override
+// REPLACED the defaults wholesale and the workspace's role settings were ignored by
+// auth entirely, so what the Team page showed was not what applied.
+function effectivePermissions(workspaceId, role, memberJson) {
+  const base = { ...(DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.user) };
+  try {
+    const row = db.prepare('SELECT permissions FROM workspace_role_permissions WHERE workspace_id = ? AND role = ?').get(workspaceId, role);
+    if (row?.permissions) Object.assign(base, JSON.parse(row.permissions));
+  } catch {}
+  try { if (memberJson) Object.assign(base, JSON.parse(memberJson)); } catch {}
+  if (role === 'super_admin') for (const k of Object.keys(base)) base[k] = true; // the owner can never be locked out
+  return base;
+}
+
+// Route guard for one permission. The UI hides what a role can't do, but the API is
+// the boundary — before PROP-006 only view_all_leads was checked here, so a "user"
+// could delete leads, read revenue reports or connect WhatsApp by calling the API.
+const PERMISSION_LABELS = {
+  delete_lead: 'delete leads', view_reports: 'view reports', manage_settings: 'change workspace settings',
+  manage_invoices: 'manage invoices', manage_whatsapp: 'manage WhatsApp and connected accounts', manage_team: 'manage the team',
+};
+function requirePerm(key) {
+  return (req, res, next) => {
+    if (req.userPermissions && req.userPermissions[key]) return next();
+    res.status(403).json({ error: `Your role can't ${PERMISSION_LABELS[key] || key}. Ask your workspace admin.`, permission_denied: key });
+  };
+}
 
 // Auth Middleware — accepts token from Authorization header OR query string (for SSE/EventSource which can't set headers)
 // Issue a session token stamped with the user's CURRENT token_version, so a
@@ -325,7 +381,7 @@ const auth = (req, res, next) => {
     // Get role from workspace_members
     const member = db.prepare('SELECT role, permissions FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(workspaceId, decoded.userId);
     req.userRole = member?.role || 'super_admin';
-    req.userPermissions = member?.permissions ? JSON.parse(member.permissions) : DEFAULT_ROLE_PERMISSIONS[req.userRole] || {};
+    req.userPermissions = effectivePermissions(workspaceId, req.userRole, member?.permissions);
     // ONE lead-visibility rule (list + detail + sub-resources): custom per-member
     // view_all_leads wins when set; otherwise the role default applies.
     req.canViewAllLeads = req.userPermissions.view_all_leads
@@ -1392,6 +1448,10 @@ app.post('/api/auth/register', async (req, res) => {
     db.prepare(`INSERT OR IGNORE INTO company_settings (id, user_id, company_name) VALUES (?, ?, ?)`)
       .run(generateId(), userId, businessName);
 
+    // Confirm the address (never blocks: mail may not be configured yet).
+    if (accountSecurity) accountSecurity.sendVerification({ id: userId, email }).catch(() => {});
+    // Every new workspace starts on a 14-day Studio trial (owner decision, PROP-006).
+    try { ccMount?.trials?.startTrial(workspaceId); } catch {}
     const token = signSession(userId);
     res.status(201).json({
       token,
@@ -1403,6 +1463,8 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+let ccMount = null; // Command Center (mounted last); its trials API starts sign-up trials (PROP-006)
+let accountSecurity = null; // mounted below with the other account modules (PROP-006)
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1410,6 +1472,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+    // Second step when the account (or its team) uses an authenticator (PROP-006).
+    if (accountSecurity && accountSecurity.gate(user, res)) return;
     const token = signSession(user.id);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(user.workspace_id);
     const memberRow = db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(user.workspace_id || user.id, user.id);
@@ -1448,11 +1512,11 @@ app.put('/api/auth/password', auth, async (req, res) => {
 
 app.get('/api/auth/me', auth, (req, res) => {
   try {
-    const user = db.prepare('SELECT id, email, business_name, role, workspace_id FROM users WHERE id = ?').get(req.userId);
+    const user = db.prepare('SELECT id, email, business_name, role, workspace_id, email_verified_at, mfa_enabled FROM users WHERE id = ?').get(req.userId);
     const cs = db.prepare('SELECT * FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(req.workspaceId);
     const memberInfo = db.prepare('SELECT role, full_name FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(req.workspaceId, req.userId);
-    res.json({ user: { ...user, role: req.userRole }, company: cs, workspace, memberRole: memberInfo?.role, impersonation: req.impersonation || null });
+    res.json({ user: { ...user, role: req.userRole }, company: cs, workspace, memberRole: memberInfo?.role, permissions: req.userPermissions, impersonation: req.impersonation || null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1548,8 +1612,11 @@ app.post('/api/auth/google', async (req, res) => {
         .run(generateId(), workspaceId, userId, name || wsName);
       db.prepare('INSERT OR IGNORE INTO company_settings (id, user_id, company_name) VALUES (?, ?, ?)').run(generateId(), userId, wsName);
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      try { ccMount?.trials?.startTrial(workspaceId); } catch {} // 14-day Studio trial (PROP-006)
     }
 
+    // Google has already verified this address; two-step sign-in still applies.
+    if (accountSecurity) { accountSecurity.markVerified(user.id); if (accountSecurity.gate({ ...user, ...db.prepare('SELECT mfa_enabled FROM users WHERE id = ?').get(user.id) }, res)) return; }
     const token = signSession(user.id);
     const workspace = db.prepare('SELECT id, name FROM workspaces WHERE id = ?').get(user.workspace_id);
     const memberRow = db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(user.workspace_id, user.id);
@@ -1685,7 +1752,7 @@ app.get('/api/settings/company', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/settings/company', auth, (req, res) => {
+app.put('/api/settings/company', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const {
       company_name, company_address, company_email, company_phone,
@@ -1723,7 +1790,7 @@ app.put('/api/settings/company', auth, (req, res) => {
 });
 
 // Upload company logo
-app.post('/api/settings/logo', auth, (req, res) => {
+app.post('/api/settings/logo', auth, requirePerm('manage_settings'), (req, res) => {
   const doUpload = (req2, res2) => {
     // Rebuild multer with correct userId
     const logoUploadFn = multer({
@@ -1878,6 +1945,13 @@ app.get('/api/leads', auth, (req, res) => {
     if (source) { query += ' AND lead_source = ?'; params.push(source); }
     if (platform && platform !== 'all') { query += ' AND platform_source = ?'; params.push(platform); }
     if (account_id) { query += ' AND platform_account_id = ?'; params.push(account_id); }
+    // Pipeline board (PROP-006): 'default' (or the default pipeline's id) = leads with no pipeline.
+    if (req.query.pipeline_id) {
+      const pid = String(req.query.pipeline_id);
+      const isDefault = pid === 'default' || !!db.prepare('SELECT 1 FROM pipelines WHERE id = ? AND workspace_id = ? AND is_default = 1').get(pid, req.workspaceId);
+      if (isDefault) query += ' AND pipeline_id IS NULL';
+      else { query += ' AND pipeline_id = ?'; params.push(pid); }
+    }
     query += ' ORDER BY last_message_at DESC';
 
     // Phase 4: opt-in paging. Without ?limit the response shape and contents are
@@ -2020,14 +2094,32 @@ app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
       if (!quoted) return res.status(400).json({ error: 'The message you are replying to is not in this conversation' });
     }
 
-    // Only WhatsApp has a real outbound send wired today. Other platforms persist the message
-    // locally so the user sees their draft in the chat history, but flag that delivery is pending.
+    // WhatsApp and (since PROP-006) Instagram/Facebook are sent for real. Anything
+    // that can't be delivered is kept as a draft in the chat, with the reason.
     let delivered = false;
     let waId = null;
+    let deliveryError = null;
     if (targetPlatform === 'whatsapp') {
       const opts = quoted && quoted.wa_message_id ? { quotedMessageId: quoted.wa_message_id } : {};
       waId = await whatsappService.sendMessage(lead.customer_phone, body, null, lead.workspace_id, opts) || null;
       delivered = true;
+    } else if (targetPlatform === 'instagram' || targetPlatform === 'facebook') {
+      // The contact's id on that platform: the lead itself if it came from there,
+      // otherwise a connected channel recorded on the lead.
+      let recipientId = null, accountId = null;
+      if (lead.platform_source === targetPlatform) { recipientId = lead.customer_phone; accountId = lead.platform_account_id; }
+      else {
+        const ch = db.prepare('SELECT identifier, platform_account_id FROM lead_channels WHERE lead_id = ? AND platform = ? LIMIT 1').get(leadId, targetPlatform);
+        if (ch) { recipientId = ch.identifier; accountId = ch.platform_account_id; }
+      }
+      const account = accountId
+        ? db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(accountId, req.workspaceId, targetPlatform)
+        : db.prepare('SELECT * FROM platform_accounts WHERE workspace_id = ? AND platform = ? ORDER BY slot_index LIMIT 1').get(req.workspaceId, targetPlatform);
+      if (!account) deliveryError = `No ${targetPlatform === 'instagram' ? 'Instagram' : 'Facebook'} account is connected (Settings → Connections).`;
+      else {
+        const r = await require('./meta-send').sendMetaText({ account, recipientId, text: body });
+        delivered = r.delivered; deliveryError = r.error || null;
+      }
     }
 
     const msgId = generateId();
@@ -2039,7 +2131,7 @@ app.post('/api/leads/:leadId/messages', auth, async (req, res) => {
       last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?`).run(leadId);
     addContactHistory(leadId, req.userId, 'message', `Sent ${targetPlatform} message: ${body.substring(0, 80)}${body.length > 80 ? '…' : ''}`);
 
-    res.json({ message: 'Sent', delivered, platform: targetPlatform, sent: db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId) });
+    res.json({ message: delivered ? 'Sent' : 'Saved as draft', delivered, delivery_error: deliveryError, platform: targetPlatform, sent: db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId) });
   } catch (e) { res.status(500).json({ error: e.message || e.toString() }); }
 });
 
@@ -2215,7 +2307,9 @@ app.post('/api/leads/:leadId/email-workflows', auth, (req, res) => {
     db.prepare(`
       INSERT INTO email_workflows (id, user_id, workspace_id, lead_id, template_id, template_name, template_subject, status, scheduled_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-    `).run(id, req.workspaceOwnerId, req.workspaceId, leadId, template_id, template.name, template.subject, scheduled_at || new Date().toISOString());
+    `).run(id, req.workspaceOwnerId, req.workspaceId, leadId, template_id, template.name, template.subject,
+      // The template's own "delay in days" now applies when no date is given (PROP-006).
+      scheduled_at || new Date(Date.now() + (Number(template.delay_days) || 0) * 86400000).toISOString());
     addContactHistory(leadId, req.userId, 'email', `Email workflow started: ${template.name}`);
     const wf = db.prepare('SELECT * FROM email_workflows WHERE id = ?').get(id);
     res.status(201).json({ workflow: wf });
@@ -2225,6 +2319,9 @@ app.post('/api/leads/:leadId/email-workflows', auth, (req, res) => {
 app.put('/api/email-workflows/:id/status', auth, (req, res) => {
   try {
     const { status } = req.body;
+    // Sending is the job's (email-workflows.js); a person can stop a scheduled email
+    // or put a failed one back in the queue, but can't mark one "sent" (PROP-006).
+    if (!['cancelled', 'pending'].includes(status)) return res.status(400).json({ error: 'You can cancel a scheduled email or retry a failed one' });
     db.prepare(`UPDATE email_workflows SET status = ?, sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE sent_at END WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`)
       .run(status, status, req.params.id, req.workspaceId, req.workspaceOwnerId);
     const wf = db.prepare('SELECT * FROM email_workflows WHERE id = ?').get(req.params.id);
@@ -2294,6 +2391,8 @@ app.post('/api/leads', auth, (req, res) => {
       INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, status, first_message, estimated_value, email, address, date_of_birth, lead_source)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(leadId, req.userId, req.workspaceId, customer_name, customer_phone, status || 'New', first_message, estimated_value, email, address, date_of_birth, lead_source);
+    // Created from a pipeline's board → it belongs on that board (PROP-006).
+    if (req.body.pipeline_id) pipelinesApi.assign(req.workspaceId, leadId, req.body.pipeline_id);
 
     const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
     addContactHistory(leadId, req.userId, 'created', 'Lead created');
@@ -2306,6 +2405,13 @@ app.post('/api/leads', auth, (req, res) => {
 
 app.put('/api/leads/:id', auth, (req, res) => {
   try {
+    // Same visibility rule as reading it: a member who can only see their assigned
+    // leads can't edit someone else's by id either (PROP-006).
+    if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
+    if (req.body.pipeline_id !== undefined) {
+      if (!pipelinesApi.assign(req.workspaceId, req.params.id, req.body.pipeline_id)) return res.status(400).json({ error: 'That pipeline does not exist' });
+      if (Object.keys(req.body).length === 1) return res.json({ ok: true, lead: db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id) });
+    }
     const allowed = ['customer_name', 'customer_phone', 'status', 'estimated_value', 'actual_sale',
       'email', 'address', 'date_of_birth', 'lead_source', 'assigned_to', 'lead_score'];
     const fields = [], params = [];
@@ -2440,7 +2546,7 @@ app.delete('/api/leads/trash', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/leads/:id', auth, (req, res) => {
+app.delete('/api/leads/:id', auth, requirePerm('delete_lead'), (req, res) => {
   try {
     const result = db.prepare(`UPDATE leads SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
     if (result.changes === 0) return res.status(404).json({ error: 'Lead not found' });
@@ -2460,7 +2566,7 @@ app.post('/api/leads/:id/restore', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/leads/:id/permanent', auth, (req, res) => {
+app.delete('/api/leads/:id/permanent', auth, requirePerm('delete_lead'), (req, res) => {
   try {
     // Guard the lead BEFORE the cascade so child rows are never deleted cross-tenant.
     if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
@@ -2527,7 +2633,7 @@ app.get('/api/leads/duplicates', auth, (req, res) => {
 //   • reassigns every child row (any table with a lead_id column) to the primary
 //   • the survivor keeps/inherits the routing phone so inbound WhatsApp is unaffected
 //   • duplicates are soft-deleted (trash, restorable for 90 days), never hard-deleted
-app.post('/api/leads/merge', auth, (req, res) => {
+app.post('/api/leads/merge', auth, requirePerm('delete_lead'), (req, res) => {
   try {
     const { primary_id, duplicate_ids } = req.body || {};
     if (!primary_id || !Array.isArray(duplicate_ids) || duplicate_ids.length === 0) return res.status(400).json({ error: 'primary_id and duplicate_ids[] required' });
@@ -2763,7 +2869,7 @@ app.get('/api/invoices/bin', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/invoices/:id/restore', auth, (req, res) => {
+app.post('/api/invoices/:id/restore', auth, requirePerm('manage_invoices'), (req, res) => {
   try {
     const r = db.prepare(
       `UPDATE invoices SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL
@@ -2823,13 +2929,13 @@ function createInvoiceForLead(req, body) {
   return parseInvoice(db.prepare('SELECT * FROM invoices WHERE id = ?').get(id));
 }
 
-app.post('/api/invoices', auth, (req, res) => {
+app.post('/api/invoices', auth, requirePerm('manage_invoices'), (req, res) => {
   try {
     res.status(201).json({ invoice: createInvoiceForLead(req, req.body) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
-app.put('/api/invoices/:id', auth, (req, res) => {
+app.put('/api/invoices/:id', auth, requirePerm('manage_invoices'), (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address,
       items, subtotal, tax_rate, tax_amount, discount, total, due_date, notes, status } = req.body;
@@ -2858,7 +2964,7 @@ app.put('/api/invoices/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/invoices/:id', auth, (req, res) => {
+app.delete('/api/invoices/:id', auth, requirePerm('manage_invoices'), (req, res) => {
   try {
     // Phase 3: soft-delete. An invoice is a financial record — it goes to the bin and
     // stays restorable indefinitely (the retention sweep skips invoices by design).
@@ -2895,7 +3001,7 @@ async function renderInvoiceEmailHTML(invoice, company, baseUrl) {
 
 // POST /api/invoices/:id/email — send the invoice to the customer. Reuses the exact
 // SMTP/transporter pattern from POST /api/leads/:id/email (one email sender, no fork).
-app.post('/api/invoices/:id/email', auth, async (req, res) => {
+app.post('/api/invoices/:id/email', auth, requirePerm('manage_invoices'), async (req, res) => {
   try {
     const { to, subject, message } = req.body || {};
     if (!to || !/.+@.+\..+/.test(String(to))) return res.status(400).json({ error: 'A valid recipient email (to) is required' });
@@ -2947,7 +3053,7 @@ app.get('/api/email-templates', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/email-templates', auth, (req, res) => {
+app.post('/api/email-templates', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, subject, body, delay_days, trigger_event } = req.body;
     const id = generateId();
@@ -2957,7 +3063,7 @@ app.post('/api/email-templates', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/email-templates/:id', auth, (req, res) => {
+app.put('/api/email-templates/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, subject, body, delay_days, trigger_event } = req.body;
     db.prepare('UPDATE email_templates SET name=?, subject=?, body=?, delay_days=?, trigger_event=? WHERE id=? AND user_id=?')
@@ -2966,7 +3072,7 @@ app.put('/api/email-templates/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/email-templates/:id', auth, (req, res) => {
+app.delete('/api/email-templates/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     db.prepare('DELETE FROM email_templates WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
     res.json({ message: 'Deleted' });
@@ -2984,7 +3090,7 @@ app.get('/api/auto-reply', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/auto-reply', auth, (req, res) => {
+app.post('/api/auto-reply', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, keywords, reply_message, match_type } = req.body;
     const id = generateId();
@@ -2994,7 +3100,7 @@ app.post('/api/auto-reply', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/auto-reply/:id', auth, (req, res) => {
+app.put('/api/auto-reply/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, keywords, reply_message, match_type, is_active } = req.body;
     db.prepare('UPDATE auto_reply_rules SET name=?, keywords=?, reply_message=?, match_type=?, is_active=? WHERE id=? AND user_id=?')
@@ -3003,7 +3109,7 @@ app.put('/api/auto-reply/:id', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/auto-reply/:id', auth, (req, res) => {
+app.delete('/api/auto-reply/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     db.prepare('DELETE FROM auto_reply_rules WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
     res.json({ message: 'Deleted' });
@@ -3014,7 +3120,7 @@ app.delete('/api/auto-reply/:id', auth, (req, res) => {
 //  ANALYTICS & REPORTS
 // ════════════════════════════════════════════════════════════
 
-app.get('/api/analytics', auth, (req, res) => {
+app.get('/api/analytics', auth, requirePerm('view_reports'), (req, res) => {
   try {
     const wid = req.workspaceId;
     const cs = db.prepare('SELECT currency_symbol FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
@@ -3067,7 +3173,7 @@ app.get('/api/analytics', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/reports/overview', auth, (req, res) => {
+app.get('/api/reports/overview', auth, requirePerm('view_reports'), (req, res) => {
   try {
     const wid = req.workspaceId;
     const { period = '30', start_date, end_date } = req.query;
@@ -3159,7 +3265,8 @@ app.get('/api/reports/overview', auth, (req, res) => {
 
     res.json({
       leadsOverTime, revenueOverTime, pipeline, sources, agentPerf,
-      avgResponseMinutes: responseTime?.avg_minutes || 0,
+      // null when nobody has replied yet, so the UI shows — rather than a fake "0m" (PROP-006).
+      avgResponseMinutes: responseTime?.avg_minutes ?? null,
       lostReasons, platforms, currencySymbol: cs?.currency_symbol || '$'
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3184,7 +3291,7 @@ app.get('/api/audit-logs', auth, (req, res) => {
 });
 
 // GET /api/workspace/export — full data export (portability / backup) as JSON
-app.get('/api/workspace/export', auth, (req, res) => {
+app.get('/api/workspace/export', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const ws = req.workspaceId, owner = req.workspaceOwnerId;
     const safe = (sql, ...args) => { try { return db.prepare(sql).all(...args); } catch { return []; } };
@@ -3219,11 +3326,46 @@ app.get('/api/workspace/export', auth, (req, res) => {
 //  TAGS & PRESETS
 // ════════════════════════════════════════════════════════════
 
+// Lost reasons (Settings → Lost Reasons; offered when a lead is closed as lost). The
+// UI and the lead page have called these routes for a long time but they were never
+// implemented, so the tab could neither load nor save (PROP-006).
+db.exec(`CREATE TABLE IF NOT EXISTS lost_reasons (
+  id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, reason TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_lost_reasons_ws ON lost_reasons(workspace_id)');
+app.get('/api/lost-reasons', auth, (req, res) => {
+  res.json({ reasons: db.prepare('SELECT id, reason, created_at FROM lost_reasons WHERE workspace_id = ? ORDER BY created_at').all(req.workspaceId) });
+});
+app.post('/api/lost-reasons', auth, requirePerm('manage_settings'), (req, res) => {
+  const reason = String(req.body?.text ?? req.body?.reason ?? '').trim().slice(0, 120);
+  if (!reason) return res.status(400).json({ error: 'Write a reason first' });
+  const n = db.prepare('SELECT COUNT(*) AS c FROM lost_reasons WHERE workspace_id = ?').get(req.workspaceId).c;
+  if (n >= 50) return res.status(400).json({ error: 'You can keep up to 50 lost reasons' });
+  const id = generateId();
+  db.prepare('INSERT INTO lost_reasons (id, workspace_id, reason) VALUES (?, ?, ?)').run(id, req.workspaceId, reason);
+  logAudit(req.workspaceId, req.userId, 'lost_reason_created', 'lost_reason', id, { reason });
+  res.json({ reason: { id, reason } });
+});
+app.delete('/api/lost-reasons/:id', auth, requirePerm('manage_settings'), (req, res) => {
+  const r = db.prepare('DELETE FROM lost_reasons WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
+  if (!r.changes) return res.status(404).json({ error: 'Not found' });
+  logAudit(req.workspaceId, req.userId, 'lost_reason_deleted', 'lost_reason', req.params.id, {});
+  res.json({ ok: true });
+});
+
+// Multiple pipelines (PROP-006) — boards over the one lifecycle; see pipelines.js.
+const pipelinesApi = require('./pipelines')(app, db, {
+  auth, requirePerm, generateId, logAudit, getScopedLead,
+  broadcastToWorkspace: (...a) => broadcastToWorkspace(...a),
+  hasFeature: (ws, key) => { try { return entitlements.getEntitlements(db, ws).features[key] !== false; } catch { return true; } },
+});
+
 app.get('/api/tags', auth, (req, res) => {
   try { res.json({ tags: db.prepare('SELECT * FROM tags WHERE user_id=? ORDER BY name').all(req.workspaceOwnerId) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/tags', auth, (req, res) => {
+app.post('/api/tags', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, color } = req.body;
     const id = generateId();
@@ -3231,14 +3373,14 @@ app.post('/api/tags', auth, (req, res) => {
     res.status(201).json(db.prepare('SELECT * FROM tags WHERE id = ?').get(id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/tags/:id', auth, (req, res) => {
+app.put('/api/tags/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, color } = req.body;
     db.prepare('UPDATE tags SET name=?, color=? WHERE id=? AND user_id=?').run(name, color, req.params.id, req.workspaceOwnerId);
     res.json(db.prepare('SELECT * FROM tags WHERE id = ?').get(req.params.id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/tags/:id', auth, (req, res) => {
+app.delete('/api/tags/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     db.prepare('DELETE FROM lead_tags WHERE tag_id=?').run(req.params.id);
     db.prepare('DELETE FROM tags WHERE id=? AND user_id=?').run(req.params.id, req.workspaceOwnerId);
@@ -3266,7 +3408,7 @@ app.get('/api/presets', auth, (req, res) => {
   try { res.json({ presets: db.prepare('SELECT * FROM message_presets WHERE user_id=? ORDER BY created_at DESC').all(req.workspaceOwnerId) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/presets', auth, (req, res) => {
+app.post('/api/presets', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { title, body } = req.body;
     const id = generateId();
@@ -3274,14 +3416,14 @@ app.post('/api/presets', auth, (req, res) => {
     res.status(201).json(db.prepare('SELECT * FROM message_presets WHERE id = ?').get(id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/presets/:id', auth, (req, res) => {
+app.put('/api/presets/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { title, body } = req.body;
     db.prepare('UPDATE message_presets SET title=?, body=? WHERE id=? AND user_id=?').run(title, body, req.params.id, req.workspaceOwnerId);
     res.json(db.prepare('SELECT * FROM message_presets WHERE id = ?').get(req.params.id));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/presets/:id', auth, (req, res) => {
+app.delete('/api/presets/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try { db.prepare('DELETE FROM message_presets WHERE id=? AND user_id=?').run(req.params.id, req.workspaceOwnerId); res.json({ message: 'Deleted' }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3311,7 +3453,7 @@ app.get('/api/whatsapp/accounts/:id/status', auth, (req, res) => {
   res.json({ ...status, account_id: req.params.id, account_name: account.account_name });
 });
 
-app.post('/api/whatsapp/accounts/:id/connect', auth, async (req, res) => {
+app.post('/api/whatsapp/accounts/:id/connect', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
   if (!account) return res.status(404).json({ error: 'Account not found' });
   try { await whatsappService.reconnect(req.params.id); res.json({ ok: true }); }
@@ -3321,7 +3463,7 @@ app.post('/api/whatsapp/accounts/:id/connect', auth, async (req, res) => {
 // Link by phone number: WhatsApp → Linked devices → Link with phone number
 // instead → type this 8-character code. The account must be connecting (QR
 // showing) — the code replaces the QR scan.
-app.post('/api/whatsapp/accounts/:id/pair-code', auth, async (req, res) => {
+app.post('/api/whatsapp/accounts/:id/pair-code', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
   if (!account) return res.status(404).json({ error: 'Account not found' });
   try {
@@ -3332,7 +3474,7 @@ app.post('/api/whatsapp/accounts/:id/pair-code', auth, async (req, res) => {
 });
 
 // Same, for the workspace's WhatsApp page (which works on "the" account).
-app.post('/api/whatsapp/pair-code', auth, async (req, res) => {
+app.post('/api/whatsapp/pair-code', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = resolveWorkspaceWaAccount(req.workspaceId);
   if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
   try {
@@ -3342,21 +3484,21 @@ app.post('/api/whatsapp/pair-code', auth, async (req, res) => {
   } catch (e) { res.status(400).json({ error: describeWaError(e).split('\n')[0] || e.message }); }
 });
 
-app.post('/api/whatsapp/accounts/:id/disconnect', auth, async (req, res) => {
+app.post('/api/whatsapp/accounts/:id/disconnect', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
   if (!account) return res.status(404).json({ error: 'Account not found' });
   try { await whatsappService.disconnect(req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/whatsapp/disconnect', auth, async (req, res) => {
+app.post('/api/whatsapp/disconnect', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = resolveWorkspaceWaAccount(req.workspaceId);
   if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
   try { await whatsappService.disconnect(account.id); res.json({ message: 'Disconnected' }); }
   catch (e) { res.status(500).json({ error: 'Failed to disconnect' }); }
 });
 
-app.post('/api/whatsapp/reconnect', auth, async (req, res) => {
+app.post('/api/whatsapp/reconnect', auth, requirePerm('manage_whatsapp'), async (req, res) => {
   const account = resolveWorkspaceWaAccount(req.workspaceId);
   if (!account) return res.status(404).json({ error: 'No WhatsApp account for this workspace' });
   try {
@@ -4525,7 +4667,7 @@ app.get('/api/ai/profile', auth, (req, res) => {
 });
 
 // PUT /api/ai/profile — update workspace AI command center settings
-app.put('/api/ai/profile', auth, (req, res) => {
+app.put('/api/ai/profile', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { business_description, tone, language, signature, dos, donts, auto_analyze } = req.body || {};
     db.prepare(`INSERT INTO workspace_ai_profile
@@ -4566,7 +4708,7 @@ const mammoth = require('mammoth');
 const knowledgeUpload = multer({
   storage: multer.diskStorage({
     destination: uploadsDir,
-    filename: (req, file, cb) => cb(null, `knowledge-${Date.now()}-${file.originalname}`)
+    filename: (req, file, cb) => cb(null, `knowledge-${Date.now()}-${unguessable()}-${(file.originalname || 'file').normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100)}`)
   }),
   limits: { fileSize: 20 * 1024 * 1024 }
 });
@@ -4773,7 +4915,7 @@ app.get('/api/knowledge', auth, (req, res) => {
 });
 
 // POST /api/knowledge/upload — upload & process document
-app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (req, res) => {
+app.post('/api/knowledge/upload', auth, requirePerm('manage_settings'), knowledgeUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -4830,7 +4972,7 @@ app.post('/api/knowledge/upload', auth, knowledgeUpload.single('file'), async (r
 });
 
 // DELETE /api/knowledge/:id — delete document + its memories
-app.delete('/api/knowledge/:id', auth, (req, res) => {
+app.delete('/api/knowledge/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const doc = db.prepare('SELECT * FROM knowledge_documents WHERE id = ?').get(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Not found' });
@@ -4853,7 +4995,7 @@ app.get('/api/knowledge/:id/memories', auth, (req, res) => {
 });
 
 // POST /api/knowledge/learn-from-messages — manually trigger learning from staff replies
-app.post('/api/knowledge/learn-from-messages', auth, async (req, res) => {
+app.post('/api/knowledge/learn-from-messages', auth, requirePerm('manage_settings'), async (req, res) => {
   try {
     // Get last 100 outgoing staff messages for this workspace
     const messages = db.prepare(`
@@ -5289,6 +5431,32 @@ Lead status: ${lead.status}
 //  PLATFORM ACCOUNTS — CRUD
 // ════════════════════════════════════════════════════════════
 
+// Connected-account credentials never go back to the browser in full (PROP-006):
+// the list was handing every member, of any role, each Meta page token and app
+// secret. Secret fields come back masked with a has_<field> flag; saving the mask
+// unchanged keeps the stored value, exactly like the SMTP password.
+const CRED_MASK = '••••••••';
+const SECRET_CRED = /secret|token|password|pass$|key$/i;
+function publicCredentials(raw) {
+  let c = {}; try { c = JSON.parse(raw || '{}'); } catch {}
+  const out = {};
+  for (const [k, v] of Object.entries(c)) {
+    if (SECRET_CRED.test(k)) { out[k] = v ? CRED_MASK : ''; out[`has_${k}`] = !!v; }
+    else out[k] = v;
+  }
+  return out;
+}
+function mergeCredentials(storedRaw, incoming) {
+  let stored = {}; try { stored = JSON.parse(storedRaw || '{}'); } catch {}
+  const next = { ...stored };
+  for (const [k, v] of Object.entries(incoming || {})) {
+    if (k.startsWith('has_')) continue;
+    if (SECRET_CRED.test(k) && v === CRED_MASK) continue; // untouched secret
+    next[k] = v;
+  }
+  return next;
+}
+
 app.get('/api/platform-accounts', auth, (req, res) => {
   try {
     const { platform } = req.query;
@@ -5296,15 +5464,12 @@ app.get('/api/platform-accounts', auth, (req, res) => {
     const params = [req.workspaceId];
     if (platform) { query += ' AND platform = ?'; params.push(platform); }
     query += ' ORDER BY platform, slot_index ASC';
-    const accounts = db.prepare(query).all(...params).map(a => ({
-      ...a,
-      credentials: (() => { try { return JSON.parse(a.credentials || '{}'); } catch { return {}; } })()
-    }));
+    const accounts = db.prepare(query).all(...params).map(a => ({ ...a, credentials: publicCredentials(a.credentials) }));
     res.json({ accounts });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/platform-accounts', auth, (req, res) => {
+app.post('/api/platform-accounts', auth, requirePerm('manage_whatsapp'), (req, res) => {
   try {
     const { platform, account_name, slot_index } = req.body;
     if (!platform) return res.status(400).json({ error: 'platform required' });
@@ -5336,7 +5501,7 @@ app.post('/api/platform-accounts', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/platform-accounts/:id', auth, (req, res) => {
+app.put('/api/platform-accounts/:id', auth, requirePerm('manage_whatsapp'), (req, res) => {
   try {
     const { account_name, account_handle, credentials, status } = req.body;
     const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
@@ -5352,17 +5517,17 @@ app.put('/api/platform-accounts/:id', auth, (req, res) => {
     `).run(
       account_name || null,
       account_handle || null,
-      credentials ? JSON.stringify(credentials) : null,
+      credentials ? JSON.stringify(mergeCredentials(account.credentials, credentials)) : null,
       status || null,
       req.params.id
     );
 
     const updated = db.prepare('SELECT * FROM platform_accounts WHERE id = ?').get(req.params.id);
-    res.json({ account: { ...updated, credentials: (() => { try { return JSON.parse(updated.credentials || '{}'); } catch { return {}; } })() } });
+    res.json({ account: { ...updated, credentials: publicCredentials(updated.credentials) } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/platform-accounts/:id', auth, (req, res) => {
+app.delete('/api/platform-accounts/:id', auth, requirePerm('manage_whatsapp'), (req, res) => {
   try {
     const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
     if (!account) return res.status(404).json({ error: 'Account not found' });
@@ -5727,17 +5892,12 @@ app.get('/api/workspace/plan', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Plans, limits and trials are set only from Command Center (/api/cc/*), which is
+// audited and tied to billing. This route used to write whatever the caller sent,
+// so any signed-in user of any role could make their own workspace Enterprise with
+// unlimited limits. Nothing in the app calls it; it now refuses every write.
 app.put('/api/workspace/plan', auth, (req, res) => {
-  try {
-    const { plan, features, limits, trial_ends_at } = req.body || {};
-    db.prepare(`INSERT INTO workspace_plan (workspace_id, plan, features, limits, trial_ends_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(workspace_id) DO UPDATE SET
-        plan = excluded.plan, features = excluded.features, limits = excluded.limits, trial_ends_at = excluded.trial_ends_at, updated_at = CURRENT_TIMESTAMP
-    `).run(req.workspaceId, plan || entitlements.DEFAULT_PLAN, features ? JSON.stringify(features) : null, limits ? JSON.stringify(limits) : null, trial_ends_at || null);
-    try { entitlements.invalidate(req.workspaceId); } catch {}
-    res.json({ plan: db.prepare(`SELECT * FROM workspace_plan WHERE workspace_id = ?`).get(req.workspaceId) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  res.status(403).json({ error: 'Plans are managed by WappFlow. Contact support to change your plan.' });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -5901,6 +6061,8 @@ app.get('/api/plans', (req, res) => {
 });
 
 // GET /api/message-queue — outbound queue status
+// DEPRECATED (PROP-006): nothing writes to outbound_message_queue — WhatsApp sends directly and
+// that flow is not to be touched — and no screen reads it. Kept per Article 11 (deprecate → remove).
 app.get('/api/message-queue', auth, (req, res) => {
   try {
     const items = db.prepare(`SELECT * FROM outbound_message_queue WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 100`).all(req.workspaceId);
@@ -6093,7 +6255,7 @@ app.patch('/api/whatsapp/groups/:groupId', auth, (req, res) => {
 // ════════════════════════════════════════════════════════════
 
 // POST /api/leads/bulk-trash — soft-delete many leads in one call
-app.post('/api/leads/bulk-trash', auth, (req, res) => {
+app.post('/api/leads/bulk-trash', auth, requirePerm('delete_lead'), (req, res) => {
   try {
     const { lead_ids } = req.body || {};
     if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
@@ -6763,6 +6925,17 @@ const bookingSend = async ({ lead, userId, text }) => {
   try { if (lead.id) whatsappService.saveOutgoingMessage(lead.id, userId, text, lead.workspace_id); } catch {}
   return { sent: true };
 };
+// Settings routes that live in their own modules get the same permission guard,
+// registered first so it runs before the module's handler (PROP-006).
+const settingsGuard = [auth, requirePerm('manage_settings'), (req, res, next) => next()];
+app.put('/api/booking/settings', ...settingsGuard);
+app.put('/api/cs/settings', ...settingsGuard);
+app.post('/api/cs/settings/letterhead', ...settingsGuard);
+app.delete('/api/cs/settings/letterhead', ...settingsGuard);
+app.post('/api/store/products', ...settingsGuard);
+app.put('/api/store/products/:id', ...settingsGuard);
+app.delete('/api/store/products/:id', ...settingsGuard);
+
 require('./booking')(app, db, {
   auth, generateId, broadcastToWorkspace, addContactHistory, notify,
   clientBaseUrl: process.env.FRONTEND_URL || '',
@@ -6793,6 +6966,13 @@ require('./account-recovery')(app, db, {
   clientBaseUrl: process.env.FRONTEND_URL || '',
 });
 
+// Two-step sign-in and email verification for customer accounts (PROP-006).
+accountSecurity = require('./account-security')(app, db, {
+  auth, signSession, JWT_SECRET, logAudit, loginLimiter,
+  sendPlatformMail: require('./platform-mail').sendPlatformMail,
+  frontendUrl: () => process.env.FRONTEND_URL || '',
+});
+
 require('./contracts-studio')(app, db, {
   auth, generateId, logAudit, broadcastToWorkspace, addContactHistory, notify,
   path, fs, uploadsDir, multer,
@@ -6819,6 +6999,9 @@ require('./contracts-studio')(app, db, {
 //  COMMUNICATIONS 2.0  (additive — DMs/threads/mentions/pins/presence/search,
 //  real-time over SSE, + LiveKit voice/video/screenshare token minting)
 // ════════════════════════════════════════════════════════════
+// Email workflows are sent now — they were only ever recorded (PROP-006).
+require('./email-workflows')(app, db, { auth, generateId, getScopedLead, addContactHistory, logAudit, nodemailer, broadcastToWorkspace });
+
 commsApi = require('./comms')(app, db, {
   auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser, notify,
 });
@@ -6873,7 +7056,7 @@ console.log('🗄️  Storage route mounted (/api/storage/file/:key) · provider
 //  COMMAND CENTER  (platform control plane — additive, cross-tenant, own identity)
 //  Mounted last so every ms_*/cs_* table already exists. See COMMAND-CENTER-SPEC.md.
 // ════════════════════════════════════════════════════════════
-require('./command-center')(app, db, {
+ccMount = require('./command-center')(app, db, {
   auth, generateId, broadcastToUser, broadcastToWorkspace, logAudit, JWT_SECRET, notify,
   sendPlatformMail: require('./platform-mail').sendPlatformMail,
   // Reuse the workspace-owner SMTP seam so scheduled reports can be emailed.

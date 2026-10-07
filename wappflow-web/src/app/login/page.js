@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Zap, Mail, Lock, ArrowRight, Eye, EyeOff, CheckCircle2,
-  MessageCircle, Brain, Users, Sparkles, ShieldCheck, Star,
+  MessageCircle, Brain, Users, Sparkles, ShieldCheck,
 } from 'lucide-react';
 import { authAPI } from '@/lib/api';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
@@ -26,6 +26,9 @@ function LoginContent() {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Second sign-in step (PROP-006): { mode: 'code' | 'setup' | 'codes', token, setup, codes, session }
+  const [mfa, setMfa] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   // Checked by default. Unchecked, the session is cleared once every tab has
   // been gone long enough for the heartbeat to go stale — which on a phone is
@@ -63,13 +66,40 @@ function LoginContent() {
     window.location.replace(next);
   };
 
+  // Password or Google accepted. Either we're in, or a second step is needed.
+  const afterFirstStep = async (data) => {
+    if (data?.mfa_required) { setMfaCode(''); setMfa({ mode: 'code', token: data.mfa_token }); return; }
+    if (data?.mfa_setup_required) {
+      const r = await authAPI.mfaSetup(data.mfa_token);
+      setMfaCode(''); setMfa({ mode: 'setup', token: data.mfa_token, setup: r.data });
+      return;
+    }
+    saveAuthData(data, remember);
+  };
+
+  const submitMfa = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    try {
+      if (mfa.mode === 'code') {
+        const r = await authAPI.loginMfa(mfa.token, mfaCode);
+        saveAuthData(r.data, remember);
+      } else {
+        const r = await authAPI.mfaEnable(mfa.token, mfaCode);
+        setMfa({ mode: 'codes', codes: r.data.recovery_codes, session: r.data });
+      }
+    } catch (err) {
+      setError(loginErrorMessage(err, 'That code didn\u2019t work'));
+    } finally { setLoading(false); }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       const response = await authAPI.login(formData);
-      saveAuthData(response.data, remember);
+      await afterFirstStep(response.data);
     } catch (err) {
       setError(loginErrorMessage(err, 'Login failed'));
     } finally {
@@ -82,7 +112,7 @@ function LoginContent() {
     setLoading(true);
     try {
       const response = await authAPI.google({ credential: credentialResponse.credential });
-      saveAuthData(response.data, remember);
+      await afterFirstStep(response.data);
     } catch (err) {
       setError(loginErrorMessage(err, 'Google sign-in failed'));
     } finally {
@@ -129,13 +159,8 @@ function LoginContent() {
             <Feature icon={<ShieldCheck size={16} />} title="Your data stays yours" desc="TLS everywhere · full export · no lock-in" />
           </div>
 
-          <div className="auth-testimonial">
-            <div className="auth-stars">
-              {[0,1,2,3,4].map(i => <Star key={i} size={12} fill="#fbbf24" stroke="#fbbf24" />)}
-            </div>
-            <p>{`"We were losing 40% of WhatsApp leads to "I'll get back to you" replies. WappFlow's AI drafts the response before the customer finishes typing."`}</p>
-            <div className="auth-test-meta">— Sales lead, Dubai real estate</div>
-          </div>
+          {/* A quote attributed to an unnamed customer read as invented; it is gone until
+              there is a real, attributable one (PROP-006). */}
         </div>
 
         <div className="auth-promo-foot">
@@ -169,6 +194,10 @@ function LoginContent() {
             </div>
           )}
 
+          {mfa ? (
+            <MfaStep mfa={mfa} code={mfaCode} setCode={setMfaCode} loading={loading} onSubmit={submitMfa}
+              onDone={() => saveAuthData(mfa.session, remember)} onBack={() => { setMfa(null); setError(''); }} />
+          ) : (<>
           {GOOGLE_CLIENT_ID ? (
             <div className="auth-google">
               <GoogleLogin
@@ -193,10 +222,11 @@ function LoginContent() {
 
           <form onSubmit={handleSubmit} className="auth-form-fields">
             <div className="auth-field">
-              <label>Email</label>
+              <label htmlFor="login-email">Email</label>
               <div className="auth-input-wrap">
                 <Mail size={16} />
                 <input
+                  id="login-email"
                   type="email"
                   required
                   value={formData.email}
@@ -209,7 +239,7 @@ function LoginContent() {
 
             <div className="auth-field">
               <div className="auth-field-row">
-                <label>Password</label>
+                <label htmlFor="login-password">Password</label>
                 {/* Was a placeholder comment. A studio owner who forgot their
                     password was locked out of their business permanently. */}
                 <a href="/forgot-password" style={{ fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
@@ -219,6 +249,7 @@ function LoginContent() {
               <div className="auth-input-wrap">
                 <Lock size={16} />
                 <input
+                  id="login-password"
                   type={showPwd ? 'text' : 'password'}
                   required
                   value={formData.password}
@@ -246,6 +277,8 @@ function LoginContent() {
             </button>
           </form>
 
+          </>)}
+
           <p className="auth-bottom">
             Don&apos;t have an account?{' '}
             <Link href="/signup">Create one free</Link>
@@ -257,6 +290,44 @@ function LoginContent() {
         </div>
       </main>
     </div>
+  );
+}
+
+function MfaStep({ mfa, code, setCode, loading, onSubmit, onDone, onBack }) {
+  if (mfa.mode === 'codes') {
+    return (
+      <div className="auth-form-fields">
+        <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0 }}>Two-step sign-in is on. Save these recovery codes somewhere safe. Each one works once if you lose your phone. They won&apos;t be shown again.</p>
+        <pre aria-label="Recovery codes" style={{ fontFamily: 'ui-monospace, monospace', fontSize: 14, lineHeight: 1.8, padding: 14, borderRadius: 12, background: 'var(--surface2, #16161d)', border: '1px solid var(--border, #2a2a33)', margin: 0, whiteSpace: 'pre-wrap' }}>{(mfa.codes || []).join('\n')}</pre>
+        <button type="button" className="auth-submit" onClick={onDone}>I&apos;ve saved them, continue <ArrowRight size={16} /></button>
+      </div>
+    );
+  }
+  const setup = mfa.mode === 'setup';
+  return (
+    <form onSubmit={onSubmit} className="auth-form-fields">
+      {setup ? (
+        <>
+          <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0 }}>Your workspace requires two-step sign-in. Scan this code with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password), then enter the 6-digit code it shows.</p>
+          {mfa.setup?.qr && <img src={mfa.setup.qr} alt="QR code to add WappFlow to your authenticator app" width={200} height={200} style={{ alignSelf: 'center', borderRadius: 12, background: '#fff', padding: 8 }} />}
+          {mfa.setup?.secret && <p style={{ fontSize: 12.5, margin: 0, wordBreak: 'break-all' }}>Can&apos;t scan? Enter this key: <code>{mfa.setup.secret}</code></p>}
+        </>
+      ) : (
+        <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0 }}>Enter the 6-digit code from your authenticator app. Lost your phone? Use one of your recovery codes.</p>
+      )}
+      <div className="auth-field">
+        <label htmlFor="login-mfa-code">{setup ? 'Code from the app' : 'Code'}</label>
+        <div className="auth-input-wrap">
+          <ShieldCheck size={16} />
+          <input id="login-mfa-code" value={code} onChange={(e) => setCode(e.target.value)} inputMode={setup ? 'numeric' : 'text'}
+            autoComplete="one-time-code" autoFocus required placeholder={setup ? '123456' : '123456 or a recovery code'} />
+        </div>
+      </div>
+      <button type="submit" disabled={loading || !code.trim()} className="auth-submit">
+        {loading ? <><span className="auth-spinner" /> Checking…</> : <>{setup ? 'Turn on and sign in' : 'Verify'} <ArrowRight size={16} /></>}
+      </button>
+      <button type="button" onClick={onBack} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Back to sign in</button>
+    </form>
   );
 }
 

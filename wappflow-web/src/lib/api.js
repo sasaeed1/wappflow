@@ -24,12 +24,22 @@ api.interceptors.response.use(
       localStorage.removeItem('user');
       window.location.href = '/login';
     }
+    // A role refusal (PROP-006) is the same everywhere: say plainly why, once, instead
+    // of each page showing a generic "failed". Loaded lazily — api.js has no UI deps.
+    if (err.response?.status === 403 && err.response?.data?.permission_denied && typeof window !== 'undefined') {
+      import('@/components/ui/Toast').then(({ toast }) => toast.warning(err.response.data.error || "Your role can't do that.")).catch(() => {});
+    }
     return Promise.reject(err);
   }
 );
 
 export const authAPI = {
   login: (data) => api.post('/auth/login', data),
+  // Two-step sign-in (PROP-006): the second step, and enrolment when a team requires it.
+  loginMfa: (mfa_token, code) => api.post('/auth/login/mfa', { mfa_token, code }),
+  mfaSetup: (mfa_token) => api.post('/auth/mfa/setup', { mfa_token }),
+  mfaEnable: (mfa_token, code) => api.post('/auth/mfa/enable', { mfa_token, code }),
+  verifyEmail: (token) => api.post('/auth/verify-email', { token }),
   register: (data) => api.post('/auth/register', data),
   me: () => api.get('/auth/me'),
   google: (data) => api.post('/auth/google', data),
@@ -244,6 +254,9 @@ export const timelineAPI = {
   get: (leadId) => api.get(`/leads/${leadId}/timeline`),
 };
 
+/** @deprecated PROP-006 — nothing ever writes to the outbound queue (the WhatsApp flow sends
+ *  directly and is not to be touched), and no screen uses this. Kept per Article 11; remove
+ *  in the cleanup step. */
 export const messageQueueAPI = {
   getAll: () => api.get('/message-queue'),
   retry: (id) => api.post(`/message-queue/${id}/retry`),
@@ -742,3 +755,24 @@ export const supportAPI = {
   get:    (id)       => api.get(`/support/tickets/${id}`),
   reply:  (id, body) => api.post(`/support/tickets/${id}/reply`, { body }),
 };
+
+// Account security (PROP-006) — two-step sign-in, recovery codes, team policy, email verification.
+export const accountAPI = {
+  security:        ()              => api.get('/account/security'),
+  mfaSetup:        ()              => api.post('/account/mfa/setup'),
+  mfaEnable:       (code)          => api.post('/account/mfa/enable', { code }),
+  mfaDisable:      (password, code) => api.post('/account/mfa/disable', { password, code }),
+  recoveryCodes:   (code)          => api.post('/account/mfa/recovery-codes', { code }),
+  setTeamPolicy:   (require_2fa)   => api.put('/workspace/security', { require_2fa }),
+  resendVerify:    ()              => api.post('/account/verify-email/send'),
+};
+
+// Pipelines (PROP-006) — separate boards over the one lead lifecycle.
+export const pipelinesAPI = {
+  list:      ()             => api.get('/pipelines'),
+  create:    (data)         => api.post('/pipelines', data),
+  update:    (id, data)     => api.put(`/pipelines/${id}`, data),
+  remove:    (id)           => api.delete(`/pipelines/${id}`),
+  moveLeads: (id, lead_ids) => api.post(`/pipelines/${id}/leads`, { lead_ids }),
+};
+

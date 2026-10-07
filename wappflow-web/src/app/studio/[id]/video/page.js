@@ -250,7 +250,7 @@ function AiDraftModal({ projectId, hasMedia, onClose }) {
   const narrowed = matched.length > 0 && matched.length < allStyles.length;
 
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 560 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -392,7 +392,7 @@ function TemplateGalleryModal({ projectId, hasMedia, onClose }) {
   };
 
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 1160, width: '95vw' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 4 }}>
           <div>
@@ -462,7 +462,7 @@ function TemplateGalleryModal({ projectId, hasMedia, onClose }) {
 function NewReelModal({ onClose, onPick }) {
   const order = ['9:16', '1:1', '4:5', '16:9', '21:9', '3:2'];
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal" style={{ maxWidth: 520 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>New reel</h2>

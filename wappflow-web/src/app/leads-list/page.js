@@ -503,7 +503,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 22 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Group Name *</label>
-                <input
+                <input aria-label="Group Name"
                   autoFocus
                   value={name}
                   onChange={e => setName(e.target.value)}
@@ -516,7 +516,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
 
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Description (optional)</label>
-                <textarea
+                <textarea aria-label="Description (optional)"
                   value={description}
                   onChange={e => setDescription(e.target.value)}
                   rows={3}
@@ -1189,19 +1189,19 @@ export default function LeadsListPage() {
           {/* Search */}
           <div style={{ position: 'relative', minWidth: 220, flex: 1 }}>
             <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--text-dim)' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, phone, status..."
+            <input aria-label="Search by name, phone, status" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, phone, status..."
               style={{ width: '100%', padding: '8px 12px 8px 34px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface2)', boxSizing: 'border-box' }}
             />
             {search && <button aria-label="Close" onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>}
           </div>
 
           {/* Sort */}
-          <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, color: 'var(--text)', background: 'var(--surface2)', cursor: 'pointer', outline: 'none' }}>
+          <select aria-label="Sort by" value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, color: 'var(--text)', background: 'var(--surface2)', cursor: 'pointer', outline: 'none' }}>
             {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
 
           {/* Assignment filter */}
-          <select value={assignedFilter} onChange={e => setAssignedFilter(e.target.value)} style={{ padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, color: 'var(--text)', background: 'var(--surface2)', cursor: 'pointer', outline: 'none' }}>
+          <select aria-label="Filter by assignee" value={assignedFilter} onChange={e => setAssignedFilter(e.target.value)} style={{ padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, color: 'var(--text)', background: 'var(--surface2)', cursor: 'pointer', outline: 'none' }}>
             <option value="all">All Assigned</option>
             <option value="mine">Assigned to Me</option>
             <option value="unassigned">Unassigned</option>
@@ -1224,9 +1224,9 @@ export default function LeadsListPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Calendar size={14} color="var(--text-dim)" />
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Created from</span>
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface2)' }} />
+              <input aria-label="Created from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface2)' }} />
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>to</span>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface2)' }} />
+              <input aria-label="Created to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface2)' }} />
             </div>
             {(dateFrom || dateTo) && (
               <button onClick={() => { setDateFrom(''); setDateTo(''); }} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Clear dates</button>

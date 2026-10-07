@@ -87,7 +87,7 @@ function TasksPanel() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }}
+        <input aria-label="New task" value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }}
           placeholder="Add a task…"
           style={{ flex: 1, padding: '9px 11px', border: '1.5px solid var(--border)', borderRadius: 9, fontSize: 13, outline: 'none', background: 'var(--surface2)', color: 'var(--text)', boxSizing: 'border-box' }} />
         <button aria-label="Add" onClick={add} style={{ width: 36, borderRadius: 9, border: 'none', background: '#10b981', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -117,7 +117,7 @@ function NoteCard({ note, onUpdate, onDelete }) {
   const bg = NOTE_COLORS[note.color] || NOTE_COLORS.yellow;
   return (
     <div style={{ background: bg, borderRadius: 10, padding: '10px 11px', marginBottom: 8 }}>
-      <textarea value={text} onChange={e => setText(e.target.value)}
+      <textarea aria-label="Note" value={text} onChange={e => setText(e.target.value)}
         onBlur={() => { if (text !== note.content) onUpdate(note.id, { content: text }); }}
         placeholder="Write something…" rows={3}
         style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', resize: 'vertical', fontSize: 13, color: '#1f2937', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box' }} />

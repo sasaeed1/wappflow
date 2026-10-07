@@ -61,9 +61,9 @@ export default function Plans() {
       {plans.map((p) => (
         <Card key={p.key}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-            <input value={p.name || ''} onChange={(e) => patch(p.key, (x) => { x.name = e.target.value; return x; })} style={{ ...inp, fontWeight: 700, fontSize: 15, minWidth: 160 }} />
+            <input aria-label="Plan name" value={p.name || ''} onChange={(e) => patch(p.key, (x) => { x.name = e.target.value; return x; })} style={{ ...inp, fontWeight: 700, fontSize: 15, minWidth: 160 }} />
             <Pill tone="neutral">{p.key}</Pill>
-            <select value={p.status} onChange={(e) => patch(p.key, (x) => { x.status = e.target.value; return x; })} style={inp}>
+            <select aria-label="Plan status" value={p.status} onChange={(e) => patch(p.key, (x) => { x.status = e.target.value; return x; })} style={inp}>
               <option value="active">active</option><option value="archived">archived</option><option value="retired">retired</option>
             </select>
             <div style={{ flex: 1 }} />
@@ -79,7 +79,7 @@ export default function Plans() {
                 <div key={k} style={kvRow}>
                   <span style={{ color: 'var(--text-muted,#9a9aa5)' }}>{k}</span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <input type="number" value={v} onChange={(e) => patch(p.key, (x) => { x.limits = { ...x.limits, [k]: parseInt(e.target.value, 10) }; return x; })} style={{ ...inp, width: 90, textAlign: 'right' }} />
+                    <input aria-label={`Limit: ${k}`} type="number" value={v} onChange={(e) => patch(p.key, (x) => { x.limits = { ...x.limits, [k]: parseInt(e.target.value, 10) }; return x; })} style={{ ...inp, width: 90, textAlign: 'right' }} />
                     {v === -1 && <span style={{ fontSize: 11, color: '#34d399' }}>∞</span>}
                     <button onClick={() => patch(p.key, (x) => { const l = { ...x.limits }; delete l[k]; x.limits = l; return x; })} style={xBtn}>×</button>
                   </span>
@@ -90,7 +90,7 @@ export default function Plans() {
                 <div key={i} style={kvRow}>
                   <span style={{ color: 'var(--text-muted,#9a9aa5)' }}>{pr.interval}{pr.is_founding ? <Pill tone="amber">founding</Pill> : null}{pr.region && pr.region !== 'default' ? ` · ${pr.region}` : ''}</span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    ${' '}<input type="number" value={pr.amount} onChange={(e) => patch(p.key, (x) => { x.prices = x.prices.map((q, j) => j === i ? { ...q, amount: parseFloat(e.target.value) || 0 } : q); return x; })} style={{ ...inp, width: 90, textAlign: 'right' }} />
+                    ${' '}<input aria-label={`Price ${pr.interval}${pr.is_founding ? ' (founding)' : ''}`} type="number" value={pr.amount} onChange={(e) => patch(p.key, (x) => { x.prices = x.prices.map((q, j) => j === i ? { ...q, amount: parseFloat(e.target.value) || 0 } : q); return x; })} style={{ ...inp, width: 90, textAlign: 'right' }} />
                     <button onClick={() => patch(p.key, (x) => { x.prices = x.prices.filter((_, j) => j !== i); return x; })} style={xBtn}>×</button>
                   </span>
                 </div>
@@ -108,7 +108,7 @@ export default function Plans() {
                       <button onClick={() => patch(p.key, (x) => { x.features = { ...x.features, [k]: !v }; return x; })}
                         style={{ ...toggle, background: v ? '#34d39922' : '#f8717118', color: v ? '#34d399' : '#f87171', borderColor: (v ? '#34d399' : '#f87171') + '55' }}>{v ? 'on' : 'off'}</button>
                     ) : (
-                      <input value={String(v)} onChange={(e) => patch(p.key, (x) => { x.features = { ...x.features, [k]: e.target.value }; return x; })} style={{ ...inp, width: 100 }} />
+                      <input aria-label={`Feature: ${k}`} value={String(v)} onChange={(e) => patch(p.key, (x) => { x.features = { ...x.features, [k]: e.target.value }; return x; })} style={{ ...inp, width: 100 }} />
                     )}
                   </div>
                 ))}

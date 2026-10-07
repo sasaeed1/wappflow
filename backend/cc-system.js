@@ -44,6 +44,7 @@ module.exports = function mountSystem(app, deps) {
     reports: 'Scheduled reports (daily 03:00 UTC)',
     grace_sweep: 'Grace-period expiry (daily 03:05 UTC)',
     billing_daily: 'Billing renewals + overdue check (daily 04:00 UTC)',
+    backup_watch: 'Backup freshness check (hourly)',
   };
 
   const sizeOf = (p) => { try { return fs.statSync(p).size; } catch { return 0; } };
@@ -97,6 +98,10 @@ module.exports = function mountSystem(app, deps) {
         { key: 'memory', label: 'Memory', value: `${mem.pct}% used`, level: level(mem.pct, 85, 95) },
         d ? { key: 'disk', label: 'Disk (data volume)', value: `${d.pct}% used`, level: level(d.pct, 80, 92) } : { key: 'disk', label: 'Disk', value: 'unavailable', level: 'unknown' },
         { key: 'backup', label: 'Newest backup', value: backup ? `${backup.age_hours} h ago` : 'none found', level: !backup ? 'critical' : level(backup.age_hours, 30, 72) },
+        // Password resets, email verification and support replies all depend on it,
+        // and every one of them fails quietly without it (PROP-006).
+        { key: 'mail', label: 'Platform email (resets, verification, support)', value: process.env.SMTP_HOST ? `via ${process.env.SMTP_HOST}` : 'not set up — add SMTP_* to .env', level: process.env.SMTP_HOST ? 'ok' : 'critical' },
+        { key: 'offsite', label: 'Off-site backups', value: process.env.BACKUP_R2_BUCKET ? `R2 bucket ${process.env.BACKUP_R2_BUCKET}` : 'off — set BACKUP_R2_BUCKET', level: process.env.BACKUP_R2_BUCKET && process.env.BACKUP_ENCRYPTION_KEY ? 'ok' : 'warn' },
         { key: 'wal', label: 'Database write-ahead log', value: `${Math.round(database.wal / 1048576)} MB`, level: level(database.wal / 1048576, 256, 1024) },
       ];
       const overall = checks.concat(jobs).some((c) => c.level === 'critical') ? 'critical'
@@ -113,7 +118,32 @@ module.exports = function mountSystem(app, deps) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  return {};
+  // Backup watchdog (PROP-006). A backup job that silently stopped is only found
+  // on the day you need a restore. Every hour: if the newest backup is older than
+  // 36 hours (or there is none), raise ONE open Founder Inbox item; close it again
+  // once a fresh backup appears.
+  function checkBackups() {
+    const b = newestBackup();
+    const stale = !b || b.age_hours > 36;
+    const open = db.prepare("SELECT id FROM cc_inbox WHERE kind = 'backup_stale' AND status = 'open'").get();
+    if (stale && !open) {
+      db.prepare('INSERT INTO cc_inbox (id, kind, workspace_id, severity, title, body, link) VALUES (?,?,?,?,?,?,?)').run(
+        'bk-' + Date.now().toString(36), 'backup_stale', null, 'high',
+        b ? `No backup for ${Math.round(b.age_hours)} hours` : 'No backups found on the server',
+        `Expected a nightly backup in ${BACKUP_DIR}. Check the cron job (/etc/cron.daily/wappflow-backup) and run: node backup.js`,
+        '/control/system');
+    } else if (!stale && open) {
+      db.prepare("UPDATE cc_inbox SET status = 'dismissed' WHERE kind = 'backup_stale' AND status = 'open'").run();
+    }
+    return { stale, age_hours: b ? b.age_hours : null };
+  }
+  const watch = tracked(db, 'backup_watch', checkBackups);
+  if (process.env.NODE_ENV !== 'test') {
+    setTimeout(() => { try { watch(); } catch {} }, 60 * 1000).unref?.();
+    setInterval(() => { try { watch(); } catch {} }, 60 * 60 * 1000).unref?.();
+  }
+
+  return { checkBackups };
 };
 
 module.exports.recordJob = recordJob;

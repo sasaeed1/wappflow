@@ -227,7 +227,7 @@ function AskWidget({ token, stickyOffset }) {
             {busy && <div style={{ alignSelf: 'flex-start', fontSize: 13, color: '#8a8a93' }}>Thinking…</div>}
           </div>
           <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-            <input data-ui value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()} placeholder="Type your question…" style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e2e8', background: '#fff', color: '#16161a', fontSize: 14, outline: 'none' }} />
+            <input aria-label="Your question" data-ui value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()} placeholder="Type your question…" style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e2e8', background: '#fff', color: '#16161a', fontSize: 14, outline: 'none' }} />
             <button onClick={ask} disabled={busy || !q.trim()} style={{ padding: '0 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: '#16161a', color: '#fff', fontWeight: 700, fontSize: 14, opacity: busy || !q.trim() ? 0.5 : 1 }}>Ask</button>
           </div>
         </div>
@@ -310,10 +310,10 @@ function FillableField({ block, value, onChange }) {
       )}
 
       {kind === 'date' && (
-        <input data-ui type="date" value={value || ''} onChange={e => onChange(e.target.value)} style={inp} />
+        <input aria-label={label || 'Date'} data-ui type="date" value={value || ''} onChange={e => onChange(e.target.value)} style={inp} />
       )}
       {kind === 'text' && (
-        <input data-ui value={value || ''} onChange={e => onChange(e.target.value)} placeholder="Type your answer" style={inp} />
+        <input aria-label={label} data-ui value={value || ''} onChange={e => onChange(e.target.value)} placeholder="Type your answer" style={inp} />
       )}
       {kind === 'checkbox' && (
         <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer', marginTop: 4 }}>
@@ -378,7 +378,7 @@ function SignSheet({ token, title, signerName, onClose, onSigned, onDeclined, se
         <h2 style={{ fontSize: 20, fontWeight: 800, color: '#16161a', margin: '0 0 4px' }}>Sign “{title}”</h2>
         <p style={{ fontSize: 13, color: '#70707a', margin: '0 0 16px' }}>Your electronic signature is legally binding.</p>
         <label style={lbl}>Full legal name</label>
-        <input data-ui value={typed} onChange={e => setTyped(e.target.value)} placeholder="Type your name" style={inp} />
+        <input aria-label="Full legal name" data-ui value={typed} onChange={e => setTyped(e.target.value)} placeholder="Type your name" style={inp} />
         {usesPlacedSigning ? (
           <div style={{ marginTop: 14, padding: '11px 13px', borderRadius: 10, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', fontSize: 13, color: '#15803d', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>✓</span> You have signed in the document above.

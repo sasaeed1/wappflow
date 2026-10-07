@@ -44,7 +44,7 @@ function NewProjectModal({ onClose, onCreated }) {
   };
 
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal">
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
@@ -55,7 +55,7 @@ function NewProjectModal({ onClose, onCreated }) {
         </div>
 
         <label className="ms-label">Shoot name</label>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Ayesha &amp; Bilal — Wedding" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
+        <input aria-label="Shoot name" value={title} onChange={e => setTitle(e.target.value)} placeholder="Sofia &amp; Daniel — Wedding" className="ms-input" style={{ marginBottom: 22 }} autoFocus />
 
         <label className="ms-label">Type</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
@@ -71,14 +71,14 @@ function NewProjectModal({ onClose, onCreated }) {
           </div>
           <div style={{ flex: 1 }}>
             <label className="ms-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><MapPin size={11} /> Location</label>
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="City / venue" className="ms-input" />
+            <input aria-label="Location" value={location} onChange={e => setLocation(e.target.value)} placeholder="City / venue" className="ms-input" />
           </div>
         </div>
 
         <label className="ms-label">Client</label>
         <div style={{ position: 'relative', marginBottom: 8 }}>
           <Search size={14} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--ms-ink-3)' }} />
-          <input value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Link a client from your CRM…" className="ms-input" style={{ paddingLeft: 34 }} />
+          <input aria-label="Client" value={leadSearch} onChange={e => setLeadSearch(e.target.value)} placeholder="Link a client from your CRM…" className="ms-input" style={{ paddingLeft: 34 }} />
         </div>
         <div style={{ maxHeight: 148, overflowY: 'auto', marginBottom: 24 }}>
           {filtered.map(l => (

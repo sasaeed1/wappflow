@@ -43,7 +43,7 @@ export const MODULES = {
       { href: '/chat', label: 'Communications', icon: Inbox, badge: 'comms' },
       { href: '/invoices', label: 'Invoices', icon: FileText },
       { href: '/bookings', label: 'Bookings', icon: Calendar },
-      { href: '/reports', label: 'Analytics', icon: BarChart2, lockFeature: 'analytics', requiredPlan: 'Studio' },
+      { href: '/reports', label: 'Analytics', icon: BarChart2, lockFeature: 'analytics', requiredPlan: 'Studio', perm: 'view_reports' },
     ],
   },
   studio: {

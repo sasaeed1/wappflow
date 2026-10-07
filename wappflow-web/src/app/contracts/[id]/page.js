@@ -80,7 +80,7 @@ export default function BuilderPage() {
       {/* builder toolbar */}
       <div style={{ position: 'sticky', top: 'var(--shell-h)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
         <button onClick={() => router.push('/contracts')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}><ArrowLeft size={15} /> Back</button>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Untitled document" style={{ flex: 1, minWidth: 160, maxWidth: 420, border: '1px solid transparent', borderRadius: 8, padding: '6px 10px', fontSize: 15, fontWeight: 700, color: 'var(--text)', background: 'transparent', outline: 'none' }} />
+        <input aria-label="Document title" value={title} onChange={e => setTitle(e.target.value)} placeholder="Untitled document" style={{ flex: 1, minWidth: 160, maxWidth: 420, border: '1px solid transparent', borderRadius: 8, padding: '6px 10px', fontSize: 15, fontWeight: 700, color: 'var(--text)', background: 'transparent', outline: 'none' }} />
         <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: 9, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
           {THEMES.map(([t, l]) => <button key={t} onClick={() => setTheme(t)} style={{ padding: '5px 11px', borderRadius: 7, border: 'none', cursor: 'pointer', background: theme === t ? 'var(--accent)' : 'transparent', color: theme === t ? '#fff' : 'var(--text-muted)', fontSize: 12, fontWeight: theme === t ? 700 : 500 }}>{l}</button>)}
         </div>
@@ -328,10 +328,10 @@ function PeopleModal({ id, onClose }) {
               <div style={{ marginTop: 10, padding: 12, border: '1px dashed var(--border)', borderRadius: 11, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Sel value={draft.role} onChange={e => setDraft(d => ({ ...d, role: e.target.value }))} style={{ flex: '0 0 110px' }}>{SIGNER_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Sel>
-                  <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="Name" style={miniInp} />
+                  <input aria-label="Signer name" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="Name" style={miniInp} />
                 </div>
-                <input value={draft.email} onChange={e => setDraft(d => ({ ...d, email: e.target.value }))} placeholder="Email" style={miniInp} />
-                <input value={draft.phone} onChange={e => setDraft(d => ({ ...d, phone: e.target.value }))} placeholder="Phone (for WhatsApp)" style={miniInp} />
+                <input aria-label="Signer email" value={draft.email} onChange={e => setDraft(d => ({ ...d, email: e.target.value }))} placeholder="Email" style={miniInp} />
+                <input aria-label="Signer phone" value={draft.phone} onChange={e => setDraft(d => ({ ...d, phone: e.target.value }))} placeholder="Phone (for WhatsApp)" style={miniInp} />
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={addSigner} style={{ flex: 1, padding: '9px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 13 }}>Add signer</button>
                   <button onClick={() => setAdding(false)} style={{ padding: '9px 14px', borderRadius: 9, border: '1px solid var(--border)', cursor: 'pointer', background: 'transparent', color: 'var(--text-muted)', fontSize: 13 }}>Cancel</button>
@@ -417,7 +417,7 @@ function AIModal({ id, type, blocks, setBlocks, selectedBlock, updateBlock, onCl
         ) : (
           <div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 10px' }}>Describe the document and AI will draft the blocks for you — appended to your canvas.</p>
-            <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={4} placeholder={`e.g. A wedding photography contract for a 2-day event, 2 shooters, $4,500, 50% deposit, cancellation terms`} style={{ width: '100%', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 14, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+            <textarea aria-label="Describe the document" value={brief} onChange={e => setBrief(e.target.value)} rows={4} placeholder={`e.g. A wedding photography contract for a 2-day event, 2 shooters, $4,500, 50% deposit, cancellation terms`} style={{ width: '100%', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 14, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
             <button onClick={() => run('draft')} disabled={!!busy || !brief.trim()} style={{ width: '100%', marginTop: 12, padding: '13px', borderRadius: 11, border: 'none', cursor: brief.trim() ? 'pointer' : 'not-allowed', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff', fontWeight: 800, fontSize: 15, opacity: brief.trim() ? 1 : 0.6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Sparkles size={15} /> {busy === 'draft' ? 'Drafting…' : 'Draft document'}</button>
           </div>
         )}
@@ -450,7 +450,7 @@ function Toggle({ on, onClick }) {
   return <button onClick={onClick} style={{ width: 40, height: 23, borderRadius: 999, border: 'none', cursor: 'pointer', background: on ? 'var(--accent)' : 'var(--border)', position: 'relative', flexShrink: 0, transition: 'background .15s' }}>
     <span style={{ position: 'absolute', top: 2, left: on ? 19 : 2, width: 19, height: 19, borderRadius: 999, background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} /></button>;
 }
-const Sel = (props) => <select {...props} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none', ...props.style }} />;
+const Sel = (props) => <select aria-label={props['aria-label']} {...props} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none', ...props.style }} />;
 
 const SRow = ({ icon: Icon, title, sub, on, toggle, children, disabled }) => (
   <div style={{ padding: '14px 0', borderBottom: '1px solid var(--border)', opacity: disabled ? 0.5 : 1 }}>
@@ -516,7 +516,7 @@ function SettingsModal({ id, settings, setSettings, hasLead, wsLetterhead, onClo
           <Sel value={pay.type || 'deposit'} onChange={e => setPay({ type: e.target.value })}>{PAY_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Sel>
           {(pay.type || 'deposit') === 'deposit' && <>
             <Sel value={pay.deposit_type || 'percent'} onChange={e => setPay({ deposit_type: e.target.value })}><option value="percent">%</option><option value="fixed">Fixed</option></Sel>
-            <input type="number" value={pay.deposit_value ?? 50} onChange={e => setPay({ deposit_value: e.target.value })} style={{ width: 80, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
+            <input aria-label="Deposit amount" type="number" value={pay.deposit_value ?? 50} onChange={e => setPay({ deposit_value: e.target.value })} style={{ width: 80, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
           </>}
         </SRow>
 
@@ -610,7 +610,7 @@ function SendModal({ id, doc, hasLead, defaultExpire = 0, onClose }) {
               );
             })()}
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <input readOnly value={link} style={{ flex: 1, padding: '11px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12.5, outline: 'none' }} />
+              <input aria-label="Signing link" readOnly value={link} style={{ flex: 1, padding: '11px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 12.5, outline: 'none' }} />
               <button onClick={copy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: copied ? '#10b981' : 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 13 }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy'}</button>
             </div>
             <button onClick={onClose} style={{ width: '100%', marginTop: 14, padding: '12px', borderRadius: 11, border: '1px solid var(--border)', cursor: 'pointer', background: 'transparent', color: 'var(--text)', fontWeight: 600, fontSize: 14 }}>Done</button>

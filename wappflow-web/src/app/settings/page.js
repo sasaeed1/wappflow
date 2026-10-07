@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Building2, Globe, Mail, Phone, MapPin, DollarSign,
@@ -12,17 +12,19 @@ import {
   Link, Unlink, Copy, Wifi, WifiOff, Layers, QrCode, Key,
   Plug, Calendar, Video, Volume2, Play
 } from 'lucide-react';
+import { accountAPI } from '../../lib/api';
 import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, auditAPI, BASE_URL } from '../../lib/api';
 import { useScrollActiveIntoView } from '@/lib/sidenav';
 import PairWithPhone from '@/components/PairWithPhone';
 import { Send as SendIcon } from 'lucide-react';
 import { useConfirm } from '@/lib/confirm';
 import { toast } from '@/components/ui/Toast';
-import { Field, Input as UIInput } from '@/components/ui/Field';
+import { Field, Input as UIInput, Checkbox } from '@/components/ui/Field';
 import { useSound, SOUND_KINDS } from '@/lib/sounds';
 import { usePlan, nextPlanLabel, formatMoney } from '@/lib/plan';
 import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
 import InstallAppCard from '@/components/InstallAppCard';
+import { usePermissions } from '@/lib/permissions';
 
 // Map of settings tab → required feature flag + required plan name.
 // If the user's plan doesn't have the feature, the tab is shown locked.
@@ -75,7 +77,7 @@ const TABS = [
   { id: 'workspace', label: 'Workspace', icon: Users, color: '#8b5cf6' },
   { id: 'data', label: 'Data & Privacy', icon: Shield, color: '#0ea5e9' },
   { id: 'ai_command', label: 'AI Command', icon: Sparkles, color: '#8b5cf6' },
-  { id: 'password', label: 'Change Password', icon: Lock, color: '#ef4444' },
+  { id: 'password', label: 'Password & Security', icon: Lock, color: '#ef4444' },
 ];
 
 function SectionCard({ icon: Icon, title, subtitle, color, children }) {
@@ -153,7 +155,7 @@ function CompanyTab({ company, setCompany, onSave, saving }) {
               {uploading ? <RefreshCw size={14} className="spin" /> : <Upload size={14} />}
               {uploading ? 'Uploading...' : company.company_logo ? 'Change Logo' : 'Upload Logo'}
             </button>
-            <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
+            <input aria-label="Upload logo" ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
           </div>
         </div>
 
@@ -337,7 +339,7 @@ function PresetsTab({ showToast }) {
           <Input label="Preset Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Follow Up, Welcome, Pricing..." />
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Message Body</label>
-            <textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4}
+            <textarea aria-label="Message Body" value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={4}
               placeholder="Hi {name}, thanks for reaching out!..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
             <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Tip: Use *bold*, _italic_ for WhatsApp formatting.</p>
           </div>
@@ -414,7 +416,7 @@ function LostReasonsTab({ showToast }) {
   return (
     <SectionCard icon={AlertCircle} title="Lost Reasons" subtitle="Predefined reasons shown when a lead is marked as Closed - Lost" color="#ef4444">
       <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
-        <input value={newReason} onChange={e => setNewReason(e.target.value)}
+        <input aria-label="New lost reason" value={newReason} onChange={e => setNewReason(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
           placeholder="e.g. Too expensive, Went with competitor, No budget…"
           style={{ flex: 1, padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
@@ -517,7 +519,7 @@ function EmailTemplatesTab({ showToast }) {
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Email Body</label>
-            <textarea value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={6}
+            <textarea aria-label="Email Body" value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} rows={6}
               placeholder="Dear {name},&#10;&#10;I wanted to follow up on your recent inquiry..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
             <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Variables: {'{name}'}, {'{phone}'}, {'{email}'}, {'{company}'}</p>
           </div>
@@ -629,7 +631,7 @@ function AutoReplyTab({ showToast }) {
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 7 }}>Auto Reply Message</label>
-            <textarea value={form.reply_message} onChange={e => setForm(p => ({ ...p, reply_message: e.target.value }))} rows={4}
+            <textarea aria-label="Auto Reply Message" value={form.reply_message} onChange={e => setForm(p => ({ ...p, reply_message: e.target.value }))} rows={4}
               placeholder="Thanks for reaching out! We'll get back to you shortly..." style={{ width: '100%', padding: '11px 15px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -718,7 +720,7 @@ function TagsTab({ showToast }) {
                 boxShadow: form.color === c ? `0 0 0 2px white, 0 0 0 4px ${c}` : 'none',
               }} />
             ))}
-            <input type="color" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
+            <input aria-label="Custom colour" type="color" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
               style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0 }} />
           </div>
           <div style={{ marginBottom: 16 }}>
@@ -1216,7 +1218,7 @@ function IntegrationsContent({ showToast }) {
           )}
 
           <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input
+            <input aria-label="Value"
               type="url"
               value={calendlyDraft}
               onChange={(e) => setCalendlyDraft(e.target.value)}
@@ -1534,6 +1536,128 @@ function WorkspaceTab({ showToast, router }) {
 //  CHANGE PASSWORD TAB
 // ════════════════════════════════════════════════════════════
 
+// ── Two-step sign-in, recovery codes, team policy, email verification (PROP-006) ──
+function SecurityTab({ showToast }) {
+  const [st, setSt] = useState(null);
+  const [setup, setSetup] = useState(null);      // { qr, secret }
+  const [code, setCode] = useState('');
+  const [codes, setCodes] = useState(null);      // freshly issued recovery codes
+  const [disabling, setDisabling] = useState(false);
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { accountAPI.security().then((r) => setSt(r.data)).catch(() => setSt(null)); }, []);
+  useEffect(() => { load(); }, [load]);
+  const err = (e, f) => showToast(e?.response?.data?.error || f, 'error');
+  const run = async (fn) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
+
+  if (!st) return null;
+  const field = { width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, boxSizing: 'border-box' };
+  const btn = (primary) => ({ padding: '10px 18px', borderRadius: 10, border: primary ? 'none' : '1.5px solid var(--border)', background: primary ? 'var(--accent)' : 'var(--surface)', color: primary ? 'var(--on-accent, #fff)' : 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer' });
+
+  return (
+    <SectionCard icon={Shield} title="Sign-in security" subtitle="Two-step sign-in with an authenticator app, and your email address" color="#0ea5e9">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px' }}>Email {st.email_verified ? 'confirmed' : 'not confirmed yet'}</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{st.email}</p>
+          {!st.email_verified && (
+            <button type="button" style={{ ...btn(false), marginTop: 10 }} disabled={busy}
+              onClick={() => run(async () => { try { await accountAPI.resendVerify(); showToast('Confirmation email sent. Check your inbox.'); } catch (e) { err(e, 'Could not send the email'); } })}>
+              Send confirmation email
+            </button>
+          )}
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 18 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px' }}>Two-step sign-in: {st.mfa_enabled ? 'On' : 'Off'}</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 12px' }}>
+            {st.mfa_enabled ? `After your password, you also enter a code from your authenticator app. ${st.recovery_codes_left} recovery code${st.recovery_codes_left === 1 ? '' : 's'} left.` : 'Protect your account even if your password leaks: after your password, enter a code from an app on your phone.'}
+            {st.team_requires_2fa ? ' Your workspace requires it.' : ''}
+          </p>
+
+          {codes && (
+            <div role="status" style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 13, margin: '0 0 8px' }}>Save these recovery codes somewhere safe. Each works once if you lose your phone. They won&apos;t be shown again.</p>
+              <pre aria-label="Recovery codes" style={{ fontFamily: 'ui-monospace, monospace', fontSize: 14, lineHeight: 1.8, padding: 12, borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)', margin: 0, whiteSpace: 'pre-wrap' }}>{codes.join('\n')}</pre>
+              <button type="button" style={{ ...btn(false), marginTop: 10 }} onClick={() => setCodes(null)}>I&apos;ve saved them</button>
+            </div>
+          )}
+
+          {!st.mfa_enabled && !setup && (
+            <button type="button" style={btn(true)} disabled={busy}
+              onClick={() => run(async () => { try { const r = await accountAPI.mfaSetup(); setSetup(r.data); setCode(''); } catch (e) { err(e, 'Could not start set-up'); } })}>
+              Turn on two-step sign-in
+            </button>
+          )}
+
+          {!st.mfa_enabled && setup && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360 }}>
+              <p style={{ fontSize: 13, margin: 0 }}>Scan this with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password), then enter the 6-digit code it shows.</p>
+              {setup.qr && <img src={setup.qr} alt="QR code to add WappFlow to your authenticator app" width={180} height={180} style={{ borderRadius: 10, background: '#fff', padding: 8 }} />}
+              <p style={{ fontSize: 12, margin: 0, wordBreak: 'break-all' }}>Can&apos;t scan? Key: <code>{setup.secret}</code></p>
+              <label htmlFor="sec-mfa-code" style={{ fontSize: 12.5, fontWeight: 600 }}>Code from the app</label>
+              <input id="sec-mfa-code" style={field} value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={btn(true)} disabled={busy || !code.trim()}
+                  onClick={() => run(async () => { try { const r = await accountAPI.mfaEnable(code); setCodes(r.data.recovery_codes); setSetup(null); load(); showToast('Two-step sign-in is on'); } catch (e) { err(e, 'That code didn’t work'); } })}>
+                  Turn on
+                </button>
+                <button type="button" style={btn(false)} onClick={() => setSetup(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {st.mfa_enabled && !disabling && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={btn(false)} disabled={busy}
+                onClick={() => { setDisabling('codes'); setCode(''); }}>New recovery codes</button>
+              {!st.team_requires_2fa && <button type="button" style={btn(false)} onClick={() => { setDisabling('off'); setCode(''); setPw(''); }}>Turn off</button>}
+            </div>
+          )}
+
+          {st.mfa_enabled && disabling && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360 }}>
+              {disabling === 'off' && (<>
+                <label htmlFor="sec-pw" style={{ fontSize: 12.5, fontWeight: 600 }}>Your password</label>
+                <input id="sec-pw" type="password" style={field} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
+              </>)}
+              <label htmlFor="sec-code2" style={{ fontSize: 12.5, fontWeight: 600 }}>Current code from your app</label>
+              <input id="sec-code2" style={field} value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" style={btn(true)} disabled={busy || !code.trim()}
+                  onClick={() => run(async () => {
+                    try {
+                      if (disabling === 'off') { await accountAPI.mfaDisable(pw, code); showToast('Two-step sign-in is off'); }
+                      else { const r = await accountAPI.recoveryCodes(code); setCodes(r.data.recovery_codes); }
+                      setDisabling(false); load();
+                    } catch (e) { err(e, 'That didn’t work'); }
+                  })}>
+                  {disabling === 'off' ? 'Turn off' : 'Get new codes'}
+                </button>
+                <button type="button" style={btn(false)} onClick={() => setDisabling(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {st.can_set_team_policy && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 18 }}>
+            <Checkbox
+              label="Require two-step sign-in for everyone in this workspace"
+              checked={!!st.team_requires_2fa}
+              disabled={busy || (!st.mfa_enabled && !st.team_requires_2fa)}
+              onChange={(v) => run(async () => { try { await accountAPI.setTeamPolicy(typeof v === 'boolean' ? v : !st.team_requires_2fa); load(); showToast('Workspace sign-in policy saved'); } catch (e) { err(e, 'Could not save'); } })}
+            />
+            <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '6px 0 0' }}>
+              {st.mfa_enabled ? 'Members without it will be asked to set it up at their next sign-in.' : 'Turn it on for your own account first.'}
+            </p>
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 function PasswordTab({ showToast }) {
   const [form, setForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [showCurrent, setShowCurrent] = useState(false);
@@ -1542,7 +1666,7 @@ function PasswordTab({ showToast }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.new_password.length < 6) { showToast('New password must be at least 6 characters', 'error'); return; }
+    if (form.new_password.length < 8) { showToast('New password must be at least 8 characters', 'error'); return; }
     if (form.new_password !== form.confirm_password) { showToast('New passwords do not match', 'error'); return; }
     setSaving(true);
     try {
@@ -1585,7 +1709,7 @@ function PasswordTab({ showToast }) {
                 type={showNew ? 'text' : 'password'}
                 value={form.new_password}
                 onChange={e => setForm(f => ({ ...f, new_password: e.target.value }))}
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
                 required
                 style={{ paddingRight: 44 }}
               />
@@ -1597,10 +1721,10 @@ function PasswordTab({ showToast }) {
           {form.new_password.length > 0 && (
             <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
               {[...Array(4)].map((_, i) => (
-                <div key={i} style={{ height: 3, flex: 1, borderRadius: 2, background: form.new_password.length >= [6, 8, 10, 12][i] ? ['#ef4444','#f97316','#f59e0b','#10b981'][i] : 'var(--border)', transition: 'background 0.2s' }} />
+                <div key={i} style={{ height: 3, flex: 1, borderRadius: 2, background: form.new_password.length >= [8, 10, 12, 14][i] ? ['#ef4444','#f97316','#f59e0b','#10b981'][i] : 'var(--border)', transition: 'background 0.2s' }} />
               ))}
               <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 4, whiteSpace: 'nowrap' }}>
-                {form.new_password.length < 6 ? 'Too short' : form.new_password.length < 8 ? 'Weak' : form.new_password.length < 10 ? 'Fair' : form.new_password.length < 12 ? 'Good' : 'Strong'}
+                {form.new_password.length < 8 ? 'Too short' : form.new_password.length < 10 ? 'Weak' : form.new_password.length < 12 ? 'Fair' : form.new_password.length < 14 ? 'Good' : 'Strong'}
               </span>
             </div>
           )}
@@ -2009,7 +2133,7 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
           <div>
             {editingName ? (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input value={nameVal} onChange={e => setNameVal(e.target.value)} autoFocus
+                <input aria-label="Name" value={nameVal} onChange={e => setNameVal(e.target.value)} autoFocus
                   style={{ padding: '5px 10px', border: '1.5px solid #25d366', borderRadius: 8, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface)', width: 160 }}
                   onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
                 />
@@ -2214,7 +2338,7 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
         <div style={{ padding: '0 18px 18px', borderTop: '1px solid var(--border)' }}>
           <div style={{ marginTop: 16, marginBottom: 14 }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>Account Name</label>
-            <input value={form.account_name || ''} onChange={e => setForm(f => ({ ...f, account_name: e.target.value }))} placeholder="e.g. Main Business Account"
+            <input aria-label="Account Name" value={form.account_name || ''} onChange={e => setForm(f => ({ ...f, account_name: e.target.value }))} placeholder="e.g. Main Business Account"
               style={{ width: '100%', padding: '10px 13px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
             />
           </div>
@@ -2244,7 +2368,7 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
             <div key={field.key} style={{ marginBottom: 14 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>{field.label}</label>
               <div style={{ position: 'relative' }}>
-                <input
+                <input aria-label="Value"
                   type={field.secret && !showSecrets[field.key] ? 'password' : 'text'}
                   value={form[field.key] || ''}
                   onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
@@ -2350,6 +2474,7 @@ function PlatformAccountCard({ account, def, isEditing, onEdit, onCancel, onSave
 export default function SettingsPage() {
   const router = useRouter();
   const plan = usePlan();
+  const perms = usePermissions();
   const [activeTab, setActiveTab] = useState('connections');
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(true);
@@ -2465,6 +2590,11 @@ export default function SettingsPage() {
 
         {/* Content */}
         <div className="wf-sidenav-content" style={{ flex: 1, minWidth: 0 }}>
+          {!perms.can('manage_settings') && !['password', 'appearance', 'notifications', 'apps'].includes(activeTab) && (
+            <div role="status" style={{ marginBottom: 14, padding: '11px 14px', borderRadius: 12, background: 'var(--warning-bg)', color: 'var(--warning-fg)', fontSize: 13, fontWeight: 600 }}>
+              You can view these settings, but your role can&apos;t change them. Ask your workspace admin.
+            </div>
+          )}
           {loading ? (
             <div style={{ background: 'var(--surface)', borderRadius: 20, padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>Loading settings...</div>
           ) : activeTabLocked ? (
@@ -2495,7 +2625,7 @@ export default function SettingsPage() {
               {activeTab === 'workspace' && <WorkspaceTab showToast={showToast} router={router} />}
               {activeTab === 'data' && <DataPrivacyTab showToast={showToast} />}
               {activeTab === 'ai_command' && <AICommandTab showToast={showToast} />}
-              {activeTab === 'password' && <PasswordTab showToast={showToast} />}
+              {activeTab === 'password' && <><PasswordTab showToast={showToast} /><div style={{ height: 18 }} /><SecurityTab showToast={showToast} /></>}
             </>
           )}
         </div>
@@ -2600,22 +2730,22 @@ function EmailSendingTab({ showToast }) {
       <div className="r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
         <div style={{ paddingRight: 16 }}>
           <SettingsField label="SMTP Host" hint="e.g. smtp.gmail.com">
-            <input value={form.smtp_host} onChange={e => setForm(f => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.gmail.com"
+            <input aria-label="SMTP Host" value={form.smtp_host} onChange={e => setForm(f => ({ ...f, smtp_host: e.target.value }))} placeholder="smtp.gmail.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
           <SettingsField label="SMTP Username / Email" hint="Usually your email address">
-            <input value={form.smtp_user} onChange={e => setForm(f => ({ ...f, smtp_user: e.target.value }))} placeholder="you@gmail.com"
+            <input aria-label="SMTP Username / Email" value={form.smtp_user} onChange={e => setForm(f => ({ ...f, smtp_user: e.target.value }))} placeholder="you@gmail.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
           <SettingsField label="From Name">
-            <input value={form.from_name} onChange={e => setForm(f => ({ ...f, from_name: e.target.value }))} placeholder="Your Business Name"
+            <input aria-label="From Name" value={form.from_name} onChange={e => setForm(f => ({ ...f, from_name: e.target.value }))} placeholder="Your Business Name"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
         </div>
         <div style={{ paddingLeft: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <SettingsField label="Port" hint="Usually 587 or 465">
-              <input type="number" value={form.smtp_port} onChange={e => setForm(f => ({ ...f, smtp_port: e.target.value }))} placeholder="587"
+              <input aria-label="Port" type="number" value={form.smtp_port} onChange={e => setForm(f => ({ ...f, smtp_port: e.target.value }))} placeholder="587"
                 style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
             </SettingsField>
             <SettingsField label="Encryption">
@@ -2631,7 +2761,7 @@ function EmailSendingTab({ showToast }) {
           </div>
           <SettingsField label="SMTP Password / App Password" hint="For Gmail: use an App Password">
             <div style={{ position: 'relative' }}>
-              <input type={showPass ? 'text' : 'password'} value={form.smtp_pass} onChange={e => setForm(f => ({ ...f, smtp_pass: e.target.value }))} placeholder="App password"
+              <input aria-label="SMTP Password / App Password" type={showPass ? 'text' : 'password'} value={form.smtp_pass} onChange={e => setForm(f => ({ ...f, smtp_pass: e.target.value }))} placeholder="App password"
                 style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
               <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -2639,7 +2769,7 @@ function EmailSendingTab({ showToast }) {
             </div>
           </SettingsField>
           <SettingsField label="From Email Address" hint="Email address recipients will see">
-            <input value={form.from_email} onChange={e => setForm(f => ({ ...f, from_email: e.target.value }))} placeholder="noreply@yourbusiness.com"
+            <input aria-label="From Email Address" value={form.from_email} onChange={e => setForm(f => ({ ...f, from_email: e.target.value }))} placeholder="noreply@yourbusiness.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </SettingsField>
         </div>
@@ -2807,12 +2937,12 @@ function EmailReceivingTab({ showToast }) {
         <div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>IMAP Host</label>
-            <input value={form.imap_host} onChange={e => setForm(f => ({ ...f, imap_host: e.target.value }))} placeholder="imap.gmail.com"
+            <input aria-label="IMAP Host" value={form.imap_host} onChange={e => setForm(f => ({ ...f, imap_host: e.target.value }))} placeholder="imap.gmail.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Email Address</label>
-            <input value={form.imap_user} onChange={e => setForm(f => ({ ...f, imap_user: e.target.value }))} placeholder="you@gmail.com"
+            <input aria-label="Email Address" value={form.imap_user} onChange={e => setForm(f => ({ ...f, imap_user: e.target.value }))} placeholder="you@gmail.com"
               style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
           </div>
         </div>
@@ -2820,7 +2950,7 @@ function EmailReceivingTab({ showToast }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Port</label>
-              <input type="number" value={form.imap_port} onChange={e => setForm(f => ({ ...f, imap_port: e.target.value }))} placeholder="993"
+              <input aria-label="Port" type="number" value={form.imap_port} onChange={e => setForm(f => ({ ...f, imap_port: e.target.value }))} placeholder="993"
                 style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
             </div>
             <div>
@@ -2839,7 +2969,7 @@ function EmailReceivingTab({ showToast }) {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>App Password</label>
             <div style={{ position: 'relative' }}>
-              <input type={showPass ? 'text' : 'password'} value={form.imap_pass} onChange={e => setForm(f => ({ ...f, imap_pass: e.target.value }))} placeholder="16-character app password"
+              <input aria-label="App Password" type={showPass ? 'text' : 'password'} value={form.imap_pass} onChange={e => setForm(f => ({ ...f, imap_pass: e.target.value }))} placeholder="16-character app password"
                 style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }} />
               <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}>
                 {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -3061,7 +3191,7 @@ function AICommandTab({ showToast }) {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Business Description</label>
-            <textarea
+            <textarea aria-label="Business Description"
               value={profile.business_description || ''}
               onChange={e => setProfile(p => ({ ...p, business_description: e.target.value }))}
               rows={3}
@@ -3083,10 +3213,10 @@ function AICommandTab({ showToast }) {
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Language</label>
-              <input
+              <input aria-label="Language"
                 value={profile.language || ''}
                 onChange={e => setProfile(p => ({ ...p, language: e.target.value }))}
-                placeholder="English / Urdu / Spanish..."
+                placeholder="English / Arabic / Spanish..."
                 style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--border)', borderRadius: 11, fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)', color: 'var(--text)' }}
               />
             </div>
@@ -3094,7 +3224,7 @@ function AICommandTab({ showToast }) {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Do's — things the AI should always do</label>
-            <textarea
+            <textarea aria-label="Do's — things the AI should always do"
               value={profile.dos || ''}
               onChange={e => setProfile(p => ({ ...p, dos: e.target.value }))}
               rows={3}
@@ -3105,7 +3235,7 @@ function AICommandTab({ showToast }) {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Don'ts — things the AI must avoid</label>
-            <textarea
+            <textarea aria-label="Don'ts — things the AI must avoid"
               value={profile.donts || ''}
               onChange={e => setProfile(p => ({ ...p, donts: e.target.value }))}
               rows={3}
@@ -3116,7 +3246,7 @@ function AICommandTab({ showToast }) {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 6 }}>Signature</label>
-            <input
+            <input aria-label="Signature"
               value={profile.signature || ''}
               onChange={e => setProfile(p => ({ ...p, signature: e.target.value }))}
               placeholder="e.g. Best regards, Sales Team"

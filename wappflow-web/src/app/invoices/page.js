@@ -313,7 +313,7 @@ export default function InvoicesPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
             <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..."
+            <input aria-label="Search invoices" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..."
               style={{ width: '100%', padding: '10px 12px 10px 36px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
           </div>
           <div className="r-chips inv-chips" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

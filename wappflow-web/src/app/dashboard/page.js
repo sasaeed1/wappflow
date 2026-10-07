@@ -20,6 +20,8 @@ import { leadsAPI, analyticsAPI, tagsAPI, displayPhone, PLATFORM_COLORS, BASE_UR
 import { isLeadUnread } from '../../lib/unread';
 import { toDate, formatRelative } from '../../lib/datetime';
 import AddLeadModal from '../../components/AddLeadModal';
+import PipelinesDialog from '../../components/PipelinesDialog';
+import { pipelinesAPI } from '@/lib/api';
 import { TagChip, TagPicker } from '../../components/TagPicker';
 import { useSound } from '@/lib/sounds';
 import { useRealtime } from '@/components/shell/realtime';
@@ -638,6 +640,27 @@ export default function DashboardPage() {
   const [analytics, setAnalytics] = useState(null);
   const [leads, setLeads] = useState([]);
   const [allLeads, setAllLeads] = useState([]);
+  // Pipelines (PROP-006): which board is showing, and the boards that exist.
+  const [pipes, setPipes] = useState(null);
+  const [pipelineId, setPipelineId] = useState(null);
+  const [showPipes, setShowPipes] = useState(false);
+  const loadPipes = useCallback(() => {
+    pipelinesAPI.list().then((r) => {
+      setPipes(r.data);
+      const ids = (r.data.pipelines || []).map((p) => p.id);
+      setPipelineId((cur) => {
+        let saved = null; try { saved = localStorage.getItem('wf_pipeline'); } catch {}
+        if (cur && ids.includes(cur)) return cur;
+        if (saved && ids.includes(saved)) return saved;
+        return (r.data.pipelines || []).find((p) => p.is_default)?.id || ids[0] || null;
+      });
+    }).catch(() => setPipes(null));
+  }, []);
+  useEffect(() => { loadPipes(); }, [loadPipes]);
+  useEffect(() => { if (pipelineId) { try { localStorage.setItem('wf_pipeline', pipelineId); } catch {} } }, [pipelineId]);
+  const defaultPipeId = pipes?.pipelines?.find((p) => p.is_default)?.id || null;
+  const currentPipe = pipes?.pipelines?.find((p) => p.id === pipelineId) || null;
+  const boardColumns = COLUMNS.map((c) => (currentPipe?.stage_labels?.[c.id] ? { ...c, label: currentPipe.stage_labels[c.id] } : c));
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState(null);
   // Use the workspace's configured currency symbol everywhere money is shown
@@ -784,6 +807,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let filtered = allLeads;
+    if (pipelineId && pipes?.pipelines?.length > 1) {
+      filtered = filtered.filter(l => (l.pipeline_id || defaultPipeId) === pipelineId);
+    }
     if (platformFilter !== 'all') {
       filtered = filtered.filter(l => (l.platform_source || 'whatsapp') === platformFilter);
     }
@@ -796,7 +822,7 @@ export default function DashboardPage() {
       );
     }
     setLeads(filtered);
-  }, [searchQuery, allLeads, platformFilter]);
+  }, [searchQuery, allLeads, platformFilter, pipelineId, pipes, defaultPipeId]);
 
   useEffect(() => {
     const handler = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifications(false); };
@@ -918,7 +944,7 @@ export default function DashboardPage() {
           {/* Search */}
           <div className="dash-subbar-search" style={{ flex: 1, maxWidth: 380, position: 'relative', minWidth: 200 }}>
             <Search style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--text-dim)' }} />
-            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            <input aria-label="Search leads" type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search leads…"
               style={{ width: '100%', padding: '8px 12px 8px 34px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
             />
@@ -1206,7 +1232,15 @@ export default function DashboardPage() {
         {/* ── PIPELINE / LIST HEADER ── */}
         <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Pipeline Board</h2>
+            {pipes?.pipelines?.length > 1 ? (
+              <select aria-label="Pipeline" value={pipelineId || ''} onChange={e => setPipelineId(e.target.value)}
+                style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 10, padding: '6px 10px', cursor: 'pointer' }}>
+                {pipes.pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            ) : (
+              <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', margin: 0 }}>{currentPipe?.name || 'Pipeline Board'}</h2>
+            )}
+            <button type="button" onClick={() => setShowPipes(true)} style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>Manage pipelines</button>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', padding: '2px 10px', borderRadius: 20 }}>{leads.length} leads</span>
             {platformFilter !== 'all' && (
               <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20, background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}>
@@ -1250,7 +1284,7 @@ export default function DashboardPage() {
         {viewMode === 'kanban' && (
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="r-kanban" style={{ display: 'flex', gap: 12, paddingBottom: 20, alignItems: 'stretch' }}>
-              {COLUMNS.map(col => (
+              {boardColumns.map(col => (
                 <KanbanColumn key={col.id} column={col} leads={getLeadsByStatus(col.id)} onLeadClick={id => router.push(`/leads/${id}`)} allTags={allTags} onTagToggle={handleTagToggle} newLeadIds={newLeadIds} sym={sym} />
               ))}
             </div>
@@ -1333,7 +1367,8 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      <AddLeadModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} onLeadAdded={() => { fetchAll(); setShowAddModal(false); }} />
+      <AddLeadModal isOpen={showAddModal} pipelineId={pipes?.pipelines?.length > 1 ? pipelineId : null} onClose={() => setShowAddModal(false)} onLeadAdded={() => { fetchAll(); loadPipes(); setShowAddModal(false); }} />
+      <PipelinesDialog open={showPipes} onClose={() => setShowPipes(false)} data={pipes} onChanged={() => { loadPipes(); fetchAll(); }} />
       <BulkUploadModal isOpen={showBulkUpload} onClose={() => setShowBulkUpload(false)} onDone={fetchAll} />
 
       <style>{`

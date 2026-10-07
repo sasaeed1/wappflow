@@ -162,7 +162,7 @@ export default function PortfolioEditorPage() {
             <div className="ms-section-head">
               <h2 className="ms-h2">Your work <span style={{ fontSize: 13, color: 'var(--ms-ink-3)', fontWeight: 400 }}>· {items.length}</span></h2>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
+                <input aria-label="Upload to portfolio" ref={fileRef} type="file" multiple accept="image/*,video/*" onChange={onUpload} style={{ display: 'none' }} />
                 <button onClick={() => fileRef.current?.click()} disabled={upload?.status === 'uploading'} className="ms-btn-ghost"><Upload size={14} /> {upload?.status === 'uploading' ? `Uploading ${upload.percent}%` : 'Upload'}</button>
                 <button onClick={() => setPicker(true)} className="ms-btn-ink"><Plus size={15} /> Add from published</button>
               </div>
@@ -225,15 +225,15 @@ export default function PortfolioEditorPage() {
             <div className="ms-panel" style={{ marginBottom: 18 }}>
               <div className="ms-section-label" style={{ marginBottom: 12 }}>Identity</div>
               <label className="ms-label">Studio name</label>
-              <input className="ms-input" value={pf.title || ''} onChange={e => setField('title', e.target.value)} onBlur={e => save({ title: e.target.value })} style={{ marginBottom: 14 }} placeholder="Your studio name" />
+              <input aria-label="Studio name" className="ms-input" value={pf.title || ''} onChange={e => setField('title', e.target.value)} onBlur={e => save({ title: e.target.value })} style={{ marginBottom: 14 }} placeholder="Your studio name" />
               <label className="ms-label">Tagline</label>
-              <input className="ms-input" value={pf.tagline || ''} onChange={e => setField('tagline', e.target.value)} onBlur={e => save({ tagline: e.target.value })} style={{ marginBottom: 14 }} placeholder="Wedding & portrait photography" />
+              <input aria-label="Tagline" className="ms-input" value={pf.tagline || ''} onChange={e => setField('tagline', e.target.value)} onBlur={e => save({ tagline: e.target.value })} style={{ marginBottom: 14 }} placeholder="Wedding & portrait photography" />
               <label className="ms-label">About</label>
-              <textarea className="ms-input" rows={4} value={pf.bio || ''} onChange={e => setField('bio', e.target.value)} onBlur={e => save({ bio: e.target.value })} style={{ marginBottom: 14, resize: 'vertical' }} placeholder="A sentence or two about you and your work." />
+              <textarea aria-label="About" className="ms-input" rows={4} value={pf.bio || ''} onChange={e => setField('bio', e.target.value)} onBlur={e => save({ bio: e.target.value })} style={{ marginBottom: 14, resize: 'vertical' }} placeholder="A sentence or two about you and your work." />
               <label className="ms-label">Link handle</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 12.5, color: 'var(--ms-ink-3)' }}>/folio/</span>
-                <input className="ms-input" value={pf.handle || ''} onChange={e => setField('handle', e.target.value)} onBlur={e => { if (handleState?.status !== 'taken') save({ handle: e.target.value }); }} style={{ flex: 1 }} placeholder="your-name" />
+                <input aria-label="Link handle" className="ms-input" value={pf.handle || ''} onChange={e => setField('handle', e.target.value)} onBlur={e => { if (handleState?.status !== 'taken') save({ handle: e.target.value }); }} style={{ flex: 1 }} placeholder="your-name" />
               </div>
               <div style={{ fontSize: 11, marginTop: 5, color: handleState?.status === 'taken' ? '#d4564a' : handleState?.status === 'free' ? '#2f9e6e' : 'var(--ms-ink-3)' }}>
                 {handleState?.status === 'taken' ? 'That handle is taken' : handleState?.status === 'free' ? '✓ Available' : 'Letters, numbers and hyphens'}
@@ -246,7 +246,7 @@ export default function PortfolioEditorPage() {
               {[['email', 'Email', 'you@studio.com'], ['phone', 'Phone', '+1…'], ['instagram', 'Instagram', '@handle'], ['website', 'Website', 'studio.com']].map(([k, lbl, ph]) => (
                 <div key={k} style={{ marginBottom: 12 }}>
                   <label className="ms-label">{lbl}</label>
-                  <input className="ms-input" value={s[k] || ''} onChange={e => setSetting(k, e.target.value)} onBlur={e => saveSetting(k, e.target.value)} placeholder={ph} />
+                  <input aria-label={lbl} className="ms-input" value={s[k] || ''} onChange={e => setSetting(k, e.target.value)} onBlur={e => saveSetting(k, e.target.value)} placeholder={ph} />
                 </div>
               ))}
             </div>
@@ -311,7 +311,7 @@ function CandidatesPicker({ onClose, onAdded }) {
   };
   const available = (cands || []).filter(c => !c.in_portfolio);
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 820, width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Add from published work</h2>
@@ -356,7 +356,7 @@ function ShareModal({ pf, onClose, onCopy, say, onPublic }) {
     setSending(null);
   };
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <h2>Share portfolio</h2>
@@ -369,13 +369,13 @@ function ShareModal({ pf, onClose, onCopy, say, onPublic }) {
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-          <input readOnly value={pf.share_url || ''} className="ms-input" style={{ flex: 1, fontSize: 12.5 }} />
+          <input aria-label="Portfolio link" readOnly value={pf.share_url || ''} className="ms-input" style={{ flex: 1, fontSize: 12.5 }} />
           <button onClick={onCopy} className="ms-btn-ink"><Copy size={14} /> Copy</button>
         </div>
         <label className="ms-label">Send to a client over WhatsApp</label>
         <div style={{ position: 'relative', marginBottom: 8 }}>
           <Search size={14} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--ms-ink-3)' }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients…" className="ms-input" style={{ paddingLeft: 34 }} />
+          <input aria-label="Search clients" value={q} onChange={e => setQ(e.target.value)} placeholder="Search clients…" className="ms-input" style={{ paddingLeft: 34 }} />
         </div>
         <div style={{ maxHeight: 220, overflowY: 'auto' }}>
           {filtered.map(l => (
@@ -488,7 +488,7 @@ function ItemEditor({ item, index, count, onClose, onPatch, onMove, onItems, say
   const commit = (k, v) => { if ((item[k] || '') !== v) onPatch(item, { [k]: v }); };
 
   return (
-    <div onClick={onClose} data-dismiss className="ms-modal-overlay">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} data-dismiss className="ms-modal-overlay">
       <div onClick={e => e.stopPropagation()} className="ms-modal r-modal" style={{ maxWidth: 920, width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
           <h2 style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || item.filename || (isVideo ? 'Video' : 'Photo')}</h2>

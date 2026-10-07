@@ -148,5 +148,18 @@ check('the redactor strips signing and share links but keeps ordinary pages', ()
   assert.strictEqual(redact(ordinary), ordinary, 'a normal page URL was redacted');
 });
 
+console.log('\n[5] customers cannot set their own plan');
+
+// PUT /api/workspace/plan wrote whatever the caller sent into workspace_plan, so
+// any signed-in user could make their workspace Enterprise with unlimited limits.
+// Plans change only through Command Center; this route must never write.
+check('the workspace plan route refuses writes', () => {
+  const i = SERVER.indexOf("app.put('/api/workspace/plan'");
+  assert(i > -1, 'route missing (if removed on purpose, delete this check)');
+  const handler = SERVER.slice(i, SERVER.indexOf('\n});', i));
+  assert(/status\(403\)/.test(handler), 'the route does not refuse');
+  assert(!/workspace_plan/.test(handler), 'the route still writes workspace_plan');
+});
+
 console.log(`\n${fail === 0 ? '✅ ALL PASS' : '❌ FAILURES'}: ${pass} passed, ${fail} failed`);
 process.exitCode = fail === 0 ? 0 : 1;

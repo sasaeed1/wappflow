@@ -39,7 +39,7 @@ export default function Health() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Customer Health</h1>
         <div style={{ flex: 1 }} />
-        <select value={sort} onChange={(e) => setSort(e.target.value)} style={sel}>
+        <select aria-label="Sort customers" value={sort} onChange={(e) => setSort(e.target.value)} style={sel}>
           <option value="churn">Sort: churn risk</option><option value="health">Sort: health</option>
           <option value="expansion">Sort: expansion</option><option value="activity">Sort: activity</option>
         </select>

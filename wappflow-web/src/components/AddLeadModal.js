@@ -12,7 +12,7 @@ import { LEAD_STATUS_KEYS, leadStatusMeta } from '@/lib/leadStatus';
 // adopter; status options come from the lead-status registry (single source of keys,
 // D3). Batch D: fields moved onto the Field system (label/required/aria wiring).
 
-export default function AddLeadModal({ isOpen, onClose, onLeadAdded }) {
+export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId = null }) {
   const [formData, setFormData] = useState({
     customer_name: '',
     customer_phone: '',
@@ -36,6 +36,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded }) {
       const { leadsAPI } = await import('../lib/api');
       await leadsAPI.create({
         ...formData,
+        ...(pipelineId ? { pipeline_id: pipelineId } : {}),
         estimated_value: formData.estimated_value ? parseFloat(formData.estimated_value) : null
       });
       setFormData({ customer_name: '', customer_phone: '', status: 'New', estimated_value: '', first_message: '' });

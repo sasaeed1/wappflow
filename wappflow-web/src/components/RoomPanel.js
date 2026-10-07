@@ -91,7 +91,7 @@ export default function RoomPanel({ type, id, title }) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--border,#1e1e26)' }}>
-        <input
+        <input aria-label="Message"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}

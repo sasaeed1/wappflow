@@ -209,7 +209,7 @@ function StudioBrainSection({ say }) {
         {BRAIN_FIELDS.map(([key, label, ph]) => (
           <div key={key}>
             <label className="ms-label" style={{ display: 'block', marginBottom: 5 }}>{label}</label>
-            <input value={vals[key] || ''} onChange={e => setVals(v => ({ ...v, [key]: e.target.value }))} onBlur={() => save(key)} placeholder={ph} className="ms-input" />
+            <input aria-label={label || ph} value={vals[key] || ''} onChange={e => setVals(v => ({ ...v, [key]: e.target.value }))} onBlur={() => save(key)} placeholder={ph} className="ms-input" />
           </div>
         ))}
       </div>
@@ -235,7 +235,7 @@ function StyleProfilesSection({ say }) {
         {styles.map(st => (
           <div key={st.id} style={{ border: '1px solid var(--ms-line)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px' }}>
-              <input value={st.name} onChange={e => patch(st.id, { name: e.target.value })} onBlur={() => save(st)} className="ms-input" style={{ flex: 1, padding: '6px 9px' }} />
+              <input aria-label="Style name" value={st.name} onChange={e => patch(st.id, { name: e.target.value })} onBlur={() => save(st)} className="ms-input" style={{ flex: 1, padding: '6px 9px' }} />
               <button onClick={() => { patch(st.id, { is_default: true }); save({ ...st, is_default: true }); }} title="Set default" style={{ background: 'none', border: 'none', cursor: 'pointer', color: st.is_default ? 'var(--ms-accent)' : 'var(--ms-ink-3)', fontWeight: 700, fontSize: 12 }}>{st.is_default ? '★ Default' : '☆'}</button>
               <button onClick={() => setOpen(open === st.id ? null : st.id)} className="ms-btn-ghost" style={{ padding: '6px 10px' }}>{open === st.id ? 'Close' : 'Edit'}</button>
               <button onClick={() => del(st.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d4564a' }}><Check style={{ display: 'none' }} /><span style={{ fontSize: 16 }}>×</span></button>
@@ -245,7 +245,7 @@ function StyleProfilesSection({ say }) {
                 {STYLE_SLIDERS.map(([k, label]) => (
                   <div key={k} style={{ marginTop: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--ms-ink-3)', marginBottom: 2 }}><span>{label}</span><span>{Math.round((st.params?.[k] || 0) * 100)}</span></div>
-                    <input type="range" min={-100} max={100} value={Math.round((st.params?.[k] || 0) * 100)} onChange={e => patch(st.id, { params: { [k]: Number(e.target.value) / 100 } })} onMouseUp={() => save(st)} onTouchEnd={() => save(st)} style={{ width: '100%' }} />
+                    <input aria-label={label} type="range" min={-100} max={100} value={Math.round((st.params?.[k] || 0) * 100)} onChange={e => patch(st.id, { params: { [k]: Number(e.target.value) / 100 } })} onMouseUp={() => save(st)} onTouchEnd={() => save(st)} style={{ width: '100%' }} />
                   </div>
                 ))}
               </div>

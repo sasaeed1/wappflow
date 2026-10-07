@@ -202,7 +202,7 @@ export default function StudioHelpPage() {
           <p className="ms-lede" style={{ margin: '0 auto', maxWidth: 540 }}>Everything about shoots, culling, galleries, reels and your portfolio.</p>
           <div style={{ position: 'relative', maxWidth: 520, margin: '24px auto 0' }}>
             <Search size={17} style={{ position: 'absolute', left: 16, top: 14, color: 'var(--ms-ink-3)' }} />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search help…" className="ms-input" style={{ paddingLeft: 44, height: 48, fontSize: 15, borderRadius: 999 }} autoFocus />
+            <input aria-label="Search help" value={q} onChange={e => setQ(e.target.value)} placeholder="Search help…" className="ms-input" style={{ paddingLeft: 44, height: 48, fontSize: 15, borderRadius: 999 }} autoFocus />
           </div>
         </div>
 

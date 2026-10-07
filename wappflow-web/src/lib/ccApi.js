@@ -150,6 +150,7 @@ export const ccApi = {
   saveView: (surface, name, query) => cc.post(`/cc/views/${surface}`, { name, query }),
   deleteView: (id) => cc.delete(`/cc/views/${id}`),
   endGrace: (graceId) => cc.post(`/cc/grace/${graceId}/end`),
+  setTrial: (workspaceId, days) => cc.post(`/cc/workspaces/${workspaceId}/trial`, { days }),
   bulk: (action, workspace_ids, params = {}) => cc.post('/cc/bulk', { action, workspace_ids, params }),
   clonePlan: (key, d) => cc.post(`/cc/plans/${key}/clone`, d),
   killFlag: (key, reason) => cc.post(`/cc/flags/${key}/kill`, { reason }),

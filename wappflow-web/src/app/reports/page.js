@@ -218,8 +218,8 @@ export default function ReportsPage() {
     color: STATUS_COLORS[p.status] || '#6366f1'
   })) || [];
 
-  const avgResponse = data?.avgResponseMinutes || 0;
-  const avgResponseDisplay = avgResponse < 60
+  const avgResponse = data?.avgResponseMinutes;
+  const avgResponseDisplay = avgResponse == null ? null : avgResponse < 60
     ? `${Math.round(avgResponse)}m`
     : avgResponse < 1440
     ? `${Math.round(avgResponse / 60)}h ${Math.round(avgResponse % 60)}m`
@@ -366,8 +366,16 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="r-stack-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
-                  <StatCard icon={TrendingUp} label="Pipeline Value" value={`${sym}${(analytics?.total_sales || 0).toLocaleString()}`} color="#6366f1"
-                    sub={`${sym}${(analytics?.avg_deal_size || 0).toLocaleString()} avg deal`} />
+                  {/* "Pipeline Value" showed closed sales (actual_sale), which read $0 while
+                      the Dashboard showed thousands in open deals. It is now what it says:
+                      the estimated value of every lead not yet won or lost (PROP-006). */}
+                  {(() => {
+                    const open = (data?.pipeline || []).filter(p => !/^Closed/.test(p.status || ''));
+                    const value = open.reduce((s, p) => s + (Number(p.value) || 0), 0);
+                    const count = open.reduce((s, p) => s + (Number(p.count) || 0), 0);
+                    return <StatCard icon={TrendingUp} label="Pipeline Value" value={`${sym}${Math.round(value).toLocaleString()}`} color="#6366f1"
+                      sub={`${count} open deal${count === 1 ? '' : 's'} · ${sym}${(analytics?.avg_deal_size || 0).toLocaleString()} avg won`} />;
+                  })()}
                   <StatCard icon={FileSignature} label="Contracts Signed" value={analytics?.contracts_signed || 0} color="#8b5cf6"
                     sub={`${analytics?.contracts_awaiting || 0} awaiting signature`} />
                   <StatCard icon={CalendarDays} label="Upcoming Bookings" value={analytics?.bookings_upcoming || 0} color="#0ea5e9"

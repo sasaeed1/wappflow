@@ -79,7 +79,7 @@ function StepUpDialog({ req, onDone }) {
           <input id="cc-su-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="6 digits" style={{ ...inp, letterSpacing: '0.3em', fontVariantNumeric: 'tabular-nums' }} />
         </>}
         {err && <div role="alert" style={{ color: '#f87171', fontSize: 13 }}>{err}</div>}
-        <button type="submit" hidden />
+        <button type="submit" hidden aria-label="Confirm" />
       </form>
     </Modal>
   );

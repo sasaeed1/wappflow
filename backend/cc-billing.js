@@ -147,7 +147,7 @@ module.exports = function mountBilling(app, deps) {
         }
         // Keep the plan the product enforces in step with what is billed, when asked.
         if (b.apply_plan) {
-          db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, ?) ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, updated_at = CURRENT_TIMESTAMP`).run(ws, plan);
+          db.prepare(`INSERT INTO workspace_plan (workspace_id, plan) VALUES (?, ?) ON CONFLICT(workspace_id) DO UPDATE SET plan = excluded.plan, trial_ends_at = NULL, updated_at = CURRENT_TIMESTAMP`).run(ws, plan);
           entitlements.invalidate(ws);
           try { broadcastToWorkspace(ws, 'plan_updated', {}); } catch {}
         }

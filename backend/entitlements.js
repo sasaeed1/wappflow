@@ -132,7 +132,9 @@ const DEFAULT_PLAN = 'creator'; // entry plan for new workspaces / unknown tiers
 //   style_profiles             → P9 (Style Engine)     — SHIPPED (auto-apply + suggestions)
 //   desktop_sync               → P6 (Offline-first)     — SHIPPED (verified live)
 //   ai_editing                 → P10 (Desktop native editing) — still unbuilt
-const UNBUILT_FEATURES = new Set(['ai_editing']);
+// Sold-but-unbuilt (PROP-006): forced off whatever a plan, flag or override says,
+// and left out of every plan catalog, until they actually ship.
+const UNBUILT_FEATURES = new Set(['ai_editing', 'byok', 'api_access', 'sso']);
 
 const CACHE_TTL_MS = 30 * 1000;
 const _cache = new Map(); // workspaceId -> { data, exp }

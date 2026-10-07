@@ -115,7 +115,7 @@ export const MODULE_SECTIONS = [
     color: '#f43f5e',
     description: 'What each plan includes',
     articles: [
-      { title: 'The plans', body: 'Creator, Studio, Studio+ and Enterprise. Creator covers the core modules for a solo operator; Studio adds the extra lead-capture channels, team collaboration, analytics, the deeper AI and contract features and automation; Studio+ adds white-label, the local AI engine and the creative engines; Enterprise adds API access, SSO, audit logs and custom integrations.' },
+      { title: 'The plans', body: 'Creator, Studio, Studio+ and Enterprise. Creator covers the core modules for a solo operator; Studio adds the extra lead-capture channels, team collaboration, analytics, the deeper AI and contract features and automation; Studio+ adds white-label, the local AI engine and the creative engines; Enterprise adds audit logs, custom integrations, custom branding and dedicated support.' },
       { title: 'Limits as well as features', body: 'Each plan also sets how many new leads a month, team seats, WhatsApp numbers, gigabytes of storage and contract sends you get. Settings → Plan & Billing shows your current usage against each.' },
       { title: 'What happens at a limit', body: 'You are warned as you approach a limit, and blocked from creating more of that one thing once you reach it. Nothing already created is removed or hidden, and every other part of the product keeps working.' },
     ],

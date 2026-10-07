@@ -18,6 +18,7 @@ export default function ClientGalleryPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [needsPw, setNeedsPw] = useState(false);
+  const [pwMsg, setPwMsg] = useState('');
   const [pw, setPw] = useState('');
   const [notFound, setNotFound] = useState(false);
   const [contact, setContact] = useState('');
@@ -52,7 +53,8 @@ export default function ClientGalleryPage() {
       const url = `${BASE_URL}/api/media/portal/${token}${password ? `?pw=${encodeURIComponent(password)}` : ''}`;
       const res = await fetch(url);
       if (res.status === 404) { setNotFound(true); setLoading(false); return; }
-      if (res.status === 401) { setNeedsPw(true); setLoading(false); return; }
+      if (res.status === 401) { setNeedsPw(true); setPwMsg(password ? 'That password didn\u2019t work. Check it and try again.' : ''); setLoading(false); return; }
+      if (res.status === 429) { setNeedsPw(true); setPwMsg('Too many wrong passwords. Try again in 15 minutes.'); setLoading(false); return; }
       const json = await res.json();
       setData(json); setNeedsPw(false);
       const c = {}; (json.assets || []).forEach(a => { c[a.asset_id] = a.favorites || 0; });
@@ -149,8 +151,9 @@ export default function ClientGalleryPage() {
           <div style={{ width: 56, height: 56, borderRadius: 16, margin: '0 auto 18px', background: '#c2a878', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Lock size={24} color="#14120f" /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: '0 0 8px' }}>Private gallery</h1>
           <p style={{ fontSize: 13.5, color: '#9aa0aa', margin: '0 0 20px' }}>Enter the password your photographer shared.</p>
-          <input type="password" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === 'Enter' && load(pw)} placeholder="Password"
+          <input type="password" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === 'Enter' && load(pw)} placeholder="Password" aria-label="Gallery password" aria-describedby={pwMsg ? 'gallery-pw-msg' : undefined}
             style={{ width: '100%', padding: '12px 14px', borderRadius: 11, border: '1px solid #2a2a33', background: '#15151b', color: '#fff', fontSize: 14, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }} autoFocus />
+          {pwMsg && <p id="gallery-pw-msg" role="alert" style={{ fontSize: 13, color: '#f87171', margin: '0 0 12px' }}>{pwMsg}</p>}
           <button onClick={() => load(pw)} style={{ width: '100%', padding: 12, borderRadius: 11, border: 'none', cursor: 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 700, fontSize: 14 }}>View gallery</button>
         </div>
       </Centered>
@@ -207,7 +210,7 @@ export default function ClientGalleryPage() {
           </div>
         )}
         <div style={{ marginTop: 18, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 }}>
-          <input value={contact} onChange={e => saveContact(e.target.value)} placeholder="Your name (optional)"
+          <input aria-label="Your name" value={contact} onChange={e => saveContact(e.target.value)} placeholder="Your name (optional)"
             style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid #2a2a33', background: '#15151b', color: '#fff', fontSize: 12.5, outline: 'none', width: 200 }} />
           {data?.download_policy !== 'none' && (
             <button onClick={downloadAll} disabled={dl?.status === 'pending'} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 10, border: 'none', cursor: dl?.status === 'pending' ? 'wait' : 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 700, fontSize: 13 }}>
@@ -349,7 +352,7 @@ function CommentModal({ onClose, onSend }) {
     <div data-dismiss onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 320, padding: 16 }}>
       <div onClick={e => e.stopPropagation()} className="r-modal" style={{ background: '#15151b', border: '1px solid #2a2a33', borderRadius: 16, padding: 22, maxWidth: 380, width: '100%' }}>
         <h3 style={{ fontSize: 16, fontWeight: 800, color: '#fff', margin: '0 0 12px' }}>Leave a note</h3>
-        <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Tell your photographer what you think…" rows={3}
+        <textarea aria-label="Your comment" value={body} onChange={e => setBody(e.target.value)} placeholder="Tell your photographer what you think…" rows={3}
           style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid #2a2a33', background: '#0b0b0f', color: '#fff', fontSize: 13.5, outline: 'none', resize: 'vertical', boxSizing: 'border-box', marginBottom: 14 }} autoFocus />
         <button onClick={() => onSend(body)} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', cursor: 'pointer', background: '#c2a878', color: '#14120f', fontWeight: 700, fontSize: 13.5 }}>Send</button>
       </div>
