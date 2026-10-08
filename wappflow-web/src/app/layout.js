@@ -1,5 +1,6 @@
 import './globals.css'
 import Providers from './providers'
+import LaunchIntro from '@/components/LaunchIntro'
 
 export const metadata = {
   title: {
@@ -39,6 +40,24 @@ export default function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            // Launch intro (components/LaunchIntro.js): plays on a COLD START only —
+            // the app (every tab/window) was closed and opened again — never on a page
+            // change, a reload or a new tab while the app is running. "Running" is the
+            // same heartbeat the sign-in persistence below uses (wf_beat, refreshed by
+            // any open tab; wf_alive for this tab), read before that code refreshes it.
+            // Signed in + an app screen only: never a client's gallery, contract,
+            // booking, payment or portfolio page. A cold start on the login screen is
+            // remembered and plays on the first app screen after signing in.
+            var APP = ['dashboard','leads','leads-list','clients','invoices','bookings','reports','settings','team','chat','knowledge','whatsapp','studio','contracts','profile','trash','help'];
+            var lastBeat = parseInt(localStorage.getItem('wf_beat') || '0', 10);
+            var running = sessionStorage.getItem('wf_alive') || (lastBeat && (Date.now() - lastBeat) < 90000);
+            if (!running) sessionStorage.setItem('wf_intro_pending', '1');
+            if (sessionStorage.getItem('wf_intro_pending') && APP.indexOf(location.pathname.split('/')[1]) !== -1 && localStorage.getItem('token')) {
+              document.documentElement.setAttribute('data-wf-intro', '1');
+              sessionStorage.removeItem('wf_intro_pending');
+            }
+          } catch(e) {}
           try {
             var t = localStorage.getItem('theme') || 'dark';
             document.documentElement.classList.toggle('light', t === 'light');
@@ -87,6 +106,7 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <Providers>{children}</Providers>
+        <LaunchIntro />
       </body>
     </html>
   )
