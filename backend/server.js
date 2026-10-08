@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -102,14 +102,33 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Rate limiter — exempt the /uploads static path so loading a chat full of images
-// doesn't trip the per-IP limit and start returning 429s for legitimate media.
+// Rate limiter. Who is asking, for rate limiting: a signed-in user is counted as themselves.
+// One shared per-IP counter (500 / 15 min) put a whole office behind one address
+// on a single budget, and one person refreshing the dashboard a dozen times used
+// it up: every call got 429, the dashboard showed 0 leads and live updates said
+// "Reconnecting" (seen in production, 257 refusals in five minutes). Signed-in
+// requests now have their own, larger budget; anything without a valid session
+// (public pages, sign-up, bad or expired tokens) stays on the strict per-IP one.
+function rateLimitUser(req) {
+  if (req._rlUser !== undefined) return req._rlUser;
+  let id = null;
+  try {
+    const h = String(req.headers.authorization || '');
+    const tok = h.startsWith('Bearer ') ? h.slice(7) : '';
+    if (tok) { const d = jwt.verify(tok, JWT_SECRET); if (d && d.userId) id = String(d.userId); }
+  } catch { id = null; }
+  req._rlUser = id;
+  return id;
+}
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 500,
+  limit: (req) => (rateLimitUser(req) ? Number(process.env.RATE_LIMIT_USER) || 3000 : Number(process.env.RATE_LIMIT_IP) || 500),
+  keyGenerator: (req) => { const u = rateLimitUser(req); return u ? `u:${u}` : `ip:${ipKeyGenerator(req.ip || '')}`; },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path.startsWith('/uploads/'),
+  // /uploads: a chat full of images is not request abuse. /api/events: the live
+  // stream is one long-lived connection; refusing it is what showed "Reconnecting".
+  skip: (req) => req.path.startsWith('/uploads/') || req.path === '/api/events',
   // JSON body (not the plain-text default) so clients can surface the reason
   // instead of falling back to a generic "failed" message.
   message: { error: 'Too many requests — please wait a few minutes and try again.' },
