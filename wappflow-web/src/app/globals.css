@@ -965,11 +965,11 @@ html.light .recharts-rectangle.recharts-tooltip-cursor { fill: rgba(99,102,241,.
 .recharts-default-tooltip { border-radius: 12px !important; border: 1px solid var(--border) !important; background: var(--glass) !important; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 12px 32px rgba(0,0,0,.25) !important; }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   Dark mode ambience — a slight WappFlow gradient behind the whole app.
+   Ambience — a slight WappFlow gradient behind the whole app, dark and light.
    One fixed layer behind the shell (so it never scrolls or repaints), and the
    full-height page wrappers that paint solid var(--bg) let it through. The
    shell bar and page bars turn to frosted glass so the colour carries up.
-   Light mode is untouched.
+   Light mode has its own pastel version below.
    ════════════════════════════════════════════════════════════════════════════ */
 .wf-app { position: relative; isolation: isolate; }
 html:not(.light) .wf-app { background: #0b0d14 !important; }
@@ -981,7 +981,33 @@ html:not(.light) .wf-app::before {
     radial-gradient(60% 45% at 85% 100%, rgba(236,72,153,.09), transparent 70%),
     radial-gradient(50% 40% at 10% 95%, rgba(6,182,212,.06), transparent 70%);
 }
-html:not(.light) .wf-app div[style*="min-height: 100vh"][style*="background: var(--bg)"] { background: transparent !important; }
+.wf-app div[style*="min-height: 100vh"][style*="background: var(--bg)"] { background: transparent !important; }
+
+/* Light mode gets the same idea in pastel: a soft lavender wash with a hint
+   of pink and sky, over the usual light page colour. */
+html.light .wf-app { background: #f4f5fb !important; }
+html.light .wf-app::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(55% 45% at 0% 0%, rgba(99,102,241,.18), transparent 70%),
+    radial-gradient(45% 40% at 100% 6%, rgba(168,85,247,.15), transparent 70%),
+    radial-gradient(60% 45% at 88% 100%, rgba(236,72,153,.10), transparent 70%),
+    radial-gradient(50% 40% at 8% 96%, rgba(14,165,233,.07), transparent 70%);
+}
+html.light .wf-app .wf-shell {
+  background: rgba(255,255,255,.7) !important; border-bottom-color: rgba(15,23,42,.06) !important;
+  backdrop-filter: saturate(170%) blur(18px); -webkit-backdrop-filter: saturate(170%) blur(18px);
+}
+html.light .wf-app .wf-subbar {
+  background: rgba(255,255,255,.6) !important; border-bottom-color: rgba(15,23,42,.05) !important;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+html.light .wf-app .dash-stat,
+html.light .wf-app .dash-glass {
+  background: rgba(255,255,255,.72) !important; border-color: rgba(255,255,255,.9) !important;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 14px 34px -20px rgba(79,70,229,.28) !important;
+}
 html:not(.light) .wf-app .wf-shell {
   background: rgba(13,15,23,.62) !important; border-bottom-color: rgba(255,255,255,.06) !important;
   backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
