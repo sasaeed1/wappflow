@@ -68,3 +68,53 @@ and share the patch so it can be added to the repository properly.
 
 After confirming who they are: `cd /var/www/wappflow/backend && node scripts/reset-user-2fa.js their@email.com`
 (admins: `node scripts/cc-reset-2fa.js admin@email.com`).
+
+## 7. Changing a value in `backend/.env`
+
+pm2 can hold its own copy of `.env` values (any `--update-env` restart from a shell that had them
+exported stores them), and an inherited value wins over the file. So after editing an **existing**
+value, push the new copy into the API only, in a subshell so nothing leaks into your login shell:
+
+```bash
+cd /var/www/wappflow && ( set -a; . backend/.env; set +a; pm2 restart wappflow-api --update-env ) && pm2 save
+```
+
+Never restart **both** apps from a shell that has `backend/.env` loaded: the website would pick up
+`PORT=3001`, take the API's port, and nginx returns 502. `deploy.sh` pins the website to port 3000
+(`WEB_PORT` overrides), so a deploy is safe either way.
+
+## 8. Fill a demo account for sales demos
+
+`backend/scripts/seed-showcase.js` turns one **empty** account into a believable studio:
+- a team of four,
+- about 140 leads with WhatsApp, Instagram, Facebook and website conversations,
+- three pipelines,
+- invoices and payments, bookings, signed contracts with certificates,
+- a knowledge base and team chat,
+- nine shoots with real photos, AI culling, client galleries (favourites, comments, proofing),
+- albums, reels, a print store and a public portfolio.
+
+```bash
+cd /var/www/wappflow/backend
+sudo apt install -y ffmpeg                       # once; needed for the reels
+node scripts/seed-showcase.js --email demo@studio.com              # checks only
+PEXELS_API_KEY=xxxx node scripts/seed-showcase.js --email demo@studio.com --yes
+```
+
+Get a free `PEXELS_API_KEY` at <https://www.pexels.com/api/> so each shoot has on-theme photos.
+Without one the seeder uses random photos from picsum.photos. `--photos <dir>` uses your own
+photos: one sub-folder per shoot key (`zara`, `mariam`, `emily`, `hira`, `nexa`, `bloom`, `palm`,
+`khan`), or a flat folder. `--studio "Name"` and `--handle slug` set the demo studio's name and
+portfolio address.
+
+Safety:
+- **Refused runs:** it won't run on an account with a connected WhatsApp, Instagram or Facebook
+  account, or one that already has leads.
+- **Nothing is sent:** contracts go out with no channel and galleries publish with `notify: false`.
+- **Fictional contacts:** every contact uses a +44 7700 900xxx number (a range reserved for fiction)
+  and an `@example.com` address.
+
+To start over: `node scripts/seed-showcase.js --email demo@studio.com --clean --yes`. This removes
+the account's content and uploaded files but keeps the login, plan and settings.
+
+**Only point it at a demo account.**

@@ -307,6 +307,33 @@ select:-webkit-autofill {
   .wf-skeleton { animation: none !important; }
   .spin { animation-duration: 2.4s !important; }
 }
+/* BrandLoader — the full-page loading state (components/BrandLoader.js). */
+.wf-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px 16px; text-align: center; }
+.wf-loader--full { position: relative; overflow: hidden; min-height: 100vh; min-height: 100dvh; background: var(--bg); }
+.wf-loader--full::before, .wf-loader--full::after { content: ''; position: absolute; width: 340px; height: 340px; border-radius: 50%; filter: blur(70px); opacity: 0.35; pointer-events: none; }
+.wf-loader--full::before { background: #6366f1; top: 18%; left: 50%; margin-left: -260px; animation: wf-loader-drift 7s ease-in-out infinite alternate; }
+.wf-loader--full::after { background: #a855f7; bottom: 18%; left: 50%; margin-left: -80px; animation: wf-loader-drift 9s ease-in-out infinite alternate-reverse; }
+.wf-loader > * { position: relative; }
+.wf-loader__mark { position: relative; width: 76px; height: 76px; display: grid; place-items: center; margin-bottom: 14px; }
+.wf-loader__ring { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid transparent; border-top-color: #a855f7; border-right-color: #6366f1; animation: spin 1.1s linear infinite; }
+.wf-loader__tile { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: linear-gradient(135deg, #6366f1, #a855f7);
+  box-shadow: 0 8px 28px rgba(99, 102, 241, 0.45); animation: wf-loader-breathe 2.2s ease-in-out infinite; }
+.wf-loader__word { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; color: var(--text);
+  background: linear-gradient(90deg, var(--text) 0%, var(--text) 35%, #a5b4fc 50%, var(--text) 65%, var(--text) 100%); background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: wf-loader-shine 2.6s linear infinite; }
+.wf-loader__line { margin: 0; min-height: 20px; font-size: 13px; color: var(--text-muted); animation: wf-loader-line 1.8s ease-in-out both; }
+.wf-loader__bar { position: relative; width: 120px; height: 3px; border-radius: 3px; overflow: hidden; background: var(--border); margin-top: 6px; }
+.wf-loader__bar span { position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 3px; background: linear-gradient(90deg, #6366f1, #a855f7); animation: wf-loader-slide 1.2s ease-in-out infinite; }
+@keyframes wf-loader-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes wf-loader-line { 0% { opacity: 0; transform: translateY(4px); } 15%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@keyframes wf-loader-slide { 0% { left: -40%; } 100% { left: 100%; } }
+@keyframes wf-loader-drift { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(60px, -40px) scale(1.2); } }
+@keyframes wf-loader-shine { 0% { background-position: 100% 0; } 100% { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .wf-loader__ring, .wf-loader__tile, .wf-loader__line, .wf-loader__word, .wf-loader--full::before, .wf-loader--full::after { animation: none; }
+  .wf-loader__bar span { animation: none; left: 30%; }
+}
+
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }

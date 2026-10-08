@@ -10,7 +10,7 @@ import {
   MessageCircle, Camera, Globe, MonitorSmartphone, Layers,
   Trash2, UsersRound, Image as ImageIcon, AlertTriangle, Pin
 } from 'lucide-react';
-import { leadsAPI, tagsAPI, workspaceAPI, viewsAPI, pinsAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI } from '../../lib/api';
+import { leadsAPI, tagsAPI, workspaceAPI, viewsAPI, pinsAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI, settingsAPI } from '../../lib/api';
 import { isLeadUnread } from '../../lib/unread';
 import { formatDate } from '../../lib/datetime';
 import { TagChip, TagPicker } from '../../components/TagPicker';
@@ -720,6 +720,9 @@ export default function LeadsListPage() {
   const [allLeads, setAllLeads] = useState([]);
   const [allTags, setAllTags] = useState([]);
   const [members, setMembers] = useState([]);
+  // The studio's own currency (the value column was hard-coded to "Rs").
+  const [currencySym, setCurrencySym] = useState('$');
+  useEffect(() => { settingsAPI.getCompany().then(r => setCurrencySym(r.data?.company?.currency_symbol || '$')).catch(() => {}); }, []);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -1439,7 +1442,7 @@ export default function LeadsListPage() {
 
                 {/* Value */}
                 <span style={{ fontSize: 13, fontWeight: value ? 800 : 400, color: value ? sc.dot : 'var(--border)' }}>
-                  {value ? `Rs ${value.toLocaleString()}` : '—'}
+                  {value ? `${currencySym}${value.toLocaleString()}` : '—'}
                 </span>
 
                 {/* One cell, not three. The grid has nine columns and this row

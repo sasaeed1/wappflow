@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import BrandLoader from '@/components/BrandLoader';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
@@ -897,14 +898,7 @@ export default function DashboardPage() {
 
   const totalBadge = notifBadge + liveEvents.length;
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="text-center">
-        <div style={{ width: 44, height: 44, border: '3px solid var(--border)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
-        <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: 14 }}>Loading WappFlow...</p>
-      </div>
-    </div>
-  );
+  if (loading) return <BrandLoader />;
 
   return (
     <>

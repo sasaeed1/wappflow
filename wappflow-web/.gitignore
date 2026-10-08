@@ -43,3 +43,6 @@ next-env.d.ts
 # safe-deploy staging build dirs
 .next.staging
 .next.old
+
+# alternate build dirs (NEXT_DIST): deploy.sh staging, local verify builds
+/.next.*/
