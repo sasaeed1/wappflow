@@ -1,7 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-// The one full-page loading state. It replaced a bare grey spinner with
+// The one full-page loading state. Deliberately quiet: the brand moment is the
+// launch intro (LaunchIntro.js), and a loud loader on every page load read as the
+// intro replaying. It only appears if loading takes longer than ~250ms.
+// It replaced a bare grey spinner with
 // "Loading WappFlow...", which on Android sat underneath the OS splash screen as
 // it faded out and made the whole launch look unfinished. Small mark, wordmark,
 // a rotating line so a slow network still feels alive. Styles live in
@@ -29,12 +32,11 @@ export default function BrandLoader({ lines = LINES, fullScreen = true }) {
       <div className="wf-loader__mark" aria-hidden="true">
         <span className="wf-loader__ring" />
         <span className="wf-loader__tile">
-          <svg width="32" height="32" viewBox="0 0 64 64" fill="none">
+          <svg width="22" height="22" viewBox="0 0 64 64" fill="none">
             <path d="M35 12 L18 36 H30 L27 52 L46 26 H34 Z" fill="#fff" stroke="#fff" strokeWidth="1" strokeLinejoin="round" />
           </svg>
         </span>
       </div>
-      <div className="wf-loader__word">WappFlow</div>
       <p key={i} className="wf-loader__line">{lines[i]}</p>
       <div className="wf-loader__bar" aria-hidden="true"><span /></div>
     </div>
