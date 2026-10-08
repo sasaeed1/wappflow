@@ -339,7 +339,7 @@ select:-webkit-autofill {
    <html data-wf-intro="1">; every timing below runs from first paint. */
 .wf-intro { display: none; }
 html[data-wf-intro="1"] .wf-intro {
-  display: grid; place-items: center; position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; cursor: pointer;
+  display: grid; place-items: center; position: fixed; inset: 0; z-index: 2147483000; overflow: hidden;
   background: radial-gradient(120% 90% at 50% 40%, #15132b 0%, #0b0b0f 70%);
   animation: wf-intro-exit 0.55s cubic-bezier(.4,0,.2,1) 5.45s forwards;
 }
@@ -369,8 +369,6 @@ html[data-wf-intro="1"] { overflow: hidden; }
 .wf-intro__bar { width: 180px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 10px; opacity: 0; animation: wf-intro-fade .4s ease-out .8s forwards; }
 .wf-intro__bar span { display: block; height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899); box-shadow: 0 0 12px rgba(168,85,247,.9);
   animation: wf-intro-fill 4.6s cubic-bezier(.5,.05,.4,1) .8s forwards; }
-.wf-intro__skip { position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; font-size: 12px; letter-spacing: .12em;
-  text-transform: uppercase; color: rgba(199,210,254,.55); opacity: 0; animation: wf-intro-fade .6s ease-out 1.8s forwards; }
 @keyframes wf-intro-fade { to { opacity: 1; } }
 @keyframes wf-intro-orbit { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(8vmax,-6vmax) scale(1.25); } }
 @keyframes wf-intro-rise { 0% { opacity: 0; transform: translateY(0) scale(.6); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(-105vh) scale(1.2); } }

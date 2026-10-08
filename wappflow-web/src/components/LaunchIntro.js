@@ -9,7 +9,8 @@ import { useEffect, useState } from 'react';
 // (sessionStorage). The overlay markup is always rendered but hidden by CSS unless
 // that attribute is set, so server and client render the same thing and nothing
 // flashes. The choreography is pure CSS (globals.css, .wf-intro*) timed from first
-// paint; this component only ends it — at the 6s mark or on a tap/keypress.
+// paint; this component only ends it at the 6s mark. There is deliberately no skip:
+// it plays once per app start, as part of opening the app, not as an interruption.
 // prefers-reduced-motion users get a short, still version.
 const LINES = ['Your clients are waiting ✨', 'Turning chats into bookings ⚡', 'Let’s make today a big one 🚀'];
 const WORD = 'WappFlow';
@@ -29,9 +30,7 @@ export default function LaunchIntro() {
     const left = Math.max(0, total - (performance.now() || 0));
     const t = setTimeout(end, left);
     const lines = [setTimeout(() => setLine(1), Math.max(0, 3300 - performance.now())), setTimeout(() => setLine(2), Math.max(0, 4500 - performance.now()))];
-    const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') end(); };
-    window.addEventListener('keydown', onKey);
-    return () => { clearTimeout(t); lines.forEach(clearTimeout); window.removeEventListener('keydown', onKey); };
+    return () => { clearTimeout(t); lines.forEach(clearTimeout); };
   }, []);
 
   return (
@@ -40,7 +39,6 @@ export default function LaunchIntro() {
       role="status"
       aria-live="polite"
       aria-label="Opening WappFlow"
-      onClick={() => { document.documentElement.dataset.wfIntro = 'done'; }}
     >
       <div className="wf-intro__aurora" aria-hidden="true"><span /><span /><span /></div>
       <div className="wf-intro__sparks" aria-hidden="true">
@@ -62,7 +60,6 @@ export default function LaunchIntro() {
         <p key={line} className="wf-intro__line" style={{ animationDelay: line === 0 ? '2s' : '0s' }}>{LINES[line]}</p>
         <div className="wf-intro__bar" aria-hidden="true"><span /></div>
       </div>
-      <span className="wf-intro__skip">Tap to skip</span>
     </div>
   );
 }
