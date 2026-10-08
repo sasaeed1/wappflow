@@ -1491,17 +1491,35 @@ useEffect(() => {
         );
       })()}
 
-      {/* Status banners */}
-      {lead.status === 'Closed - Won' && (
-        <div className="lead-outcome" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
-          🏆 Deal won · {sym}{(lead.actual_sale || 0).toLocaleString()}
-        </div>
-      )}
-      {lead.status === 'Closed - Lost' && (
-        <div className="lead-outcome" style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}>
-          Deal lost · {lead.lost_reason || 'No reason given'}
-        </div>
-      )}
+      {/* Deal outcome — was a flat full-width colour strip ("🏆 Deal Won! $3,800").
+          Now a card: the result, the money, when it closed, and the obvious next
+          step (invoice a win, reopen a loss). Styles: globals.css .lead-outcome*. */}
+      {(lead.status === 'Closed - Won' || lead.status === 'Closed - Lost') && (() => {
+        const won = lead.status === 'Closed - Won';
+        const amount = Number(won ? (lead.actual_sale || lead.estimated_value) : lead.estimated_value) || 0;
+        const closed = lead.closed_at ? formatDate(lead.closed_at) : null;
+        return (
+          <section className={`lead-outcome ${won ? 'lead-outcome--won' : 'lead-outcome--lost'}`} aria-label={won ? 'Deal won' : 'Deal lost'}>
+            {won && <span className="lead-outcome__confetti" aria-hidden="true">{Array.from({ length: 14 }).map((_, i) => <i key={i} />)}</span>}
+            <div className="lead-outcome__icon" aria-hidden="true">{won ? <Trophy size={22} /> : <ThumbsDown size={20} />}</div>
+            <div className="lead-outcome__body">
+              <p className="lead-outcome__kicker">{won ? 'Deal won' : 'Deal lost'}{closed ? <span> · {closed}</span> : null}</p>
+              {won ? (
+                <p className="lead-outcome__amount">{amount > 0 ? <>{sym}{amount.toLocaleString()}</> : 'Closed'}</p>
+              ) : (
+                <p className="lead-outcome__reason">{lead.lost_reason || 'No reason recorded'}{amount > 0 ? <span> · {sym}{amount.toLocaleString()} at stake</span> : null}</p>
+              )}
+            </div>
+            <div className="lead-outcome__actions">
+              {won ? (
+                <button type="button" className="lead-outcome__btn" onClick={() => setShowInvoiceModal(true)}><Receipt size={15} /><span>{invoices.length ? 'New invoice' : 'Create invoice'}</span></button>
+              ) : (
+                <button type="button" className="lead-outcome__btn" disabled={actionLoading} onClick={() => handleStatusChange('Negotiating')}><RefreshCw size={15} /><span>Reopen deal</span></button>
+              )}
+            </div>
+          </section>
+        );
+      })()}
 
       <div className="lead-grid">
 
@@ -1653,8 +1671,11 @@ useEffect(() => {
             };
             const sent = SENT_META[lead.sentiment] || null;
             const urg = URG_META[lead.urgency] || null;
-            const score = lead.lead_score || 0;
-            const scoreColor = score >= 7 ? '#10b981' : score >= 4 ? '#f59e0b' : '#ef4444';
+            const score = Number(lead.lead_score) || 0;
+            // Scores arrive out of 10 (AI analysis) or out of 100 (imports/seeded
+            // data); "86 /10" was the result of assuming one scale.
+            const scale = score > 10 ? 100 : 10;
+            const scoreColor = score / scale >= 0.7 ? '#10b981' : score / scale >= 0.4 ? '#f59e0b' : '#ef4444';
             return (
               <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '18px 20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
                 <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Lead Intelligence ✨</p>
@@ -1664,11 +1685,11 @@ useEffect(() => {
                       <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>Score</p>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
                         <span style={{ fontSize: 22, fontWeight: 900, color: scoreColor, lineHeight: 1 }}>{score}</span>
-                        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>/10</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>/{scale}</span>
                       </div>
                     </div>
                     <div style={{ flex: 2, height: 6, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${score * 10}%`, background: scoreColor, borderRadius: 3, transition: 'width 0.4s' }} />
+                      <div style={{ height: '100%', width: `${Math.min(100, (score / scale) * 100)}%`, background: scoreColor, borderRadius: 3, transition: 'width 0.4s' }} />
                     </div>
                   </div>
                 )}

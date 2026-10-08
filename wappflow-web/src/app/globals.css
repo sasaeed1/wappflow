@@ -516,10 +516,95 @@ select option {
 html.light .lead-hero__btn { background: #fff; border-color: rgba(15,23,42,.08); box-shadow: 0 1px 2px rgba(15,23,42,.04); }
 html.light .lead-hero__btn:hover { background: #f8fafc; }
 
-/* Won / lost outcome — a card in line with the page, not an edge-to-edge strip. */
-.lead-outcome { max-width: 1452px; margin: 14px auto 0; width: calc(100% - 48px); box-sizing: border-box; padding: 11px 16px; border-radius: 14px;
-  color: #fff; text-align: center; font-weight: 800; font-size: 14px; box-shadow: 0 10px 26px -12px rgba(0,0,0,.5); }
+/* Deal outcome card (won / lost) on the lead page. */
+.lead-outcome {
+  --oc: 16,185,129; position: relative; overflow: hidden; isolation: isolate;
+  max-width: 1452px; width: calc(100% - 48px); box-sizing: border-box; margin: 16px auto 0;
+  display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-radius: 20px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(var(--oc), .28), transparent 55%),
+    radial-gradient(90% 120% at 100% 100%, rgba(var(--oc), .12), transparent 60%),
+    var(--surface);
+  border: 1px solid rgba(var(--oc), .35);
+  box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 40px -22px rgba(var(--oc), .65);
+  animation: oc-in .55s cubic-bezier(.2,.9,.3,1.15) both;
+}
+.lead-outcome--lost { --oc: 244,63,94; }
+@keyframes oc-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+/* a single light sweep across a win */
+.lead-outcome--won::after {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.10) 50%, transparent 65%);
+  transform: translateX(-100%); animation: oc-sweep 1.6s .35s ease-out forwards;
+}
+@keyframes oc-sweep { to { transform: translateX(100%); } }
+.lead-outcome__icon {
+  position: relative; flex-shrink: 0; width: 50px; height: 50px; border-radius: 16px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, rgb(var(--oc)), rgba(var(--oc), .65));
+  box-shadow: 0 10px 24px -8px rgba(var(--oc), .8), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.lead-outcome--won .lead-outcome__icon { background: linear-gradient(135deg, #fbbf24, #f59e0b 45%, #10b981); }
+.lead-outcome--won .lead-outcome__icon::after {
+  content: ''; position: absolute; inset: -5px; border-radius: 20px; border: 2px solid rgba(251,191,36,.55);
+  animation: oc-ring 2.4s ease-out .4s 2;
+}
+@keyframes oc-ring { 0% { opacity: .9; transform: scale(.9); } 100% { opacity: 0; transform: scale(1.25); } }
+.lead-outcome__body { flex: 1; min-width: 0; }
+.lead-outcome__kicker { margin: 0; font-size: 11.5px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: rgb(var(--oc)); }
+.lead-outcome__kicker span { color: var(--text-dim); font-weight: 600; letter-spacing: 0; text-transform: none; }
+.lead-outcome__amount {
+  margin: 2px 0 0; font-size: 28px; line-height: 1.1; font-weight: 900; letter-spacing: -.8px;
+  background: linear-gradient(90deg, #34d399, #10b981 40%, #fbbf24); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.lead-outcome__reason { margin: 3px 0 0; font-size: 15px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lead-outcome__reason span { color: var(--text-dim); font-weight: 600; font-size: 13px; }
+.lead-outcome__actions { flex-shrink: 0; }
+.lead-outcome__btn {
+  height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; border-radius: 12px; cursor: pointer;
+  border: 1px solid rgba(var(--oc), .4); background: rgba(var(--oc), .14); color: rgb(var(--oc)); font-size: 13px; font-weight: 800;
+  transition: background .2s, transform .15s;
+}
+.lead-outcome__btn:hover { background: rgba(var(--oc), .22); }
+.lead-outcome__btn:active { transform: scale(.96); }
+.lead-outcome__btn:disabled { opacity: .6; cursor: wait; }
+.lead-outcome__confetti { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.lead-outcome__confetti i {
+  position: absolute; top: -10px; width: 6px; height: 10px; border-radius: 2px; opacity: 0;
+  animation: oc-fall 1.8s cubic-bezier(.2,.6,.4,1) forwards;
+}
+.lead-outcome__confetti i:nth-child(4n+1) { background: #fbbf24; }
+.lead-outcome__confetti i:nth-child(4n+2) { background: #34d399; }
+.lead-outcome__confetti i:nth-child(4n+3) { background: #a78bfa; }
+.lead-outcome__confetti i:nth-child(4n+4) { background: #f472b6; }
+.lead-outcome__confetti i:nth-child(1) { left: 4%; animation-delay: 0.15s; --r: -90deg; }
+.lead-outcome__confetti i:nth-child(2) { left: 11%; animation-delay: 0.65s; --r: -37deg; }
+.lead-outcome__confetti i:nth-child(3) { left: 18%; animation-delay: 0.44s; --r: 16deg; }
+.lead-outcome__confetti i:nth-child(4) { left: 25%; animation-delay: 0.22s; --r: 69deg; }
+.lead-outcome__confetti i:nth-child(5) { left: 32%; animation-delay: 0.72s; --r: -58deg; }
+.lead-outcome__confetti i:nth-child(6) { left: 39%; animation-delay: 0.51s; --r: -5deg; }
+.lead-outcome__confetti i:nth-child(7) { left: 46%; animation-delay: 0.29s; --r: 48deg; }
+.lead-outcome__confetti i:nth-child(8) { left: 53%; animation-delay: 0.79s; --r: -79deg; }
+.lead-outcome__confetti i:nth-child(9) { left: 60%; animation-delay: 0.58s; --r: -26deg; }
+.lead-outcome__confetti i:nth-child(10) { left: 67%; animation-delay: 0.36s; --r: 27deg; }
+.lead-outcome__confetti i:nth-child(11) { left: 74%; animation-delay: 0.15s; --r: 80deg; }
+.lead-outcome__confetti i:nth-child(12) { left: 81%; animation-delay: 0.65s; --r: -47deg; }
+.lead-outcome__confetti i:nth-child(13) { left: 88%; animation-delay: 0.44s; --r: 6deg; }
+.lead-outcome__confetti i:nth-child(14) { left: 95%; animation-delay: 0.22s; --r: 59deg; }
+@keyframes oc-fall { 0% { opacity: 0; transform: translateY(0) rotate(0); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(110px) rotate(var(--r, 60deg)); } }
+html.light .lead-outcome { box-shadow: 0 14px 34px -22px rgba(var(--oc), .55); }
+html.light .lead-outcome__amount { background: linear-gradient(90deg, #059669, #10b981 45%, #d97706); -webkit-background-clip: text; background-clip: text; }
 @media (max-width: 900px) { .lead-outcome { width: calc(100% - 28px); } }
+@media (max-width: 560px) {
+  .lead-outcome { gap: 12px; padding: 14px; border-radius: 18px; }
+  .lead-outcome__icon { width: 44px; height: 44px; border-radius: 14px; }
+  .lead-outcome__amount { font-size: 24px; }
+  .lead-outcome__btn span { display: none; }
+  .lead-outcome__btn { width: 40px; padding: 0; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lead-outcome, .lead-outcome--won::after, .lead-outcome__icon::after, .lead-outcome__confetti i { animation: none; }
+  .lead-outcome__confetti { display: none; }
+}
 
 /* Activity strip on the lead page */
 .lead-activity-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
@@ -539,6 +624,12 @@ html.light .lead-hero__btn:hover { background: #f8fafc; }
 .lead-composer-input::placeholder { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lead-composer-row > button { height: 42px !important; width: 42px !important; border-radius: 13px !important; }
 
+/* Channel switcher (lead chat): one compact row of icon + name everywhere; the
+   lock icon already says "not connected", and the message count is in the
+   header just below, so the cramped second line goes. */
+.lead-plat-tab { min-width: 0 !important; padding: 11px 10px !important; gap: 7px !important; }
+.lead-plat-sub { display: none; }
+
 /* Horizontal tab rows scroll by swipe without drawing a scrollbar strip. */
 .wf-noscrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .wf-noscrollbar::-webkit-scrollbar { display: none; }
@@ -552,9 +643,6 @@ html.light .lead-hero__btn:hover { background: #f8fafc; }
   .lead-hero__cta { flex: 1 1 auto; }
   .lead-hero__actions .lead-hero__btn:not(.lead-hero__more) span { display: none; }
   .lead-hero__actions .lead-hero__btn:not(.lead-hero__more) { width: 46px; padding: 0; }
-  /* Channel switcher: one compact row of icon + name, no second line. */
-  .lead-plat-tab { min-width: 0 !important; padding: 10px 8px !important; gap: 6px !important; }
-  .lead-plat-sub { display: none; }
   .lead-activity-stat b { font-size: 16px; }
 }
 
@@ -1049,7 +1137,7 @@ html.light .wf-app::before {
     radial-gradient(50% 40% at 8% 96%, rgba(14,165,233,.07), transparent 70%);
 }
 html.light .wf-app .wf-shell {
-  background: rgba(255,255,255,.7) !important; border-bottom-color: rgba(15,23,42,.06) !important;
+  background: rgba(255,255,255,.97) !important; box-shadow: 0 6px 18px -14px rgba(15,23,42,.35); border-bottom-color: rgba(15,23,42,.06) !important;
   backdrop-filter: saturate(170%) blur(18px); -webkit-backdrop-filter: saturate(170%) blur(18px);
 }
 html.light .wf-app .wf-subbar {
@@ -1063,7 +1151,9 @@ html.light .wf-app .dash-glass {
   box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 14px 34px -20px rgba(79,70,229,.28) !important;
 }
 html:not(.light) .wf-app .wf-shell {
-  background: rgba(13,15,23,.62) !important; border-bottom-color: rgba(255,255,255,.06) !important;
+  /* Nearly solid: at .62 the page scrolling underneath read through the bar,
+     so headers looked half-hidden in an overlay. The blur still tints it. */
+  background: rgba(13,15,23,.97) !important; box-shadow: 0 6px 18px -12px rgba(0,0,0,.6); border-bottom-color: rgba(255,255,255,.06) !important;
   backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
 }
 html:not(.light) .wf-app .wf-subbar {
