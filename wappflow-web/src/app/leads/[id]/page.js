@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { plainMessage } from '@/lib/friendlyError';
 import BrandLoader from '@/components/BrandLoader';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -751,7 +752,7 @@ const [aiError, setAiError] = useState('');
   const [toast, setToast] = useState(null);
 
   const showToast = useCallback((message, type = 'error') => {
-    setToast({ message, type, ts: Date.now() });
+    setToast({ message: plainMessage(message), type, ts: Date.now() });
     setTimeout(() => setToast(t => (t && t.ts === Date.now() ? null : t)), 3500);
   }, []);
   // Auto-dismiss helper that doesn't get stale-closured

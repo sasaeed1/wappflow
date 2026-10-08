@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { plainMessage } from '@/lib/friendlyError';
 import { useRouter } from 'next/navigation';
 import {
   Brain, Upload, FileText, Trash2, Plus, X, Edit2, Save,
@@ -82,7 +83,7 @@ export default function KnowledgePage() {
   }, []);
 
   const showToast = (msg, type = 'success') => {
-    setToast({ msg, type });
+    setToast({ msg: plainMessage(msg), type });
     setTimeout(() => setToast(null), 3500);
   };
 

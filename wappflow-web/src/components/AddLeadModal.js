@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { User, Phone, DollarSign, MessageSquare, Tag, Instagram, Facebook } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { Field, Input, Textarea, Select } from '@/components/ui/Field';
 import { LEAD_STATUS_KEYS, leadStatusMeta } from '@/lib/leadStatus';
+import { friendlyMessage } from '@/lib/friendlyError';
 
 // Batch C migration: was the app's only Tailwind modal — a hardcoded #0f1117 dark slab
 // that ignored light mode and had no focus trap/Escape/aria. Now a Modal-primitive
@@ -23,6 +24,10 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId 
   }, [isOpen]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // On a phone the form scrolls, and the message sits above the fold: bring it
+  // into view, or "Create Lead" looks like it did nothing.
+  const errorRef = useRef(null);
+  useEffect(() => { if (error && errorRef.current) errorRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [error]);
   // The API tells us WHICH lead the phone number already belongs to; the modal used
   // to throw that away and show a dead-end error (audit crm-leads-3).
   const [duplicateId, setDuplicateId] = useState(null);
@@ -49,7 +54,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId 
       onClose();
     } catch (err) {
       const d = err.response?.data || {};
-      setError(d.error || (err.response ? 'We couldn’t save this contact. Please try again.' : 'We couldn’t reach WappFlow. Check your internet connection and try again.'));
+      setError(d.error || friendlyMessage(err));
       // A duplicate is not a failure — it means the contact is already here.
       if (d.existing_id) setDuplicateId(d.existing_id);
     } finally {
@@ -69,7 +74,7 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId 
     >
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {error && (
-          <div style={{ padding: '10px 13px', background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)', borderRadius: 'var(--radius)', color: 'var(--danger-fg)', fontSize: 12.5 }}>
+          <div ref={errorRef} role="alert" style={{ padding: '10px 13px', background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)', borderRadius: 'var(--radius)', color: 'var(--danger-fg)', fontSize: 12.5 }}>
             {error}
             {duplicateId && (
               <a href={`/leads/${duplicateId}`}

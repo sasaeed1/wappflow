@@ -12,6 +12,10 @@ import UploadTray from '@/components/UploadTray';
 import InstallAppBanner from '@/components/InstallAppBanner';
 import PushEnroll from '@/components/PushEnroll';
 import EscapeDismiss from '@/components/ui/EscapeDismiss';
+import { installFetchFriendlyErrors } from '@/lib/friendlyError';
+
+// fetch() network failures read as a sentence everywhere ("Failed to fetch" → plain words).
+installFetchFriendlyErrors();
 
 export default function Providers({ children }) {
   return (

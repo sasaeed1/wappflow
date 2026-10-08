@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { plainMessage } from '@/lib/friendlyError';
 import BrandLoader from '@/components/BrandLoader';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -683,7 +684,7 @@ export default function DashboardPage() {
 
   // ── Toast helper ────────────────────────────────────────────────────────────
   const showToast = useCallback((message, color = '#6366f1', icon = '🔔') => {
-    setToast({ message, color, icon });
+    setToast({ message: plainMessage(message), color, icon });
     setTimeout(() => setToast(null), 4000);
   }, []);
 

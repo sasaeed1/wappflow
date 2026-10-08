@@ -91,6 +91,10 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// Every error a person can see is a sentence, not a code (friendly-errors.js):
+// technical messages are translated or replaced, and logged with a reference.
+app.use('/api', require('./friendly-errors').middleware);
+
 // API responses are data, never pages: a JSON reply gets the strictest policy so
 // nothing in it can ever be rendered or framed as a document (PROP-006). Applied only
 // to JSON so file downloads (PDFs, exports) keep working in the browser's viewer.

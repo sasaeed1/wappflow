@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { plainMessage } from '@/lib/friendlyError';
 import { useRouter } from 'next/navigation';
 import {
   Search, Filter, ChevronRight, Plus, Download,
@@ -761,7 +762,7 @@ export default function LeadsListPage() {
     try { localStorage.setItem('wf_nba_open', showActionQueue ? '1' : '0'); } catch {}
   }, [showActionQueue]);
   const [showDupModal, setShowDupModal] = useState(false);
-  const showToast = (msg, type = 'success') => { setToast({ msg, type, ts: Date.now() }); setTimeout(() => setToast(t => (t && t.ts) ? null : t), 3500); };
+  const showToast = (msg, type = 'success') => { setToast({ msg: plainMessage(msg), type, ts: Date.now() }); setTimeout(() => setToast(t => (t && t.ts) ? null : t), 3500); };
   // Auto-clear toast
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), 3500); return () => clearTimeout(id); }, [toast]);
 
