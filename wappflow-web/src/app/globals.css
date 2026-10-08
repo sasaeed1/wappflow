@@ -353,6 +353,25 @@ html[data-wf-intro="1"] { overflow: hidden; }
 .wf-intro__bar { width: 180px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 10px; opacity: 0; animation: wf-intro-fade .4s ease-out .8s forwards; }
 .wf-intro__bar span { display: block; height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899); box-shadow: 0 0 12px rgba(168,85,247,.9);
   animation: wf-intro-fill 8.5s cubic-bezier(.45,.05,.4,1) .8s forwards; }
+/* Light appearance: the same choreography on a bright stage. Follows html.light,
+   which the pre-paint script sets from the chosen appearance before first paint. */
+html.light[data-wf-intro="1"] .wf-intro { background: radial-gradient(120% 90% at 50% 40%, #ffffff 0%, #eef0ff 55%, #e4e6fb 100%); }
+html.light .wf-intro__aurora { opacity: .55; }
+html.light .wf-intro__aurora span { mix-blend-mode: multiply; filter: blur(100px); }
+html.light .wf-intro__aurora span:nth-child(1) { background: #a5b4fc; }
+html.light .wf-intro__aurora span:nth-child(2) { background: #d8b4fe; }
+html.light .wf-intro__aurora span:nth-child(3) { background: #fbcfe8; }
+html.light .wf-intro__sparks span { background: #8b5cf6; box-shadow: 0 0 8px 1px rgba(139,92,246,.45); }
+html.light .wf-intro__halo { background: radial-gradient(circle, rgba(139,92,246,.30), transparent 65%); }
+html.light .wf-intro__ring { border-top-color: #8b5cf6; border-right-color: #6366f1; }
+html.light .wf-intro__tile { box-shadow: 0 18px 50px rgba(99,102,241,.35); }
+html.light .wf-intro__word { color: #0f172a; }
+html.light .wf-intro__line { color: #4f46e5; }
+html.light .wf-intro__bar { background: rgba(15,23,42,.08); }
+html.light .wf-intro__bar span { box-shadow: 0 0 10px rgba(139,92,246,.45); }
+/* The page loader's line, slightly deeper on white so it reads. */
+html.light .wf-loader__bar span { background: linear-gradient(90deg, #4f46e5, #9333ea); }
+
 @keyframes wf-intro-fade { to { opacity: 1; } }
 @keyframes wf-intro-orbit { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(8vmax,-6vmax) scale(1.25); } }
 @keyframes wf-intro-rise { 0% { opacity: 0; transform: translateY(0) scale(.6); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(-105vh) scale(1.2); } }
