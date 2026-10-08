@@ -12,6 +12,7 @@
 const assert = require('assert');
 const API = 'http://127.0.0.1:3001/api';
 const Database = require(process.env.WF_SQLITE);
+const { requireSameDb } = require('./test-db-check');
 
 let pass = 0, fail = 0;
 const check = async (n, fn) => { try { await fn(); console.log('  ✓', n); pass++; } catch (e) { console.log('  ✗', n, '—', e.message || e); fail++; } };
@@ -24,6 +25,7 @@ const search = async (tok, q) => (await j('GET', `/search?q=${encodeURIComponent
 const labels = (res) => (res.results || []).map((x) => `${x.type}:${x.label}`);
 
 (async () => {
+  await requireSameDb(API, Database); // the server on WF_API must be the one using WF_DB
   const owner = (await j('POST', '/auth/register', null, { email: 'sq-owner@test.local', password: 'pw123456', businessName: 'Search Studio' })).d;
   const other = (await j('POST', '/auth/register', null, { email: 'sq-other@test.local', password: 'pw123456', businessName: 'Rival Studio' })).d;
   const mateReg = (await j('POST', '/auth/register', null, { email: 'sq-mate@test.local', password: 'pw123456', businessName: 'Mate' })).d;

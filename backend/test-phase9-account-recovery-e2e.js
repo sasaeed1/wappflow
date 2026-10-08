@@ -23,6 +23,7 @@ const assert = require('assert');
 const crypto = require('crypto');
 const API = process.env.WF_API || 'http://127.0.0.1:3018/api';
 const Database = require(process.env.WF_SQLITE || 'better-sqlite3');
+const { requireSameDb } = require('./test-db-check');
 
 let pass = 0, fail = 0;
 const check = async (n, fn) => { try { await fn(); console.log('  OK  ', n); pass++; } catch (e) { console.log('  FAIL', n, '-', e.message || e); fail++; } };
@@ -50,6 +51,7 @@ const plantToken = (userId, { minutesValid = 60, used = false } = {}) => {
 };
 
 (async () => {
+  await requireSameDb(API, Database); // the server on WF_API must be the one using WF_DB
   const EMAIL = `rec-${RUN}@test.local`;
   const A = (await j('POST', '/auth/register', null, { email: EMAIL, password: 'original-pw-1', businessName: 'Recovery Studio' })).d;
   assert(A?.token, 'could not register - is the server up on ' + API + ' ?');

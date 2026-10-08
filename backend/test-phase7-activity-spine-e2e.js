@@ -22,6 +22,7 @@
 const assert = require('assert');
 const API = process.env.WF_API || 'http://127.0.0.1:3014/api';
 const Database = require(process.env.WF_SQLITE || 'better-sqlite3');
+const { requireSameDb } = require('./test-db-check');
 
 let pass = 0, fail = 0;
 const check = async (n, fn) => { try { await fn(); console.log('  OK  ', n); pass++; } catch (e) { console.log('  FAIL', n, '-', e.message || e); fail++; } };
@@ -34,6 +35,7 @@ const RUN = process.pid.toString(36) + Math.random().toString(36).slice(2, 8);
 const openDb = (rw) => new Database(process.env.WF_DB, rw ? {} : { readonly: true });
 
 (async () => {
+  await requireSameDb(API, Database); // the server on WF_API must be the one using WF_DB
   const A = (await j('POST', '/auth/register', null, { email: `sp-a-${RUN}@test.local`, password: 'pw123456', businessName: 'Spine Studio' })).d;
   const B = (await j('POST', '/auth/register', null, { email: `sp-b-${RUN}@test.local`, password: 'pw123456', businessName: 'Rival Studio' })).d;
   assert(A?.token && B?.token, 'could not register - is the server up on ' + API + ' ?');
