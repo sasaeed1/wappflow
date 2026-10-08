@@ -1535,9 +1535,12 @@ useEffect(() => {
                   onSave={(v) => saveField('lead_source', v)} />
                 <InlineEditField icon={UserCheck} color="#10b981" bg="rgba(16,185,129,0.12)" label="Assigned To"
                   value={lead.assigned_to}
-                  display={teamMembers.find(m => m.id === lead.assigned_to)?.name || null}
+                  // leads.assigned_to is a USER id (what the list, filters and reports join on). This
+                  // field used the membership-row id, so names never showed and saving wrote an id
+                  // nothing else recognises; older rows saved that way still resolve here.
+                  display={teamMembers.find(m => m.user_id === lead.assigned_to || m.id === lead.assigned_to)?.name || null}
                   type="select"
-                  selectOptions={[{ value: '', label: 'Unassigned' }, ...teamMembers.map(m => ({ value: m.id, label: m.name }))]}
+                  selectOptions={[{ value: '', label: 'Unassigned' }, ...teamMembers.filter(m => m.user_id).map(m => ({ value: m.user_id, label: m.name }))]}
                   onSave={(v) => saveField('assigned_to', v)} />
                 {pipes.length > 1 && (
                   <InlineEditField icon={Layers} color="#8b5cf6" bg="rgba(139,92,246,0.12)" label="Pipeline"
