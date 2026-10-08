@@ -597,16 +597,6 @@ function NotificationPanel({ leads, reminders, liveEvents, onClose, onMarkAllRea
   );
 }
 
-// ── SSE Status indicator ──────────────────────────────────────────────────────
-function SSEStatus({ connected }) {
-  return (
-    <div title={connected ? 'Live updates active' : 'Reconnecting...'} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', background: connected ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.12)', border: `1.5px solid ${connected ? '#a7f3d0' : '#fecaca'}`, borderRadius: 20, fontSize: 11, fontWeight: 700, color: connected ? '#059669' : '#ef4444' }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: connected ? '#10b981' : '#ef4444', animation: connected ? 'pulse 2s infinite' : 'none' }} />
-      {connected ? 'Live' : 'Reconnecting'}
-    </div>
-  );
-}
-
 // ── Custom bar tooltip ────────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label, sym = '$' }) {
   if (!active || !payload?.length) return null;
@@ -925,43 +915,52 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── DASHBOARD SUB-HEADER (page-specific actions) ── */}
-      <div className="wf-subbar" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 'var(--shell-h)', zIndex: 40 }}>
-        <div className="r-toolbar dash-subbar-row" style={{ maxWidth: 1600, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 56, gap: 12, flexWrap: 'wrap' }}>
-          <div className="dash-subbar-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <LayoutGrid size={14} color="white" />
+      {/* ── DASHBOARD HERO ──
+          Was a sticky toolbar of outlined chips (title, a bordered "Live" pill,
+          a boxed mute toggle, a green-outlined Import button). It read as a
+          settings panel, not the front page of the business. Now: who you are,
+          what is happening right now, and the two things you do here. Styles
+          live in globals.css (.dash-hero*). */}
+      {(() => {
+        const h = new Date().getHours();
+        const hello = h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+        const first = (user?.full_name || '').trim().split(/\s+/)[0];
+        const today = analytics?.leads_today || 0;
+        return (
+          <section className="dash-hero" aria-label="Dashboard">
+            <div className="dash-hero__intro">
+              <h1 className="dash-hero__title">{hello}{first ? <>, <span className="dash-hero__name">{first}</span></> : ''} <span aria-hidden="true">👋</span></h1>
+              <p className="dash-hero__meta">
+                <span className={`dash-hero__live${sseConnected ? '' : ' is-off'}`} title={sseConnected ? 'Live updates on' : 'Reconnecting…'}>
+                  <i aria-hidden="true" />{sseConnected ? 'Live' : 'Reconnecting'}
+                </span>
+                <span className="dash-hero__sep" aria-hidden="true">·</span>
+                <span>{(analytics?.total_leads || 0).toLocaleString()} leads</span>
+                <span className="dash-hero__sep" aria-hidden="true">·</span>
+                <span className={today ? 'dash-hero__hot' : ''}>{today} new today</span>
+              </p>
             </div>
-            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>Dashboard</span>
-            <SSEStatus connected={sseConnected} />
-          </div>
 
-          {/* Search */}
-          <div className="dash-subbar-search" style={{ flex: 1, maxWidth: 380, position: 'relative', minWidth: 200 }}>
-            <Search style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--text-dim)' }} />
-            <input aria-label="Search leads" type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search leads…"
-              style={{ width: '100%', padding: '8px 12px 8px 34px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          <div className="dash-subbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-            <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              title={soundEnabled ? 'Mute notifications' : 'Unmute notifications'}
-              style={{ width: 34, height: 34, borderRadius: 9, border: `1.5px solid ${soundEnabled ? '#a7f3d0' : 'var(--border)'}`, background: soundEnabled ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', color: soundEnabled ? '#059669' : '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              {soundEnabled ? <Volume2 style={{ width: 14, height: 14 }} /> : <VolumeX style={{ width: 14, height: 14 }} />}
-            </button>
-            <button className="dash-subbar-btn" onClick={() => setShowBulkUpload(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '7px 14px', background: 'rgba(16,185,129,0.12)', border: '1.5px solid #bbf7d0', borderRadius: 9, color: '#16a34a', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              <Upload style={{ width: 14, height: 14 }} /> Import CSV
-            </button>
-            <button className="dash-subbar-btn" onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 16px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
-              <Plus style={{ width: 15, height: 15 }} /> New Lead
-            </button>
-          </div>
-        </div>
-      </div>
+            <div className="dash-hero__bar">
+              <label className="dash-hero__search">
+                <Search aria-hidden="true" />
+                <input data-ui="hero" aria-label="Search leads" type="search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search leads, phones, stages…" />
+                {searchQuery && <button type="button" aria-label="Clear search" onClick={() => setSearchQuery('')}><X /></button>}
+              </label>
+              <button type="button" className={`dash-hero__icon${soundEnabled ? ' is-on' : ''}`} onClick={() => setSoundEnabled(!soundEnabled)}
+                aria-pressed={soundEnabled} aria-label={soundEnabled ? 'Mute notification sounds' : 'Turn on notification sounds'} title={soundEnabled ? 'Sounds on' : 'Sounds off'}>
+                {soundEnabled ? <Volume2 /> : <VolumeX />}
+              </button>
+              <button type="button" className="dash-hero__icon dash-hero__import" onClick={() => setShowBulkUpload(true)} aria-label="Import leads from CSV" title="Import CSV">
+                <Upload /><span>Import</span>
+              </button>
+              <button type="button" className="dash-hero__cta" onClick={() => setShowAddModal(true)}>
+                <Plus /><span>New Lead</span>
+              </button>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* ── CONTENT ── */}
       <main style={{ maxWidth: 1600, margin: '0 auto', padding: '20px' }}>
@@ -978,9 +977,7 @@ export default function DashboardPage() {
                 <div className="dash-stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon style={{ width: 18, height: 18, color }} />
                 </div>
-                <span className="dash-stat-live" style={{ fontSize: 11, color: sseConnected ? '#10b981' : '#f59e0b', fontWeight: 700, background: sseConnected ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', padding: '3px 8px', borderRadius: 20 }}>
-                  {sseConnected ? 'Live' : 'Offline'}
-                </span>
+                {/* "Live" now shows once, in the hero, not on every card. */}
               </div>
               <p className="dash-stat-label" style={{ fontSize: 11, color: 'var(--text-dim)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
               <p className="dash-stat-value" style={{ fontSize: 26, fontWeight: 900, color: 'var(--text)', margin: '0 0 4px' }}>{value}</p>
@@ -1025,7 +1022,7 @@ export default function DashboardPage() {
           });
 
           return (
-            <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', marginBottom: 20 }}>
+            <div className="dash-glass" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Revenue Insights</h3>
@@ -1100,7 +1097,7 @@ export default function DashboardPage() {
         <div className="dash-main r-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 280px', gap: 14, marginBottom: 20 }}>
 
           {/* Bar chart — leads per stage */}
-          <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+          <div className="dash-glass" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
                 <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Leads by Stage</h3>
@@ -1123,7 +1120,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Recent activity */}
-          <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+          <div className="dash-glass" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
                 <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Recent Activity</h3>
@@ -1165,7 +1162,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Pipeline summary */}
-          <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+          <div className="dash-glass" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 18, padding: '22px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
             <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: '0 0 16px' }}>Pipeline</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               {COLUMNS.map(col => {

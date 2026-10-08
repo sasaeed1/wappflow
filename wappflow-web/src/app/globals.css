@@ -524,13 +524,8 @@ select option {
   /* Page action bars (.wf-subbar — Dashboard, Reports): once wrapped onto
      phone rows they covered a third of the screen and slid over the content
      beneath them. On phones they scroll away with the page. The Dashboard's
-     lays out as title / actions / full-width search. */
+     now has a hero instead (.dash-hero). */
   .wf-subbar { position: static !important; }
-  .dash-subbar-row { padding: 12px 14px !important; gap: 10px !important; }
-  .dash-subbar-title { flex: 1 1 auto !important; }
-  .dash-subbar-search { flex: 1 1 100% !important; max-width: none !important; min-width: 0 !important; order: 3; }
-  .dash-subbar-actions { margin-left: 0 !important; order: 2; }
-  .dash-subbar-btn { padding: 8px 12px !important; }
   /* Kanban columns scroll sideways on phones; a sticky column title only
      floated over the middle of the cards below it. */
   .dash-col-head { position: static !important; }
@@ -950,4 +945,136 @@ html.wf-public body { background: var(--bg); color: var(--text); transition: non
 .wa-msg-actions.is-open { max-height: 40px; opacity: 1; margin-bottom: 6px; }
 @media (hover: hover) {
   .wa-bubble-row:hover .wa-msg-actions { max-height: 40px; opacity: 1; margin-bottom: 4px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Charts (every Recharts chart in the app)
+   Recharts 3 makes each chart focusable for keyboard users, so a TAP drew the
+   browser's white focus box around the whole chart, and the hover column was
+   the library's default light-grey (#ccc) slab — on a dark card both looked
+   like a white rectangle. Keyboard focus keeps a soft brand ring; taps get none.
+   ════════════════════════════════════════════════════════════════════════════ */
+.recharts-wrapper, .recharts-surface { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+.recharts-wrapper:focus, .recharts-surface:focus, .recharts-wrapper *:focus { outline: none; }
+.recharts-surface:focus-visible { outline: 2px solid rgba(139,92,246,.55); outline-offset: 4px; border-radius: 10px; }
+/* Bar charts: a soft violet column behind the bar you touched. */
+.recharts-rectangle.recharts-tooltip-cursor { fill: rgba(139,92,246,.12); stroke: none; }
+html.light .recharts-rectangle.recharts-tooltip-cursor { fill: rgba(99,102,241,.08); }
+/* Line/area charts: a thin dashed guide line. */
+.recharts-curve.recharts-tooltip-cursor { fill: none; stroke: rgba(139,92,246,.5); stroke-dasharray: 4 4; }
+.recharts-default-tooltip { border-radius: 12px !important; border: 1px solid var(--border) !important; background: var(--glass) !important; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 12px 32px rgba(0,0,0,.25) !important; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Dark mode ambience — a slight WappFlow gradient behind the whole app.
+   One fixed layer behind the shell (so it never scrolls or repaints), and the
+   full-height page wrappers that paint solid var(--bg) let it through. The
+   shell bar and page bars turn to frosted glass so the colour carries up.
+   Light mode is untouched.
+   ════════════════════════════════════════════════════════════════════════════ */
+.wf-app { position: relative; isolation: isolate; }
+html:not(.light) .wf-app { background: #0b0d14 !important; }
+html:not(.light) .wf-app::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(55% 45% at 0% 0%, rgba(99,102,241,.20), transparent 70%),
+    radial-gradient(45% 40% at 100% 8%, rgba(168,85,247,.16), transparent 70%),
+    radial-gradient(60% 45% at 85% 100%, rgba(236,72,153,.09), transparent 70%),
+    radial-gradient(50% 40% at 10% 95%, rgba(6,182,212,.06), transparent 70%);
+}
+html:not(.light) .wf-app div[style*="min-height: 100vh"][style*="background: var(--bg)"] { background: transparent !important; }
+html:not(.light) .wf-app .wf-shell {
+  background: rgba(13,15,23,.62) !important; border-bottom-color: rgba(255,255,255,.06) !important;
+  backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
+}
+html:not(.light) .wf-app .wf-subbar {
+  background: rgba(17,19,28,.55) !important; border-bottom-color: rgba(255,255,255,.05) !important;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Dashboard hero — greeting, live status, search and the two main actions.
+   ════════════════════════════════════════════════════════════════════════════ */
+.dash-hero {
+  max-width: 1600px; margin: 0 auto; padding: 26px 20px 8px;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  animation: dash-hero-in .5s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes dash-hero-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.dash-hero__intro { min-width: 0; }
+.dash-hero__title { margin: 0; font-size: 28px; line-height: 1.15; font-weight: 800; letter-spacing: -0.8px; color: var(--text); }
+.dash-hero__name {
+  background: linear-gradient(90deg, #818cf8, #c084fc 55%, #f472b6);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.dash-hero__meta { margin: 8px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.dash-hero__sep { opacity: .45; }
+.dash-hero__hot { color: #34d399; }
+.dash-hero__live { display: inline-flex; align-items: center; gap: 7px; color: #34d399; }
+.dash-hero__live i { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 0 rgba(16,185,129,.6); animation: dash-live 2s infinite; }
+.dash-hero__live.is-off { color: #fbbf24; }
+.dash-hero__live.is-off i { background: #f59e0b; animation: none; }
+@keyframes dash-live { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); } 70% { box-shadow: 0 0 0 7px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+
+.dash-hero__bar { display: flex; align-items: center; gap: 8px; flex: 0 1 560px; min-width: 0; }
+.dash-hero__search {
+  flex: 1; min-width: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px;
+  border-radius: 14px; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.07);
+  transition: border-color .2s, box-shadow .2s, background .2s; cursor: text;
+}
+.dash-hero__search:focus-within { border-color: rgba(139,92,246,.6); box-shadow: 0 0 0 4px rgba(139,92,246,.15); background: rgba(255,255,255,.06); }
+.dash-hero__search > svg { width: 16px; height: 16px; color: var(--text-dim); flex-shrink: 0; }
+.dash-hero__search input { flex: 1; min-width: 0; height: 100%; background: none; border: none; outline: none; color: var(--text); font-size: 14px; }
+.dash-hero__search input::placeholder { color: var(--text-muted); }
+.dash-hero__search input::-webkit-search-cancel-button { display: none; }
+.dash-hero__search button { display: grid; place-items: center; width: 24px; height: 24px; border: none; border-radius: 8px; background: rgba(255,255,255,.08); color: var(--text-dim); cursor: pointer; }
+.dash-hero__search button svg { width: 13px; height: 13px; }
+
+.dash-hero__icon {
+  height: 44px; min-width: 44px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  border-radius: 14px; border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.045);
+  color: var(--text-dim); font-size: 13px; font-weight: 700; cursor: pointer; transition: background .2s, color .2s, transform .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.dash-hero__icon svg { width: 17px; height: 17px; }
+.dash-hero__icon:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.dash-hero__icon:active, .dash-hero__cta:active { transform: scale(.96); }
+.dash-hero__icon.is-on { color: #34d399; }
+.dash-hero__cta {
+  height: 44px; padding: 0 18px; display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+  border: none; border-radius: 14px; color: #fff; font-size: 14px; font-weight: 800; letter-spacing: -.1px; cursor: pointer;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #d946ef 100%); background-size: 160% 160%;
+  box-shadow: 0 8px 24px -6px rgba(139,92,246,.65), inset 0 1px 0 rgba(255,255,255,.22);
+  transition: background-position .4s, box-shadow .2s, transform .15s; -webkit-tap-highlight-color: transparent;
+}
+.dash-hero__cta svg { width: 17px; height: 17px; }
+.dash-hero__cta:hover { background-position: 100% 0; box-shadow: 0 10px 30px -6px rgba(217,70,239,.6), inset 0 1px 0 rgba(255,255,255,.25); }
+.dash-hero button:focus-visible { outline: 2px solid rgba(139,92,246,.7); outline-offset: 2px; }
+
+html.light .dash-hero__search, html.light .dash-hero__icon { background: #fff; border-color: rgba(15,23,42,.08); box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+html.light .dash-hero__icon:hover { background: #f8fafc; }
+html.light .dash-hero__search button { background: rgba(15,23,42,.06); }
+html.light .dash-hero__name { background: linear-gradient(90deg, #4f46e5, #9333ea 55%, #db2777); -webkit-background-clip: text; background-clip: text; }
+html.light .dash-hero__hot, html.light .dash-hero__live { color: #059669; }
+html.light .dash-hero__icon.is-on { color: #059669; }
+
+/* Dark mode: dashboard cards become frosted glass over the gradient. */
+html:not(.light) .wf-app .dash-stat,
+html:not(.light) .wf-app .dash-glass {
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012)), rgba(21,24,35,.72) !important;
+  border-color: rgba(255,255,255,.07) !important;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 12px 32px -18px rgba(0,0,0,.6) !important;
+}
+
+@media (max-width: 760px) {
+  .dash-hero { padding: 18px 14px 4px; gap: 14px; }
+  .dash-hero__bar { flex-wrap: wrap; }
+  .dash-hero__search { flex: 1 1 100%; }
+  .dash-hero__cta { flex: 1; justify-content: center; }
+  .dash-hero__title { font-size: 23px; letter-spacing: -.6px; }
+  .dash-hero__meta { font-size: 12.5px; margin-top: 6px; }
+  .dash-hero__bar { flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-hero, .dash-hero__live i { animation: none; }
 }
