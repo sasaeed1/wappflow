@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import BrandLoader from '@/components/BrandLoader';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Phone, MessageSquare, Calendar, DollarSign,
@@ -1294,14 +1295,7 @@ useEffect(() => {
     handleDetectIndustry();
   }
 }, [activeTab]);
-  if (loading) return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 44, height: 44, border: '3px solid var(--border)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
-        <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: 14 }}>Loading lead...</p>
-      </div>
-    </div>
-  );
+  if (loading) return <BrandLoader lines={['Opening this conversation…', 'Gathering the timeline…', 'Almost there…']} />;
 
   if (!lead) return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
