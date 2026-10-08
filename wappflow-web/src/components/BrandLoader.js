@@ -7,11 +7,12 @@ import { useEffect, useState } from 'react';
 // a rotating line so a slow network still feels alive. Styles live in
 // globals.css (.wf-loader*) so reduced-motion users get a still version.
 const LINES = [
-  'Turning chats into clients…',
-  'Warming up your pipeline…',
+  'Turning chats into clients ⚡',
+  'Waking up your pipeline…',
+  'Your next big booking is loading 💫',
   'Lining up today’s leads…',
-  'Polishing your galleries…',
-  'Getting your studio ready…',
+  'Polishing your galleries ✨',
+  'Making your studio look good…',
 ];
 
 export default function BrandLoader({ lines = LINES, fullScreen = true }) {
