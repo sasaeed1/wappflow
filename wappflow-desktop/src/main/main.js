@@ -16,10 +16,12 @@ const notifications = require('./notifications');
 const tray = require('./tray');
 const watcher = require('./watcher');
 const uploader = require('./uploader');
+const chatBubbleMod = require('./chat-bubble');
 
 let win = null;
 let quitting = false;       // true once the user really wants to exit (tray Quit / app.quit)
 let serviceTimers = [];
+let chatBubble = null;   // desktop chat bubbles (PROP-007)
 
 function createWindow() {
   win = new BrowserWindow({
@@ -54,6 +56,9 @@ function createWindow() {
   // Close → hide to tray (keep background sync + watch-folder alive) rather than quit,
   // when a tray exists and the user didn't explicitly choose Quit. macOS keeps its own
   // app-lifecycle convention, so only intercept on Windows/Linux.
+  // The app is in front again: its own in-app bubbles take over from the desktop ones.
+  win.on('focus', () => { try { chatBubble && chatBubble.appShown(); } catch {} });
+
   win.on('close', (e) => {
     if (!quitting && tray.exists() && process.platform !== 'darwin') { e.preventDefault(); win.hide(); }
   });
@@ -76,8 +81,18 @@ function initServices() {
     tray.build({ onOpen: showWindow, onSync: () => sync.syncNow().then(pushSyncState), getState: () => sync.state() });
   } catch {}
 
-  // Native notification clicks focus the app.
-  notifications.setClickHandler(() => showWindow());
+  // Desktop chat bubbles (PROP-007): customer messages float over the desktop
+  // while WappFlow sits in the tray or is minimised.
+  const openChat = (id) => { try { win && win.webContents.send('chat:open', { lead_id: id }); } catch {} };
+  chatBubble = chatBubbleMod.create({
+    auth, config, notifications, showWindow, openChat,
+    isAppInFront: () => !!(win && win.isVisible() && !win.isMinimized() && win.isFocused()),
+  });
+  if (auth.getSession()) chatBubble.start();
+
+  // Native notification clicks focus the app — and open the chat a message
+  // notification was about.
+  notifications.setClickHandler((data) => { showWindow(); if (data && data.lead_id) openChat(data.lead_id); });
 
   // Offline sync: surface state changes (banner + tray + queued count).
   try { sync.onState((st) => { try { win && win.webContents.send('sync:state', st); tray.refresh(); } catch {} }); } catch {}
@@ -145,7 +160,7 @@ function handleDeepLink(url) {
     const u = new URL(url);
     if (u.host === 'auth') {
       const token = u.searchParams.get('token');
-      if (token) auth.adoptToken(token).then(() => win && win.webContents.send('auth:changed'));
+      if (token) auth.adoptToken(token).then(() => { win && win.webContents.send('auth:changed'); try { chatBubble && chatBubble.start(); } catch {} });
     }
   } catch {}
 }
@@ -191,8 +206,12 @@ function registerIpc() {
   ipcMain.handle('app:setServer', (_e, servers) => auth.setServer(servers));
 
   ipcMain.handle('auth:status', () => auth.getSession());
-  ipcMain.handle('auth:login', (_e, { email, password, api }) => auth.login({ email, password, api }));
-  ipcMain.handle('auth:logout', () => auth.logout());
+  ipcMain.handle('auth:login', async (_e, { email, password, api }) => {
+    const r = await auth.login({ email, password, api });
+    if (r && r.ok) { try { chatBubble && chatBubble.start(); } catch {} }
+    return r;
+  });
+  ipcMain.handle('auth:logout', () => { try { chatBubble && chatBubble.stop(); } catch {} return auth.logout(); });
 
   ipcMain.handle('ai:status', () => engine.status());
   ipcMain.handle('ai:projects', () => engine.listProjects());

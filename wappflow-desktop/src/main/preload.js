@@ -61,7 +61,7 @@ contextBridge.exposeInMainWorld('wappflow', {
     onProgress: (cb) => ipcRenderer.on('upload:progress', (_e, p) => cb(p)),
   },
   on: (channel, cb) => {
-    const allow = ['nav'];
+    const allow = ['nav', 'chat:open'];
     if (allow.includes(channel)) ipcRenderer.on(channel, (_e, d) => cb(d));
   },
 });

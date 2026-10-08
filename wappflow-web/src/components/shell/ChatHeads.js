@@ -14,7 +14,8 @@
 //   through the normal, permission-scoped route first).
 // • With WappFlow closed, the server sends a push instead (backend/chat-bubbles.js);
 //   tapping it lands here with ?bubble=<leadId>, or — if WappFlow is open in
-//   another tab — the service worker posts 'wf-open-bubble'.
+//   another tab — the service worker posts 'wf-open-bubble'. The desktop app
+//   dispatches a 'wf:open-bubble' window event for the same.
 // • Settings → Notifications → Chat bubbles turns all of it off (per user).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -148,8 +149,11 @@ export default function ChatHeads() {
       if (enabled) openFromPush(id);
     }
     const onSw = (e) => { if (e.data?.type === 'wf-open-bubble' && enabledRef.current !== false) openFromPush(e.data.lead_id); };
+    // The desktop app (a bubble or notification clicked while it was in the tray).
+    const onDesktop = (e) => { if (enabledRef.current !== false) openFromPush(e.detail); };
     navigator.serviceWorker?.addEventListener('message', onSw);
-    return () => navigator.serviceWorker?.removeEventListener('message', onSw);
+    window.addEventListener('wf:open-bubble', onDesktop);
+    return () => { navigator.serviceWorker?.removeEventListener('message', onSw); window.removeEventListener('wf:open-bubble', onDesktop); };
   }, [enabled, openFromPush]);
 
   // Esc closes the open chat back to its bubble.

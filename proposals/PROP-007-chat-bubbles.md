@@ -2,7 +2,7 @@
 
 - **Proposal ID / date:** PROP-007 · 2026-10-09
 - **Author:** Claude (for the founder)
-- **Status:** in-review
+- **Status:** implemented (steps 1–3; the desktop bubble ships with the next desktop release)
 - **Audit findings addressed:** none (founder UX request)
 - **Roadmap phase:** UX / Delight
 - **Priority-order rank:** UX → Delight
