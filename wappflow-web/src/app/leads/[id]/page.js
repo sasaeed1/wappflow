@@ -15,8 +15,9 @@ import {
   ChevronRight, Activity, Receipt, Workflow, RefreshCw,
   Layers, Link2, GitMerge, Network, Lock, MessageCircle,
   Camera, MonitorSmartphone, Video,
-  FileSignature, Banknote, ShoppingBag, Film, Eye
+  FileSignature, Banknote, ShoppingBag, Film, Eye, MoreHorizontal
 } from 'lucide-react';
+import Dropdown, { MenuItem } from '@/components/ui/Dropdown';
 import {
   leadsAPI, presetsAPI, tagsAPI, emailTemplatesAPI,
   invoicesAPI, emailWorkflowsAPI, teamAPI, settingsAPI,
@@ -695,6 +696,9 @@ const [aiError, setAiError] = useState('');
 
   useEffect(() => { if (activeTab === 'timeline') loadTimeline(); }, [activeTab, loadTimeline]);
   const [addingChannel, setAddingChannel] = useState(false);
+  // Empty contact fields (email, address, birthday…) hide behind one "Add details"
+  // button instead of a column of grey placeholders.
+  const [showEmptyFields, setShowEmptyFields] = useState(false);
   const [newChannel, setNewChannel] = useState({ platform: 'whatsapp', identifier: '', display_name: '' });
   // Active chat platform — defaults to the lead's source. The 4 platform tabs above the chat
   // box switch which platform's conversation is displayed and which platform messages go to.
@@ -1416,80 +1420,86 @@ useEffect(() => {
         );
       })()}
 
-      {/* Nav */}
-      <nav style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', boxShadow: 'var(--shadow)', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div className="lead-subnav" style={{ maxWidth: 1500, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 62 }}>
-          {/* The parent is derived from what this record IS, not from history: a lead
-              lives under Leads, a converted one under Clients. It used to say
-              "Dashboard" unconditionally — wrong for all eight entry points, and
-              /dashboard is not the parent of a lead under any of them. */}
-          <button onClick={() => router.push(lead.is_client ? '/clients' : '/leads-list')} style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 14, padding: '6px 12px', borderRadius: 10 }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-            <ArrowLeft size={16} /> {lead.is_client ? 'Clients' : 'Leads'}
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${sc.dot}, ${sc.dot}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: 'white' }}>
-              {lead.customer_name?.[0]?.toUpperCase() || '?'}
-            </div>
-            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>{lead.customer_name}</span>
-            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: sc.bg, color: sc.text }}>{sc.label}</span>
-          </div>
-          <div className="lead-nav-actions" style={{ display: 'flex', gap: 8 }}>
-            {/* Quick actions */}
-            <ContactActions lead={lead} onDone={fetchAll} />
-            <button onClick={() => setShowInvoiceModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              <Receipt size={14} /> Invoice
+      {/* ── LEAD HERO ──
+          Was a sticky bar of seven outlined buttons that wrapped into a 3×2 grid on
+          phones and pinned a quarter of the screen while you read the chat; its
+          name block also slid under the (now frosted) shell bar. Now, like the
+          dashboard: who this is and where they stand, then the one action you take
+          most (call), the next two (schedule, create) and the rest under ⋯.
+          Styles live in globals.css (.lead-hero*). */}
+      {(() => {
+        const PLAT = { whatsapp: { label: 'WhatsApp', color: '#25d366' }, instagram: { label: 'Instagram', color: '#e1306c' }, facebook: { label: 'Facebook', color: '#1877f2' }, website: { label: 'Website', color: '#6366f1' } };
+        const plat = PLAT[(lead.platform_source || 'whatsapp').toLowerCase()] || { label: lead.platform_source, color: '#6366f1' };
+        const waPhone = (lead.customer_phone || '').replace(/\D/g, '');
+        const canCall = waPhone.length >= 7 && waPhone.length <= 15;
+        const assignee = teamMembers.find(m => m.user_id === lead.assigned_to || m.id === lead.assigned_to)?.name;
+        return (
+          <section className="lead-hero" aria-label="Contact">
+            <button type="button" className="lead-hero__back" onClick={() => router.push(lead.is_client ? '/clients' : '/leads-list')}>
+              <ArrowLeft size={15} /> {lead.is_client ? 'Clients' : 'Leads'}
             </button>
-            <button onClick={() => setShowEmailCompose(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              <Mail size={14} /> Email
-            </button>
-            <button onClick={() => setShowScheduleModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.12)', color: '#818cf8', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              <Video size={14} /> Schedule
-            </button>
-            {lead.customer_phone && (() => {
-              const waPhone = lead.customer_phone.replace(/\D/g, '');
-              // Only show call button for real phone numbers (not platform user IDs)
-              if (waPhone.length < 7 || waPhone.length > 15) return null;
-              return (
-                <a
-                  href={`https://wa.me/${waPhone}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #a7f3d0', background: 'rgba(16,185,129,0.12)', color: '#059669', fontWeight: 600, cursor: 'pointer', fontSize: 13, textDecoration: 'none' }}
-                  title="Open WhatsApp call"
+            <div className="lead-hero__row">
+              <div className="lead-hero__who">
+                <div className="lead-hero__avatar" style={{ background: `linear-gradient(135deg, ${sc.dot}, ${sc.dot}99)`, boxShadow: `0 10px 26px -8px ${sc.dot}aa` }}>
+                  {lead.customer_name?.[0]?.toUpperCase() || '?'}
+                  <i style={{ background: plat.color }} title={plat.label} aria-hidden="true" />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <h1 className="lead-hero__name">{lead.customer_name || displayPhone(lead.customer_phone, lead.platform_source) || 'Contact'}</h1>
+                  <p className="lead-hero__meta">
+                    <span className="lead-hero__pill" style={{ background: sc.bg, color: sc.text }}>{sc.label}</span>
+                    {!!lead.is_client && <span className="lead-hero__pill" style={{ background: 'rgba(16,185,129,0.14)', color: '#10b981' }}>Client</span>}
+                    <span style={{ color: plat.color, fontWeight: 700 }}>{plat.label}</span>
+                    {lead.last_message_at && <><span className="lead-hero__sep">·</span><span>Active {formatRelative(lead.last_message_at)}</span></>}
+                    {assignee && <><span className="lead-hero__sep">·</span><span>{assignee}</span></>}
+                  </p>
+                </div>
+              </div>
+
+              <div className="lead-hero__actions">
+                {canCall && (
+                  <a className="lead-hero__cta" href={`https://wa.me/${waPhone}`} target="_blank" rel="noopener noreferrer" title="Open WhatsApp to call">
+                    <Phone size={16} /><span>Call</span>
+                  </a>
+                )}
+                <button type="button" className="lead-hero__btn" onClick={() => setShowScheduleModal(true)} title="Schedule a meeting">
+                  <Video size={16} /><span>Schedule</span>
+                </button>
+                <ContactActions lead={lead} onDone={fetchAll} triggerClassName="lead-hero__btn" />
+                <Dropdown
+                  label="More actions" width={220}
+                  trigger={(p) => (
+                    <button type="button" {...p} className="lead-hero__btn lead-hero__more" aria-label="More actions" title="More">
+                      <MoreHorizontal size={18} />
+                    </button>
+                  )}
                 >
-                  <Phone size={14} /> WA Call
-                </a>
-              );
-            })()}
-            <button
-              onClick={() => {
-                if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wf:open-chat', { detail: lead }));
-              }}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1.5px solid #a7f3d0', background: 'rgba(16,185,129,0.12)', color: '#059669', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
-              title="Open WhatsApp chat in floating bar"
-              className="lead-chatbar-btn"
-            >
-              <MessageSquare size={14} /> Chat Bar
-            </button>
-            {perms.can('delete_lead') && (
-            <button onClick={() => setShowDeleteModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', border: '1.5px solid #fecaca', borderRadius: 10, background: 'var(--surface)', color: '#ef4444', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              <Trash2 size={14} /> Trash
-            </button>
-            )}
-          </div>
-        </div>
-      </nav>
+                  {(close) => (
+                    <>
+                      <MenuItem icon={Receipt} onClick={() => { close(); setShowInvoiceModal(true); }}>New invoice</MenuItem>
+                      <MenuItem icon={Mail} onClick={() => { close(); setShowEmailCompose(true); }}>Send email</MenuItem>
+                      <MenuItem icon={MessageSquare} onClick={() => { close(); if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wf:open-chat', { detail: lead })); }}>Open in chat bar</MenuItem>
+                      {perms.can('delete_lead') && (
+                        <MenuItem icon={Trash2} tone="danger" onClick={() => { close(); setShowDeleteModal(true); }}>Move to trash</MenuItem>
+                      )}
+                    </>
+                  )}
+                </Dropdown>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Status banners */}
       {lead.status === 'Closed - Won' && (
-        <div style={{ background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', textAlign: 'center', padding: '12px', fontWeight: 800, fontSize: 15 }}>
-          🏆 Deal Won! {sym}{(lead.actual_sale || 0).toLocaleString()}
+        <div className="lead-outcome" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+          🏆 Deal won · {sym}{(lead.actual_sale || 0).toLocaleString()}
         </div>
       )}
       {lead.status === 'Closed - Lost' && (
-        <div style={{ background: '#ef4444', color: 'white', textAlign: 'center', padding: '12px', fontWeight: 800, fontSize: 15 }}>
-          ❌ Deal Lost — {lead.lost_reason || 'No reason given'}
+        <div className="lead-outcome" style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}>
+          Deal lost · {lead.lost_reason || 'No reason given'}
         </div>
       )}
 
@@ -1501,40 +1511,35 @@ useEffect(() => {
           {/* Profile card */}
           <div style={{ background: 'var(--surface)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
 
-            <div style={{ background: `linear-gradient(135deg, ${sc.dot}20, ${sc.dot}08)`, padding: '24px 22px 18px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Edit2 size={10} /> Tap any field to edit
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                <div style={{ width: 68, height: 68, borderRadius: 22, marginBottom: 10, background: `linear-gradient(135deg, ${sc.dot}, ${sc.dot}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 900, color: 'white', boxShadow: `0 8px 24px ${sc.dot}44` }}>
-                  {lead.customer_name?.[0]?.toUpperCase() || '?'}
-                </div>
-                <InlineEditField heading color={sc.dot} label="Name" value={lead.customer_name}
-                  onSave={(v) => saveField('customer_name', v)} />
-                <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 14px', borderRadius: 20, background: sc.bg, color: sc.text }}>{sc.label}</span>
-              </div>
+            {/* The avatar, name and stage now lead the page (the hero); this card is
+                the editable details, so it no longer repeats them in a big block. */}
+            <div style={{ padding: '16px 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Details</span>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Edit2 size={10} /> Tap a field to edit
+              </span>
             </div>
 
             {/* Contact details */}
-            <div style={{ padding: '18px 20px' }}>
+            <div style={{ padding: '10px 20px 18px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <InlineEditField icon={User} color={sc.dot} bg={sc.bg} label="Name"
+                  value={lead.customer_name} onSave={(v) => saveField('customer_name', v)} />
                 <InlineEditField icon={Phone} color="#10b981" bg="rgba(16,185,129,0.12)" label="Phone"
                   value={lead.customer_phone} display={displayPhone(lead.customer_phone, lead.platform_source)}
                   type="tel" onSave={(v) => saveField('customer_phone', v)} />
-                <InlineEditField icon={Mail} color="#6366f1" bg="rgba(99,102,241,0.12)" label="Email"
-                  value={lead.email} type="email" onSave={(v) => saveField('email', v)} />
-                <InlineEditField icon={MapPin} color="#f97316" bg="rgba(249,115,22,0.10)" label="Address"
-                  value={lead.address} type="text" onSave={(v) => saveField('address', v)} />
-                <InlineEditField icon={Calendar} color="#a855f7" bg="rgba(168,85,247,0.10)" label="Date of Birth"
+                {(showEmptyFields || lead.email) && <InlineEditField icon={Mail} color="#6366f1" bg="rgba(99,102,241,0.12)" label="Email"
+                  value={lead.email} type="email" onSave={(v) => saveField('email', v)} />}
+                {(showEmptyFields || lead.address) && <InlineEditField icon={MapPin} color="#f97316" bg="rgba(249,115,22,0.10)" label="Address"
+                  value={lead.address} type="text" onSave={(v) => saveField('address', v)} />}
+                {(showEmptyFields || lead.date_of_birth) && <InlineEditField icon={Calendar} color="#a855f7" bg="rgba(168,85,247,0.10)" label="Date of Birth"
                   value={lead.date_of_birth} display={lead.date_of_birth ? formatDate(lead.date_of_birth) : null}
-                  type="date" onSave={(v) => saveField('date_of_birth', v)} />
-                <InlineEditField icon={Globe} color="#06b6d4" bg="rgba(6,182,212,0.10)" label="Lead Source"
+                  type="date" onSave={(v) => saveField('date_of_birth', v)} />}
+                {(showEmptyFields || lead.lead_source) && <InlineEditField icon={Globe} color="#06b6d4" bg="rgba(6,182,212,0.10)" label="Lead Source"
                   value={lead.lead_source} type="select"
                   selectOptions={[{ value: '', label: 'Select source' }, ...LEAD_SOURCES.map(s => ({ value: s, label: s }))]}
-                  onSave={(v) => saveField('lead_source', v)} />
-                <InlineEditField icon={UserCheck} color="#10b981" bg="rgba(16,185,129,0.12)" label="Assigned To"
+                  onSave={(v) => saveField('lead_source', v)} />}
+                {(showEmptyFields || lead.assigned_to) && <InlineEditField icon={UserCheck} color="#10b981" bg="rgba(16,185,129,0.12)" label="Assigned To"
                   value={lead.assigned_to}
                   // leads.assigned_to is a USER id (what the list, filters and reports join on). This
                   // field used the membership-row id, so names never showed and saving wrote an id
@@ -1542,7 +1547,17 @@ useEffect(() => {
                   display={teamMembers.find(m => m.user_id === lead.assigned_to || m.id === lead.assigned_to)?.name || null}
                   type="select"
                   selectOptions={[{ value: '', label: 'Unassigned' }, ...teamMembers.filter(m => m.user_id).map(m => ({ value: m.user_id, label: m.name }))]}
-                  onSave={(v) => saveField('assigned_to', v)} />
+                  onSave={(v) => saveField('assigned_to', v)} />}
+                {(() => {
+                  const hidden = [!lead.email && 'email', !lead.address && 'address', !lead.date_of_birth && 'birthday', !lead.lead_source && 'source', !lead.assigned_to && 'owner'].filter(Boolean);
+                  if (!hidden.length) return null;
+                  return (
+                    <button type="button" onClick={() => setShowEmptyFields(v => !v)}
+                      style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--accent, #6366f1)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      {showEmptyFields ? <>Hide empty fields</> : <><Plus size={12} /> Add {hidden.slice(0, 3).join(', ')}{hidden.length > 3 ? '…' : ''}</>}
+                    </button>
+                  );
+                })()}
                 {pipes.length > 1 && (
                   <InlineEditField icon={Layers} color="#8b5cf6" bg="rgba(139,92,246,0.12)" label="Pipeline"
                     value={lead.pipeline_id || pipes.find(p => p.is_default)?.id || ''}
@@ -1680,47 +1695,38 @@ useEffect(() => {
             );
           })()}
 
-          {/* Activity stats */}
-          <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
-            <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Activity</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[
-                { label: 'Lead Created', value: formatSmart(lead.created_at) },
-                { label: 'Last Message', value: lead.last_message_at ? formatSmart(lead.last_message_at) : '—' },
-                { label: 'Messages', value: messages.length },
-                { label: 'Notes', value: notes.length },
-                { label: 'Reminders', value: reminders.length },
-                { label: 'Invoices', value: invoices.length },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Source Platform */}
+          {/* Activity — a strip of numbers, not a six-row table. The lead source
+              (it was its own card) sits on the first line. */}
           {(() => {
             const PLATFORM_COLORS = { whatsapp: '#25d366', instagram: '#c13584', facebook: '#1877f2', website: '#6366f1' };
             const PLATFORM_LABELS = { whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', website: 'Website' };
             const src = lead.platform_source || 'whatsapp';
             const color = PLATFORM_COLORS[src] || '#6b7280';
             return (
-              <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '18px 20px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: `1.5px solid ${color}33` }}>
-                <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>Lead Source</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Globe size={16} color={color} />
-                  </div>
-                  <div>
-                    <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', margin: 0 }}>{PLATFORM_LABELS[src] || src}</p>
-                    {lead.platform_account_id && (
-                      <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: 0 }}>via account</p>
-                    )}
-                  </div>
-                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: color + '18', color }}>{PLATFORM_LABELS[src] || src}</span>
+              <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '16px 18px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+                  <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Activity</p>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: color + '1f', color, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <Globe size={11} /> via {PLATFORM_LABELS[src] || src}
+                  </span>
                 </div>
+                <div className="lead-activity-grid">
+                  {[
+                    { label: 'Messages', value: messages.length, icon: MessageSquare, color: '#25d366' },
+                    { label: 'Notes', value: notes.length, icon: StickyNote, color: '#f59e0b' },
+                    { label: 'Reminders', value: reminders.length, icon: Bell, color: '#6366f1' },
+                    { label: 'Invoices', value: invoices.length, icon: Receipt, color: '#10b981' },
+                  ].map(({ label, value, icon: Icon, color: c }) => (
+                    <div key={label} className="lead-activity-stat">
+                      <Icon size={13} color={c} aria-hidden="true" />
+                      <b>{value}</b>
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: 11.5, color: 'var(--text-dim)', margin: '12px 0 0', lineHeight: 1.6 }}>
+                  Added {formatSmart(lead.created_at)}{lead.last_message_at ? <> · last message {formatSmart(lead.last_message_at)}</> : null}
+                </p>
               </div>
             );
           })()}
@@ -1804,7 +1810,7 @@ useEffect(() => {
                 return false;
               };
               return (
-                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', overflowX: 'auto' }}>
+                <div className="lead-plat-tabs wf-noscrollbar" style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', overflowX: 'auto' }}>
                   {PLATFORMS.map(p => {
                     const active = activePlatform === p.id;
                     const unlocked = isUnlocked(p.id);
@@ -1819,6 +1825,7 @@ useEffect(() => {
                           else showToast(`${p.label} isn't connected for this lead yet. Add it under "Connected Channels" on the left.`, 'info');
                         }}
                         title={unlocked ? `Switch to ${p.label}` : `${p.label} not connected — link it under Connected Channels`}
+                        className="lead-plat-tab"
                         style={{
                           flex: 1, minWidth: 110, padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer',
                           borderBottom: `3px solid ${active ? p.color : 'transparent'}`,
@@ -1855,10 +1862,10 @@ useEffect(() => {
                             )}
                           </div>
                           {unlocked && totalMsgs > 0 && (
-                            <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: 0 }}>{totalMsgs} msgs</p>
+                            <p className="lead-plat-sub" style={{ fontSize: 10, color: 'var(--text-dim)', margin: 0 }}>{totalMsgs} msgs</p>
                           )}
                           {!unlocked && (
-                            <p style={{ fontSize: 10, color: 'var(--text-dim)', margin: 0 }}>Not connected</p>
+                            <p className="lead-plat-sub" style={{ fontSize: 10, color: 'var(--text-dim)', margin: 0 }}>Not connected</p>
                           )}
                         </div>
                       </button>
@@ -2059,7 +2066,7 @@ useEffect(() => {
             )}
 
             {/* Toolbar */}
-            <div style={{ padding: '8px 14px 0', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 2 }}>
+            <div className="lead-composer-tools" style={{ padding: '8px 14px 0', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 2, position: 'relative', flexWrap: 'wrap' }}>
               {[
                 { icon: Bold, title: 'Bold (*text*)', action: () => applyFormat('*') },
                 { icon: Italic, title: 'Italic (_text_)', action: () => applyFormat('_') },
@@ -2077,19 +2084,23 @@ useEffect(() => {
 
               <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 4px' }} />
 
-              {/* Presets */}
-              <div style={{ position: 'relative' }}>
+              {/* Presets — the popover anchors to the toolbar (not this button), so on a
+                  phone it opens inside the card instead of running off the right edge. */}
+              <div>
                 <button onClick={() => setShowPresets(!showPresets)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 8, border: '1.5px solid var(--border)', background: showPresets ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: showPresets ? '#6366f1' : 'var(--text-muted)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                   <Zap size={13} /> Presets <ChevronDown size={11} />
                 </button>
                 {showPresets && (
-                  <div style={{ position: 'absolute', bottom: '110%', left: 0, width: 280, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.12)', zIndex: 20, overflow: 'hidden' }}>
+                  <div className="lead-composer-pop" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 14, width: 'min(320px, calc(100% - 28px))', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.25)', zIndex: 20, overflow: 'hidden' }}>
                     <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Quick Replies</span>
                     </div>
                     <div style={{ maxHeight: 240, overflowY: 'auto' }}>
                       {presets.length === 0 ? (
-                        <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>No presets yet.</div>
+                        <div style={{ padding: '18px 16px', textAlign: 'center', color: 'var(--text-dim)', fontSize: 13, lineHeight: 1.5 }}>
+                          No quick replies yet.<br />
+                          <a href="/settings" style={{ color: 'var(--accent, #6366f1)', fontWeight: 700 }}>Add some in Settings → Presets</a>
+                        </div>
                       ) : presets.map(p => (
                         <button key={p.id} onClick={() => { setNewMessage(p.body); setShowPresets(false); textareaRef.current?.focus(); }}
                           style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', borderBottom: '1px solid #f9fafb' }}
@@ -2104,7 +2115,7 @@ useEffect(() => {
               </div>
 
               {/* AI Tools — rewrite / translate / shorten */}
-              <div style={{ position: 'relative', marginLeft: 4 }}>
+              <div style={{ marginLeft: 4 }}>
                 <button
                   onClick={() => setShowAiTools(v => !v)}
                   disabled={!newMessage.trim() || !!aiToolLoading}
@@ -2114,7 +2125,7 @@ useEffect(() => {
                   ✨ AI <ChevronDown size={11} />
                 </button>
                 {showAiTools && newMessage.trim() && (
-                  <div style={{ position: 'absolute', bottom: '110%', left: 0, width: 220, background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.18)', zIndex: 30, overflow: 'hidden' }}>
+                  <div className="lead-composer-pop" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 14, width: 'min(260px, calc(100% - 28px))', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.25)', zIndex: 30, overflow: 'hidden' }}>
                     <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Transform message</span>
                     </div>
@@ -2167,7 +2178,7 @@ useEffect(() => {
             )}
 
             {/* Input */}
-            <div style={{ padding: '10px 14px 14px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <div className="lead-composer-row" style={{ padding: '10px 14px 14px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
               <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileUpload} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip" />
               <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} title="Attach file" style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-dim)', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Paperclip size={15} />
@@ -2187,16 +2198,20 @@ useEffect(() => {
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                  placeholder={activePlatform && activePlatform !== 'whatsapp'
-                    ? `Type a ${activePlatform} message... (saved as draft)`
-                    : 'Type a message... (Enter to send)'}
+                  // A long placeholder ("… (Enter to send)") wrapped onto a second,
+                  // clipped line on phones; the hint now lives in the title.
+                  placeholder={activePlatform && activePlatform !== 'whatsapp' ? `${activePlatform[0].toUpperCase()}${activePlatform.slice(1)} message (draft)` : 'Type a message…'}
+                  title="Enter to send · Shift+Enter for a new line"
+                  aria-label="Message"
+                  data-ui="composer"
                   rows={1}
-                  style={{ flex: 1, padding: '10px 14px', border: '1.5px solid var(--border)', borderRadius: 14, fontSize: 14, outline: 'none', resize: 'none', lineHeight: 1.5, maxHeight: 120, overflow: 'auto', fontFamily: 'inherit', color: 'var(--text)', background: 'var(--surface2)' }}
-                  onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; }}
+                  className="lead-composer-input"
+                  onInput={e => { const t = e.target; t.style.height = 'auto'; const h = Math.min(t.scrollHeight, 140); t.style.height = h + 'px'; t.style.overflowY = t.scrollHeight > 140 ? 'auto' : 'hidden'; }}
                 />
               )}
 
-              {!isRecording && (
+              {/* Like WhatsApp: the mic steps aside while you type, giving the text room. */}
+              {!isRecording && !newMessage.trim() && (
                 <button
                   onClick={startRecording}
                   title="Record voice note"
@@ -2221,7 +2236,7 @@ useEffect(() => {
           {/* Tabs Panel — sits BELOW the chat in the main column */}
           <div style={{ background: 'var(--surface)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1.5px solid var(--border)', marginTop: 16 }}>
             {/* Tab bar */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
+            <div className="wf-noscrollbar" style={{ display: 'flex', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
               {TABS.map(tab => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                   flex: 1, padding: '13px 8px', border: 'none', background: 'none', cursor: 'pointer',

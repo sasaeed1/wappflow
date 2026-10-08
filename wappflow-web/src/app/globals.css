@@ -483,25 +483,79 @@ select option {
   .lead-grid .messages-area { height: 55vh !important; min-height: 320px !important; }
 }
 
-/* Lead profile sub-nav (back · name · actions) — its three space-between
-   sections won't fit one phone row, so let the whole bar wrap and the action
-   cluster wrap within it, instead of forcing the page ~50px wider. */
-@media (max-width: 760px) {
-  .lead-subnav { flex-wrap: wrap; height: auto !important; padding: 8px 12px !important; gap: 8px; row-gap: 8px; justify-content: flex-start !important; }
-  .lead-subnav > * { min-width: 0; }
-  .lead-nav-actions { flex-wrap: wrap; justify-content: flex-end; }
+/* Lead profile hero — see app/leads/[id]/page.js (.lead-hero*). It replaced a
+   sticky sub-nav of seven outlined buttons (.lead-subnav / .lead-nav-actions). */
+.lead-hero { max-width: 1500px; margin: 0 auto; padding: 18px 24px 4px; animation: dash-hero-in .45s cubic-bezier(.2,.8,.2,1) both; }
+.lead-hero__back { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px; margin: 0 0 10px -4px; border: none; background: none;
+  color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 8px; }
+.lead-hero__back:hover { color: var(--text); }
+.lead-hero__row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.lead-hero__who { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1 1 320px; }
+.lead-hero__avatar { position: relative; width: 58px; height: 58px; border-radius: 18px; flex-shrink: 0; display: grid; place-items: center;
+  color: #fff; font-size: 24px; font-weight: 900; }
+.lead-hero__avatar i { position: absolute; right: -3px; bottom: -3px; width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--bg); }
+.lead-hero__name { margin: 0; font-size: 26px; line-height: 1.15; font-weight: 800; letter-spacing: -.6px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lead-hero__meta { margin: 6px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+.lead-hero__pill { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 20px; }
+.lead-hero__sep { opacity: .45; }
+.lead-hero__actions { display: flex; align-items: center; gap: 8px; }
+.lead-hero__btn, .lead-hero__cta {
+  height: 42px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 13px;
+  font-size: 13.5px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap;
+  transition: background .2s, color .2s, transform .15s, box-shadow .2s; -webkit-tap-highlight-color: transparent;
 }
-/* Phones: the seven header actions wrapped into three ragged rows. The floating
-   "Chat Bar" duplicates the thread that is right there on this page, so it goes;
-   the other six sit in an even 3×2 grid of equal buttons. */
-@media (max-width: 640px) {
-  .lead-chatbar-btn { display: none !important; }
-  .lead-nav-actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px !important; width: 100%; }
-  .lead-nav-actions > *,
-  .lead-nav-actions > div > button[aria-haspopup] { width: 100%; min-width: 0; }
-  .lead-nav-actions > button,
-  .lead-nav-actions > a,
-  .lead-nav-actions > div > button[aria-haspopup] { justify-content: center; padding: 9px 6px !important; font-size: 12.5px !important; white-space: nowrap; min-height: 38px; }
+.lead-hero__btn { border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.045); color: var(--text-dim); }
+.lead-hero__btn:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.lead-hero__more { width: 42px; padding: 0; }
+.lead-hero__cta { border: none; color: #fff; padding: 0 18px;
+  background: linear-gradient(135deg, #22c55e, #10b981 55%, #0d9488); box-shadow: 0 8px 22px -8px rgba(16,185,129,.7), inset 0 1px 0 rgba(255,255,255,.22); }
+.lead-hero__cta:hover { box-shadow: 0 10px 28px -8px rgba(16,185,129,.8), inset 0 1px 0 rgba(255,255,255,.25); }
+.lead-hero__btn:active, .lead-hero__cta:active { transform: scale(.96); }
+.lead-hero button:focus-visible, .lead-hero a:focus-visible { outline: 2px solid rgba(139,92,246,.7); outline-offset: 2px; }
+html.light .lead-hero__btn { background: #fff; border-color: rgba(15,23,42,.08); box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+html.light .lead-hero__btn:hover { background: #f8fafc; }
+
+/* Won / lost outcome — a card in line with the page, not an edge-to-edge strip. */
+.lead-outcome { max-width: 1452px; margin: 14px auto 0; width: calc(100% - 48px); box-sizing: border-box; padding: 11px 16px; border-radius: 14px;
+  color: #fff; text-align: center; font-weight: 800; font-size: 14px; box-shadow: 0 10px 26px -12px rgba(0,0,0,.5); }
+@media (max-width: 900px) { .lead-outcome { width: calc(100% - 28px); } }
+
+/* Activity strip on the lead page */
+.lead-activity-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.lead-activity-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px 10px 9px; border-radius: 12px; background: var(--surface2); min-width: 0; }
+.lead-activity-stat b { font-size: 18px; font-weight: 900; color: var(--text); line-height: 1; }
+.lead-activity-stat span { font-size: 10.5px; font-weight: 600; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* Lead chat composer: the global input style gave this box its own padding and
+   height, so the text sat off-centre and a scrollbar showed on one line. */
+.lead-composer-input {
+  flex: 1; min-width: 0; box-sizing: border-box; height: 42px; min-height: 42px; max-height: 140px;
+  padding: 10px 14px; margin: 0; border: 1.5px solid var(--border); border-radius: 14px; outline: none; resize: none; overflow-y: hidden;
+  font-size: 14px; line-height: 19px; font-family: inherit; color: var(--text); background: var(--surface2);
+  transition: border-color .15s, box-shadow .15s;
+}
+.lead-composer-input:focus { border-color: rgba(139,92,246,.6); box-shadow: 0 0 0 3px rgba(139,92,246,.15); }
+.lead-composer-input::placeholder { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lead-composer-row > button { height: 42px !important; width: 42px !important; border-radius: 13px !important; }
+
+/* Horizontal tab rows scroll by swipe without drawing a scrollbar strip. */
+.wf-noscrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.wf-noscrollbar::-webkit-scrollbar { display: none; }
+
+@media (max-width: 760px) {
+  .lead-hero { padding: 14px 14px 2px; }
+  .lead-hero__avatar { width: 50px; height: 50px; border-radius: 16px; font-size: 21px; }
+  .lead-hero__name { font-size: 22px; letter-spacing: -.4px; }
+  .lead-hero__actions { width: 100%; }
+  .lead-hero__actions > * { flex: 0 0 auto; }
+  .lead-hero__cta { flex: 1 1 auto; }
+  .lead-hero__actions .lead-hero__btn:not(.lead-hero__more) span { display: none; }
+  .lead-hero__actions .lead-hero__btn:not(.lead-hero__more) { width: 46px; padding: 0; }
+  /* Channel switcher: one compact row of icon + name, no second line. */
+  .lead-plat-tab { min-width: 0 !important; padding: 10px 8px !important; gap: 6px !important; }
+  .lead-plat-sub { display: none; }
+  .lead-activity-stat b { font-size: 16px; }
 }
 
 /* Dashboard responsive grids — page uses inline grid styles, we override at breakpoints */
