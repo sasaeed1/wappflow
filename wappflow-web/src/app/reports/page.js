@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, TrendingUp, DollarSign, Users, Target,
@@ -12,11 +12,12 @@ import {
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, AreaChart, Area, FunnelChart, Funnel, LabelList
+  PieChart, Pie, Cell, Legend, AreaChart, Area, ComposedChart, FunnelChart, Funnel, LabelList
 } from 'recharts';
 import { analyticsAPI } from '../../lib/api';
 import { usePlan } from '@/lib/plan';
 import { LockedOverlay } from '@/components/PlanLock';
+import { useRealtime } from '@/components/shell/realtime';
 
 const COLORS = ['#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#f97316', '#ec4899'];
 
@@ -61,6 +62,15 @@ const CustomTooltip = ({ active, payload, label, prefix = '' }) => {
   );
 };
 
+// Up/down against the range before this one, e.g. "▲ 12% vs prev 30 days".
+function trendOf(cur, prev) {
+  const c = Number(cur) || 0, p = Number(prev) || 0;
+  if (c === p) return { trend: 'neutral', trendVal: 'No change' };
+  if (p === 0) return { trend: 'up', trendVal: 'New' };
+  const pct = Math.round(((c - p) / p) * 100);
+  return { trend: c > p ? 'up' : 'down', trendVal: `${pct > 0 ? '+' : ''}${pct}%` };
+}
+
 // Convert array-of-objects to CSV string and trigger download
 function exportToCSV(filename, headers, rows) {
   const escape = (v) => {
@@ -89,30 +99,70 @@ export default function ReportsPage() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [showCustom, setShowCustom] = useState(false);
+  // The custom-range inputs are a draft until Apply, so picking the start date
+  // does not reload the page with half a range.
+  const [draftStart, setDraftStart] = useState('');
+  const [draftEnd, setDraftEnd] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [updatedAt, setUpdatedAt] = useState(null);
   const [tab, setTab] = useState('overview');
+  const reqId = useRef(0);
 
-  useEffect(() => {
-    if (!localStorage.getItem('token')) { router.push('/login'); return; }
-    fetchAll();
-  }, [period, customStart, customEnd]);
-
-  const fetchAll = async () => {
-    setLoading(true);
+  // silent: refresh in place (live updates) without blanking the page.
+  const fetchAll = useCallback(async (silent = false) => {
+    const id = ++reqId.current;
+    if (!silent) setLoading(true);
     try {
-      const params = (customStart && customEnd) ? { start_date: customStart, end_date: customEnd } : { period };
+      const tz = -new Date().getTimezoneOffset();
+      const params = (customStart && customEnd) ? { start_date: customStart, end_date: customEnd, tz } : { period, tz };
       const [r, a] = await Promise.all([
         analyticsAPI.getReports(params),
         analyticsAPI.get()
       ]);
+      if (id !== reqId.current) return; // a newer range was picked meanwhile
       setData(r.data);
       setAnalytics(a.data);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  };
+      setLoadError('');
+      setUpdatedAt(new Date());
+    } catch {
+      if (id === reqId.current && !silent) setLoadError('We couldn’t load your analytics. Check your connection and press Refresh.');
+    } finally { if (id === reqId.current && !silent) setLoading(false); }
+  }, [period, customStart, customEnd]);
+
+  useEffect(() => {
+    if (!localStorage.getItem('token')) { router.push('/login'); return; }
+    fetchAll();
+  }, [fetchAll]);
+
+  // Live: when a lead, payment, contract or booking changes anywhere in the
+  // workspace, refresh quietly. Bursts (an import, a bulk move) become one reload.
+  const liveTimer = useRef(null);
+  const fetchRef = useRef(fetchAll);
+  useEffect(() => { fetchRef.current = fetchAll; }, [fetchAll]);
+  useRealtime(
+    ['lead_created', 'new_lead', 'lead_updated', 'lead_deleted', 'lead_restored', 'new_message',
+     'payment_paid', 'cs_signed', 'cs_updated', 'booking_created', 'booking_updated', 'booking_cancelled'],
+    () => {
+      clearTimeout(liveTimer.current);
+      liveTimer.current = setTimeout(() => fetchRef.current(true), 1500);
+    }
+  );
+  // Coming back to the app (or the tab) shows current figures, not the ones from when it was left.
+  useEffect(() => {
+    const onShow = () => { if (document.visibilityState === 'visible') fetchRef.current(true); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => { document.removeEventListener('visibilitychange', onShow); clearTimeout(liveTimer.current); };
+  }, []);
 
   // Quick presets that switch back from custom range
   const setPreset = (p) => {
-    setCustomStart(''); setCustomEnd(''); setShowCustom(false); setPeriod(p);
+    setCustomStart(''); setCustomEnd(''); setDraftStart(''); setDraftEnd(''); setShowCustom(false); setPeriod(p);
+  };
+  const applyCustom = () => {
+    if (!draftStart || !draftEnd) return;
+    const [a, b] = draftStart <= draftEnd ? [draftStart, draftEnd] : [draftEnd, draftStart];
+    setCustomStart(a); setCustomEnd(b); setShowCustom(false);
   };
 
   const dateRangeLabel = (customStart && customEnd)
@@ -131,6 +181,15 @@ export default function ReportsPage() {
     // Build a multi-section export
     const sections = [];
 
+    // Headline figures for the range
+    const sm = data.summary || {};
+    sections.push(['SUMMARY']);
+    sections.push(['Figure', 'Value']);
+    [['New leads', sm.leads], ['Deals won', sm.won], ['Value of deals won', sm.won_value], ['Deals lost', sm.lost],
+     ['Conversion rate %', sm.conversion_rate], ['Collected', sm.collected], ['Invoices raised', sm.invoices_raised],
+     ['Contracts signed', sm.contracts_signed], ['Bookings', sm.bookings]].forEach(r => sections.push([r[0], r[1] || 0]));
+    sections.push([]);
+
     // Pipeline section
     sections.push(['PIPELINE BREAKDOWN']);
     sections.push(['Status', 'Count', 'Value']);
@@ -145,8 +204,8 @@ export default function ReportsPage() {
 
     // Revenue over time
     sections.push(['REVENUE OVER TIME']);
-    sections.push(['Date', 'Revenue']);
-    (data.revenueOverTime || []).forEach(d => sections.push([d.date, d.revenue || 0]));
+    sections.push(['Date', 'Collected', 'Deals won value']);
+    revenueChart.forEach(d => sections.push([d.iso, d.revenue || 0, d.won || 0]));
     sections.push([]);
 
     // Lead sources
@@ -195,21 +254,39 @@ export default function ReportsPage() {
 
   const sym = data?.currencySymbol || analytics?.currency_symbol || '$';
 
-  // Fill missing dates for leads over time
-  const fillDates = (arr, days) => {
-    const result = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      const found = arr?.find(x => x.date === dateStr);
-      result.push({ date: dateStr.slice(5), count: found?.count || 0, revenue: found?.revenue || 0 });
+  // One point per day across the range the server actually reported (custom
+  // ranges included — this used to always draw the last N preset days, so a
+  // custom range showed an empty or wrong chart). Days with nothing are 0.
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fillDates = (series) => {
+    const r = data?.range;
+    if (!r?.start || !r?.end) return [];
+    const by = {};
+    for (const [key, arr] of Object.entries(series)) for (const x of arr || []) {
+      by[x.date] = by[x.date] || {};
+      by[x.date][key] = Number(x[key === 'won' ? 'revenue' : key]) || 0;
     }
-    return result;
+    const days = [];
+    for (let t = Date.parse(r.start + 'T00:00:00Z'), end = Date.parse(r.end + 'T00:00:00Z'); t <= end; t += 86400000) {
+      const iso = new Date(t).toISOString().slice(0, 10);
+      days.push({ date: `${Number(iso.slice(8))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`, iso, count: 0, revenue: 0, won: 0, ...(by[iso] || {}) });
+    }
+    // Over three months, one point a day is a row of spikes; show weekly totals.
+    if (days.length <= 92) return days;
+    const weeks = [];
+    for (let i = 0; i < days.length; i += 7) {
+      const wk = days.slice(i, i + 7);
+      weeks.push(wk.reduce((a, d) => ({ ...a, count: a.count + d.count, revenue: a.revenue + d.revenue, won: a.won + d.won }),
+        { date: `w/c ${wk[0].date}`, iso: wk[0].iso, count: 0, revenue: 0, won: 0 }));
+    }
+    return weeks;
   };
 
-  const leadsChart = data ? fillDates(data.leadsOverTime, parseInt(period)) : [];
-  const revenueChart = data ? fillDates(data.revenueOverTime, parseInt(period)) : [];
+  const leadsChart = data ? fillDates({ count: data.leadsOverTime }) : [];
+  const revenueChart = data ? fillDates({ revenue: data.revenueOverTime, won: data.wonOverTime }) : [];
+  const S = data?.summary || {};
+  const Pv = data?.previous || {};
+  const vsLabel = data?.range ? `vs previous ${data.range.days} day${data.range.days === 1 ? '' : 's'}` : '';
 
   const pipelineData = data?.pipeline?.map(p => ({
     name: p.status,
@@ -278,7 +355,7 @@ export default function ReportsPage() {
               );
             })}
             <button
-              onClick={() => setShowCustom(s => !s)}
+              onClick={() => { setDraftStart(customStart); setDraftEnd(customEnd); setShowCustom(s => !s); }}
               style={{ padding: '5px 12px', borderRadius: 8, border: `2px solid ${(customStart && customEnd) ? '#6366f1' : 'var(--border)'}`, background: (customStart && customEnd) ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: (customStart && customEnd) ? '#6366f1' : 'var(--text-muted)', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
             >
               <Calendar size={12} /> {(customStart && customEnd) ? `${customStart.slice(5)}—${customEnd.slice(5)}` : 'Custom'}
@@ -291,12 +368,12 @@ export default function ReportsPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Start</label>
-                    <input aria-label="Start" type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} max={customEnd || undefined}
+                    <input aria-label="Start" type="date" value={draftStart} onChange={e => setDraftStart(e.target.value)} max={draftEnd || undefined}
                       style={{ width: '100%', padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)' }} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>End</label>
-                    <input aria-label="End" type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} min={customStart || undefined} max={new Date().toISOString().slice(0, 10)}
+                    <input aria-label="End" type="date" value={draftEnd} onChange={e => setDraftEnd(e.target.value)} min={draftStart || undefined} 
                       style={{ width: '100%', padding: '7px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--text)', outline: 'none', boxSizing: 'border-box', background: 'var(--surface2)' }} />
                   </div>
                 </div>
@@ -308,17 +385,18 @@ export default function ReportsPage() {
                     { l: 'This year', days: 365 },
                   ].map(p => (
                     <button key={p.l} onClick={() => {
-                      const end = new Date(); const start = new Date(); start.setDate(start.getDate() - p.days);
-                      setCustomStart(start.toISOString().slice(0, 10));
-                      setCustomEnd(end.toISOString().slice(0, 10));
+                      const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                      const end = new Date(); const start = new Date(); start.setDate(start.getDate() - (p.days - 1));
+                      setDraftStart(ymd(start));
+                      setDraftEnd(ymd(end));
                     }} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, color: '#6366f1', background: 'rgba(99,102,241,0.12)', border: '1px solid #c7d2fe', borderRadius: 8, cursor: 'pointer' }}>{p.l}</button>
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
-                  <button onClick={() => { setCustomStart(''); setCustomEnd(''); setShowCustom(false); }}
+                  <button onClick={() => setPreset(period)}
                     style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>Clear</button>
-                  <button onClick={() => setShowCustom(false)}
-                    style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, color: 'white', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Apply</button>
+                  <button onClick={applyCustom} disabled={!draftStart || !draftEnd}
+                    style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, color: 'white', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 8, cursor: draftStart && draftEnd ? 'pointer' : 'not-allowed', opacity: draftStart && draftEnd ? 1 : 0.5 }}>Apply</button>
                 </div>
               </div>
             )}
@@ -326,7 +404,7 @@ export default function ReportsPage() {
           <button onClick={handleExportCSV} disabled={!data} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #a7f3d0', background: data ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', color: data ? '#059669' : 'var(--text-dim)', cursor: data ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12 }}>
             <Download size={13} /> Export CSV
           </button>
-          <button onClick={fetchAll} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 12 }}>
+          <button onClick={() => fetchAll()} title={updatedAt ? `Updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · refreshes on its own` : undefined} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 12 }}>
             <RefreshCw size={13} /> Refresh
           </button>
         </div>
@@ -343,45 +421,48 @@ export default function ReportsPage() {
             <RefreshCw size={32} color="var(--text-dim)" style={{ animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
             <p style={{ color: 'var(--text-dim)' }}>Loading analytics...</p>
           </div>
+        ) : loadError && !data ? (
+          <div role="alert" style={{ background: 'var(--surface)', borderRadius: 20, padding: 60, textAlign: 'center' }}>
+            <AlertCircle size={32} color="#ef4444" style={{ margin: '0 auto 12px' }} />
+            <p style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 12 }}>{loadError}</p>
+            <button onClick={() => fetchAll()} style={{ padding: '8px 16px', borderRadius: 10, border: 'none', background: '#6366f1', color: 'white', fontWeight: 700, cursor: 'pointer' }}>Try again</button>
+          </div>
         ) : (
           <>
             {/* ── OVERVIEW TAB ── */}
             {tab === 'overview' && (
               <div>
-                {/* KPI Cards */}
+                {/* KPI Cards — every figure is for the chosen range, compared with the
+                    range of the same length just before it. */}
+                <p style={{ fontSize: 12, color: 'var(--text-dim)', margin: '0 0 12px', fontWeight: 600 }}>
+                  {(customStart && customEnd) ? '' : `${dateRangeLabel} · `}{data?.range ? `${data.range.start} → ${data.range.end}` : ''} · trends {vsLabel}
+                </p>
                 <div className="r-stack-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
-                  <StatCard icon={Users} label="Total Leads" value={analytics?.total_leads || 0} color="#6366f1"
-                    trend={analytics?.this_month_leads > analytics?.last_month_leads ? 'up' : analytics?.this_month_leads < analytics?.last_month_leads ? 'down' : 'neutral'}
-                    trendVal={`${analytics?.this_month_leads || 0} this month`} />
-                  {/* "Total Revenue" summed a number typed on the deal record, so a
-                      studio could collect a year of real money and see none of it here.
-                      Collected is the payments ledger; the deal estimate stays below it
-                      as what the pipeline is judged to be worth. */}
-                  <StatCard icon={DollarSign} label="Collected" value={`${sym}${(analytics?.collected || 0).toLocaleString()}`} color="#10b981"
-                    sub={`${sym}${(analytics?.collected_this_month || 0).toLocaleString()} this month`} />
-                  <StatCard icon={Receipt} label="Outstanding" value={`${sym}${(analytics?.outstanding || 0).toLocaleString()}`} color="#f97316"
-                    sub={`${analytics?.invoices_raised || 0} invoice${analytics?.invoices_raised === 1 ? '' : 's'} raised`} />
-                  <StatCard icon={Target} label="Conversion Rate" value={`${analytics?.conversion_rate || 0}%`} color="#f59e0b"
-                    sub={`${analytics?.closed_won || 0} deals won`} />
+                  <StatCard icon={Users} label="New Leads" value={(S.leads || 0).toLocaleString()} color="#6366f1"
+                    {...trendOf(S.leads, Pv.leads)} sub={`${(analytics?.total_leads || 0).toLocaleString()} leads in total`} />
+                  {/* Collected is the payments ledger — money actually received. */}
+                  <StatCard icon={DollarSign} label="Collected" value={`${sym}${(S.collected || 0).toLocaleString()}`} color="#10b981"
+                    {...trendOf(S.collected, Pv.collected)} sub={`${S.invoices_raised || 0} invoice${S.invoices_raised === 1 ? '' : 's'} raised · ${sym}${(analytics?.outstanding || 0).toLocaleString()} unpaid overall`} />
+                  <StatCard icon={Target} label="Deals Won" value={(S.won || 0).toLocaleString()} color="#f59e0b"
+                    {...trendOf(S.won, Pv.won)} sub={`${sym}${(S.won_value || 0).toLocaleString()} won · ${S.lost || 0} lost`} />
+                  <StatCard icon={Award} label="Conversion Rate" value={`${S.conversion_rate || 0}%`} color="#8b5cf6"
+                    {...trendOf(S.conversion_rate, Pv.conversion_rate)} sub="Of new leads in this range, now won" />
                 </div>
 
                 <div className="r-stack-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
-                  {/* "Pipeline Value" showed closed sales (actual_sale), which read $0 while
-                      the Dashboard showed thousands in open deals. It is now what it says:
-                      the estimated value of every lead not yet won or lost (PROP-006). */}
                   {(() => {
                     const open = (data?.pipeline || []).filter(p => !/^Closed/.test(p.status || ''));
                     const value = open.reduce((s, p) => s + (Number(p.value) || 0), 0);
                     const count = open.reduce((s, p) => s + (Number(p.count) || 0), 0);
                     return <StatCard icon={TrendingUp} label="Pipeline Value" value={`${sym}${Math.round(value).toLocaleString()}`} color="#6366f1"
-                      sub={`${count} open deal${count === 1 ? '' : 's'} · ${sym}${(analytics?.avg_deal_size || 0).toLocaleString()} avg won`} />;
+                      sub={`${count} open deal${count === 1 ? '' : 's'} from leads in this range`} />;
                   })()}
-                  <StatCard icon={FileSignature} label="Contracts Signed" value={analytics?.contracts_signed || 0} color="#8b5cf6"
-                    sub={`${analytics?.contracts_awaiting || 0} awaiting signature`} />
-                  <StatCard icon={CalendarDays} label="Upcoming Bookings" value={analytics?.bookings_upcoming || 0} color="#0ea5e9"
-                    sub="Confirmed and ahead" />
+                  <StatCard icon={FileSignature} label="Contracts Signed" value={S.contracts_signed || 0} color="#8b5cf6"
+                    {...trendOf(S.contracts_signed, Pv.contracts_signed)} sub={`${analytics?.contracts_awaiting || 0} awaiting signature now`} />
+                  <StatCard icon={CalendarDays} label="Bookings" value={S.bookings || 0} color="#0ea5e9"
+                    {...trendOf(S.bookings, Pv.bookings)} sub={`In this range · ${analytics?.bookings_upcoming || 0} upcoming`} />
                   <StatCard icon={Clock} label="Avg Response Time" value={avgResponseDisplay || '—'} color="#8b5cf6"
-                    sub="Time to first reply" />
+                    sub="Time to first reply, leads in this range" />
                 </div>
 
                 {/* Charts row */}
@@ -397,8 +478,8 @@ export default function ReportsPage() {
                             <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                           </linearGradient>
                         </defs>
-                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} minTickGap={24} />
+                        <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} />
                         <Tooltip content={<CustomTooltip />} />
                         <Area type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={2.5} fill="url(#leadGrad)" dot={false} />
                       </AreaChart>
@@ -505,7 +586,7 @@ export default function ReportsPage() {
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     {STATUS_ORDER.map(status => {
                       const item = data?.pipeline?.find(p => p.status === status);
-                      const total = analytics?.total_leads || 1;
+                      const total = S.leads || 1;
                       const pct = item ? Math.round((item.count / total) * 100) : 0;
                       const color = STATUS_COLORS[status];
                       return (
@@ -544,27 +625,35 @@ export default function ReportsPage() {
             {tab === 'revenue' && (
               <div>
                 <div style={{ background: 'var(--surface)', borderRadius: 18, border: '1.5px solid var(--border)', padding: 28, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', marginBottom: 24 }}>
-                  <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 24 }}>Revenue Over Time</p>
+                  <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>Revenue Over Time</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 20 }}>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>■</span> Money collected &nbsp;
+                    <span style={{ color: '#6366f1', fontWeight: 700 }}>■</span> Value of deals won
+                  </p>
                   <ResponsiveContainer width="100%" height={280}>
-                    <AreaChart data={revenueChart}>
+                    <ComposedChart data={revenueChart}>
                       <defs>
                         <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
                           <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} minTickGap={24} />
                       <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v => `${sym}${v}`} />
                       <Tooltip content={<CustomTooltip prefix={sym} />} />
-                      <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} fill="url(#revGrad)" dot={false} />
-                    </AreaChart>
+                      <Area type="monotone" dataKey="revenue" name="Collected" stroke="#10b981" strokeWidth={2.5} fill="url(#revGrad)" dot={false} />
+                      <Line type="monotone" dataKey="won" name="Deals won" stroke="#6366f1" strokeWidth={2} strokeDasharray="5 4" dot={false} />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
 
                 <div className="r-stack-tablet" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                  <StatCard icon={DollarSign} label="Total Revenue" value={`${sym}${(analytics?.total_sales || 0).toLocaleString()}`} color="#10b981" />
-                  <StatCard icon={Award} label="Avg Deal Size" value={`${sym}${(analytics?.avg_deal_size || 0).toLocaleString()}`} color="#6366f1" />
-                  <StatCard icon={Target} label="Deals Won" value={analytics?.closed_won || 0} color="#f59e0b" sub={`${analytics?.conversion_rate || 0}% conversion`} />
+                  <StatCard icon={DollarSign} label="Collected" value={`${sym}${(S.collected || 0).toLocaleString()}`} color="#10b981"
+                    {...trendOf(S.collected, Pv.collected)} sub={`${sym}${(S.invoiced_value || 0).toLocaleString()} invoiced in this range`} />
+                  <StatCard icon={Award} label="Avg Deal Size" value={`${sym}${(S.avg_deal_size || 0).toLocaleString()}`} color="#6366f1"
+                    {...trendOf(S.avg_deal_size, Pv.avg_deal_size)} sub="Deals won in this range" />
+                  <StatCard icon={Target} label="Deals Won" value={S.won || 0} color="#f59e0b"
+                    {...trendOf(S.won, Pv.won)} sub={`${sym}${(S.won_value || 0).toLocaleString()} in value`} />
                 </div>
               </div>
             )}
