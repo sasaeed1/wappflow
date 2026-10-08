@@ -48,6 +48,14 @@ const SORT_OPTIONS = [
 ];
 
 // ── Saved views (per-browser; survives reloads) ──────────────────────────────
+// "Oct 6" for this year, "Oct 6, 2025" before — the full date clipped on phones.
+const shortDate = (ts) => {
+  if (!ts) return '';
+  const d = new Date(String(ts).includes('T') || String(ts).endsWith('Z') ? ts : String(ts).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return formatDate(ts);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+};
+
 const VIEWS_KEY = 'wf_lead_views';
 
 // Past this many pins the list says so. A nudge, not a rule — the server accepts
@@ -1285,7 +1293,7 @@ export default function LeadsListPage() {
         </div>
 
         {/* Table */}
-        <div className="r-scroll-x" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+        <div className="r-scroll-x ll-table" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
 
           {/* Table header */}
           <div className="r-tw wf-lead-head" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
@@ -1326,9 +1334,10 @@ export default function LeadsListPage() {
           /* Phase 4: windowed — only viewport rows render. The row JSX is untouched;
              rowHeight matches the measured 59px row (see SkeletonRow 'leads'). Below
              the threshold the list renders exactly as before. */
-          // Phones lay each row out as a two-line card (globals.css, .wf-lead-row)
-          // pinned to 68px, so the windowing must use that height there.
-          <VirtualList items={leads} rowHeight={isPhone ? 68 : 59} renderRow={(lead, i) => {
+          // Rows have a fixed height so the windowing can place them: 64px rows on
+          // desktop; on phones each lead is a 72px card plus an 8px gap (.ll-table
+          // and .wf-lead-row in globals.css), so 80.
+          <VirtualList items={leads} rowHeight={isPhone ? 80 : 64} renderRow={(lead, i) => {
             const sc = STATUS_META[lead.status] || STATUS_META['New'];
             const value = lead.actual_sale || lead.estimated_value;
             const isSelected = selected.has(lead.id);
@@ -1337,9 +1346,8 @@ export default function LeadsListPage() {
             const unread = isLeadUnread(lead);
             const isPinned = pins.includes(lead.id);
             return (
-              <div key={lead.id} className={`r-tw wf-lead-row${unread ? ' wf-lead-unread' : ''}${isPinned ? ' wf-lead-pinned' : ''}`} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--surface)', transition: 'background 0.1s', cursor: 'pointer' }}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background='var(--surface2)'; }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background='var(--surface)'; }}
+              <div key={lead.id} className={`r-tw wf-lead-row ll-row${unread ? ' wf-lead-unread' : ''}${isPinned ? ' wf-lead-pinned' : ''}`} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : undefined, cursor: 'pointer' }}
+                data-selected={isSelected ? '' : undefined}
                 onClick={() => router.push(`/leads/${lead.id}`)}
               >
                 {/* Checkbox */}
@@ -1349,7 +1357,7 @@ export default function LeadsListPage() {
 
                 {/* Name + platform chip stacked together in column 2 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: `linear-gradient(135deg, ${sc.dot}dd, ${sc.dot}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: 'white' }}>
+                  <div className="ll-avatar" style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: `linear-gradient(135deg, ${sc.dot}, ${sc.dot}99)`, '--ring': sc.dot, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: 'white' }}>
                     {lead.customer_name?.[0]?.toUpperCase() || '?'}
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
@@ -1367,7 +1375,7 @@ export default function LeadsListPage() {
                           </span>
                         );
                       })()}
-                      <span className="ll-date" style={{ fontSize: 10, color: 'var(--text-dim)' }}>{formatDate(lead.last_message_at)}</span>
+                      <span className="ll-date" style={{ fontSize: 10, color: 'var(--text-dim)' }} title={formatDate(lead.last_message_at)}>{shortDate(lead.last_message_at)}</span>
                     </div>
                   </div>
                 </div>
@@ -1411,7 +1419,7 @@ export default function LeadsListPage() {
                 </div>
 
                 {/* Messages */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div className="ll-msgs" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <MessageSquare size={12} color="var(--text-dim)" />
                   <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{lead.total_messages}</span>
                 </div>
@@ -1434,7 +1442,7 @@ export default function LeadsListPage() {
                 </div>
 
                 {/* Value */}
-                <span style={{ fontSize: 13, fontWeight: value ? 800 : 400, color: value ? sc.dot : 'var(--border)' }}>
+                <span className={value ? 'll-value' : 'll-value is-empty'} style={{ fontSize: 13, fontWeight: value ? 800 : 400, color: value ? undefined : 'var(--border)' }}>
                   {value ? `${currencySym}${value.toLocaleString()}` : '—'}
                 </span>
 
@@ -1462,7 +1470,7 @@ export default function LeadsListPage() {
                       <MessageSquare size={12} color="#ef4444" />
                     </div>
                   )}
-                  <ChevronRight size={15} color="#d1d5db" style={{ flexShrink: 0 }} />
+                  <ChevronRight size={15} className="ll-chev" style={{ flexShrink: 0 }} />
                 </div>
               </div>
             );

@@ -823,7 +823,7 @@ html.light .lead-outcome__amount { background: linear-gradient(90deg, #059669, #
   .wf-lead-row {
     grid-template-columns: 28px minmax(0, 1fr) auto !important;
     column-gap: 8px; row-gap: 4px; padding: 10px 12px !important;
-    height: 68px; box-sizing: border-box; overflow: hidden; align-content: center;
+    height: 72px; box-sizing: border-box; overflow: hidden; align-content: center;
   }
   .wf-lead-row > :nth-child(1) { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
   .wf-lead-row > :nth-child(2) { grid-column: 2; grid-row: 1 / span 2; }
@@ -1362,4 +1362,55 @@ html.light .wf-head__x { background: rgba(15,23,42,.8); }
 
 @media (prefers-reduced-motion: reduce) {
   .wf-heads, .wf-head, .wf-head.is-pop .wf-head__face, .wf-head-toast, .wf-heads-close { animation: none; transition: none; }
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Leads list — the list itself (.ll-table / .ll-row). Desktop: a frosted panel
+   of 64px rows with a soft hover, round avatars with a stage-coloured ring, a
+   chip for the message count and the deal value in green. Phones: every lead is
+   its own 72px card with an 8px gap (VirtualList rowHeight 80 matches).
+   ════════════════════════════════════════════════════════════════════════════ */
+.ll-table {
+  border-radius: 20px !important; border: 1px solid rgba(255,255,255,.07) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)), rgba(21,24,35,.78) !important;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 18px 40px -24px rgba(0,0,0,.7) !important;
+}
+.ll-table .wf-lead-head { background: transparent !important; border-bottom: 1px solid rgba(255,255,255,.06) !important; }
+.ll-table .wf-lead-head * { letter-spacing: .6px; }
+.ll-row { height: 64px; box-sizing: border-box; border-bottom-color: rgba(255,255,255,.05) !important;
+  transition: background .15s, transform .15s; }
+.ll-row:hover { background: rgba(139,92,246,.07); }
+.ll-row[data-selected] { background: rgba(139,92,246,.14) !important; }
+.ll-avatar { border-radius: 50% !important; width: 38px !important; height: 38px !important; font-size: 14px !important;
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px color-mix(in srgb, var(--ring, #6366f1) 55%, transparent), 0 6px 14px -6px var(--ring, #6366f1); }
+.ll-msgs { padding: 3px 9px; border-radius: 20px; background: rgba(255,255,255,.05); width: max-content; }
+.ll-value { color: #34d399; letter-spacing: -.2px; }
+.ll-value.is-empty { color: var(--border); }
+.ll-chev { color: var(--text-muted); transition: transform .15s, color .15s; }
+.ll-row:hover .ll-chev { transform: translateX(3px); color: #a78bfa; }
+html.light .ll-table { background: rgba(255,255,255,.82) !important; border-color: rgba(255,255,255,.9) !important;
+  box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 16px 36px -24px rgba(79,70,229,.3) !important; }
+html.light .ll-table .wf-lead-head { border-bottom-color: rgba(15,23,42,.06) !important; }
+html.light .ll-row { border-bottom-color: rgba(15,23,42,.05) !important; }
+html.light .ll-row:hover { background: rgba(99,102,241,.05); }
+html.light .ll-msgs { background: rgba(15,23,42,.05); }
+html.light .ll-value { color: #059669; }
+
+@media (max-width: 640px) {
+  .ll-table { background: transparent !important; border: none !important; box-shadow: none !important;
+    backdrop-filter: none; -webkit-backdrop-filter: none; overflow: visible !important; border-radius: 0 !important; }
+  .ll-table .wf-lead-head { display: none !important; }
+  .ll-row {
+    height: 72px; margin-bottom: 8px; border-radius: 16px; border: 1px solid rgba(255,255,255,.07) !important;
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.012)), rgba(21,24,35,.8);
+  }
+  .ll-row:active { transform: scale(.985); }
+  .ll-row.wf-lead-unread { box-shadow: inset 3px 0 0 #ef4444; }
+  .ll-row.wf-lead-pinned { box-shadow: inset 3px 0 0 #8b5cf6; }
+  .ll-avatar { width: 36px !important; height: 36px !important; }
+  .ll-msgs { padding: 2px 8px; }
+  html.light .ll-row { background: rgba(255,255,255,.9); border-color: rgba(15,23,42,.07) !important; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+  html.light .ll-row.wf-lead-unread { box-shadow: inset 3px 0 0 #ef4444, 0 1px 2px rgba(15,23,42,.04); }
 }
