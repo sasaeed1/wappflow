@@ -483,25 +483,167 @@ select option {
   .lead-grid .messages-area { height: 55vh !important; min-height: 320px !important; }
 }
 
-/* Lead profile sub-nav (back · name · actions) — its three space-between
-   sections won't fit one phone row, so let the whole bar wrap and the action
-   cluster wrap within it, instead of forcing the page ~50px wider. */
-@media (max-width: 760px) {
-  .lead-subnav { flex-wrap: wrap; height: auto !important; padding: 8px 12px !important; gap: 8px; row-gap: 8px; justify-content: flex-start !important; }
-  .lead-subnav > * { min-width: 0; }
-  .lead-nav-actions { flex-wrap: wrap; justify-content: flex-end; }
+/* Lead profile hero — see app/leads/[id]/page.js (.lead-hero*). It replaced a
+   sticky sub-nav of seven outlined buttons (.lead-subnav / .lead-nav-actions). */
+.lead-hero { max-width: 1500px; margin: 0 auto; padding: 18px 24px 4px; animation: dash-hero-in .45s cubic-bezier(.2,.8,.2,1) both; }
+.lead-hero__back { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px; margin: 0 0 10px -4px; border: none; background: none;
+  color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 8px; }
+.lead-hero__back:hover { color: var(--text); }
+.lead-hero__row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.lead-hero__who { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1 1 320px; }
+.lead-hero__avatar { position: relative; width: 58px; height: 58px; border-radius: 18px; flex-shrink: 0; display: grid; place-items: center;
+  color: #fff; font-size: 24px; font-weight: 900; }
+.lead-hero__avatar i { position: absolute; right: -3px; bottom: -3px; width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--bg); }
+.lead-hero__name { margin: 0; font-size: 26px; line-height: 1.15; font-weight: 800; letter-spacing: -.6px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lead-hero__meta { margin: 6px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+.lead-hero__pill { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 20px; }
+.lead-hero__sep { opacity: .45; }
+.lead-hero__actions { display: flex; align-items: center; gap: 8px; }
+.lead-hero__btn, .lead-hero__cta {
+  height: 42px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 13px;
+  font-size: 13.5px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap;
+  transition: background .2s, color .2s, transform .15s, box-shadow .2s; -webkit-tap-highlight-color: transparent;
 }
-/* Phones: the seven header actions wrapped into three ragged rows. The floating
-   "Chat Bar" duplicates the thread that is right there on this page, so it goes;
-   the other six sit in an even 3×2 grid of equal buttons. */
-@media (max-width: 640px) {
-  .lead-chatbar-btn { display: none !important; }
-  .lead-nav-actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px !important; width: 100%; }
-  .lead-nav-actions > *,
-  .lead-nav-actions > div > button[aria-haspopup] { width: 100%; min-width: 0; }
-  .lead-nav-actions > button,
-  .lead-nav-actions > a,
-  .lead-nav-actions > div > button[aria-haspopup] { justify-content: center; padding: 9px 6px !important; font-size: 12.5px !important; white-space: nowrap; min-height: 38px; }
+.lead-hero__btn { border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.045); color: var(--text-dim); }
+.lead-hero__btn:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.lead-hero__more { width: 42px; padding: 0; }
+.lead-hero__cta { border: none; color: #fff; padding: 0 18px;
+  background: linear-gradient(135deg, #22c55e, #10b981 55%, #0d9488); box-shadow: 0 8px 22px -8px rgba(16,185,129,.7), inset 0 1px 0 rgba(255,255,255,.22); }
+.lead-hero__cta:hover { box-shadow: 0 10px 28px -8px rgba(16,185,129,.8), inset 0 1px 0 rgba(255,255,255,.25); }
+.lead-hero__btn:active, .lead-hero__cta:active { transform: scale(.96); }
+.lead-hero button:focus-visible, .lead-hero a:focus-visible { outline: 2px solid rgba(139,92,246,.7); outline-offset: 2px; }
+html.light .lead-hero__btn { background: #fff; border-color: rgba(15,23,42,.08); box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+html.light .lead-hero__btn:hover { background: #f8fafc; }
+
+/* Deal outcome card (won / lost) on the lead page. */
+.lead-outcome {
+  --oc: 16,185,129; position: relative; overflow: hidden; isolation: isolate;
+  max-width: 1452px; width: calc(100% - 48px); box-sizing: border-box; margin: 16px auto 0;
+  display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-radius: 20px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(var(--oc), .28), transparent 55%),
+    radial-gradient(90% 120% at 100% 100%, rgba(var(--oc), .12), transparent 60%),
+    var(--surface);
+  border: 1px solid rgba(var(--oc), .35);
+  box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 40px -22px rgba(var(--oc), .65);
+  animation: oc-in .55s cubic-bezier(.2,.9,.3,1.15) both;
+}
+.lead-outcome--lost { --oc: 244,63,94; }
+@keyframes oc-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+/* a single light sweep across a win */
+.lead-outcome--won::after {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.10) 50%, transparent 65%);
+  transform: translateX(-100%); animation: oc-sweep 1.6s .35s ease-out forwards;
+}
+@keyframes oc-sweep { to { transform: translateX(100%); } }
+.lead-outcome__icon {
+  position: relative; flex-shrink: 0; width: 50px; height: 50px; border-radius: 16px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, rgb(var(--oc)), rgba(var(--oc), .65));
+  box-shadow: 0 10px 24px -8px rgba(var(--oc), .8), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.lead-outcome--won .lead-outcome__icon { background: linear-gradient(135deg, #fbbf24, #f59e0b 45%, #10b981); }
+.lead-outcome--won .lead-outcome__icon::after {
+  content: ''; position: absolute; inset: -5px; border-radius: 20px; border: 2px solid rgba(251,191,36,.55);
+  animation: oc-ring 2.4s ease-out .4s 2;
+}
+@keyframes oc-ring { 0% { opacity: .9; transform: scale(.9); } 100% { opacity: 0; transform: scale(1.25); } }
+.lead-outcome__body { flex: 1; min-width: 0; }
+.lead-outcome__kicker { margin: 0; font-size: 11.5px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: rgb(var(--oc)); }
+.lead-outcome__kicker span { color: var(--text-dim); font-weight: 600; letter-spacing: 0; text-transform: none; }
+.lead-outcome__amount {
+  margin: 2px 0 0; font-size: 28px; line-height: 1.1; font-weight: 900; letter-spacing: -.8px;
+  background: linear-gradient(90deg, #34d399, #10b981 40%, #fbbf24); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.lead-outcome__reason { margin: 3px 0 0; font-size: 15px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lead-outcome__reason span { color: var(--text-dim); font-weight: 600; font-size: 13px; }
+.lead-outcome__actions { flex-shrink: 0; }
+.lead-outcome__btn {
+  height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; border-radius: 12px; cursor: pointer;
+  border: 1px solid rgba(var(--oc), .4); background: rgba(var(--oc), .14); color: rgb(var(--oc)); font-size: 13px; font-weight: 800;
+  transition: background .2s, transform .15s;
+}
+.lead-outcome__btn:hover { background: rgba(var(--oc), .22); }
+.lead-outcome__btn:active { transform: scale(.96); }
+.lead-outcome__btn:disabled { opacity: .6; cursor: wait; }
+.lead-outcome__confetti { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.lead-outcome__confetti i {
+  position: absolute; top: -10px; width: 6px; height: 10px; border-radius: 2px; opacity: 0;
+  animation: oc-fall 1.8s cubic-bezier(.2,.6,.4,1) forwards;
+}
+.lead-outcome__confetti i:nth-child(4n+1) { background: #fbbf24; }
+.lead-outcome__confetti i:nth-child(4n+2) { background: #34d399; }
+.lead-outcome__confetti i:nth-child(4n+3) { background: #a78bfa; }
+.lead-outcome__confetti i:nth-child(4n+4) { background: #f472b6; }
+.lead-outcome__confetti i:nth-child(1) { left: 4%; animation-delay: 0.15s; --r: -90deg; }
+.lead-outcome__confetti i:nth-child(2) { left: 11%; animation-delay: 0.65s; --r: -37deg; }
+.lead-outcome__confetti i:nth-child(3) { left: 18%; animation-delay: 0.44s; --r: 16deg; }
+.lead-outcome__confetti i:nth-child(4) { left: 25%; animation-delay: 0.22s; --r: 69deg; }
+.lead-outcome__confetti i:nth-child(5) { left: 32%; animation-delay: 0.72s; --r: -58deg; }
+.lead-outcome__confetti i:nth-child(6) { left: 39%; animation-delay: 0.51s; --r: -5deg; }
+.lead-outcome__confetti i:nth-child(7) { left: 46%; animation-delay: 0.29s; --r: 48deg; }
+.lead-outcome__confetti i:nth-child(8) { left: 53%; animation-delay: 0.79s; --r: -79deg; }
+.lead-outcome__confetti i:nth-child(9) { left: 60%; animation-delay: 0.58s; --r: -26deg; }
+.lead-outcome__confetti i:nth-child(10) { left: 67%; animation-delay: 0.36s; --r: 27deg; }
+.lead-outcome__confetti i:nth-child(11) { left: 74%; animation-delay: 0.15s; --r: 80deg; }
+.lead-outcome__confetti i:nth-child(12) { left: 81%; animation-delay: 0.65s; --r: -47deg; }
+.lead-outcome__confetti i:nth-child(13) { left: 88%; animation-delay: 0.44s; --r: 6deg; }
+.lead-outcome__confetti i:nth-child(14) { left: 95%; animation-delay: 0.22s; --r: 59deg; }
+@keyframes oc-fall { 0% { opacity: 0; transform: translateY(0) rotate(0); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(110px) rotate(var(--r, 60deg)); } }
+html.light .lead-outcome { box-shadow: 0 14px 34px -22px rgba(var(--oc), .55); }
+html.light .lead-outcome__amount { background: linear-gradient(90deg, #059669, #10b981 45%, #d97706); -webkit-background-clip: text; background-clip: text; }
+@media (max-width: 900px) { .lead-outcome { width: calc(100% - 28px); } }
+@media (max-width: 560px) {
+  .lead-outcome { gap: 12px; padding: 14px; border-radius: 18px; }
+  .lead-outcome__icon { width: 44px; height: 44px; border-radius: 14px; }
+  .lead-outcome__amount { font-size: 24px; }
+  .lead-outcome__btn span { display: none; }
+  .lead-outcome__btn { width: 40px; padding: 0; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lead-outcome, .lead-outcome--won::after, .lead-outcome__icon::after, .lead-outcome__confetti i { animation: none; }
+  .lead-outcome__confetti { display: none; }
+}
+
+/* Activity strip on the lead page */
+.lead-activity-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.lead-activity-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px 10px 9px; border-radius: 12px; background: var(--surface2); min-width: 0; }
+.lead-activity-stat b { font-size: 18px; font-weight: 900; color: var(--text); line-height: 1; }
+.lead-activity-stat span { font-size: 10.5px; font-weight: 600; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* Lead chat composer: the global input style gave this box its own padding and
+   height, so the text sat off-centre and a scrollbar showed on one line. */
+.lead-composer-input {
+  flex: 1; min-width: 0; box-sizing: border-box; height: 42px; min-height: 42px; max-height: 140px;
+  padding: 10px 14px; margin: 0; border: 1.5px solid var(--border); border-radius: 14px; outline: none; resize: none; overflow-y: hidden;
+  font-size: 14px; line-height: 19px; font-family: inherit; color: var(--text); background: var(--surface2);
+  transition: border-color .15s, box-shadow .15s;
+}
+.lead-composer-input:focus { border-color: rgba(139,92,246,.6); box-shadow: 0 0 0 3px rgba(139,92,246,.15); }
+.lead-composer-input::placeholder { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lead-composer-row > button { height: 42px !important; width: 42px !important; border-radius: 13px !important; }
+
+/* Channel switcher (lead chat): one compact row of icon + name everywhere; the
+   lock icon already says "not connected", and the message count is in the
+   header just below, so the cramped second line goes. */
+.lead-plat-tab { min-width: 0 !important; padding: 11px 10px !important; gap: 7px !important; }
+.lead-plat-sub { display: none; }
+
+/* Horizontal tab rows scroll by swipe without drawing a scrollbar strip. */
+.wf-noscrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.wf-noscrollbar::-webkit-scrollbar { display: none; }
+
+@media (max-width: 760px) {
+  .lead-hero { padding: 14px 14px 2px; }
+  .lead-hero__avatar { width: 50px; height: 50px; border-radius: 16px; font-size: 21px; }
+  .lead-hero__name { font-size: 22px; letter-spacing: -.4px; }
+  .lead-hero__actions { width: 100%; }
+  .lead-hero__actions > * { flex: 0 0 auto; }
+  .lead-hero__cta { flex: 1 1 auto; }
+  .lead-hero__actions .lead-hero__btn:not(.lead-hero__more) span { display: none; }
+  .lead-hero__actions .lead-hero__btn:not(.lead-hero__more) { width: 46px; padding: 0; }
+  .lead-activity-stat b { font-size: 16px; }
 }
 
 /* Dashboard responsive grids — page uses inline grid styles, we override at breakpoints */
@@ -995,7 +1137,7 @@ html.light .wf-app::before {
     radial-gradient(50% 40% at 8% 96%, rgba(14,165,233,.07), transparent 70%);
 }
 html.light .wf-app .wf-shell {
-  background: rgba(255,255,255,.7) !important; border-bottom-color: rgba(15,23,42,.06) !important;
+  background: rgba(255,255,255,.97) !important; box-shadow: 0 6px 18px -14px rgba(15,23,42,.35); border-bottom-color: rgba(15,23,42,.06) !important;
   backdrop-filter: saturate(170%) blur(18px); -webkit-backdrop-filter: saturate(170%) blur(18px);
 }
 html.light .wf-app .wf-subbar {
@@ -1009,7 +1151,9 @@ html.light .wf-app .dash-glass {
   box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 14px 34px -20px rgba(79,70,229,.28) !important;
 }
 html:not(.light) .wf-app .wf-shell {
-  background: rgba(13,15,23,.62) !important; border-bottom-color: rgba(255,255,255,.06) !important;
+  /* Nearly solid: at .62 the page scrolling underneath read through the bar,
+     so headers looked half-hidden in an overlay. The blur still tints it. */
+  background: rgba(13,15,23,.97) !important; box-shadow: 0 6px 18px -12px rgba(0,0,0,.6); border-bottom-color: rgba(255,255,255,.06) !important;
   backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
 }
 html:not(.light) .wf-app .wf-subbar {

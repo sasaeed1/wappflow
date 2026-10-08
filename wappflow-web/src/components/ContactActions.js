@@ -18,7 +18,8 @@ import { csAPI, mediaAPI, clientPortalAPI } from '@/lib/api';
 // Everything here creates the record ALREADY LINKED to this contact and then
 // navigates to it, so the link cannot be forgotten halfway through.
 
-export default function ContactActions({ lead, onDone }) {
+// triggerClassName: let a page style the trigger itself (the lead hero does).
+export default function ContactActions({ lead, onDone, triggerClassName }) {
   const router = useRouter();
   const [busy, setBusy] = useState('');
   const [portal, setPortal] = useState(null);
@@ -82,14 +83,15 @@ export default function ContactActions({ lead, onDone }) {
       trigger={(p) => (
         <button
           {...p}
-          style={{
+          className={triggerClassName}
+          style={triggerClassName ? undefined : {
             display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
             borderRadius: 10, border: '1.5px solid var(--border)',
             background: 'var(--surface)', color: 'var(--text)',
             fontWeight: 600, cursor: 'pointer', fontSize: 13,
           }}
         >
-          <Plus size={14} /> Create
+          <Plus size={triggerClassName ? 16 : 14} />{triggerClassName ? <span>Create</span> : ' Create'}
         </button>
       )}
     >
