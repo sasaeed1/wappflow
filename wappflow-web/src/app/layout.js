@@ -1,5 +1,6 @@
 import './globals.css'
 import Providers from './providers'
+import LaunchIntro from '@/components/LaunchIntro'
 
 export const metadata = {
   title: {
@@ -39,6 +40,16 @@ export default function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            // Launch intro (components/LaunchIntro.js): once per launch, signed in,
+            // on an app screen only — never on a client's gallery, contract,
+            // booking, payment or portfolio page.
+            var APP = ['dashboard','leads','leads-list','clients','invoices','bookings','reports','settings','team','chat','knowledge','whatsapp','studio','contracts','profile','trash','help'];
+            if (APP.indexOf(location.pathname.split('/')[1]) !== -1 && localStorage.getItem('token') && !sessionStorage.getItem('wf_intro_seen')) {
+              document.documentElement.setAttribute('data-wf-intro', '1');
+              sessionStorage.setItem('wf_intro_seen', '1');
+            }
+          } catch(e) {}
           try {
             var t = localStorage.getItem('theme') || 'dark';
             document.documentElement.classList.toggle('light', t === 'light');
@@ -87,6 +98,7 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <Providers>{children}</Providers>
+        <LaunchIntro />
       </body>
     </html>
   )
