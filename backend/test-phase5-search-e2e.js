@@ -10,7 +10,7 @@
 //  exactly the ones a future edit to search.js could quietly break.
 // ════════════════════════════════════════════════════════════════════════════
 const assert = require('assert');
-const API = 'http://127.0.0.1:3001/api';
+const API = process.env.WF_API || 'http://127.0.0.1:3001/api';
 const Database = require(process.env.WF_SQLITE);
 const { requireSameDb } = require('./test-db-check');
 
