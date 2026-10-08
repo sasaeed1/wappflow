@@ -457,7 +457,7 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     const ownerId = workspaceOwner(d.workspace_id, d.created_by);
     const delivery = {};
     for (const s of targets) {
-      if (channels.includes('whatsapp') && s.phone) { try { await sendClientMessage({ lead: d.lead_id ? { id: d.lead_id, customer_phone: s.phone } : { customer_phone: s.phone }, userId: d.created_by, text: `⏰ Reminder — please review & sign "${d.title}":\n${link}` }); delivery.whatsapp = 'sent'; } catch { delivery.whatsapp = 'failed'; } }
+      if (channels.includes('whatsapp') && s.phone) { try { await sendClientMessage({ lead: { id: d.lead_id || undefined, customer_phone: s.phone, workspace_id: d.workspace_id }, userId: d.created_by, text: `⏰ Reminder — please review & sign "${d.title}":\n${link}` }); delivery.whatsapp = 'sent'; } catch { delivery.whatsapp = 'failed'; } }
       if (channels.includes('email') && s.email) { try { await sendEmail({ workspaceOwnerId: ownerId, to: s.email, subject: `Reminder: please sign "${d.title}"`, html: `<p>Hello ${s.name || ''},</p><p>Just a gentle reminder to review and sign <strong>${d.title}</strong>.</p><p><a href="${link}" style="display:inline-block;padding:11px 20px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Open the document</a></p><p>${link}</p>`, text: `Reminder — sign "${d.title}": ${link}` }); delivery.email = 'sent'; } catch { delivery.email = 'failed'; } }
     }
     return delivery;
@@ -806,7 +806,7 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
         recordEvent(doc, 'sent', { actor: req.userId, meta: { bulk: true, channels } });
         const link = `${clientBaseUrl}/d/${token}`;
         try {
-          if (channels.includes('whatsapp') && lead.customer_phone) await sendClientMessage({ lead: { id: leadId, customer_phone: lead.customer_phone }, userId: req.userId, text: `📄 ${baseTitle} — please review & sign:\n${link}` });
+          if (channels.includes('whatsapp') && lead.customer_phone) await sendClientMessage({ lead: { id: leadId, customer_phone: lead.customer_phone, workspace_id: req.workspaceId }, userId: req.userId, text: `📄 ${baseTitle} — please review & sign:\n${link}` });
           if (channels.includes('email') && lead.email) await sendEmail({ workspaceOwnerId: ownerId, to: lead.email, subject: `Please review & sign: ${baseTitle}`, html: `<p>Hello ${lead.customer_name || ''},</p><p>Please review and sign <strong>${baseTitle}</strong>.</p><p><a href="${link}">Open the document</a></p>`, text: `Review & sign "${baseTitle}": ${link}` });
         } catch {}
         if (leadId) addContactHistory(leadId, req.userId, 'contract', `${type} "${baseTitle}" sent (bulk)`);
@@ -1000,7 +1000,7 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
       const channels = Array.isArray(req.body.channels) && req.body.channels.length ? req.body.channels : ['whatsapp'];
       const signer = signers[0]; const delivery = {};
       if (channels.includes('whatsapp')) {
-        if (signer?.phone) { try { await sendClientMessage({ lead: d.lead_id ? { id: d.lead_id, customer_phone: signer.phone } : { customer_phone: signer.phone }, userId: req.userId, text: `📄 ${d.title} — please review & sign:\n${link}` }); delivery.whatsapp = 'sent'; } catch { delivery.whatsapp = 'failed'; } } else delivery.whatsapp = 'no_phone';
+        if (signer?.phone) { try { await sendClientMessage({ lead: { id: d.lead_id || undefined, customer_phone: signer.phone, workspace_id: d.workspace_id }, userId: req.userId, text: `📄 ${d.title} — please review & sign:\n${link}` }); delivery.whatsapp = 'sent'; } catch { delivery.whatsapp = 'failed'; } } else delivery.whatsapp = 'no_phone';
       }
       if (channels.includes('email')) {
         if (signer?.email) { try { await sendEmail({ workspaceOwnerId: req.workspaceOwnerId, to: signer.email, subject: `Please review & sign: ${d.title}`, html: `<p>Hello ${signer.name || ''},</p><p>Please review and sign <strong>${d.title}</strong>.</p><p><a href="${link}" style="display:inline-block;padding:11px 20px;background:#0ea5e9;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Open the document</a></p><p>${link}</p>`, text: `Review & sign "${d.title}": ${link}` }); delivery.email = 'sent'; } catch { delivery.email = 'failed'; } } else delivery.email = 'no_email';
