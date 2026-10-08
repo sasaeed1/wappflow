@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'">
+<title>WappFlow chat bubbles</title>
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  #stack { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+  .head { position: relative; width: 56px; height: 56px; animation: in .45s cubic-bezier(.2,.9,.3,1.35) both; }
+  @keyframes in { from { opacity: 0; transform: scale(.3); } to { opacity: 1; transform: none; } }
+  .face { width: 56px; height: 56px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.92); box-sizing: border-box;
+    display: grid; place-items: center; color: #fff; font-size: 22px; font-weight: 800; cursor: grab;
+    box-shadow: 0 6px 14px rgba(0,0,0,.35); }
+  .face:active { cursor: grabbing; }
+  .badge { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+    background: #ef4444; color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; border: 2px solid #fff;
+    box-sizing: border-box; pointer-events: none; }
+  .x { position: absolute; top: -4px; left: -4px; width: 20px; height: 20px; border-radius: 50%; border: none; padding: 0;
+    background: rgba(15,17,23,.88); color: #fff; font-size: 12px; line-height: 20px; cursor: pointer; opacity: 0; transition: opacity .15s; }
+  .head:hover .x { opacity: 1; }
+  .wa { background: linear-gradient(135deg, #25d366, #128c7e); }
+  .ig { background: linear-gradient(135deg, #f58529, #dd2a7b 55%, #8134af); }
+  .fb { background: linear-gradient(135deg, #3b82f6, #1877f2); }
+  .other { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+  @media (prefers-reduced-motion: reduce) { .head { animation: none; } }
+</style>
+</head>
+<body>
+<div id="stack" role="region" aria-label="WappFlow chat bubbles"></div>
+<script src="bubble.js"></script>
+</body>
+</html>

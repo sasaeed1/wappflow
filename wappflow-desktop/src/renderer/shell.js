@@ -123,4 +123,21 @@ function wireWebview() {
   });
 }
 
+// Desktop chat bubbles (PROP-007): a bubble or notification was clicked — show
+// that conversation's chat in the cloud app. If the web app is already showing,
+// ask it directly; otherwise load it with ?bubble=<id>, which it opens on boot.
+function openChatInCloud(id) {
+  if (!session || !id) return;
+  const wv = $('cloud');
+  const fire = () => wv.executeJavaScript(`window.dispatchEvent(new CustomEvent('wf:open-bubble', { detail: ${JSON.stringify(String(id))} }))`).catch(() => {});
+  if (wv.classList.contains('active') && wv.getAttribute('src')) { fire(); return; }
+  const dash = MODULES.find(m => m.id === 'dashboard');
+  active = dash.id;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.id === dash.id));
+  show('local-ai', false);
+  wv.classList.add('active');
+  wv.setAttribute('src', (session.web || '').replace(/\/$/, '') + dash.route + '?bubble=' + encodeURIComponent(id));
+}
+if (W && W.on) W.on('chat:open', (d) => openChatInCloud(d && d.lead_id));
+
 document.addEventListener('DOMContentLoaded', boot);

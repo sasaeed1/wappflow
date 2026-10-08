@@ -12,11 +12,18 @@ const EMOJI_LIST = ['😊','😂','❤️','👍','👋','🙏','✅','🔥','�
 // Key used in localStorage for persisting which lead is open in floating chat
 const STORAGE_KEY = 'wf_floating_chat_lead';
 
-export default function FloatingChat() {
+// Two ways to use it:
+//   <FloatingChat />                         the CRM's own launcher + panel (unchanged)
+//   <FloatingChat lead={l} onClose onMinimize panelStyle />
+//                                            EMBEDDED: just the panel for one lead, opened
+//                                            from a chat bubble (PROP-007). No launcher, no
+//                                            lead switching, nothing persisted.
+export default function FloatingChat({ lead: embeddedLead = null, onClose: onEmbeddedClose, onMinimize, panelStyle } = {}) {
+  const embedded = !!embeddedLead;
   const confirm = useConfirm();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(embedded);
   const [minimized, setMinimized] = useState(false);
-  const [activeLead, setActiveLead] = useState(null);
+  const [activeLead, setActiveLead] = useState(embeddedLead);
   const [messages, setMessages] = useState([]);
   const [newMsg, setNewMsg] = useState('');
   const [sending, setSending] = useState(false);
@@ -33,7 +40,7 @@ export default function FloatingChat() {
 
   // Restore from localStorage on mount
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || embedded) return;
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try { setActiveLead(JSON.parse(saved)); setOpen(true); } catch {}
@@ -50,7 +57,7 @@ export default function FloatingChat() {
   useEffect(() => {
     if (activeLead) {
       fetchMessages(activeLead.id);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(activeLead));
+      if (!embedded) localStorage.setItem(STORAGE_KEY, JSON.stringify(activeLead));
     }
   }, [activeLead?.id]);
 
@@ -86,6 +93,7 @@ export default function FloatingChat() {
   };
 
   const closeLead = () => {
+    if (embedded) { onEmbeddedClose?.(); return; }
     setActiveLead(null);
     setMessages([]);
     setOpen(false);
@@ -135,7 +143,7 @@ export default function FloatingChat() {
   };
 
   // ─── Minimized bubble ────────────────────────────────────────────────────
-  if (!open) {
+  if (!open && !embedded) {
     return (
       <div className="wf-fab wf-fab-chat" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9000 }}>
         <button
@@ -206,7 +214,8 @@ export default function FloatingChat() {
       maxHeight: 'calc(100vh - var(--shell-h, 58px) - 46px)',
       transition: 'height 0.2s ease',
       overflow: 'hidden',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      ...(panelStyle || {}),
     }}>
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1e3a2f, #128c7e)', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -218,10 +227,10 @@ export default function FloatingChat() {
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0 }}>{displayPhone(activeLead?.customer_phone, activeLead?.platform_source)}</p>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={handleOpenSearch} title="Switch lead" style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+          {!embedded && <button onClick={handleOpenSearch} title="Switch lead" style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
             <Search size={12} />
-          </button>
-          <button onClick={() => setMinimized(v => !v)} style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+          </button>}
+          <button aria-label={embedded ? 'Back to bubble' : minimized ? 'Expand' : 'Minimise'} onClick={() => (embedded ? onMinimize?.() : setMinimized(v => !v))} style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
             {minimized ? <Maximize2 size={12} /> : <Minus size={12} />}
           </button>
           <button aria-label="Close" onClick={closeLead} style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>

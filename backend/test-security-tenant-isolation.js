@@ -28,6 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const API = process.env.WF_API || 'http://127.0.0.1:3020/api';
 const Database = require(process.env.WF_SQLITE || 'better-sqlite3');
+const { requireSameDb } = require('./test-db-check');
 
 const RUN = process.pid.toString(36) + Math.random().toString(36).slice(2, 8);
 // Phone numbers must be digits (lead-contact.js rejects letters), so they get their own run code.
@@ -114,6 +115,7 @@ function resolveParams(routePath, ids) {
 }
 
 (async () => {
+  await requireSameDb(API, Database); // the server on WF_API must be the one using WF_DB
   let pass = 0, fail = 0, skipped = 0;
   const leaks = [];
   const noisy = [];

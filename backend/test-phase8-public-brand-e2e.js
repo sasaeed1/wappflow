@@ -23,6 +23,7 @@
 const assert = require('assert');
 const API = process.env.WF_API || 'http://127.0.0.1:3016/api';
 const Database = require(process.env.WF_SQLITE || 'better-sqlite3');
+const { requireSameDb } = require('./test-db-check');
 
 let pass = 0, fail = 0;
 const check = async (n, fn) => { try { await fn(); console.log('  OK  ', n); pass++; } catch (e) { console.log('  FAIL', n, '-', e.message || e); fail++; } };
@@ -42,6 +43,7 @@ const openDb = (rw) => new Database(process.env.WF_DB, rw ? {} : { readonly: tru
 const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 (async () => {
+  await requireSameDb(API, Database); // the server on WF_API must be the one using WF_DB
   const A = (await j('POST', '/auth/register', null, { email: `pb-a-${RUN}@test.local`, password: 'pw123456', businessName: 'Noor Studios' })).d;
   assert(A?.token, 'could not register - is the server up on ' + API + ' ?');
   const WS = A.user.workspace_id;

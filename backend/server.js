@@ -1222,6 +1222,21 @@ function invalidateWorkspaceMembers(workspaceId) {
 
 function broadcastToWorkspace(workspaceId, type, data) {
   for (const userId of workspaceMemberIds(workspaceId)) broadcastToUser(userId, type, data);
+  // Chat bubbles (PROP-007): an inbound customer message also becomes a push for
+  // members who have WappFlow closed. Never allowed to affect the live frame.
+  if (chatBubblesApi) { try { chatBubblesApi.onBroadcast(workspaceId, type, data); } catch {} }
+}
+let chatBubblesApi = null; // assigned when ./chat-bubbles mounts
+
+// Can this member see this lead? The same rule as getScopedLead, for code that
+// has no request (fan-out): view_all_leads, else only leads assigned to them.
+function canMemberSeeLead(workspaceId, userId, lead) {
+  const m = db.prepare('SELECT role, permissions FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(workspaceId, userId);
+  if (!m) return false;
+  const role = m.role || 'user';
+  const all = effectivePermissions(workspaceId, role, m.permissions).view_all_leads
+    ?? (DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.user).view_all_leads;
+  return !!all || lead.assigned_to === userId;
 }
 
 // Channel-scoped fan-out. comms.js owns channel membership, so this delegates
@@ -1254,7 +1269,8 @@ let paymentsApi = null; // assigned when ./payments mounts; PUT /api/invoices/:i
 async function sendPushToUser(userId, title, body, data = {}) {
   try {
     const subs = db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(userId);
-    const payload = JSON.stringify({ title, body, data, icon: '/icon.png', badge: '/badge.png' });
+    // tag: a per-conversation tag makes the next push REPLACE this one instead of stacking.
+    const payload = JSON.stringify({ title, body, data, tag: data.tag || undefined, icon: '/pwa-icon-192.png' });
     for (const sub of subs) {
       try {
         await webpush.sendNotification(
@@ -7075,6 +7091,9 @@ require('./contracts-studio')(app, db, {
 // ════════════════════════════════════════════════════════════
 // Email workflows are sent now — they were only ever recorded (PROP-006).
 require('./email-workflows')(app, db, { auth, generateId, getScopedLead, addContactHistory, logAudit, nodemailer, broadcastToWorkspace });
+
+// Chat bubbles (PROP-007): the per-user setting, and pushes for customer messages.
+chatBubblesApi = require('./chat-bubbles')(app, db, { auth, safeAlter, sendPushToUser, workspaceMemberIds, canMemberSeeLead });
 
 commsApi = require('./comms')(app, db, {
   auth, generateId, broadcastToWorkspace, broadcastToUser, onlineUsers, sendPushToUser, notify,

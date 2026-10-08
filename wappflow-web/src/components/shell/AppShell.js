@@ -15,6 +15,7 @@ import { useSummary } from './summary';
 import { usePlan } from '@/lib/plan';
 import { usePermissions } from '@/lib/permissions';
 import { clickable } from '@/lib/a11y';
+import ChatHeads from './ChatHeads';
 
 // AppShell — ONE shell for every authenticated module (Phase 2).
 //
@@ -148,7 +149,7 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+    <div className="wf-app" style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       {/* Off-screen until focused. The first Tab on any page offers to jump past
           the navigation — without it a keyboard user tabs through every nav item,
           on every page, before reaching what they came for. */}
@@ -272,6 +273,9 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
           {mod.fabs.map((Fab, i) => <Fab key={i} />)}
         </div>
       )}
+
+      {/* Messenger-style chat bubbles for customer messages, in every module (PROP-007). */}
+      <ChatHeads />
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} title={mod.label}>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }} aria-label={`${mod.label} navigation`}>

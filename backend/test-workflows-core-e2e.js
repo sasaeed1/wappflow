@@ -21,6 +21,7 @@
 const assert = require('assert');
 const API = process.env.WF_API || 'http://127.0.0.1:3022/api';
 const Database = require(process.env.WF_SQLITE || 'better-sqlite3');
+const { requireSameDb } = require('./test-db-check');
 
 let pass = 0, fail = 0;
 const step = async (n, fn) => { try { await fn(); console.log('  OK  ', n); pass++; } catch (e) { console.log('  FAIL', n, '-', e.message || e); fail++; } };
@@ -38,6 +39,7 @@ const p2 = (n) => String(n).padStart(2, '0');
 const dayAhead = (n) => { const d = new Date(Date.now() + n * 86400000); return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`; };
 
 (async () => {
+  await requireSameDb(API, Database); // the server on WF_API must be the one using WF_DB
   const S = (await j('POST', '/auth/register', null, { email: `wf-${RUN}@test.local`, password: 'studio-password-1', businessName: 'Rehmat Studios' })).d;
   assert(S?.token, 'could not register - is the server up on ' + API + ' ?');
   const WS = S.user.workspace_id;
