@@ -9,7 +9,7 @@ import {
   DollarSign, ArrowUpDown, X, CheckSquare, Square,
   UserCheck, ChevronDown, Tag as TagIcon, RotateCcw,
   MessageCircle, Camera, Globe, MonitorSmartphone, Layers,
-  Trash2, UsersRound, Image as ImageIcon, AlertTriangle, Pin
+  Trash2, UsersRound, Image as ImageIcon, AlertTriangle, Pin, Zap
 } from 'lucide-react';
 import { leadsAPI, tagsAPI, workspaceAPI, viewsAPI, pinsAPI, displayPhone, PLATFORM_COLORS, platformAccountsAPI, whatsappGroupsAPI, settingsAPI } from '../../lib/api';
 import { isLeadUnread } from '../../lib/unread';
@@ -48,6 +48,14 @@ const SORT_OPTIONS = [
 ];
 
 // ── Saved views (per-browser; survives reloads) ──────────────────────────────
+// "Oct 6" for this year, "Oct 6, 2025" before — the full date clipped on phones.
+const shortDate = (ts) => {
+  if (!ts) return '';
+  const d = new Date(String(ts).includes('T') || String(ts).endsWith('Z') ? ts : String(ts).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return formatDate(ts);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+};
+
 const VIEWS_KEY = 'wf_lead_views';
 
 // Past this many pins the list says so. A nudge, not a rule — the server accepts
@@ -1025,78 +1033,87 @@ export default function LeadsListPage() {
         );
       })()}
 
-      {/* Page header */}
-      <div className="r-wrap ll-head" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Users style={{ width: 14, height: 14, color: 'white' }} />
-          </div>
-          <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>{platformFilter ? `${platformFilter.charAt(0).toUpperCase() + platformFilter.slice(1)} Leads` : 'All Leads'}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.12)', border: '1px solid #c7d2fe', padding: '2px 10px', borderRadius: 20 }}>{allLeads.length}</span>
-        </div>
-        <div className="ll-head-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Export */}
-          <button
-            onClick={() => {
-              const exportRows = leads.map(l => [l.customer_name||'', displayPhone(l.customer_phone||''), l.email||'', l.status||'', l.lead_source||'', (l.tags||[]).map(t=>t.name).join('; '), l.estimated_value||'', l.actual_sale||'', l.address||'', l.created_at||'']);
-              const headers = ['Name','Phone','Email','Status','Source','Tags','Estimated Value','Actual Sale','Address','Created'];
-              const escape = v => { const s = v==null?'':String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
-              const csv = [headers.join(','), ...exportRows.map(r => r.map(escape).join(','))].join('\n');
-              const blob = new Blob(['﻿'+csv], { type: 'text/csv;charset=utf-8;' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a'); a.href=url; a.download=`leads-${new Date().toISOString().slice(0,10)}.csv`;
-              document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-            }}
-            disabled={leads.length === 0}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: leads.length ? 'rgba(16,185,129,0.10)' : 'var(--surface2)', border: `1.5px solid ${leads.length ? '#a7f3d0' : 'var(--border)'}`, borderRadius: 10, color: leads.length ? '#059669' : 'var(--text-dim)', fontSize: 13, fontWeight: 700, cursor: leads.length ? 'pointer' : 'not-allowed' }}
-          >
-            <Download style={{ width: 14, height: 14 }} /> Export<span className="r-hide">CSV {leads.length > 0 && `(${leads.length})`}</span>
-          </button>
-          <button onClick={() => setShowDupModal(true)} title="Find & merge duplicate contacts" aria-label="Merge duplicates"
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text-muted)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            <UsersRound style={{ width: 14, height: 14 }} /> Merge<span className="r-hide">duplicates</span>
-          </button>
-          {(() => {
-            const limit = plan.limits?.leads;
-            const usage = plan.usage?.leads || allLeads.length;
-            const atLimit = limit && limit !== -1 && usage >= limit;
-            if (atLimit) {
-              return (
-                <button onClick={() => router.push('/settings?tab=plan')} title={`Plan limit reached: ${usage}/${limit} leads`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: 'rgba(245,158,11,0.10)', border: '1.5px solid rgba(245,158,11,0.4)', borderRadius: 10, color: '#fbbf24', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  <Lock style={{ width: 14, height: 14 }} /> {usage}/{limit} · Upgrade
-                </button>
-              );
-            }
-            return (
-              <button onClick={() => setShowAddModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: 'none', borderRadius: 10, color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.35)' }}>
-                <Plus style={{ width: 15, height: 15 }} /> New Lead
-                {limit && limit !== -1 && <span className="r-hide" style={{ opacity: 0.85, fontSize: 11, marginLeft: 4 }}>({usage}/{limit})</span>}
+      {/* ── LEADS HERO ──
+          Was an outlined Export / Merge / New Lead toolbar, then a "Next best
+          actions" banner, a search card with two selects and a Filters button,
+          and a "Views:" line — ~60% of a phone screen before the first lead.
+          Now the dashboard's language: title + live counts (the attention count
+          opens the action queue), a frosted search with icon buttons, and one
+          swipeable chip row for sort / owner / saved views. (.dash-hero*, .ll-*) */}
+      {(() => {
+        const limit = plan.limits?.leads;
+        const usage = plan.usage?.leads || allLeads.length;
+        const atLimit = limit && limit !== -1 && usage >= limit;
+        const title = platformFilter ? `${platformFilter.charAt(0).toUpperCase() + platformFilter.slice(1)} leads` : 'Leads';
+        const exportCsv = () => {
+          const exportRows = leads.map(l => [l.customer_name||'', displayPhone(l.customer_phone||''), l.email||'', l.status||'', l.lead_source||'', (l.tags||[]).map(t=>t.name).join('; '), l.estimated_value||'', l.actual_sale||'', l.address||'', l.created_at||'']);
+          const headers = ['Name','Phone','Email','Status','Source','Tags','Estimated Value','Actual Sale','Address','Created'];
+          const escape = v => { const s = v==null?'':String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
+          const csv = [headers.join(','), ...exportRows.map(r => r.map(escape).join(','))].join('\n');
+          const blob = new Blob(['\ufeff'+csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href=url; a.download=`leads-${new Date().toISOString().slice(0,10)}.csv`;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        };
+        return (
+          <section className="dash-hero ll-hero" aria-label="Leads">
+            <div className="dash-hero__intro">
+              <h1 className="dash-hero__title">{title}</h1>
+              <p className="dash-hero__meta">
+                <span>{allLeads.length.toLocaleString()} lead{allLeads.length === 1 ? '' : 's'}</span>
+                {!loading && actionItems.length > 0 && (
+                  <>
+                    <span className="dash-hero__sep" aria-hidden="true">·</span>
+                    <button type="button" className={`ll-attention${showActionQueue ? ' is-open' : ''}`} onClick={() => setShowActionQueue(v => !v)} aria-expanded={showActionQueue}>
+                      <Zap size={13} /> {actionItems.length} need attention <ChevronDown size={13} className="ll-attention__chev" />
+                    </button>
+                  </>
+                )}
+                {leads.length !== allLeads.length && (
+                  <>
+                    <span className="dash-hero__sep" aria-hidden="true">·</span>
+                    <span>showing {leads.length}</span>
+                  </>
+                )}
+              </p>
+            </div>
+
+            <div className="dash-hero__bar">
+              <label className="dash-hero__search">
+                <Search aria-hidden="true" />
+                <input data-ui="hero" aria-label="Search leads" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, status…" />
+                {search && <button type="button" aria-label="Clear search" onClick={() => setSearch('')}><X /></button>}
+              </label>
+              <button type="button" className={`dash-hero__icon${hasFilters || showFilters ? ' is-on' : ''}`} onClick={() => setShowFilters(v => !v)} aria-pressed={showFilters} aria-label="Date filters" title="Filter by date">
+                <Filter />{hasFilters && <i className="ll-dot" aria-hidden="true" />}
               </button>
-            );
-          })()}
-        </div>
-      </div>
+              <button type="button" className="dash-hero__icon ll-hero__export" onClick={exportCsv} disabled={leads.length === 0} aria-label={`Export ${leads.length} leads to CSV`} title="Export CSV">
+                <Download /><span>Export</span>
+              </button>
+              <button type="button" className="dash-hero__icon ll-hero__merge" onClick={() => setShowDupModal(true)} aria-label="Find and merge duplicates" title="Merge duplicates">
+                <UsersRound /><span>Merge</span>
+              </button>
+              {atLimit ? (
+                <button type="button" className="dash-hero__cta ll-hero__limit" onClick={() => router.push('/settings?tab=plan')} title={`Plan limit reached: ${usage}/${limit} leads`}>
+                  <Lock /><span>{usage}/{limit} · Upgrade</span>
+                </button>
+              ) : (
+                <button type="button" className="dash-hero__cta" onClick={() => setShowAddModal(true)}>
+                  <Plus /><span>New Lead</span>
+                </button>
+              )}
+            </div>
+          </section>
+        );
+      })()}
 
       <main className="ll-main" style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 24px' }}>
 
-        {/* Action queue — next best actions across the pipeline */}
-        {!loading && actionItems.length > 0 && (
-          <div style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.10), rgba(6,182,212,0.06))', border: '1.5px solid #c7d2fe', borderRadius: 16, padding: '14px 18px', marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#6366f1,#06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <TrendingUp size={15} color="white" />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Next best actions</p>
-                <p style={{ fontSize: 11.5, color: 'var(--text-dim)', margin: 0 }}>{actionItems.length} lead{actionItems.length > 1 ? 's' : ''} need attention right now</p>
-              </div>
-              <button onClick={() => setShowActionQueue(v => !v)} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                {showActionQueue ? <>Hide <ChevronDown size={13} /></> : <>Show {actionItems.length} <ChevronRight size={13} /></>}
-              </button>
-            </div>
-            {showActionQueue && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+        {/* Next best actions — opened from "N need attention" in the hero. */}
+        {!loading && actionItems.length > 0 && showActionQueue && (
+          <div className="ll-queue">
+            {(
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {actionItems.slice(0, 6).map(({ lead, action }) => {
                   const uColor = action.urgency >= 3 ? '#ef4444' : action.urgency === 2 ? '#f59e0b' : '#6366f1';
                   return (
@@ -1188,38 +1205,36 @@ export default function LeadsListPage() {
           </div>
         )}
 
-        {/* Filters row */}
-        <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, padding: '12px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-          {/* Search */}
-          <div style={{ position: 'relative', minWidth: 220, flex: 1 }}>
-            <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--text-dim)' }} />
-            <input aria-label="Search by name, phone, status" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, phone, status..."
-              style={{ width: '100%', padding: '8px 12px 8px 34px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', color: 'var(--text)', background: 'var(--surface2)', boxSizing: 'border-box' }}
-            />
-            {search && <button aria-label="Close" onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)' }}><X size={13} /></button>}
-          </div>
-
-          {/* Sort */}
-          <select aria-label="Sort by" value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, color: 'var(--text)', background: 'var(--surface2)', cursor: 'pointer', outline: 'none' }}>
-            {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-
-          {/* Assignment filter */}
-          <select aria-label="Filter by assignee" value={assignedFilter} onChange={e => setAssignedFilter(e.target.value)} style={{ padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, color: 'var(--text)', background: 'var(--surface2)', cursor: 'pointer', outline: 'none' }}>
-            <option value="all">All Assigned</option>
-            <option value="mine">Assigned to Me</option>
-            <option value="unassigned">Unassigned</option>
-            {members.map(m => <option key={m.id} value={m.user_id}>{m.full_name || m.invite_email || 'Member'}</option>)}
-          </select>
-
-          {/* Date range toggle */}
-          <button onClick={() => setShowFilters(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: `1.5px solid ${hasFilters ? '#c7d2fe' : 'var(--border)'}`, borderRadius: 10, background: hasFilters ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: hasFilters ? '#6366f1' : 'var(--text-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            <Filter size={13} /> Filters {hasFilters && <span style={{ fontSize: 10, background: '#6366f1', color: 'white', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>!</span>}
+        {/* Sort · owner · saved views — one swipeable row of chips (search and
+            the filter toggle live in the hero). */}
+        <div className="ll-chiprow wf-noscrollbar">
+          <label className="ll-chip ll-chip--select" title="Sort">
+            <ArrowUpDown size={13} aria-hidden="true" />
+            <select data-ui="chip" aria-label="Sort by" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <ChevronDown size={12} aria-hidden="true" />
+          </label>
+          <label className={`ll-chip ll-chip--select${assignedFilter !== 'all' ? ' is-active' : ''}`} title="Owner">
+            <UserCheck size={13} aria-hidden="true" />
+            <select data-ui="chip" aria-label="Filter by assignee" value={assignedFilter} onChange={e => setAssignedFilter(e.target.value)}>
+              <option value="all">Anyone</option>
+              <option value="mine">Assigned to me</option>
+              <option value="unassigned">Unassigned</option>
+              {members.map(m => <option key={m.id} value={m.user_id}>{m.full_name || m.invite_email || 'Member'}</option>)}
+            </select>
+            <ChevronDown size={12} aria-hidden="true" />
+          </label>
+          <span className="ll-chiprow__sep" aria-hidden="true" />
+          {views.map(v => (
+            <span key={v.name} className={`ll-chip${activeView === v.name ? ' is-active' : ''}`}>
+              <span {...clickable(() => applyView(v))} style={{ cursor: 'pointer' }}>{v.name}</span>
+              <button type="button" onClick={() => deleteView(v)} title="Delete view" aria-label={`Delete view ${v.name}`} className="ll-chip__x"><X size={11} /></button>
+            </span>
+          ))}
+          <button type="button" className="ll-chip ll-chip--ghost" onClick={saveCurrentView} title="Save these filters as a view">
+            <Plus size={12} /> Save view
           </button>
-
-          {leads.length !== allLeads.length && (
-            <span style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>Showing {leads.length} of {allLeads.length}</span>
-          )}
         </div>
 
         {/* Extended filters */}
@@ -1240,8 +1255,8 @@ export default function LeadsListPage() {
 
         {/* Tag filter pills */}
         {allTags.length > 0 && (
-          <div className="r-chips" style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tag:</span>
+          <div className="ll-tagrow wf-noscrollbar" style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+            <TagIcon size={13} color="var(--text-dim)" aria-label="Tags" style={{ flexShrink: 0 }} />
             <button onClick={() => setTagFilter(null)} style={{ padding: '4px 12px', borderRadius: 20, border: `1.5px solid ${!tagFilter ? '#6366f1' : 'var(--border)'}`, background: !tagFilter ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: !tagFilter ? '#4338ca' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>All</button>
             {allTags.map(tag => (
               <button key={tag.id} onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, border: `1.5px solid ${tagFilter===tag.id ? tag.color : tag.color+'44'}`, background: tagFilter===tag.id ? tag.color+'22' : 'var(--surface)', color: tag.color, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
@@ -1250,21 +1265,6 @@ export default function LeadsListPage() {
             ))}
           </div>
         )}
-
-        {/* Saved views */}
-        <div className="r-chips" style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Views:</span>
-          {views.length === 0 && <span className="r-hide" style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>Save a filter combination to reuse it.</span>}
-          {views.map(v => (
-            <span key={v.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 6px 4px 12px', borderRadius: 20, border: `1.5px solid ${activeView === v.name ? '#6366f1' : 'var(--border)'}`, background: activeView === v.name ? 'rgba(99,102,241,0.12)' : 'var(--surface)', color: activeView === v.name ? '#4338ca' : 'var(--text-muted)', fontSize: 11.5, fontWeight: 700 }}>
-              <span {...clickable(() => applyView(v))} style={{ cursor: 'pointer' }}>{v.name}</span>
-              <button onClick={() => deleteView(v)} title="Delete view" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', padding: 0 }}><X size={12} /></button>
-            </span>
-          ))}
-          <button onClick={saveCurrentView} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20, border: '1.5px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
-            <Plus size={12} /> Save current
-          </button>
-        </div>
 
         {/* Clutter nudge. Deliberately transient and non-blocking: the owner
             asked for unlimited pins, so this says the thing once and gets out of
@@ -1278,7 +1278,7 @@ export default function LeadsListPage() {
         )}
 
         {/* Status tabs */}
-        <div className="r-chips" style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
+        <div className="ll-status-row wf-noscrollbar" style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto' }}>
           {ALL_STATUSES.map(s => {
             const meta = STATUS_META[s] || { dot: '#6366f1', bg: 'rgba(99,102,241,0.12)', text: '#4338ca' };
             const active = statusFilter === s;
@@ -1293,7 +1293,7 @@ export default function LeadsListPage() {
         </div>
 
         {/* Table */}
-        <div className="r-scroll-x" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+        <div className="r-scroll-x ll-table" style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
 
           {/* Table header */}
           <div className="r-tw wf-lead-head" style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', alignItems: 'center' }}>
@@ -1334,9 +1334,10 @@ export default function LeadsListPage() {
           /* Phase 4: windowed — only viewport rows render. The row JSX is untouched;
              rowHeight matches the measured 59px row (see SkeletonRow 'leads'). Below
              the threshold the list renders exactly as before. */
-          // Phones lay each row out as a two-line card (globals.css, .wf-lead-row)
-          // pinned to 68px, so the windowing must use that height there.
-          <VirtualList items={leads} rowHeight={isPhone ? 68 : 59} renderRow={(lead, i) => {
+          // Rows have a fixed height so the windowing can place them: 64px rows on
+          // desktop; on phones each lead is a 72px card plus an 8px gap (.ll-table
+          // and .wf-lead-row in globals.css), so 80.
+          <VirtualList items={leads} rowHeight={isPhone ? 80 : 64} renderRow={(lead, i) => {
             const sc = STATUS_META[lead.status] || STATUS_META['New'];
             const value = lead.actual_sale || lead.estimated_value;
             const isSelected = selected.has(lead.id);
@@ -1345,9 +1346,8 @@ export default function LeadsListPage() {
             const unread = isLeadUnread(lead);
             const isPinned = pins.includes(lead.id);
             return (
-              <div key={lead.id} className={`r-tw wf-lead-row${unread ? ' wf-lead-unread' : ''}${isPinned ? ' wf-lead-pinned' : ''}`} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--surface)', transition: 'background 0.1s', cursor: 'pointer' }}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background='var(--surface2)'; }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background='var(--surface)'; }}
+              <div key={lead.id} className={`r-tw wf-lead-row ll-row${unread ? ' wf-lead-unread' : ''}${isPinned ? ' wf-lead-pinned' : ''}`} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.2fr 1fr 1fr 1.4fr 1fr 1fr 96px', alignItems: 'center', padding: '12px 16px', borderBottom: i < leads.length-1 ? '1px solid var(--border)' : 'none', background: isSelected ? 'rgba(99,102,241,0.12)' : undefined, cursor: 'pointer' }}
+                data-selected={isSelected ? '' : undefined}
                 onClick={() => router.push(`/leads/${lead.id}`)}
               >
                 {/* Checkbox */}
@@ -1357,12 +1357,12 @@ export default function LeadsListPage() {
 
                 {/* Name + platform chip stacked together in column 2 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: `linear-gradient(135deg, ${sc.dot}dd, ${sc.dot}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: 'white' }}>
+                  <div className="ll-avatar" style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: `linear-gradient(135deg, ${sc.dot}, ${sc.dot}99)`, '--ring': sc.dot, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: 'white' }}>
                     {lead.customer_name?.[0]?.toUpperCase() || '?'}
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lead.customer_name || 'Unknown'}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+                    <div className="ll-row-meta" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
                       {(() => {
                         const platform = (lead.platform_source || 'whatsapp').toLowerCase();
                         const pColor = PLATFORM_COLORS[platform] || '#6b7280';
@@ -1371,11 +1371,11 @@ export default function LeadsListPage() {
                         return (
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: pColor + '18', color: pColor, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             <span style={{ width: 5, height: 5, borderRadius: '50%', background: pColor, flexShrink: 0 }} />
-                            {platName}{acctName ? ` · ${acctName}` : ''}
+                            {platName}{acctName ? <span className="ll-acct"> · {acctName}</span> : ''}
                           </span>
                         );
                       })()}
-                      <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{formatDate(lead.last_message_at)}</span>
+                      <span className="ll-date" style={{ fontSize: 10, color: 'var(--text-dim)' }} title={formatDate(lead.last_message_at)}>{shortDate(lead.last_message_at)}</span>
                     </div>
                   </div>
                 </div>
@@ -1399,7 +1399,7 @@ export default function LeadsListPage() {
                     const SENT = { positive: '😊', neutral: '😐', negative: '😟', frustrated: '😠' };
                     const URG_COLORS = { low: '#10b981', medium: '#f59e0b', high: '#f97316', critical: '#ef4444' };
                     return (
-                      <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                      <div className="ll-ai" style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
                         {lead.lead_score > 0 && (
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>
                             ✨{lead.lead_score}
@@ -1419,7 +1419,7 @@ export default function LeadsListPage() {
                 </div>
 
                 {/* Messages */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div className="ll-msgs" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <MessageSquare size={12} color="var(--text-dim)" />
                   <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{lead.total_messages}</span>
                 </div>
@@ -1442,7 +1442,7 @@ export default function LeadsListPage() {
                 </div>
 
                 {/* Value */}
-                <span style={{ fontSize: 13, fontWeight: value ? 800 : 400, color: value ? sc.dot : 'var(--border)' }}>
+                <span className={value ? 'll-value' : 'll-value is-empty'} style={{ fontSize: 13, fontWeight: value ? 800 : 400, color: value ? undefined : 'var(--border)' }}>
                   {value ? `${currencySym}${value.toLocaleString()}` : '—'}
                 </span>
 
@@ -1470,7 +1470,7 @@ export default function LeadsListPage() {
                       <MessageSquare size={12} color="#ef4444" />
                     </div>
                   )}
-                  <ChevronRight size={15} color="#d1d5db" style={{ flexShrink: 0 }} />
+                  <ChevronRight size={15} className="ll-chev" style={{ flexShrink: 0 }} />
                 </div>
               </div>
             );
