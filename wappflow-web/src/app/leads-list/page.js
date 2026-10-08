@@ -421,7 +421,7 @@ function CreateGroupModal({ selectedLeads, onClose, onDone, onError }) {
                         {(l.customer_name||'?')[0]?.toUpperCase()}
                       </div>
                       <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.customer_name || 'Unknown'}</span>
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{displayPhone(l.customer_phone, l.platform_source)}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{displayPhone(l.customer_phone, l.platform_source) || l.social_handle || ''}</span>
                     </div>
                   ))}
                 </div>
@@ -1381,7 +1381,7 @@ export default function LeadsListPage() {
 
                 {/* Phone */}
                 {(() => {
-                  const display = displayPhone(lead.customer_phone, lead.platform_source);
+                  const display = displayPhone(lead.customer_phone, lead.platform_source) || lead.social_handle || '';
                   if (!display || display === 'No phone') return <span />;
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>

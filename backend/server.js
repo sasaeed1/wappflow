@@ -13,6 +13,7 @@ const webpush = require('web-push');
 const { OAuth2Client } = require('google-auth-library');
 const nodemailer = require('nodemailer');
 const aiEngine = require('./ai-engine');
+const leadContact = require('./lead-contact');
 const entitlements = require('./entitlements');   // data-driven plan/feature/limit resolver
 const pricing = require('./pricing');             // usage tracking + soft-limit enforcement
 const { describeWaError } = require('./wa-errors'); // unwraps minified whatsapp-web.js/puppeteer errors
@@ -1947,6 +1948,7 @@ app.get('/api/leads', auth, (req, res) => {
     // and so reported a repeat client's fifth booking as their entire history.
     // Correlated subquery rather than N+1: idx_invoices_lead makes it cheap.
     let query = `SELECT leads.*,
+      (SELECT lc.display_name FROM lead_channels lc WHERE lc.lead_id = leads.id AND lc.platform IN ('instagram','facebook') ORDER BY lc.created_at LIMIT 1) AS social_handle,
       (SELECT COALESCE(SUM(i.total), 0) FROM invoices i
         WHERE i.lead_id = leads.id AND i.status = 'paid'
           AND (i.is_deleted = 0 OR i.is_deleted IS NULL)) AS lifetime_revenue
@@ -2391,12 +2393,26 @@ app.get('/api/leads/:id', auth, (req, res) => {
 
 app.post('/api/leads', auth, (req, res) => {
   try {
-    const { customer_name, customer_phone, status, first_message, estimated_value, email, address, date_of_birth, lead_source } = req.body;
+    const { customer_name, status, first_message, estimated_value, email, address, date_of_birth } = req.body;
+    // A lead can be reached on WhatsApp, Instagram or Facebook — any one is enough
+    // (it used to be a phone number or nothing). Checked and cleaned in lead-contact.js,
+    // with a sentence a person can act on when something is off.
+    const contact = leadContact.checkContact(req.body || {});
+    if (contact.error) return res.status(400).json({ error: contact.error });
+    const customer_phone = contact.phone;
+    const lead_source = req.body.lead_source || (customer_phone ? null : contact.instagram ? 'Instagram' : 'Facebook');
+    const platformSource = customer_phone ? 'whatsapp' : contact.instagram ? 'instagram' : 'facebook';
 
     // Duplicate check — digit-normalised so "+92 310 154 7564" matches "+923101547564"
     if (customer_phone) {
       const existing = findLeadByPhone(req.workspaceId, customer_phone);
-      if (existing) return res.status(400).json({ error: 'A lead with this phone number already exists', existing_id: existing.id });
+      if (existing) return res.status(400).json({ error: 'You already have a contact with this WhatsApp number.', existing_id: existing.id });
+    }
+    for (const [platform, identifier] of [['instagram', contact.instagram], ['facebook', contact.facebook]]) {
+      if (!identifier) continue;
+      const dup = db.prepare(`SELECT lc.lead_id FROM lead_channels lc JOIN leads l ON l.id = lc.lead_id
+        WHERE lc.workspace_id = ? AND lc.platform = ? AND lower(lc.identifier) = lower(?) AND (l.is_deleted = 0 OR l.is_deleted IS NULL) LIMIT 1`).get(req.workspaceId, platform, identifier);
+      if (dup) return res.status(400).json({ error: `You already have a contact with this ${platform === 'instagram' ? 'Instagram username' : 'Facebook profile'}.`, existing_id: dup.lead_id });
     }
 
     // Plan limit — hard stop when the monthly NEW-lead allocation is reached.
@@ -2407,9 +2423,13 @@ app.post('/api/leads', auth, (req, res) => {
 
     const leadId = generateId();
     db.prepare(`
-      INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, status, first_message, estimated_value, email, address, date_of_birth, lead_source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(leadId, req.userId, req.workspaceId, customer_name, customer_phone, status || 'New', first_message, estimated_value, email, address, date_of_birth, lead_source);
+      INSERT INTO leads (id, user_id, workspace_id, customer_name, customer_phone, status, first_message, estimated_value, email, address, date_of_birth, lead_source, platform_source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(leadId, req.userId, req.workspaceId, customer_name, customer_phone, status || 'New', first_message, estimated_value, email, address, date_of_birth, lead_source, platformSource);
+    // Instagram / Facebook handles live where inbound social leads keep theirs.
+    const addChannel = db.prepare('INSERT OR IGNORE INTO lead_channels (id, lead_id, workspace_id, platform, identifier, display_name, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    if (contact.instagram) addChannel.run(generateId(), leadId, req.workspaceId, 'instagram', contact.instagram, '@' + contact.instagram, req.userId);
+    if (contact.facebook) addChannel.run(generateId(), leadId, req.workspaceId, 'facebook', contact.facebook, contact.facebookDisplay || contact.facebook, req.userId);
     // Created from a pipeline's board → it belongs on that board (PROP-006).
     if (req.body.pipeline_id) pipelinesApi.assign(req.workspaceId, leadId, req.body.pipeline_id);
 

@@ -368,7 +368,7 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew, sym = '$'
             })()}
 
             {lead.customer_phone && (() => {
-              const display = displayPhone(lead.customer_phone, lead.platform_source);
+              const display = displayPhone(lead.customer_phone, lead.platform_source) || lead.social_handle || '';
               if (!display || display === 'No phone') return null;
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
@@ -1325,7 +1325,7 @@ export default function DashboardPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 16, marginTop: 2 }}>
                       {(() => {
-                        const display = displayPhone(lead.customer_phone, lead.platform_source);
+                        const display = displayPhone(lead.customer_phone, lead.platform_source) || lead.social_handle || '';
                         return display && display !== 'No phone'
                           ? <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{display}</span>
                           : null;

@@ -36,6 +36,8 @@ const j = async (m, p, tok, body, headers) => {
   return { status: r.status, d };
 };
 const RUN = process.pid.toString(36) + Math.random().toString(36).slice(2, 8);
+// Phone numbers must be digits (lead-contact.js rejects letters), so they get their own run code.
+const RUN_DIGITS = String(Date.now()).slice(-7);
 const openDb = (rw) => new Database(process.env.WF_DB, rw ? {} : { readonly: true });
 const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
@@ -220,7 +222,7 @@ const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
     // The portal is the one link that ties a client's whole relationship together,
     // and it only existed if somebody remembered to go and mint it - buried behind
     // a button in the Contracts vault, so most clients never got one.
-    const l = (await j('POST', '/leads', A.token, { customer_name: 'Auto Portal', customer_phone: '92300555' + RUN.slice(0, 4), status: 'New' })).d;
+    const l = (await j('POST', '/leads', A.token, { customer_name: 'Auto Portal', customer_phone: '92300555' + RUN_DIGITS.slice(0, 4), status: 'New' })).d;
     const db0 = openDb();
     const before = db0.prepare('SELECT COUNT(*) n FROM client_portals WHERE lead_id = ?').get(l.id).n;
     db0.close();
@@ -240,7 +242,7 @@ const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
   });
 
   await check('the studio can find that link on the client record', async () => {
-    const l = (await j('POST', '/leads', A.token, { customer_name: 'Findable', customer_phone: '92300666' + RUN.slice(0, 4), status: 'New' })).d;
+    const l = (await j('POST', '/leads', A.token, { customer_name: 'Findable', customer_phone: '92300666' + RUN_DIGITS.slice(0, 4), status: 'New' })).d;
     await j('PUT', `/leads/${l.id}/status`, A.token, { status: 'Closed - Won' });
     const t = ((await j('GET', `/leads/${l.id}/timeline`, A.token)).d || {}).timeline || [];
     const row = t.find((x) => /portal/i.test(x.title || ''));
@@ -280,7 +282,7 @@ const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
     // journeyLinks must return only what exists, so callers can render whatever
     // they get without guarding.
     const D = (await j('POST', '/auth/register', null, { email: `pb-d-${RUN}@test.local`, password: 'pw123456', businessName: 'No Booking' })).d;
-    const l = (await j('POST', '/leads', D.token, { customer_name: 'Client D', customer_phone: '92300777' + RUN.slice(0, 4), status: 'New' })).d;
+    const l = (await j('POST', '/leads', D.token, { customer_name: 'Client D', customer_phone: '92300777' + RUN_DIGITS.slice(0, 4), status: 'New' })).d;
     await j('PUT', `/leads/${l.id}/status`, D.token, { status: 'Closed - Won' });
     const db = openDb();
     const row = db.prepare('SELECT token FROM client_portals WHERE lead_id = ?').get(l.id);
