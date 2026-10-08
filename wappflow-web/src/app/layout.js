@@ -41,6 +41,12 @@ export default function RootLayout({ children }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
           try {
+            // A refresh opens the page at the top. The browser's default restores the
+            // old scroll position once the data has loaded, which on the dashboard
+            // dropped people halfway down, on Revenue Insights.
+            if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+          } catch(e) {}
+          try {
             // Launch intro (components/LaunchIntro.js): plays on a COLD START only —
             // the app (every tab/window) was closed and opened again — never on a page
             // change, a reload or a new tab while the app is running. "Running" is the

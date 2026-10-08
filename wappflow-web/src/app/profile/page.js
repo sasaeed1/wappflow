@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { plainMessage } from '@/lib/friendlyError';
 import { useRouter } from 'next/navigation';
 import { profileAPI, BASE_URL } from '../../lib/api';
 import { Field, Input, Textarea } from '@/components/ui/Field';
@@ -54,7 +55,7 @@ export default function ProfilePage() {
   };
 
   const showToast = (msg, type = 'success') => {
-    setToast({ msg, type });
+    setToast({ msg: plainMessage(msg), type });
     setTimeout(() => setToast(null), 3000);
   };
 

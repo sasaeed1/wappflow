@@ -30,6 +30,8 @@ const API = process.env.WF_API || 'http://127.0.0.1:3020/api';
 const Database = require(process.env.WF_SQLITE || 'better-sqlite3');
 
 const RUN = process.pid.toString(36) + Math.random().toString(36).slice(2, 8);
+// Phone numbers must be digits (lead-contact.js rejects letters), so they get their own run code.
+const RUN_DIGITS = String(Date.now()).slice(-7);
 const openDb = (rw) => new Database(process.env.WF_DB, rw ? {} : { readonly: true });
 
 const j = async (m, p, tok, body) => {
@@ -123,7 +125,7 @@ function resolveParams(routePath, ids) {
 
   // ── Tenant A builds one of everything ─────────────────────────────────────
   const ids = {};
-  ids.lead = (await j('POST', '/leads', A.token, { customer_name: 'A Client', customer_phone: '92300111' + RUN.slice(0, 4), status: 'New' })).d?.id;
+  ids.lead = (await j('POST', '/leads', A.token, { customer_name: 'A Client', customer_phone: '92300111' + RUN_DIGITS.slice(0, 4), status: 'New' })).d?.id;
   ids.invoice = (await j('POST', '/invoices', A.token, { lead_id: ids.lead, customer_name: 'A Client', items: [], total: 1000 })).d?.invoice?.id;
   ids.doc = (await j('POST', '/cs/documents', A.token, { lead_id: ids.lead, title: 'A Contract', type: 'contract' })).d?.id;
   ids.project = (await j('POST', '/media/projects', A.token, { lead_id: ids.lead, title: 'A Shoot' })).d?.id;

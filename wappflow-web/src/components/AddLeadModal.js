@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { User, Phone, DollarSign, MessageSquare, Tag } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { User, Phone, DollarSign, MessageSquare, Tag, Instagram, Facebook } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { Field, Input, Textarea, Select } from '@/components/ui/Field';
 import { LEAD_STATUS_KEYS, leadStatusMeta } from '@/lib/leadStatus';
+import { friendlyMessage } from '@/lib/friendlyError';
 
 // Batch C migration: was the app's only Tailwind modal — a hardcoded #0f1117 dark slab
 // that ignored light mode and had no focus trap/Escape/aria. Now a Modal-primitive
@@ -13,15 +14,20 @@ import { LEAD_STATUS_KEYS, leadStatusMeta } from '@/lib/leadStatus';
 // D3). Batch D: fields moved onto the Field system (label/required/aria wiring).
 
 export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId = null }) {
-  const [formData, setFormData] = useState({
-    customer_name: '',
-    customer_phone: '',
-    status: 'New',
-    estimated_value: '',
-    first_message: ''
-  });
+  const EMPTY = { customer_name: '', customer_phone: '', instagram: '', facebook: '', status: 'New', estimated_value: '', first_message: '' };
+  const [formData, setFormData] = useState(EMPTY);
+  // The studio's own currency (the label was hard-coded to "Rs").
+  const [sym, setSym] = useState('');
+  useEffect(() => {
+    if (!isOpen) return;
+    import('../lib/api').then(({ settingsAPI }) => settingsAPI.getCompany()).then((r) => setSym(r.data?.company?.currency_symbol || '')).catch(() => {});
+  }, [isOpen]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // On a phone the form scrolls, and the message sits above the fold: bring it
+  // into view, or "Create Lead" looks like it did nothing.
+  const errorRef = useRef(null);
+  useEffect(() => { if (error && errorRef.current) errorRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [error]);
   // The API tells us WHICH lead the phone number already belongs to; the modal used
   // to throw that away and show a dead-end error (audit crm-leads-3).
   const [duplicateId, setDuplicateId] = useState(null);
@@ -30,7 +36,11 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId 
     e.preventDefault();
     setError('');
     setDuplicateId(null);
-    if (!formData.customer_phone) { setError('Phone number is required'); return; }
+    // Any one way to reach them is enough: WhatsApp, Instagram or Facebook.
+    if (!formData.customer_phone.trim() && !formData.instagram.trim() && !formData.facebook.trim()) {
+      setError('Add a WhatsApp number, an Instagram username or a Facebook name, so you can reach this contact.');
+      return;
+    }
     setLoading(true);
     try {
       const { leadsAPI } = await import('../lib/api');
@@ -39,12 +49,12 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId 
         ...(pipelineId ? { pipeline_id: pipelineId } : {}),
         estimated_value: formData.estimated_value ? parseFloat(formData.estimated_value) : null
       });
-      setFormData({ customer_name: '', customer_phone: '', status: 'New', estimated_value: '', first_message: '' });
+      setFormData(EMPTY);
       if (onLeadAdded) onLeadAdded();
       onClose();
     } catch (err) {
       const d = err.response?.data || {};
-      setError(d.error || 'Failed to create lead');
+      setError(d.error || friendlyMessage(err));
       // A duplicate is not a failure — it means the contact is already here.
       if (d.existing_id) setDuplicateId(d.existing_id);
     } finally {
@@ -64,8 +74,8 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId 
     >
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {error && (
-          <div style={{ padding: '10px 13px', background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)', borderRadius: 'var(--radius)', color: 'var(--danger-fg)', fontSize: 12.5 }}>
-            {duplicateId ? 'You already have a contact with this phone number.' : error}
+          <div ref={errorRef} role="alert" style={{ padding: '10px 13px', background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)', borderRadius: 'var(--radius)', color: 'var(--danger-fg)', fontSize: 12.5 }}>
+            {error}
             {duplicateId && (
               <a href={`/leads/${duplicateId}`}
                  style={{ display: 'inline-block', marginTop: 8, fontWeight: 700, color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
@@ -85,15 +95,37 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId 
           />
         </Field>
 
-        <Field label={<><Phone size={13} /> Phone Number</>} required>
-          <Input
-            type="tel"
-            value={formData.customer_phone}
-            onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
-            placeholder="+1 415 555 0123"
-            required
-          />
-        </Field>
+        <fieldset style={{ border: '1.5px solid var(--border)', borderRadius: 'var(--radius)', padding: '12px 14px 14px', margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <legend style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', padding: '0 6px' }}>How can you reach them? <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>Add at least one</span></legend>
+          <Field label={<><Phone size={13} /> WhatsApp number</>} hint="With the country code, e.g. +44 7700 900123">
+            <Input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={formData.customer_phone}
+              onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+              placeholder="+1 415 555 0123"
+            />
+          </Field>
+          <Field label={<><Instagram size={13} /> Instagram username</>} hint="Their @username or profile link">
+            <Input
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              value={formData.instagram}
+              onChange={(e) => setFormData({ ...formData, instagram: e.target.value })}
+              placeholder="@their.username"
+            />
+          </Field>
+          <Field label={<><Facebook size={13} /> Facebook</>} hint="Their profile link, or their name as shown on Facebook">
+            <Input
+              type="text"
+              value={formData.facebook}
+              onChange={(e) => setFormData({ ...formData, facebook: e.target.value })}
+              placeholder="facebook.com/their.name"
+            />
+          </Field>
+        </fieldset>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <Field label={<><Tag size={13} /> Status</>}>
@@ -106,12 +138,12 @@ export default function AddLeadModal({ isOpen, onClose, onLeadAdded, pipelineId 
               ))}
             </Select>
           </Field>
-          <Field label={<><DollarSign size={13} /> Value (Rs)</>}>
+          <Field label={<><DollarSign size={13} /> Value{sym ? ` (${sym})` : ''}</>}>
             <Input
               type="number"
               value={formData.estimated_value}
               onChange={(e) => setFormData({ ...formData, estimated_value: e.target.value })}
-              placeholder="25,000"
+              placeholder="2,500"
             />
           </Field>
         </div>

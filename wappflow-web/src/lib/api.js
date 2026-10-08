@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { friendlyMessage } from './friendlyError';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 export const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001';
@@ -29,6 +30,18 @@ api.interceptors.response.use(
     if (err.response?.status === 403 && err.response?.data?.permission_denied && typeof window !== 'undefined') {
       import('@/components/ui/Toast').then(({ toast }) => toast.warning(err.response.data.error || "Your role can't do that.")).catch(() => {});
     }
+    // Every failure carries a sentence a person can act on — in err.message and in
+    // err.response.data.error, the two places pages read — never "Network Error" or
+    // "Request failed with status code 500" (lib/friendlyError.js).
+    try {
+      const friendly = friendlyMessage(err);
+      err.message = friendly;
+      if (err.response) {
+        const d = err.response.data;
+        if (d && typeof d === 'object' && !(typeof Blob !== 'undefined' && d instanceof Blob)) d.error = friendly;
+        else if (!d || typeof d === 'string') err.response.data = { error: friendly };
+      }
+    } catch { /* never let wording break error handling */ }
     return Promise.reject(err);
   }
 );

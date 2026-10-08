@@ -30,6 +30,8 @@ const j = async (m, p, tok, body) => {
   return { status: r.status, d };
 };
 const RUN = process.pid.toString(36) + Math.random().toString(36).slice(2, 8);
+// Phone numbers must be digits (lead-contact.js rejects letters), so they get their own run code.
+const RUN_DIGITS = String(Date.now()).slice(-7);
 const openDb = (rw) => new Database(process.env.WF_DB, rw ? {} : { readonly: true });
 const SIG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const p2 = (n) => String(n).padStart(2, '0');
@@ -61,7 +63,7 @@ const dayAhead = (n) => { const d = new Date(Date.now() + n * 86400000); return 
 
   let lead;
   await step('an enquiry is captured as a lead', async () => {
-    const r = await j('POST', '/leads', T, { customer_name: 'Sana & Bilal', customer_phone: '923005557' + RUN.slice(0, 3), email: 'sana@test.local', status: 'New' });
+    const r = await j('POST', '/leads', T, { customer_name: 'Sana & Bilal', customer_phone: '923005557' + RUN_DIGITS.slice(0, 3), email: 'sana@test.local', status: 'New' });
     assert(r.d?.id, 'the lead was not created: ' + JSON.stringify(r.d));
     lead = r.d;
   });

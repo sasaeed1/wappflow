@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 import { Portal } from './overlay';
+import { plainMessage } from '@/lib/friendlyError';
 
 // Toast — ONE notification engine (PROP-002 Batch C). Replaces the per-page toast
 // implementations (top-right z9999, bottom-right z10000, bottom-center z600/700 pills).
@@ -27,6 +28,9 @@ const subs = new Set();
 const emit = () => subs.forEach((fn) => fn(items));
 
 function show({ title, description = '', tone = 'info', action = null, duration = DEFAULT_DURATION } = {}) {
+  // Error and warning toasts never show a code or a stack line: anything
+  // technical becomes a sentence (lib/friendlyError.js).
+  if (tone === 'danger' || tone === 'warning') { title = plainMessage(title); description = plainMessage(description); }
   const id = ++seq;
   items = [...items, { id, title: title || '', description, tone, action, duration }];
   emit();

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-// The launch intro: six seconds of brand on the first app screen of a launch.
+// The launch intro: ten seconds of brand on the first app screen of a launch.
 //
 // WHEN it plays is decided before paint by the inline script in app/layout.js,
 // which sets <html data-wf-intro="1"> only for a signed-in user, on an app route
@@ -9,12 +9,12 @@ import { useEffect, useState } from 'react';
 // (sessionStorage). The overlay markup is always rendered but hidden by CSS unless
 // that attribute is set, so server and client render the same thing and nothing
 // flashes. The choreography is pure CSS (globals.css, .wf-intro*) timed from first
-// paint; this component only ends it at the 6s mark. There is deliberately no skip:
+// paint; this component only ends it at the 10s mark. There is deliberately no skip:
 // it plays once per app start, as part of opening the app, not as an interruption.
 // prefers-reduced-motion users get a short, still version.
-const LINES = ['Your clients are waiting ✨', 'Turning chats into bookings ⚡', 'Let’s make today a big one 🚀'];
+const LINES = ['Your clients are waiting ✨', 'Turning chats into bookings ⚡', 'Every lead, every channel, one place 💬', 'Let’s make today a big one 🚀'];
 const WORD = 'WappFlow';
-const DURATION = 6000;
+const DURATION = 10000;
 
 export default function LaunchIntro() {
   const [line, setLine] = useState(0);
@@ -29,7 +29,7 @@ export default function LaunchIntro() {
     // this timer agree even when hydration was slow.
     const left = Math.max(0, total - (performance.now() || 0));
     const t = setTimeout(end, left);
-    const lines = [setTimeout(() => setLine(1), Math.max(0, 3300 - performance.now())), setTimeout(() => setLine(2), Math.max(0, 4500 - performance.now()))];
+    const lines = [4100, 6100, 8100].map((at, n) => setTimeout(() => setLine(n + 1), Math.max(0, at - performance.now())));
     return () => { clearTimeout(t); lines.forEach(clearTimeout); };
   }, []);
 
