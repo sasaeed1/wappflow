@@ -13,7 +13,7 @@ import {
   Plug, Calendar, Video, Volume2, Play
 } from 'lucide-react';
 import { accountAPI } from '../../lib/api';
-import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, auditAPI, BASE_URL } from '../../lib/api';
+import { settingsAPI, presetsAPI, tagsAPI, emailTemplatesAPI, autoReplyAPI, teamAPI, workspaceAPI, authAPI, platformAccountsAPI, aiAPI, integrationsAPI, lostReasonsAPI, auditAPI, profileAPI, BASE_URL } from '../../lib/api';
 import { useScrollActiveIntoView } from '@/lib/sidenav';
 import PairWithPhone from '@/components/PairWithPhone';
 import { Send as SendIcon } from 'lucide-react';
@@ -886,6 +886,7 @@ function NotificationsTab({ showToast }) {
 
   return (
     <SectionCard title="Push Notifications" icon={Bell} color="#ef4444">
+      <ChatBubblesSetting pushOn={subscribed} />
       {!supported ? (
         <div style={{ padding: '24px', background: 'rgba(239,68,68,0.12)', borderRadius: 12, border: '1.5px solid #fecaca' }}>
           <p style={{ fontSize: 14, color: '#dc2626', fontWeight: 600, margin: 0 }}>
@@ -3292,6 +3293,49 @@ function AICommandTab({ showToast }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+
+// Chat bubbles (PROP-007): Messenger-style bubbles when a customer messages,
+// and a notification instead when WappFlow is closed. Saved on the account
+// (per person), so it follows you to every device.
+function ChatBubblesSetting({ pushOn }) {
+  const [on, setOn] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    profileAPI.getPreferences().then((r) => setOn(r.data?.chat_bubbles !== false)).catch(() => setOn(true));
+  }, []);
+  const toggle = async () => {
+    const next = !on;
+    setOn(next); setSaving(true); setError('');
+    try {
+      await profileAPI.updatePreferences({ chat_bubbles: next });
+      window.dispatchEvent(new CustomEvent('wf:prefs', { detail: { chat_bubbles: next } }));
+    } catch (e) {
+      setOn(!next);
+      setError(e?.response?.data?.error || 'That didn’t save. Please try again.');
+    } finally { setSaving(false); }
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 18, marginBottom: 16, borderRadius: 14, border: '1.5px solid var(--border)', background: 'linear-gradient(135deg, rgba(99,102,241,0.10), rgba(217,70,239,0.06))' }}>
+      <div aria-hidden="true" style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 20, background: 'linear-gradient(135deg, #25d366, #128c7e)', border: '2.5px solid rgba(255,255,255,.9)', boxShadow: '0 8px 20px -6px rgba(0,0,0,.4)' }}>💬</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p id="chat-bubbles-label" style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', margin: '0 0 2px' }}>Chat bubbles</p>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+          When a customer messages you, a bubble pops up on screen. Drag it anywhere, drop it on ✕ to close, tap it to reply.
+          {' '}When WappFlow is closed you get a notification instead{pushOn ? '.' : ' — turn on notifications below for that.'}
+        </p>
+        {error && <p role="alert" style={{ fontSize: 12, color: '#ef4444', margin: '6px 0 0', fontWeight: 600 }}>{error}</p>}
+      </div>
+      <button type="button" role="switch" aria-checked={!!on} aria-labelledby="chat-bubbles-label" onClick={toggle} disabled={on === null || saving}
+        style={{ background: 'none', border: 'none', cursor: on === null ? 'default' : 'pointer', padding: 0, flexShrink: 0 }}>
+        <div style={{ width: 44, height: 24, borderRadius: 12, background: on ? 'linear-gradient(135deg, #6366f1, #a855f7)' : 'var(--border)', position: 'relative', transition: 'background 0.2s', opacity: on === null ? 0.5 : 1 }}>
+          <div style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left 0.2s' }} />
+        </div>
+      </button>
     </div>
   );
 }

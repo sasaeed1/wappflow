@@ -1223,7 +1223,7 @@ export default function DashboardPage() {
 
         {/* ── PIPELINE / LIST HEADER ── */}
         <div className="r-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
             {pipes?.pipelines?.length > 1 ? (
               <select aria-label="Pipeline" value={pipelineId || ''} onChange={e => setPipelineId(e.target.value)}
                 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)', background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 10, padding: '6px 10px', cursor: 'pointer' }}>

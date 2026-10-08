@@ -15,6 +15,7 @@ import { useSummary } from './summary';
 import { usePlan } from '@/lib/plan';
 import { usePermissions } from '@/lib/permissions';
 import { clickable } from '@/lib/a11y';
+import ChatHeads from './ChatHeads';
 
 // AppShell — ONE shell for every authenticated module (Phase 2).
 //
@@ -272,6 +273,9 @@ export default function AppShell({ module: moduleKey, children, actions, subHead
           {mod.fabs.map((Fab, i) => <Fab key={i} />)}
         </div>
       )}
+
+      {/* Messenger-style chat bubbles for customer messages, in every module (PROP-007). */}
+      <ChatHeads />
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} title={mod.label}>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }} aria-label={`${mod.label} navigation`}>

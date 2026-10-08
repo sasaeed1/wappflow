@@ -63,6 +63,9 @@ export const profileAPI = {
   get: () => api.get('/profile'),
   update: (data) => api.put('/profile', data),
   uploadAvatar: (formData) => api.post('/profile/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  // Per-user preferences (PROP-007 chat bubbles).
+  getPreferences: () => api.get('/me/preferences'),
+  updatePreferences: (data) => api.put('/me/preferences', data),
 };
 
 export const leadsAPI = {
