@@ -815,9 +815,6 @@ html.light .lead-outcome__amount { background: linear-gradient(90deg, #059669, #
    status and message count on the right. Phone, tags, owner and value stay one
    tap away on the lead itself. */
 @media (max-width: 640px) {
-  .ll-head { padding: 12px 14px !important; row-gap: 10px !important; }
-  .ll-head-actions { width: 100%; }
-  .ll-head-actions > button { flex: 1 1 0; justify-content: center; padding: 9px 10px !important; white-space: nowrap; }
   .ll-main { padding: 14px !important; }
 
   .r-tw.wf-lead-head, .r-tw.wf-lead-row { min-width: 0 !important; }
@@ -833,6 +830,62 @@ html.light .lead-outcome__amount { background: linear-gradient(90deg, #059669, #
   .wf-lead-row > :nth-child(4) { grid-column: 3; grid-row: 1; align-items: flex-end !important; }
   .wf-lead-row > :nth-child(5) { grid-column: 3; grid-row: 2; justify-self: end; }
   .wf-lead-row > :nth-child(3), .wf-lead-row > :nth-child(n+6) { display: none !important; }
+  /* One tidy line under the name (platform · date), and only the status on the
+     right; the account name and the AI score/mood stay on desktop. */
+  .ll-row-meta { flex-wrap: nowrap !important; min-width: 0; overflow: hidden; }
+  .ll-row-meta > * { flex-shrink: 0; }
+  .ll-acct, .ll-ai { display: none !important; }
+  .ll-date { white-space: nowrap; }
+}
+
+/* ── Leads list hero + chip rows (shares .dash-hero with the dashboard) ── */
+.ll-hero { max-width: 1280px; padding: 26px 24px 10px; }
+.ll-attention {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 8px; border-radius: 20px; cursor: pointer;
+  border: 1px solid rgba(245,158,11,.35); background: rgba(245,158,11,.12); color: #fbbf24; font-size: 12.5px; font-weight: 700;
+  transition: background .2s;
+}
+.ll-attention:hover { background: rgba(245,158,11,.2); }
+.ll-attention__chev { transition: transform .2s; }
+.ll-attention.is-open .ll-attention__chev { transform: rotate(180deg); }
+html.light .ll-attention { color: #b45309; }
+.dash-hero__icon { position: relative; }
+.dash-hero__icon:disabled { opacity: .45; cursor: not-allowed; }
+.dash-hero__icon.is-on { color: #a78bfa; }
+.ll-dot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: #8b5cf6; box-shadow: 0 0 0 2px var(--bg); }
+.ll-hero__limit { background: linear-gradient(135deg, #f59e0b, #d97706) !important; }
+.ll-queue { margin: 0 0 14px; padding: 12px; border-radius: 18px; border: 1px solid rgba(245,158,11,.28);
+  background: radial-gradient(120% 140% at 0% 0%, rgba(245,158,11,.12), transparent 60%), var(--surface);
+  animation: oc-in .35s cubic-bezier(.2,.9,.3,1.15) both; }
+
+.ll-chiprow { display: flex; align-items: center; gap: 8px; overflow-x: auto; margin: 0 0 12px; padding: 2px 0; }
+.ll-chiprow__sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; margin: 0 2px; }
+.ll-chip {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 20px; white-space: nowrap;
+  border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.045); color: var(--text-dim); font-size: 12.5px; font-weight: 700; cursor: pointer;
+  transition: background .2s, color .2s, border-color .2s;
+}
+.ll-chip:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.ll-chip.is-active { border-color: rgba(139,92,246,.55); background: rgba(139,92,246,.14); color: #c4b5fd; }
+.ll-chip--ghost { border-style: dashed; background: transparent; }
+.ll-chip__x { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: none; padding: 0; background: rgba(255,255,255,.08); color: inherit; cursor: pointer; }
+.ll-chip--select { position: relative; padding-right: 10px; }
+.ll-chip--select select { appearance: none; -webkit-appearance: none; background: transparent; border: none; outline: none; color: inherit; font: inherit; cursor: pointer; padding: 0 2px 0 0; max-width: 150px; }
+.ll-chip--select select option { color: #111; }
+html.light .ll-chip { background: #fff; border-color: rgba(15,23,42,.08); box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+html.light .ll-chip.is-active { background: rgba(99,102,241,.1); border-color: rgba(99,102,241,.45); color: #4f46e5; }
+html.light .ll-chip__x { background: rgba(15,23,42,.06); }
+.ll-status-row { padding: 2px 0; }
+.ll-tagrow > * { flex-shrink: 0; }
+.ll-status-row > button { flex-shrink: 0; }
+
+@media (max-width: 760px) {
+  .ll-hero { padding: 18px 14px 6px; }
+  .ll-hero .dash-hero__icon > span { display: none; }
+  .ll-hero .dash-hero__icon { padding: 0; width: 44px; }
+}
+@media (min-width: 761px) {
+  .ll-hero .dash-hero__bar { flex-basis: 640px; }
 }
 
 /* Knowledge base KPIs: three across, icon above the number, on phones. */
