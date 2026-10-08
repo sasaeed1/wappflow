@@ -1,44 +1,15 @@
 'use client';
-import { useEffect, useState } from 'react';
 
-// The one full-page loading state. Deliberately quiet: the brand moment is the
-// launch intro (LaunchIntro.js), and a loud loader on every page load read as the
-// intro replaying. It only appears if loading takes longer than ~250ms.
-// It replaced a bare grey spinner with
-// "Loading WappFlow...", which on Android sat underneath the OS splash screen as
-// it faded out and made the whole launch look unfinished. Small mark, wordmark,
-// a rotating line so a slow network still feels alive. Styles live in
-// globals.css (.wf-loader*) so reduced-motion users get a still version.
-const LINES = [
-  'Turning chats into clients ⚡',
-  'Waking up your pipeline…',
-  'Your next big booking is loading 💫',
-  'Lining up today’s leads…',
-  'Polishing your galleries ✨',
-  'Making your studio look good…',
-];
-
-export default function BrandLoader({ lines = LINES, fullScreen = true }) {
-  // Start on a fixed line (index 0) so the server and client render the same text.
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    if (lines.length < 2) return undefined;
-    const t = setInterval(() => setI((n) => (n + 1) % lines.length), 1800);
-    return () => clearInterval(t);
-  }, [lines.length]);
-
+// The full-page loading state for app pages (dashboard, lead page): a thin
+// progress line at the top of the page and nothing else. The brand animation
+// belongs to the launch intro alone (LaunchIntro.js); a logo loader on every
+// page load read as the intro replaying on each refresh. The line only fades in
+// if loading takes longer than ~250ms, so quick loads show nothing at all.
+export default function BrandLoader({ lines = ['Loading…'], fullScreen = true }) {
   return (
     <div className={`wf-loader${fullScreen ? ' wf-loader--full' : ''}`} role="status" aria-live="polite">
-      <div className="wf-loader__mark" aria-hidden="true">
-        <span className="wf-loader__ring" />
-        <span className="wf-loader__tile">
-          <svg width="22" height="22" viewBox="0 0 64 64" fill="none">
-            <path d="M35 12 L18 36 H30 L27 52 L46 26 H34 Z" fill="#fff" stroke="#fff" strokeWidth="1" strokeLinejoin="round" />
-          </svg>
-        </span>
-      </div>
-      <p key={i} className="wf-loader__line">{lines[i]}</p>
       <div className="wf-loader__bar" aria-hidden="true"><span /></div>
+      <span className="wf-loader__sr">{lines[0] || 'Loading…'}</span>
     </div>
   );
 }
