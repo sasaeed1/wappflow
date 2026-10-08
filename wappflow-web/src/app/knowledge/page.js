@@ -120,11 +120,14 @@ export default function KnowledgePage() {
         headers: { ...authHeader(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
-      showToast('Crawl started — the AI is reading the website. This can take a few minutes.');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'We couldn’t start reading that website. Please try again.');
+      }
+      showToast('Reading the website now. This can take a few minutes; you can leave this page.');
       setCrawlUrl('');
       fetchAll();
-    } catch (e) { showToast(e.message || 'Crawl failed', 'error'); }
+    } catch (e) { showToast(e.message || 'We couldn’t start reading that website. Please try again.', 'error'); }
     finally { setCrawling(false); }
   };
 
@@ -402,8 +405,12 @@ export default function KnowledgePage() {
                                 <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{doc.file_type === 'website' ? '🌐 Website' : new Date(doc.uploaded_at).toLocaleDateString()}</span>
                                 {doc.processed === 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.10)', padding: '2px 8px', borderRadius: 6, animation: 'pulse 1.5s infinite' }}>{doc.file_type === 'website' ? '⏳ Crawling…' : '⏳ Processing...'}</span>}
                                 {doc.processed === 1 && <span style={{ fontSize: 11, fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.10)', padding: '2px 8px', borderRadius: 6 }}>✅ {doc.memory_count} memories extracted</span>}
-                                {doc.processed === 2 && <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '2px 8px', borderRadius: 6 }}>❌ Processing failed</span>}
+                                {doc.processed === 2 && <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '2px 8px', borderRadius: 6 }}>{doc.file_type === 'website' ? '❌ Couldn’t read the website' : '❌ Processing failed'}</span>}
                               </div>
+                              {/* What happened, in plain words (the crawler writes it; a bare "failed" told nobody what to do next). */}
+                              {doc.file_type === 'website' && doc.processed !== 0 && doc.extracted_text && (
+                                <p style={{ fontSize: 12, color: doc.processed === 2 ? '#ef4444' : 'var(--text-muted)', margin: '6px 0 0', lineHeight: 1.45 }}>{doc.extracted_text}</p>
+                              )}
                             </div>
                             <div className="r-w-auto" style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                               {doc.processed === 1 && doc.memory_count > 0 && (

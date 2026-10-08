@@ -4991,6 +4991,10 @@ app.post('/api/knowledge/upload', auth, requirePerm('manage_settings'), knowledg
 });
 
 // DELETE /api/knowledge/:id — delete document + its memories
+// Learn from a website (Knowledge page → "Crawl Website"). Restored as its own
+// module, with a guard so the server only ever fetches public addresses.
+require('./knowledge-crawler')(app, db, { auth, requirePerm, generateId, extractMemoriesFromText, aiAvailable: () => aiEngine.hasAnyProvider() });
+
 app.delete('/api/knowledge/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const doc = db.prepare('SELECT * FROM knowledge_documents WHERE id = ?').get(req.params.id);

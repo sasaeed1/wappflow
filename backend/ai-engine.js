@@ -647,4 +647,6 @@ module.exports = {
   shortenMessage,
   // Provider info for diagnostics
   getActiveProvider: () => DEFAULT_PROVIDER,
+  // Is any provider usable at all? (Same key check the call chain uses.)
+  hasAnyProvider: () => PROVIDER_CHAIN.some(_hasKey),
 };
