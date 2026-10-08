@@ -3216,98 +3216,125 @@ app.get('/api/analytics', auth, requirePerm('view_reports'), (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+const { reportRange } = require('./report-range');
+
 app.get('/api/reports/overview', auth, requirePerm('view_reports'), (req, res) => {
   try {
     const wid = req.workspaceId;
-    const { period = '30', start_date, end_date } = req.query;
+    const { range, prev, tzModifier } = reportRange(req.query);
+    // Stored times are UTC; shift them into the viewer's day before comparing dates.
+    const day = (col) => `DATE(${col}, '${tzModifier}')`;
+    const notDeleted = '(is_deleted=0 OR is_deleted IS NULL)';
+    // Every figure on the Analytics page follows the chosen range. Before this,
+    // only the two time charts did: the cards, funnel, sources, platforms, team
+    // and lost reasons were all-time, so changing 7D → 1Y appeared to do nothing.
+    // Dates are bound parameters (?) — never interpolate req.query into SQL.
+    const between = (col) => `${day(col)} BETWEEN DATE(?) AND DATE(?)`;
+    // Booking times are saved as the studio's local time already.
+    const betweenLocal = (col) => `DATE(${col}) BETWEEN DATE(?) AND DATE(?)`;
+    const R = [range.start, range.end];
+    const P = [prev.start, prev.end];
+    const one = (sql, ...p) => { try { return db.prepare(sql).get(wid, ...p) || {}; } catch { return {}; } };
+    const many = (sql, ...p) => { try { return db.prepare(sql).all(wid, ...p); } catch { return []; } };
 
-    // Build date filter — custom range takes priority over period.
-    // Use bound parameters (?) — never interpolate req.query into SQL.
-    let leadsTimeFilter, revenueTimeFilter, leadsTimeParams, revenueTimeParams;
-    if (start_date && end_date) {
-      leadsTimeFilter = `DATE(created_at) BETWEEN DATE(?) AND DATE(?)`;
-      revenueTimeFilter = `DATE(closed_at) BETWEEN DATE(?) AND DATE(?)`;
-      leadsTimeParams = [start_date, end_date];
-      revenueTimeParams = [start_date, end_date];
-    } else {
-      const days = parseInt(period, 10);
-      const modifier = `-${Number.isInteger(days) ? days : 30} days`;
-      leadsTimeFilter = `DATE(created_at) >= DATE('now', ?)`;
-      revenueTimeFilter = `DATE(closed_at) >= DATE('now', ?)`;
-      leadsTimeParams = [modifier];
-      revenueTimeParams = [modifier];
-    }
+    // Leads added per day
+    const leadsOverTime = many(`
+      SELECT ${day('created_at')} as date, COUNT(*) as count
+      FROM leads WHERE workspace_id=? AND ${between('created_at')} AND ${notDeleted}
+      GROUP BY ${day('created_at')} ORDER BY date ASC`, ...R);
 
-    // Leads over time
-    const leadsOverTime = db.prepare(`
-      SELECT DATE(created_at) as date, COUNT(*) as count
-      FROM leads WHERE workspace_id=? AND ${leadsTimeFilter} AND (is_deleted=0 OR is_deleted IS NULL)
-      GROUP BY DATE(created_at) ORDER BY date ASC
-    `).all(wid, ...leadsTimeParams);
+    // Money collected per day — the payments ledger, i.e. what was actually paid.
+    // This chart used to sum the sale amount typed on deals marked won, so paid
+    // invoices never moved it and it sat flat for studios that bill through WappFlow.
+    const revenueOverTime = many(`
+      SELECT ${day('COALESCE(paid_at, created_at)')} as date, SUM(amount) as revenue
+      FROM payments WHERE workspace_id=? AND status='paid' AND ${between('COALESCE(paid_at, created_at)')}
+      GROUP BY ${day('COALESCE(paid_at, created_at)')} ORDER BY date ASC`, ...R);
 
-    // Revenue over time
-    const revenueOverTime = db.prepare(`
-      SELECT DATE(closed_at) as date, SUM(actual_sale) as revenue
-      FROM leads WHERE workspace_id=? AND status='Closed - Won' AND closed_at IS NOT NULL AND ${revenueTimeFilter}
-      GROUP BY DATE(closed_at) ORDER BY date ASC
-    `).all(wid, ...revenueTimeParams);
+    // Value of deals won per day (the figure typed when a deal is marked won)
+    const wonOverTime = many(`
+      SELECT ${day('closed_at')} as date, SUM(COALESCE(actual_sale, estimated_value, 0)) as revenue, COUNT(*) as count
+      FROM leads WHERE workspace_id=? AND status='Closed - Won' AND closed_at IS NOT NULL AND ${between('closed_at')} AND ${notDeleted}
+      GROUP BY ${day('closed_at')} ORDER BY date ASC`, ...R);
 
-    // Pipeline funnel
-    const pipeline = db.prepare(`
+    // Leads added in the range, by where they stand now
+    const pipeline = many(`
       SELECT status, COUNT(*) as count, SUM(COALESCE(estimated_value, 0)) as value
-      FROM leads WHERE workspace_id=? AND (is_deleted=0 OR is_deleted IS NULL) GROUP BY status
-    `).all(wid);
+      FROM leads WHERE workspace_id=? AND ${between('created_at')} AND ${notDeleted} GROUP BY status`, ...R);
 
-    // Lead sources
-    const sources = db.prepare(`
-      SELECT COALESCE(lead_source, 'Direct') as source, COUNT(*) as count
-      FROM leads WHERE workspace_id=? AND (is_deleted=0 OR is_deleted IS NULL) GROUP BY lead_source ORDER BY count DESC
-    `).all(wid);
+    const sources = many(`
+      SELECT COALESCE(NULLIF(lead_source, ''), 'Direct') as source, COUNT(*) as count
+      FROM leads WHERE workspace_id=? AND ${between('created_at')} AND ${notDeleted}
+      GROUP BY COALESCE(NULLIF(lead_source, ''), 'Direct') ORDER BY count DESC`, ...R);
 
-    // Assignee performance
-    const agentPerf = db.prepare(`
+    const platforms = many(`
+      SELECT COALESCE(platform_source, 'whatsapp') as platform, COUNT(*) as count
+      FROM leads WHERE workspace_id=? AND ${between('created_at')} AND ${notDeleted}
+      GROUP BY COALESCE(platform_source, 'whatsapp') ORDER BY count DESC`, ...R);
+
+    // Team: leads added in the range per assignee
+    const agentPerf = (() => { try { return db.prepare(`
       SELECT wm.full_name as name, wm.user_id as id,
         COUNT(l.id) as total_leads,
         SUM(CASE WHEN l.status='Closed - Won' THEN 1 ELSE 0 END) as won,
         SUM(CASE WHEN l.status='Closed - Lost' THEN 1 ELSE 0 END) as lost,
-        SUM(COALESCE(l.actual_sale, 0)) as revenue
+        SUM(CASE WHEN l.status='Closed - Won' THEN COALESCE(l.actual_sale, 0) ELSE 0 END) as revenue
       FROM workspace_members wm
-      LEFT JOIN leads l ON l.assigned_to = wm.user_id AND (l.is_deleted=0 OR l.is_deleted IS NULL)
+      LEFT JOIN leads l ON l.assigned_to = wm.user_id AND l.workspace_id = wm.workspace_id
+        AND (l.is_deleted=0 OR l.is_deleted IS NULL) AND ${day('l.created_at')} BETWEEN DATE(?) AND DATE(?)
       WHERE wm.workspace_id=? AND wm.user_id IS NOT NULL
-      GROUP BY wm.user_id ORDER BY won DESC
-    `).all(wid);
+      GROUP BY wm.user_id ORDER BY won DESC, total_leads DESC
+    `).all(...R, wid); } catch { return []; } })();
 
-    // Response time (avg time between lead creation and first outgoing message)
-    // Only count positive values — negative means historical synced messages arrived before lead was created
-    const responseTime = db.prepare(`
+    // Avg time to first reply, for leads added in the range. Only positive gaps:
+    // a negative one means synced history arrived before the lead was created.
+    const responseTime = one(`
       SELECT AVG(diff) as avg_minutes FROM (
         SELECT CAST((julianday(m.timestamp) - julianday(l.created_at)) * 24 * 60 AS INTEGER) as diff
         FROM leads l
         JOIN messages m ON m.lead_id = l.id AND m.from_me = 1
-        WHERE l.workspace_id=? AND (l.is_deleted=0 OR l.is_deleted IS NULL)
+        WHERE l.workspace_id=? AND (l.is_deleted=0 OR l.is_deleted IS NULL) AND ${between('l.created_at')}
           AND m.id = (SELECT id FROM messages WHERE lead_id = l.id AND from_me = 1 ORDER BY timestamp ASC LIMIT 1)
           AND julianday(m.timestamp) > julianday(l.created_at)
-      ) WHERE diff > 0
-    `).get(wid);
+      ) WHERE diff > 0`, ...R);
 
-    // Lost reasons
-    const lostReasons = db.prepare(`
+    // Deals lost in the range, by reason
+    const lostReasons = many(`
       SELECT lost_reason, COUNT(*) as count FROM leads
-      WHERE workspace_id=? AND status='Closed - Lost' AND lost_reason IS NOT NULL
-      GROUP BY lost_reason ORDER BY count DESC
-    `).all(wid);
+      WHERE workspace_id=? AND status='Closed - Lost' AND lost_reason IS NOT NULL AND lost_reason != ''
+        AND ${between('COALESCE(closed_at, created_at)')} AND ${notDeleted}
+      GROUP BY lost_reason ORDER BY count DESC`, ...R);
 
-    // Platform breakdown
-    const platforms = db.prepare(`
-      SELECT COALESCE(platform_source, 'whatsapp') as platform, COUNT(*) as count
-      FROM leads WHERE workspace_id=? AND (is_deleted=0 OR is_deleted IS NULL)
-      GROUP BY COALESCE(platform_source, 'whatsapp') ORDER BY count DESC
-    `).all(wid);
+    // Headline figures for the range, plus the same figures for the range before
+    // it so the cards can say whether things went up or down.
+    const totals = (D) => {
+      const leads = one(`SELECT COUNT(*) c FROM leads WHERE workspace_id=? AND ${between('created_at')} AND ${notDeleted}`, ...D).c || 0;
+      const wonInCohort = one(`SELECT COUNT(*) c FROM leads WHERE workspace_id=? AND status='Closed - Won' AND ${between('created_at')} AND ${notDeleted}`, ...D).c || 0;
+      const won = one(`SELECT COUNT(*) c, SUM(COALESCE(actual_sale, estimated_value, 0)) t FROM leads
+                        WHERE workspace_id=? AND status='Closed - Won' AND closed_at IS NOT NULL AND ${between('closed_at')} AND ${notDeleted}`, ...D);
+      const lost = one(`SELECT COUNT(*) c FROM leads WHERE workspace_id=? AND status='Closed - Lost' AND ${between('COALESCE(closed_at, created_at)')} AND ${notDeleted}`, ...D).c || 0;
+      const collected = one(`SELECT SUM(amount) t FROM payments WHERE workspace_id=? AND status='paid' AND ${between('COALESCE(paid_at, created_at)')}`, ...D).t || 0;
+      const invoiced = one(`SELECT COUNT(*) c, SUM(total) t FROM invoices WHERE workspace_id=? AND ${between('created_at')} AND ${notDeleted}`, ...D);
+      const contracts = one(`SELECT COUNT(*) c FROM cs_documents WHERE workspace_id=? AND status IN ('signed','completed')
+                              AND ${between('COALESCE(completed_at, created_at)')} AND ${notDeleted}`, ...D).c || 0;
+      const bookings = one(`SELECT COUNT(*) c FROM bookings WHERE workspace_id=? AND status != 'cancelled' AND ${betweenLocal('start_at')} AND ${notDeleted}`, ...D).c || 0;
+      const wonCount = won.c || 0;
+      return {
+        leads, won: wonCount, won_value: Math.round(won.t || 0), lost,
+        conversion_rate: leads > 0 ? Math.round((wonInCohort / leads) * 100) : 0,
+        avg_deal_size: wonCount > 0 ? Math.round((won.t || 0) / wonCount) : 0,
+        collected: Math.round(collected * 100) / 100,
+        invoices_raised: invoiced.c || 0, invoiced_value: Math.round(invoiced.t || 0),
+        contracts_signed: contracts, bookings,
+      };
+    };
 
     const cs = db.prepare('SELECT currency_symbol FROM company_settings WHERE user_id = ?').get(req.workspaceOwnerId);
 
     res.json({
-      leadsOverTime, revenueOverTime, pipeline, sources, agentPerf,
+      range, previousRange: prev,
+      summary: totals(R), previous: totals(P),
+      leadsOverTime, revenueOverTime, wonOverTime, pipeline, sources, agentPerf,
       // null when nobody has replied yet, so the UI shows — rather than a fake "0m" (PROP-006).
       avgResponseMinutes: responseTime?.avg_minutes ?? null,
       lostReasons, platforms, currencySymbol: cs?.currency_symbol || '$'

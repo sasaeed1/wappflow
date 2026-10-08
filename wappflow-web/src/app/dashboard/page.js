@@ -428,7 +428,7 @@ function LeadCard({ lead, index, onClick, allTags, onTagToggle, isNew, sym = '$'
                 <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{lead.total_messages}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
-                {(lead.actual_sale || lead.estimated_value) && (
+                {Number(lead.actual_sale || lead.estimated_value) > 0 && (
                   <span style={{ fontSize: 12, fontWeight: 800, color: sc.dot }}>
                     {sym} {(lead.actual_sale || lead.estimated_value)?.toLocaleString()}
                   </span>
@@ -1334,7 +1334,7 @@ export default function DashboardPage() {
                       <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{lead.total_messages} msgs</span>
                     </div>
                   </div>
-                  {(lead.actual_sale || lead.estimated_value) && (
+                  {Number(lead.actual_sale || lead.estimated_value) > 0 && (
                     <span style={{ fontSize: 14, fontWeight: 800, color: sc.dot, flexShrink: 0 }}>
                       {sym} {(lead.actual_sale || lead.estimated_value)?.toLocaleString()}
                     </span>
