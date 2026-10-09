@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
   // Lets the deploy script build into a staging dir (NEXT_DIST=.next.staging) so a
   // failed/OOM build never overwrites the live .next. Defaults to .next otherwise.
   distDir: process.env.NEXT_DIST || ".next",
+  // Don't advertise the framework/version in every response.
+  poweredByHeader: false,
   // Content Security Policy (PROP-006). Scripts may only come from this site and
   // Google sign-in; plugins are off; the page can't be framed by other sites and
   // its <base> can't be rewritten. 'unsafe-inline' stays for scripts because Next's
@@ -34,6 +36,10 @@ const nextConfig: NextConfig = {
       headers: [
         { key: "Content-Security-Policy", value: csp },
         { key: "X-Content-Type-Options", value: "nosniff" },
+        // Browsers remember to use HTTPS only for a year (ignored over plain http,
+        // so local dev is unaffected). Subdomains are left out on purpose.
+        { key: "Strict-Transport-Security", value: "max-age=31536000" },
+        { key: "X-Frame-Options", value: "SAMEORIGIN" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=()" },
       ],

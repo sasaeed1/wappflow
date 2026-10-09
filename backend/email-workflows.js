@@ -49,7 +49,7 @@ module.exports = function mountEmailWorkflows(app, db, deps) {
     const subject = fill(tpl.subject, lead, business);
     const body = fill(tpl.body, lead, business);
     try {
-      const t = nodemailer.createTransport({ host: smtp.smtp_host, port: smtp.smtp_port, secure: !!smtp.smtp_secure, auth: { user: smtp.smtp_user, pass: smtp.smtp_pass } });
+      const t = await require('./mail-security').smtpTransport(nodemailer, smtp);
       const from = smtp.from_email || smtp.smtp_user;
       await t.sendMail({ from: `"${smtp.from_name || business || 'WappFlow'}" <${from}>`, to: lead.email, subject, text: body, html: esc(body).replace(/\n/g, '<br>') });
       db.prepare("UPDATE email_workflows SET status = 'sent', sent_at = CURRENT_TIMESTAMP, error = NULL WHERE id = ?").run(wf.id);
