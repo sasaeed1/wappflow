@@ -10,6 +10,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const webpush = require('web-push');
+const mailSec = require('./mail-security'); // studio SMTP/IMAP: sealed passwords + host checks
 const { OAuth2Client } = require('google-auth-library');
 const nodemailer = require('nodemailer');
 const aiEngine = require('./ai-engine');
@@ -25,6 +26,9 @@ const { describeWaError } = require('./wa-errors'); // unwraps minified whatsapp
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BPismtnocRKwNB_MlJqoFdWIG5vKNGhw89sH0nut1Ms7mS2Jlod5htjjgL53Wd_X8emuODWC5a1P1Hy52oUqAv0';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '5FnXMUgUbQhTv4IelAJdA_y5SpeM344CJUIRQ9_oRiE';
 webpush.setVapidDetails('mailto:admin@wappflow.app', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+if (!process.env.VAPID_PRIVATE_KEY) {
+  console.warn('⚠️  VAPID_PRIVATE_KEY is not set — push notifications use the public demo keys. Run `npx web-push generate-vapid-keys` and put both keys in backend/.env.');
+}
 
 // ── Global error guards — keep the server alive even if a promise rejects ──
 process.on('unhandledRejection', (reason, promise) => {
@@ -155,11 +159,39 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many failed sign-in attempts — please wait 15 minutes and try again.' },
 });
 
+// Sign-up and "send me a reset link" answer 200 whatever happens, so the login
+// limiter above (which ignores successful requests) never counted them: anyone
+// could create accounts in bulk or fill a stranger's inbox with reset emails.
+// This one counts EVERY request per IP.
+const accountRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_ACCOUNT) || 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests from this network — please wait 15 minutes and try again.' },
+});
+// Public website forms: per form + IP, so one noisy page can't flood a studio's leads.
+const websiteFormLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_FORM) || 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.params.formToken}:${ipKeyGenerator(req.ip || '')}`,
+  message: { error: 'Too many submissions — please try again in a few minutes.' },
+});
+// A real bcrypt hash to compare against when the email has no account, so a
+// wrong email takes as long as a wrong password and timing can't reveal who
+// has an account.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('wappflow-no-such-user', 10);
+
 // CORS
 app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
   credentials: true,
 }));
+if (!process.env.FRONTEND_URL) {
+  console.warn('⚠️  FRONTEND_URL is not set — the API accepts browser requests from any website. Set it in backend/.env (e.g. https://app.wappflow.com).');
+}
 app.use(limiter);
 // Stripe webhook signature verification needs the RAW request bytes, so a path-scoped
 // raw parser is registered BEFORE the global JSON parser (which would otherwise consume
@@ -169,7 +201,10 @@ app.use('/api/payments/webhook', express.raw({ type: () => true, limit: '1mb' })
 // Meta signs its webhooks over the RAW bytes too (X-Hub-Signature-256), so the
 // same ordering rule applies: parse raw here, JSON afterwards in the handler.
 app.use(['/api/webhooks/instagram', '/api/webhooks/facebook'], express.raw({ type: () => true, limit: '2mb' }));
-app.use(express.json({ limit: '50mb' }));
+// Was 50mb: any caller could make the server buffer and parse 50 MB of JSON.
+// Files go through multipart uploads, not JSON; the largest JSON bodies are
+// imports and signatures, well under this.
+app.use(express.json({ limit: '10mb' }));
 // Static uploads — add an explicit Access-Control-Allow-Origin so cross-origin <img> tags work.
 // Files under /uploads are reachable by anyone holding the link, so the link is the
 // secret: every new upload name carries 128 random bits (PROP-006; outgoing voice
@@ -1119,6 +1154,8 @@ for (const ix of [
 
 // ── Migrate password_hash → password for databases created with old schema ──
 safeAlter('ALTER TABLE users ADD COLUMN password TEXT');
+// Studio mail passwords used to be stored as plain text; seal any that still are.
+mailSec.sealLegacyRows(db);
 try {
   const migrated = db.prepare(`UPDATE users SET password = password_hash WHERE password IS NULL AND password_hash IS NOT NULL`).run();
   if (migrated.changes > 0) console.log(`✅ Migrated ${migrated.changes} user password(s) from password_hash → password`);
@@ -1460,7 +1497,7 @@ whatsappService.loadAccounts();
 //  AUTH ROUTES
 // ════════════════════════════════════════════════════════════
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', accountRequestLimiter, async (req, res) => {
   try {
     const { email, password, businessName } = req.body;
     // Registration accepted ANY password — including an empty string — while the
@@ -1509,8 +1546,11 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    const isMatch = await bcrypt.compare(password, user.password);
+    if (!user || !user.password) {
+      await bcrypt.compare(String(password || ''), DUMMY_PASSWORD_HASH);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const isMatch = await bcrypt.compare(String(password || ''), user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
     // Second step when the account (or its team) uses an authenticator (PROP-006).
     if (accountSecurity && accountSecurity.gate(user, res)) return;
@@ -3072,10 +3112,7 @@ app.post('/api/invoices/:id/email', auth, requirePerm('manage_invoices'), async 
 
     const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     if (!smtpRow || !smtpRow.smtp_host) return res.status(400).json({ error: 'SMTP not configured. Please set up email sending in Settings → Email Sending.' });
-    const transporter = nodemailer.createTransport({
-      host: smtpRow.smtp_host, port: smtpRow.smtp_port, secure: !!smtpRow.smtp_secure,
-      auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass }
-    });
+    const transporter = await mailSec.smtpTransport(nodemailer, smtpRow);
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const docHtml = await renderInvoiceEmailHTML(inv, company, baseUrl);
@@ -3986,12 +4023,7 @@ app.post('/api/workspace/invite', auth, async (req, res) => {
         const workspaceName = workspace?.name || inviterUser?.business_name || 'WappFlow';
 
         if (smtpRow && smtpRow.smtp_host && smtpRow.smtp_user && smtpRow.smtp_pass) {
-          const transporter = nodemailer.createTransport({
-            host: smtpRow.smtp_host,
-            port: smtpRow.smtp_port || 587,
-            secure: !!smtpRow.smtp_secure,
-            auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass },
-          });
+          const transporter = await mailSec.smtpTransport(nodemailer, smtpRow);
 
           const roleLabels = { admin: 'Admin', manager: 'Manager', user: 'Team Member' };
           const roleLabel = roleLabels[role] || role;
@@ -4132,13 +4164,17 @@ app.get('/api/settings/email-smtp', auth, (req, res) => {
 });
 
 // PUT /api/settings/email-smtp
-app.put('/api/settings/email-smtp', auth, (req, res) => {
+app.put('/api/settings/email-smtp', auth, async (req, res) => {
   try {
     if (!['super_admin', 'admin'].includes(req.userRole)) return res.status(403).json({ error: 'Insufficient permissions' });
     const { smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass, from_name, from_email } = req.body;
+    if (smtp_host) {
+      const chk = await mailSec.checkMailHost(smtp_host, smtp_port || 587, 'smtp');
+      if (!chk.ok) return res.status(400).json({ error: chk.error });
+    }
     const existing = db.prepare('SELECT id, smtp_pass FROM email_smtp_settings WHERE user_id = ?').get(req.workspaceOwnerId);
-    // Keep existing password if not provided or masked
-    const finalPass = (!smtp_pass || smtp_pass === '••••••••') ? (existing?.smtp_pass || '') : smtp_pass;
+    // Keep existing password if not provided or masked; stored sealed (mail-security.js).
+    const finalPass = (!smtp_pass || smtp_pass === '••••••••') ? (existing?.smtp_pass || '') : mailSec.sealSecret(smtp_pass);
     if (existing) {
       db.prepare('UPDATE email_smtp_settings SET smtp_host=?, smtp_port=?, smtp_secure=?, smtp_user=?, smtp_pass=?, from_name=?, from_email=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?')
         .run(smtp_host||'', smtp_port||587, smtp_secure?1:0, smtp_user||'', finalPass, from_name||'', from_email||'', req.workspaceOwnerId);
@@ -4155,10 +4191,7 @@ app.post('/api/settings/email-smtp/test', auth, async (req, res) => {
   try {
     const row = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     if (!row || !row.smtp_host) return res.status(400).json({ error: 'SMTP not configured' });
-    const transporter = nodemailer.createTransport({
-      host: row.smtp_host, port: row.smtp_port, secure: !!row.smtp_secure,
-      auth: { user: row.smtp_user, pass: row.smtp_pass }
-    });
+    const transporter = await mailSec.smtpTransport(nodemailer, row);
     await transporter.verify();
     const info = await transporter.sendMail({
       from: `"${row.from_name || 'WappFlow'}" <${row.from_email || row.smtp_user}>`,
@@ -4183,12 +4216,16 @@ app.get('/api/settings/email-imap', auth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/settings/email-imap', auth, (req, res) => {
+app.put('/api/settings/email-imap', auth, async (req, res) => {
   try {
     if (!['super_admin', 'admin'].includes(req.userRole)) return res.status(403).json({ error: 'Insufficient permissions' });
     const { imap_host, imap_port, imap_secure, imap_user, imap_pass, is_enabled } = req.body;
+    if (imap_host) {
+      const chk = await mailSec.checkMailHost(imap_host, imap_port || 993, 'imap');
+      if (!chk.ok) return res.status(400).json({ error: chk.error });
+    }
     const existing = db.prepare('SELECT id, imap_pass FROM email_imap_settings WHERE user_id = ?').get(req.workspaceOwnerId);
-    const finalPass = (!imap_pass || imap_pass === '••••••••') ? (existing?.imap_pass || '') : imap_pass;
+    const finalPass = (!imap_pass || imap_pass === '••••••••') ? (existing?.imap_pass || '') : mailSec.sealSecret(imap_pass);
     if (existing) {
       db.prepare('UPDATE email_imap_settings SET imap_host=?, imap_port=?, imap_secure=?, imap_user=?, imap_pass=?, is_enabled=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?')
         .run(imap_host||'', imap_port||993, imap_secure?1:0, imap_user||'', finalPass, is_enabled?1:0, req.workspaceOwnerId);
@@ -4205,11 +4242,15 @@ app.post('/api/settings/email-imap/test', auth, async (req, res) => {
   try {
     const row = db.prepare('SELECT * FROM email_imap_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     if (!row || !row.imap_host) return res.status(400).json({ error: 'IMAP not configured' });
+    const chk = await mailSec.checkMailHost(row.imap_host, row.imap_port || 993, 'imap');
+    if (!chk.ok) return res.status(400).json({ error: chk.error });
     const Imap = require('imap');
     const imap = new Imap({
-      user: row.imap_user, password: row.imap_pass,
+      user: row.imap_user, password: mailSec.unsealSecret(row.imap_pass),
       host: row.imap_host, port: row.imap_port,
-      tls: !!row.imap_secure, tlsOptions: { rejectUnauthorized: false },
+      // Certificates are checked: with rejectUnauthorized:false anyone on the path
+      // could pose as the mail server and collect the studio's mailbox password.
+      tls: !!row.imap_secure, tlsOptions: { rejectUnauthorized: true, servername: row.imap_host },
       connTimeout: 10000, authTimeout: 8000,
     });
     await new Promise((resolve, reject) => {
@@ -4244,10 +4285,7 @@ app.post('/api/leads/:id/email', auth, async (req, res) => {
     const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     if (!smtpRow || !smtpRow.smtp_host) return res.status(400).json({ error: 'SMTP not configured. Please set up email sending in Settings → Email Sending.' });
 
-    const transporter = nodemailer.createTransport({
-      host: smtpRow.smtp_host, port: smtpRow.smtp_port, secure: !!smtpRow.smtp_secure,
-      auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass }
-    });
+    const transporter = await mailSec.smtpTransport(nodemailer, smtpRow);
 
     const mailResult = await transporter.sendMail({
       from: `"${smtpRow.from_name || 'WappFlow'}" <${smtpRow.from_email || smtpRow.smtp_user}>`,
@@ -4297,14 +4335,17 @@ function startEmailPoller() {
   const { simpleParser } = require('mailparser');
 
   async function pollWorkspace(config) {
+    // Never connect to a private/internal host, whatever was saved before (mail-security.js).
+    const chk = await mailSec.checkMailHost(config.imap_host, config.imap_port || 993, 'imap');
+    if (!chk.ok) { console.warn('[imap] skipped workspace poll:', chk.error); return; }
     return new Promise((resolve) => {
       const imap = new Imap({
         user: config.imap_user,
-        password: config.imap_pass,
+        password: mailSec.unsealSecret(config.imap_pass),
         host: config.imap_host,
         port: config.imap_port || 993,
         tls: !!config.imap_secure,
-        tlsOptions: { rejectUnauthorized: false },
+        tlsOptions: { rejectUnauthorized: true, servername: config.imap_host },
         connTimeout: 20000,
         authTimeout: 10000,
       });
@@ -5784,20 +5825,30 @@ app.post('/api/webhooks/facebook', (req, res) => {
 //  WEBSITE FORM — PUBLIC SUBMISSION ENDPOINT
 // ════════════════════════════════════════════════════════════
 
-app.post('/api/website-form/:formToken/submit', (req, res) => {
+app.post('/api/website-form/:formToken/submit', (req, res, next) => {
+  // CORS headers first so a 429 from the limiter is still readable by the page.
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+}, websiteFormLimiter, (req, res) => {
   try {
     const account = db.prepare("SELECT * FROM platform_accounts WHERE platform = 'website' AND webhook_verify_token = ?").get(req.params.formToken);
     if (!account) return res.status(404).json({ error: 'Form not found' });
 
     // Normalize field names — support both WappFlow widget format and Formspree format
     const body = req.body || {};
-    const name = body.name || body.full_name || body._name || body.your_name || 'Website Visitor';
-    const phone = body.phone || body.telephone || body.mobile || body.phone_number || null;
-    const email = body.email || body._replyto || body.your_email || null;
-    const message = body.message || body.comments || body.comment || body.msg || null;
-    if (!name && !phone && !email) return res.status(400).json({ error: 'At least one contact field required' });
+    // Honeypot: a hidden field people never see but bots fill in. Answer as if it
+    // worked so the bot learns nothing, and create no lead.
+    if (body._gotcha || body._hp || body.website_url_hp) return res.json({ ok: true });
+    // Anything a stranger posts is capped: it lands in a studio's CRM and chat.
+    const field = (v, max) => (v == null || typeof v === 'object' ? '' : String(v).trim().slice(0, max));
+    const phone = field(body.phone || body.telephone || body.mobile || body.phone_number, 40) || null;
+    const email = field(body.email || body._replyto || body.your_email, 254) || null;
+    const message = field(body.message || body.comments || body.comment || body.msg, 5000) || null;
+    const name = field(body.name || body.full_name || body._name || body.your_name, 120) || 'Website Visitor';
+    // The name always had a default, so this check never fired: an empty post
+    // created a blank lead. A submission needs a way to reach the person, or a message.
+    if (!phone && !email && !message) return res.status(400).json({ error: 'Please add a phone number, email or message.' });
 
     const leadId = generateId();
     const now = new Date().toISOString();
@@ -7053,6 +7104,7 @@ paymentsApi = require('./payments')(app, db, { auth, generateId, broadcastToWork
 require('./account-recovery')(app, db, {
   bcrypt, nodemailer, generateId, logAudit,
   limiter: loginLimiter,
+  requestLimiter: accountRequestLimiter,
   clientBaseUrl: process.env.FRONTEND_URL || '',
 });
 
@@ -7079,7 +7131,7 @@ require('./contracts-studio')(app, db, {
   sendEmail: async ({ workspaceOwnerId, to, subject, html, text }) => {
     const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(workspaceOwnerId);
     if (!smtpRow || !smtpRow.smtp_host) return { skipped: true };
-    const transporter = nodemailer.createTransport({ host: smtpRow.smtp_host, port: smtpRow.smtp_port, secure: !!smtpRow.smtp_secure, auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass } });
+    const transporter = await mailSec.smtpTransport(nodemailer, smtpRow);
     await transporter.sendMail({ from: `"${smtpRow.from_name || 'WappFlow'}" <${smtpRow.from_email || smtpRow.smtp_user}>`, to, subject, html, text });
     return { sent: true };
   },
@@ -7156,7 +7208,7 @@ ccMount = require('./command-center')(app, db, {
   sendEmail: async ({ workspaceOwnerId, to, subject, html, text }) => {
     const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(workspaceOwnerId);
     if (!smtpRow || !smtpRow.smtp_host) return { skipped: true };
-    const transporter = nodemailer.createTransport({ host: smtpRow.smtp_host, port: smtpRow.smtp_port, secure: !!smtpRow.smtp_secure, auth: { user: smtpRow.smtp_user, pass: smtpRow.smtp_pass } });
+    const transporter = await mailSec.smtpTransport(nodemailer, smtpRow);
     await transporter.sendMail({ from: `"${smtpRow.from_name || 'WappFlow'}" <${smtpRow.from_email || smtpRow.smtp_user}>`, to, subject, html, text });
     return { sent: true };
   },

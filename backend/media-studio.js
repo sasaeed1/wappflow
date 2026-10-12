@@ -2652,8 +2652,10 @@ Only suggest actions that make sense for the question. If none make sense, retur
       if (b.tagline !== undefined) set.tagline = String(b.tagline || '').slice(0, 160);
       if (b.bio !== undefined) set.bio = String(b.bio || '').slice(0, 1500);
       if (b.theme !== undefined && PORTFOLIO_THEMES.includes(b.theme)) set.theme = b.theme;
-      if (b.cover_url !== undefined) set.cover_url = b.cover_url || null;
-      if (b.avatar_url !== undefined) set.avatar_url = b.avatar_url || null;
+      // Shown on the public portfolio page: only web links or our own uploads.
+      const safeImg = (v) => { const u = String(v || '').trim().slice(0, 1000); return /^(https?:\/\/|\/(?!\/))/i.test(u) ? u : null; };
+      if (b.cover_url !== undefined) { if (b.cover_url && !safeImg(b.cover_url)) return res.status(400).json({ error: 'The cover image must be an uploaded file or a web link.' }); set.cover_url = safeImg(b.cover_url); }
+      if (b.avatar_url !== undefined) { if (b.avatar_url && !safeImg(b.avatar_url)) return res.status(400).json({ error: 'The profile image must be an uploaded file or a web link.' }); set.avatar_url = safeImg(b.avatar_url); }
       if (b.is_public !== undefined) set.is_public = b.is_public ? 1 : 0;
       if (b.auto_include !== undefined) set.auto_include = b.auto_include ? 1 : 0;
       if (b.settings !== undefined && b.settings && typeof b.settings === 'object') set.settings = JSON.stringify(b.settings);

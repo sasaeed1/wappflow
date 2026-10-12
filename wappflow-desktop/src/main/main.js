@@ -49,6 +49,21 @@ function createWindow() {
     return { action: 'allow' };
   });
 
+  // The shell is a local page that holds the Node bridge (preload). It must never
+  // be navigated to a remote page, which would then inherit that bridge.
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://')) { e.preventDefault(); if (/^https?:\/\//.test(url)) shell.openExternal(url); }
+  });
+
+  // Cloud modules run in a <webview>. Whatever a page asks for, a webview never
+  // gets Node, a preload script, or a non-web address.
+  win.webContents.on('will-attach-webview', (e, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    if (params.src && !/^https?:\/\//.test(params.src) && params.src !== 'about:blank') e.preventDefault();
+  });
+
   // Forward engine progress to the renderer's Local AI view.
   engine.on('progress', (p) => { try { win && win.webContents.send('ai:progress', p); } catch {} });
   engine.on('log', (m) => { try { win && win.webContents.send('ai:log', m); } catch {} });

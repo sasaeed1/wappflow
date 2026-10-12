@@ -37,6 +37,9 @@ module.exports = function mountAccountRecovery(app, db, deps = {}) {
     nodemailer = require('nodemailer'),
     generateId = () => crypto.randomUUID(),
     limiter = (req, res, next) => next(),
+    // Counts every request (forgot-password always answers 200, so a limiter that
+    // skips successes never fires). Falls back to `limiter` for older callers.
+    requestLimiter = limiter,
     clientBaseUrl = process.env.FRONTEND_URL || '',
     logAudit = () => {},
   } = deps;
@@ -79,7 +82,11 @@ module.exports = function mountAccountRecovery(app, db, deps = {}) {
           .get(user.workspace_id || user.id)?.user_id || user.id;
         const s = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(ownerId);
         if (s?.smtp_host) {
-          cfg = { host: s.smtp_host, port: s.smtp_port, secure: !!s.smtp_secure, auth: { user: s.smtp_user, pass: s.smtp_pass }, from: s.from_email || s.smtp_user };
+          const mailSec = require('./mail-security');
+          // A studio's own SMTP host is user-typed: only public mail servers (SSRF guard).
+          if ((await mailSec.checkMailHost(s.smtp_host, s.smtp_port || 587, 'smtp')).ok) {
+            cfg = { host: s.smtp_host, port: s.smtp_port, secure: !!s.smtp_secure, auth: { user: s.smtp_user, pass: mailSec.unsealSecret(s.smtp_pass) }, from: s.from_email || s.smtp_user };
+          }
         }
       } catch { /* no workspace SMTP either */ }
     }
@@ -105,7 +112,7 @@ module.exports = function mountAccountRecovery(app, db, deps = {}) {
   }
 
   // ── Ask for a link ────────────────────────────────────────────────────────
-  app.post('/api/auth/forgot-password', limiter, async (req, res) => {
+  app.post('/api/auth/forgot-password', requestLimiter, async (req, res) => {
     // ONE response, whatever happens. Any variation — a different message, a
     // different status, a measurably different delay — turns this into a way to
     // ask "does this person have an account?" about anybody on the platform.
@@ -117,6 +124,12 @@ module.exports = function mountAccountRecovery(app, db, deps = {}) {
       const user = db.prepare('SELECT id, email, workspace_id FROM users WHERE lower(email) = ?').get(email);
       if (!user) return res.json(neutral);
 
+      // At most 3 emails per account per 15 minutes, whatever the IP: stops
+      // someone rotating addresses to flood a person's inbox. The newest link
+      // stays valid; the answer stays neutral.
+      const recent = db.prepare("SELECT COUNT(*) n FROM password_resets WHERE user_id = ? AND requested_ip IS NOT NULL AND created_at > datetime('now', '-15 minutes')").get(user.id).n;
+      if (recent >= 3) return res.json(neutral);
+
       // Supersede any outstanding request: a second link should not leave the
       // first one alive.
       db.prepare("UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL").run(user.id);
@@ -125,10 +138,12 @@ module.exports = function mountAccountRecovery(app, db, deps = {}) {
       const expires = new Date(Date.now() + TOKEN_TTL_MIN * 60000).toISOString();
       db.prepare('INSERT INTO password_resets (id, user_id, token_hash, expires_at, requested_ip) VALUES (?,?,?,?,?)')
         .run(generateId(), user.id, hashToken(token), expires,
-             (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim() || null);
+             (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim() || 'unknown');
 
       const link = `${String(clientBaseUrl).replace(/\/+$/, '')}/reset-password?token=${token}`;
-      try { await sendResetMail(user, link); } catch (e) { console.error('[account-recovery] send failed:', e.message); }
+      // Not awaited: waiting on the mail server made a real account answer
+      // measurably slower than an unknown one — the very leak described above.
+      Promise.resolve().then(() => sendResetMail(user, link)).catch((e) => console.error('[account-recovery] send failed:', e.message));
       logAudit(user.workspace_id || user.id, user.id, 'password_reset_requested', 'user', user.id, {});
       return res.json(neutral);
     } catch (e) {
