@@ -99,6 +99,18 @@ function resolveParams(routePath, ids) {
     if (P.startsWith('/api/presets')) return ids.preset;
     if (P.startsWith('/api/whatsapp/accounts')) return ids.waAccount;
     if (P.startsWith('/api/lead-relations')) return ids.lead;
+    if (P.startsWith('/api/knowledge')) return ids.knowledge;
+    if (P.startsWith('/api/memories')) return ids.memory;
+    if (P.startsWith('/api/message-queue')) return ids.queue;
+    if (P.startsWith('/api/email-workflows')) return ids.emailWorkflow;
+    if (P.startsWith('/api/pipelines')) return ids.pipeline;
+    if (P.startsWith('/api/lost-reasons')) return ids.lostReason;
+    if (P.startsWith('/api/notifications')) return ids.notification;
+    if (P.startsWith('/api/studio-ai/styles')) return ids.style;
+    if (P.startsWith('/api/packs')) return ids.pack;
+    if (P.startsWith('/api/media/milestones')) return ids.milestone;
+    if (P.startsWith('/api/platform-accounts')) return ids.waAccount;
+    if (P.startsWith('/api/chat/messages') || P.startsWith('/api/comms/messages')) return ids.chatMessage;
     return null;
   };
   const value = pick();
@@ -116,7 +128,10 @@ function resolveParams(routePath, ids) {
 
 (async () => {
   await requireSameDb(API, Database); // the server on WF_API must be the one using WF_DB
-  let pass = 0, fail = 0, skipped = 0;
+  let pass = 0, fail = 0, skipped = 0, reached = 0;
+  const skippedList = [];
+  // What the server answers for an address no route owns, to tell "refused" from "never arrived".
+  const UNKNOWN_ROUTE = JSON.stringify((await j('GET', '/__no_such_route__', null)).d);
   const leaks = [];
   const noisy = [];
 
@@ -189,8 +204,24 @@ function resolveParams(routePath, ids) {
     'ct-' + RUN, WS_A, 'A Template');
   ids.order = plant("INSERT INTO ms_print_orders (id, workspace_id, lead_id, items, total) VALUES (?,?,?,'[]',100)",
     'or-' + RUN, WS_A, ids.lead);
-  // presets has no table on a fresh install, so its routes are reported skipped
-  // rather than silently counted as passing.
+  // Records behind routes that were skipped for lack of a fixture — and where real
+  // leaks were found by reading the code (knowledge delete, queue retry, the
+  // read-backs of presets / auto-replies / memories / email workflows).
+  const AU = A.user.id;
+  ids.knowledge = plant('INSERT INTO knowledge_documents (id, workspace_id, document_name) VALUES (?,?,?)', 'kd-' + RUN, WS_A, 'A Knowledge');
+  ids.memory = plant("INSERT INTO ai_memories (id, workspace_id, memory_type, key, value) VALUES (?,?,'fact','k','A secret fact')", 'mem-' + RUN, WS_A);
+  ids.preset = plant('INSERT INTO message_presets (id, user_id, title, body) VALUES (?,?,?,?)', 'pr-' + RUN, AU, 'A Preset', 'A preset body');
+  ids.autoReply = plant("INSERT INTO auto_reply_rules (id, user_id, name, keywords, reply_message) VALUES (?,?,?,'[]',?)", 'ar-' + RUN, AU, 'A Rule', 'A reply');
+  ids.queue = plant("INSERT INTO outbound_message_queue (id, workspace_id, status) VALUES (?,?,'failed')", 'q-' + RUN, WS_A);
+  ids.emailWorkflow = plant('INSERT INTO email_workflows (id, workspace_id, user_id, lead_id, template_id) VALUES (?,?,?,?,?)', 'ew-' + RUN, WS_A, AU, ids.lead, 'tpl-' + RUN);
+  ids.pipeline = plant('INSERT INTO pipelines (id, workspace_id, name) VALUES (?,?,?)', 'pl-' + RUN, WS_A, 'A Pipeline');
+  ids.lostReason = plant('INSERT INTO lost_reasons (id, workspace_id, reason) VALUES (?,?,?)', 'lr-' + RUN, WS_A, 'A Reason');
+  ids.notification = plant('INSERT INTO notifications (id, workspace_id, user_id) VALUES (?,?,?)', 'nt-' + RUN, WS_A, AU);
+  ids.style = plant('INSERT INTO ms_style_profiles (id, workspace_id) VALUES (?,?)', 'sp-' + RUN, WS_A);
+  ids.pack = plant('INSERT INTO ms_pack (id, workspace_id) VALUES (?,?)', 'pk-' + RUN, WS_A);
+  ids.milestone = plant('INSERT INTO ms_milestones (id, workspace_id, project_id) VALUES (?,?,?)', 'ms-' + RUN, WS_A, ids.project);
+  ids.waAccount = plant("INSERT INTO platform_accounts (id, workspace_id, platform, account_name, status) VALUES (?,?,'whatsapp','A WA','disconnected')", 'pa-' + RUN, WS_A);
+  ids.chatMessage = plant('INSERT INTO chat_messages (id, channel_id, user_id, sender_name, body) VALUES (?,?,?,?,?)', 'cm-' + RUN, ids.channel, AU, 'A', 'A chat message');
   w.close();
 
   // These have real create endpoints — use them, so the fixture exercises the
@@ -219,16 +250,22 @@ function resolveParams(routePath, ids) {
 
   for (const r of routes) {
     const filled = resolveParams(r.path, ids);
-    if (!filled || /:/.test(filled)) { skipped++; continue; }
+    if (!filled || /:/.test(filled)) { skipped++; skippedList.push(`${r.method} ${r.path}`); continue; }
 
-    const res = await j(r.method, filled, B.token, r.method === 'GET' ? undefined : BODY);
+    // Route paths start with /api and so does WF_API. Joined as-is every probe went
+    // to /api/api/..., answered 404, and counted as "refused" — this test passed
+    // for a long time without reaching a single route. Strip the prefix, and
+    // refuse to report a pass if nothing actually reached a handler.
+    const res = await j(r.method, filled.replace(/^\/api/, ''), B.token, r.method === 'GET' ? undefined : BODY);
+    if (!(res.status === 404 && JSON.stringify(res.d) === UNKNOWN_ROUTE)) reached++;
 
     if (res.status >= 200 && res.status < 300) {
       // A 2xx MIGHT be a leak. Confirm: did it actually return or touch A's data?
       const blob = JSON.stringify(res.d || {});
       const touched = blob.includes(ids.lead) || blob.includes(ids.invoice || ' ') ||
                       blob.includes(ids.project || ' ') || blob.includes('A Client') ||
-                      blob.includes('A Contract') || blob.includes('A Shoot') || blob.includes('A Gallery');
+                      blob.includes('A Contract') || blob.includes('A Shoot') || blob.includes('A Gallery') ||
+                      blob.includes('A secret fact') || blob.includes('A preset body') || blob.includes('A reply') || blob.includes('A Knowledge');
       leaks.push({ ...r, filled, status: res.status, touched, sample: blob.slice(0, 160) });
       fail++;
     } else if (res.status === 404 || res.status === 403 || res.status === 401) {
@@ -242,6 +279,7 @@ function resolveParams(routePath, ids) {
   // ── Report ────────────────────────────────────────────────────────────────
   console.log(`  ${pass} routes refused the wrong tenant`);
   console.log(`  ${skipped} skipped (no fixture for that resource)`);
+  if (process.env.WF_VERBOSE) for (const k of skippedList) console.log('     skipped: ' + k);
 
   if (noisy.length) {
     console.log(`\n  ${noisy.length} refused with a non-404 status (no leak, but the check is late):`);
@@ -257,6 +295,7 @@ function resolveParams(routePath, ids) {
     }
   }
 
+  assert(reached > routes.length / 2, `only ${reached} probes reached a route handler — the probe URLs are wrong, results would be meaningless`);
   console.log(`\n${fail === 0 ? '✅ TENANT BOUNDARY HELD' : '❌ TENANT BOUNDARY BREACHED'}: ${pass} refused, ${fail} leaked`);
   process.exitCode = fail === 0 ? 0 : 1;
 })().catch((e) => { console.error('FATAL', e); process.exitCode = 1; });

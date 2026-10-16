@@ -17,7 +17,7 @@ const pg = require('./pagination');
 let pass = 0, fail = 0;
 const check = (n, fn) => { try { fn(); console.log('  ✓', n); pass++; } catch (e) { console.log('  ✗', n, '—', e.message || e); fail++; } };
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const { strip } = require('./test-source'); // line comments first — see test-source.js
 const SERVER = strip(read('server.js'));
 
 check('winning a deal promotes the lead to a client', () => {

@@ -66,7 +66,7 @@ module.exports = function mountStudioExperience(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.delete('/api/packs/:id', auth, (req, res) => {
-    try { db.prepare('DELETE FROM ms_pack WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
+    try { const r = db.prepare('DELETE FROM ms_pack WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); if (!r.changes) return res.status(404).json({ error: 'Pack not found' }); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -102,7 +102,7 @@ module.exports = function mountStudioExperience(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.delete('/api/media/milestones/:id', auth, (req, res) => {
-    try { db.prepare('DELETE FROM ms_milestones WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
+    try { const r = db.prepare('DELETE FROM ms_milestones WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); if (!r.changes) return res.status(404).json({ error: 'Milestone not found' }); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 

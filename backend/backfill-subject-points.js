@@ -1,4 +1,5 @@
 'use strict';
+require('./safe-jimp'); // fence Jimp.read before any use (see safe-jimp.js)
 // ════════════════════════════════════════════════════════════════════════════
 //  Backfill subject points for assets analysed before reel framing existed.
 //

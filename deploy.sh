@@ -50,6 +50,18 @@ echo "→ Restarting services…"
 # moved the website onto the API's port and nginx returned 502. The API reads its
 # own port from backend/.env (dotenv override), so it needs no pin here.
 PORT="${WEB_PORT:-3000}" pm2 restart wappflow-web --update-env
+# WhatsApp runs a headless Chromium per number, started by the API. A plain restart
+# could leave the old one running, still holding the session's lock files — the new
+# API then sat on "Connecting…" forever (seen in production). So: stop the API (its
+# Chromiums are asked to close with it), politely end any that survived, force only
+# what is still there after a grace period, then start. Login data stays on disk.
+pm2 stop wappflow-api >/dev/null 2>&1 || true
+CHROME_PAT="/.cache/puppeteer/chrome/"
+if pgrep -f "$CHROME_PAT" >/dev/null 2>&1; then
+  pkill -TERM -f "$CHROME_PAT" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "$CHROME_PAT" >/dev/null 2>&1 || break; sleep 0.5; done
+  pkill -KILL -f "$CHROME_PAT" 2>/dev/null || true
+fi
 pm2 restart wappflow-api --update-env
 pm2 save
 

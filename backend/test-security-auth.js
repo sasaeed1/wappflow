@@ -172,6 +172,21 @@ const decode = (t) => JSON.parse(Buffer.from(String(t).split('.')[1], 'base64').
     }
   });
 
+  await check('the half-way 2FA token is NOT a session (two-step sign-in cannot be skipped)', async () => {
+    const email = `mfa-${RUN}@test.local`;
+    const r = await j('POST', '/auth/register', null, { email, password: 'mfa-password-1', businessName: 'M' });
+    const db = openDb(true);
+    db.prepare('UPDATE users SET mfa_enabled = 1 WHERE id = ?').run(r.d.user.id);
+    db.close();
+    const login = await j('POST', '/auth/login', null, { email, password: 'mfa-password-1' });
+    assert(login.d?.mfa_required && login.d?.mfa_token, 'login did not stop at the 2FA step: ' + JSON.stringify(login.d));
+    assert(!login.d.token, 'a session token was issued before the 2FA code');
+    for (const p of ['/auth/me', '/leads', '/settings/company']) {
+      const res = await j('GET', p, login.d.mfa_token);
+      assert.strictEqual(res.status, 401, `${p} accepted the half-way 2FA token (${res.status}) — 2FA can be skipped`);
+    }
+  });
+
   await check('brute force is rate limited', async () => {
     const email = `brute-${RUN}@test.local`;
     await j('POST', '/auth/register', null, { email, password: 'brute-password-1', businessName: 'B' });

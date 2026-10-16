@@ -1,4 +1,5 @@
 'use strict';
+require('./safe-jimp'); // fence Jimp.read before any use (see safe-jimp.js)
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -597,7 +598,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
         rects.forEach((r, i) => {
           const slot = slots[i];
           if (!slot || !slot.asset_id) { doc.save().rect(r.x, r.y, r.w, r.h).fill('#eef0f3').restore(); return; }
-          const asset = db.prepare('SELECT storage_key, variants FROM ms_assets WHERE id = ?').get(slot.asset_id);
+          const asset = db.prepare('SELECT storage_key, variants FROM ms_assets WHERE id = ? AND workspace_id = ?').get(slot.asset_id, album.workspace_id);
           if (!asset) return;
           let av = {}; try { av = JSON.parse(asset.variants || '{}'); } catch {}
           const key = av.full_edit ? av.full_edit.replace(/^\/?uploads\//, '') : asset.storage_key;
@@ -632,9 +633,12 @@ module.exports = function createMediaWorker(db, deps = {}) {
     db.prepare("INSERT INTO ms_jobs (id, workspace_id, type, asset_id, project_id, status, payload) VALUES (?, ?, ?, ?, ?, 'pending', ?)")
       .run(generateId(), workspace_id, type, asset_id, project_id, JSON.stringify(payload));
   }
-  function resolveAssetPath(assetId) {
+  // workspaceId: the owner of the album/timeline being rendered. Clip and slot ids
+  // come from documents the user saved, so without it any studio could render — and
+  // then download — another studio's photos and videos by putting their ids in.
+  function resolveAssetPath(assetId, workspaceId) {
     const a = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(assetId);
-    if (!a) return null;
+    if (!a || (workspaceId && a.workspace_id !== workspaceId)) return null;
     let variants = {}; try { variants = JSON.parse(a.variants || '{}'); } catch {}
     let rel;
     if ((a.type === 'video') || (a.mime || '').startsWith('video/')) rel = a.storage_key;
@@ -725,9 +729,9 @@ module.exports = function createMediaWorker(db, deps = {}) {
   // For an R2-backed asset, download the variant the renderer needs (web for photos,
   // original for video) to a temp file so ffmpeg can read it. Local assets resolve in
   // place. Returns { path, cleanup } or null (→ render shows a graceful placeholder).
-  async function localizeRenderAsset(assetId) {
+  async function localizeRenderAsset(assetId, workspaceId) {
     const a = db.prepare('SELECT * FROM ms_assets WHERE id = ?').get(assetId);
-    if (!a) return null;
+    if (!a || (workspaceId && a.workspace_id !== workspaceId)) return null;
     const isVideo = (a.type === 'video') || (a.mime || '').startsWith('video/');
     if (a.storage_provider === 'r2') {
       // canonical keys the worker writes: photos → web variant; video → original
@@ -745,7 +749,7 @@ module.exports = function createMediaWorker(db, deps = {}) {
       }
       return null;
     }
-    const abs = resolveAssetPath(assetId);
+    const abs = resolveAssetPath(assetId, workspaceId);
     return abs ? { path: abs, cleanup: () => {} } : null;
   }
 
@@ -774,11 +778,11 @@ module.exports = function createMediaWorker(db, deps = {}) {
       const localMap = new Map();
       if (storage.isRemote) {
         for (const id of collectAssetIds(document)) {
-          const loc = await localizeRenderAsset(id);
+          const loc = await localizeRenderAsset(id, exp.workspace_id);
           if (loc) { localMap.set(id, loc.path); cleanups.push(loc.cleanup); }
         }
       }
-      const resolve = (id) => localMap.get(id) || resolveAssetPath(id);
+      const resolve = (id) => localMap.get(id) || resolveAssetPath(id, exp.workspace_id);
       // ensure the built-in LUT .cube files exist on disk, then resolve id → path
       const lutMap = videoLuts.ensureCubeFiles(fs, path, path.join(uploadsDir, 'media', 'luts'));
       const customLuts = {};

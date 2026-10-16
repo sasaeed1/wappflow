@@ -11,6 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const webpush = require('web-push');
 const mailSec = require('./mail-security'); // studio SMTP/IMAP: sealed passwords + host checks
+require('./safe-jimp'); // only real image bytes reach jimp's type sniffer (file-type ASF infinite loop)
 const { OAuth2Client } = require('google-auth-library');
 const nodemailer = require('nodemailer');
 const aiEngine = require('./ai-engine');
@@ -124,7 +125,7 @@ function rateLimitUser(req) {
   try {
     const h = String(req.headers.authorization || '');
     const tok = h.startsWith('Bearer ') ? h.slice(7) : '';
-    if (tok) { const d = jwt.verify(tok, JWT_SECRET); if (d && d.userId) id = String(d.userId); }
+    if (tok) { const d = jwt.verify(tok, JWT_SECRET, { algorithms: ['HS256'] }); if (d && d.userId && !d.aud) id = String(d.userId); }
   } catch { id = null; }
   req._rlUser = id;
   return id;
@@ -406,7 +407,12 @@ const auth = (req, res, next) => {
   try {
     const token = bearerOf(req);
     if (!token) throw new Error();
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    // Every token in this product is signed with the same secret; only a SESSION has
+    // no audience. The half-way "password OK, now enter your code" token
+    // ({ userId, aud: 'wf-mfa' }) passed this check as a full session, so two-step
+    // sign-in could be skipped by anyone who knew the password.
+    if (decoded.aud || !decoded.userId) throw new Error('not a session token');
     req.userId = decoded.userId;
 
     // Command Center impersonation: a platform admin acting as this user. The token
@@ -482,6 +488,13 @@ const auth = (req, res, next) => {
 // workspace, else null. Centralizes the `WHERE id=? AND workspace_id=?` check already used inline
 // (e.g. POST /api/leads/:leadId/messages) and applies it to the sub-resource routes that were
 // missed during the per-workspace migration — closing cross-tenant read/write leaks.
+// Leads can only be assigned to an active member of the same workspace (or to
+// nobody). Any id used to be accepted — including another studio's user.
+function isAssignable(workspaceId, userId) {
+  if (userId == null || userId === '') return true;
+  return !!db.prepare("SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ? AND invite_status = 'active'").get(workspaceId, String(userId));
+}
+
 function getScopedLead(req, leadId) {
   if (!leadId) return null;
   const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(leadId, req.workspaceId);
@@ -1359,11 +1372,11 @@ function notify(workspaceId, { type, title, body, url, icon, userId } = {}) {
 //  HELPERS
 // ════════════════════════════════════════════════════════════
 
+// Same v4-UUID shape as before, from the OS CSPRNG. It was Math.random(), whose
+// outputs can be predicted after observing a handful — and these ids double as
+// invite tokens, so a guessable id was a guessable way into a workspace.
 function generateId() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
+  return require('crypto').randomUUID();
 }
 
 // ── Phone normalisation helpers ──────────────────────────────────────────────
@@ -1612,29 +1625,39 @@ app.get('/api/auth/invite-info/:token', (req, res) => {
   try {
     const member = db.prepare('SELECT wm.*, w.name as workspace_name FROM workspace_members wm JOIN workspaces w ON w.id = wm.workspace_id WHERE wm.invite_token = ? AND wm.invite_status = ?').get(req.params.token, 'pending');
     if (!member) return res.status(404).json({ error: 'Invalid or expired invite' });
+    // Deliberately says nothing about whether the email already has an account:
+    // an admin could otherwise invite any address just to find out.
     res.json({ email: member.invite_email, workspace_name: member.workspace_name, role: member.role });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // POST /api/auth/accept-invite — set password and activate account
-app.post('/api/auth/accept-invite', async (req, res) => {
+// loginLimiter: for an existing account this checks its password, so it must be
+// rate limited exactly like sign-in.
+app.post('/api/auth/accept-invite', loginLimiter, async (req, res) => {
   try {
     const { token, password, full_name } = req.body;
     const member = db.prepare('SELECT * FROM workspace_members WHERE invite_token = ? AND invite_status = ?').get(token, 'pending');
     if (!member) return res.status(404).json({ error: 'Invalid or expired invite' });
-    if (!password || String(password).length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
+    if (!password) return res.status(400).json({ error: 'Enter a password.' });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    let userId = member.user_id;
-
-    if (!userId) {
-      // Create new user
+    // The invited email may already have a WappFlow account. Then the invite is
+    // accepted with THAT account's password — proof the account's owner is the one
+    // joining — and the password is never changed here. (This branch used to
+    // overwrite the password of whatever account the invite pointed at.)
+    const existing = db.prepare('SELECT id, password FROM users WHERE lower(email) = lower(?)').get(member.invite_email || '');
+    let userId;
+    if (existing) {
+      const ok = existing.password ? await bcrypt.compare(String(password), existing.password) : false;
+      if (!ok) return res.status(401).json({ error: 'That isn’t the password for this WappFlow account. Use your existing password, or reset it from the sign-in page.' });
+      userId = existing.id;
+      if (full_name) db.prepare('UPDATE users SET full_name = COALESCE(full_name, ?) WHERE id = ?').run(full_name, userId);
+    } else {
+      if (String(password).length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
       userId = generateId();
+      const hashedPassword = await bcrypt.hash(password, 10);
       db.prepare(`INSERT INTO users (id, email, password, business_name, role, workspace_id, full_name) VALUES (?, ?, ?, ?, 'member', ?, ?)`)
         .run(userId, member.invite_email, hashedPassword, full_name || member.invite_email, member.workspace_id, full_name);
-    } else {
-      // Update existing user password
-      db.prepare('UPDATE users SET password = ?, full_name = ? WHERE id = ?').run(hashedPassword, full_name, userId);
     }
 
     // Activate workspace member
@@ -1654,6 +1677,9 @@ app.post('/api/auth/google', async (req, res) => {
   try {
     const { credential, businessName } = req.body;
     if (!credential) return res.status(400).json({ error: 'Google credential required' });
+    // Without a client id the library skips the audience check, and a Google token
+    // minted for ANY app would sign someone in here.
+    if (!GOOGLE_CLIENT_ID) return res.status(503).json({ error: 'Google sign-in isn’t set up on this server.' });
 
     // Verify the Google ID token
     const ticket = await googleClient.verifyIdToken({
@@ -1662,10 +1688,14 @@ app.post('/api/auth/google', async (req, res) => {
     });
     const payload = ticket.getPayload();
     const { sub: googleId, email, name, picture } = payload;
+    // An account is matched by email below, so the email must be one Google has
+    // verified — otherwise a Google account claiming someone's address could sign
+    // in to theirs.
+    if (!email || payload.email_verified !== true) return res.status(401).json({ error: 'Your Google email address isn’t verified. Verify it with Google, or sign in with your password.' });
 
     // Check if user already exists (by google_id or email)
     let user = db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId)
-              || db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+              || db.prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email);
 
     if (user) {
       // Update google_id and profile picture if first Google login
@@ -1914,20 +1944,23 @@ app.get('/api/team', auth, (req, res) => {
     const members = db.prepare(`
       SELECT wm.id, wm.user_id, wm.role, wm.full_name as name,
              COALESCE(wm.invite_email, u.email) as email,
-             wm.invite_status as status, wm.invite_token, wm.created_at
+             wm.invite_status as status, wm.created_at
       FROM workspace_members wm
       LEFT JOIN users u ON u.id = wm.user_id
       WHERE wm.workspace_id = ?
       ORDER BY CASE wm.role WHEN 'super_admin' THEN 0 WHEN 'admin' THEN 1 WHEN 'manager' THEN 2 ELSE 3 END, wm.created_at ASC
     `).all(req.workspaceId);
-    // Also include legacy team_members for backward compat
-    const legacyMembers = db.prepare('SELECT * FROM team_members WHERE workspace_id = ?').all(req.workspaceOwnerId);
+    // Also include legacy team_members for backward compat. Invite tokens are never
+    // listed: any member could read a pending admin invite here and accept it
+    // under a new account — the link is shown once, to the admin who created it.
+    const legacyMembers = db.prepare('SELECT id, workspace_id, name, email, role, status, created_at FROM team_members WHERE workspace_id = ?').all(req.workspaceOwnerId);
     res.json({ members, legacyMembers });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/team', auth, (req, res) => {
   try {
+    if (!['super_admin', 'admin'].includes(req.userRole)) return res.status(403).json({ error: 'Only an admin can change the team.' });
     const { name, email, role } = req.body;
     const id = generateId();
     const invite_token = generateId();
@@ -1943,19 +1976,23 @@ app.post('/api/team', auth, (req, res) => {
 
 app.put('/api/team/:id', auth, (req, res) => {
   try {
+    if (!['super_admin', 'admin'].includes(req.userRole)) return res.status(403).json({ error: 'Only an admin can change the team.' });
     const { name, email, role, status } = req.body;
     db.prepare(`
       UPDATE team_members SET name = ?, email = ?, role = ?, status = ?
       WHERE id = ? AND workspace_id = ?
     `).run(name, email, role, status, req.params.id, req.userId);
-    const member = db.prepare('SELECT * FROM team_members WHERE id = ?').get(req.params.id);
+    const member = db.prepare('SELECT id, name, email, role, status, created_at FROM team_members WHERE id = ? AND workspace_id = ?').get(req.params.id, req.userId);
+    if (!member) return res.status(404).json({ error: 'Member not found' });
     res.json({ member });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/team/:id', auth, (req, res) => {
   try {
-    db.prepare('DELETE FROM team_members WHERE id = ? AND workspace_id = ?').run(req.params.id, req.userId);
+    if (!['super_admin', 'admin'].includes(req.userRole)) return res.status(403).json({ error: 'Only an admin can change the team.' });
+    const r = db.prepare('DELETE FROM team_members WHERE id = ? AND workspace_id = ?').run(req.params.id, req.userId);
+    if (!r.changes) return res.status(404).json({ error: 'Member not found' });
     res.json({ message: 'Member removed' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1964,6 +2001,7 @@ app.delete('/api/team/:id', auth, (req, res) => {
 app.post('/api/leads/bulk-assign', auth, (req, res) => {
   try {
     const { lead_ids, assigned_to } = req.body;
+    if (!isAssignable(req.workspaceId, assigned_to)) return res.status(400).json({ error: 'That person isn’t on this team.' });
     if (!Array.isArray(lead_ids) || lead_ids.length === 0)
       return res.status(400).json({ error: 'lead_ids required' });
     const stmt = db.prepare('UPDATE leads SET assigned_to = ? WHERE id = ? AND workspace_id = ?');
@@ -2410,7 +2448,8 @@ app.put('/api/email-workflows/:id/status', auth, (req, res) => {
     if (!['cancelled', 'pending'].includes(status)) return res.status(400).json({ error: 'You can cancel a scheduled email or retry a failed one' });
     db.prepare(`UPDATE email_workflows SET status = ?, sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE sent_at END WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))`)
       .run(status, status, req.params.id, req.workspaceId, req.workspaceOwnerId);
-    const wf = db.prepare('SELECT * FROM email_workflows WHERE id = ?').get(req.params.id);
+    const wf = db.prepare('SELECT * FROM email_workflows WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').get(req.params.id, req.workspaceId, req.workspaceOwnerId);
+    if (!wf) return res.status(404).json({ error: 'Email not found' });
     res.json({ workflow: wf });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2445,7 +2484,11 @@ app.get('/api/leads/:id', auth, (req, res) => {
     let assignee = null;
     try {
       if (lead.assigned_to) {
-        assignee = db.prepare('SELECT id, name, email, role FROM team_members WHERE id = ?').get(lead.assigned_to);
+        // Held to this workspace: the lookup by bare id returned another studio's
+        // team member (name, email, role) for a lead assigned to their id.
+        assignee = db.prepare(`SELECT wm.user_id AS id, COALESCE(wm.full_name, u.full_name) AS name, u.email, wm.role
+          FROM workspace_members wm LEFT JOIN users u ON u.id = wm.user_id WHERE wm.workspace_id = ? AND wm.user_id = ?`).get(req.workspaceId, lead.assigned_to)
+          || db.prepare('SELECT id, name, email, role FROM team_members WHERE id = ? AND workspace_id = ?').get(lead.assigned_to, req.workspaceOwnerId);
       }
     } catch {}
 
@@ -2516,6 +2559,7 @@ app.put('/api/leads/:id', auth, (req, res) => {
       if (!pipelinesApi.assign(req.workspaceId, req.params.id, req.body.pipeline_id)) return res.status(400).json({ error: 'That pipeline does not exist' });
       if (Object.keys(req.body).length === 1) return res.json({ ok: true, lead: db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id) });
     }
+    if (req.body.assigned_to !== undefined && !isAssignable(req.workspaceId, req.body.assigned_to)) return res.status(400).json({ error: 'That person isn’t on this team.' });
     const allowed = ['customer_name', 'customer_phone', 'status', 'estimated_value', 'actual_sale',
       'email', 'address', 'date_of_birth', 'lead_source', 'assigned_to', 'lead_score'];
     const fields = [], params = [];
@@ -2566,7 +2610,11 @@ app.put('/api/leads/:id/status', auth, (req, res) => {
     // Read before writing: a returning client winning a second deal should not be
     // announced as a new one.
     const prior = getScopedLead(req, id);
-    const wasClient = !!(prior && prior.is_client);
+    // Refuse BEFORE anything runs. The UPDATE below was scoped, but the history
+    // entries, the client portal (created inside the caller's workspace for the
+    // other tenant's lead), the notification and the broadcast that follow were not.
+    if (!prior) return res.status(404).json({ error: 'Lead not found' });
+    const wasClient = !!prior.is_client;
     let query = 'UPDATE leads SET status = ?';
     const params = [status];
     if (status === 'Closed - Won' || status === 'Closed - Lost') {
@@ -2661,8 +2709,11 @@ app.delete('/api/leads/:id', auth, requirePerm('delete_lead'), (req, res) => {
 
 app.post('/api/leads/:id/restore', auth, (req, res) => {
   try {
-    db.prepare(`UPDATE leads SET is_deleted = 0, deleted_at = NULL WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+    const r = db.prepare(`UPDATE leads SET is_deleted = 0, deleted_at = NULL WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
+    // Was read back by id alone — another workspace's lead came back in full and
+    // was broadcast into the caller's workspace.
+    if (!r.changes) return res.status(404).json({ error: 'Lead not found' });
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
     // Delete broadcast lead_deleted; restore said nothing, so a restored lead
     // stayed invisible on every other open session until a manual refetch.
     if (lead) broadcastToWorkspace(req.workspaceId, 'lead_restored', { lead });
@@ -2815,7 +2866,8 @@ app.post('/api/leads/:leadId/notes', auth, (req, res) => {
 
 app.delete('/api/notes/:id', auth, (req, res) => {
   try {
-    db.prepare('DELETE FROM notes WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
+    const r = db.prepare('DELETE FROM notes WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
+    if (!r.changes) return res.status(404).json({ error: 'Note not found' });
     res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3167,15 +3219,17 @@ app.post('/api/email-templates', auth, requirePerm('manage_settings'), (req, res
 app.put('/api/email-templates/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, subject, body, delay_days, trigger_event } = req.body;
-    db.prepare('UPDATE email_templates SET name=?, subject=?, body=?, delay_days=?, trigger_event=? WHERE id=? AND user_id=?')
+    const r = db.prepare('UPDATE email_templates SET name=?, subject=?, body=?, delay_days=?, trigger_event=? WHERE id=? AND user_id=?')
       .run(name, subject, body, delay_days, trigger_event, req.params.id, req.workspaceOwnerId);
-    res.json(db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id));
+    if (!r.changes) return res.status(404).json({ error: 'Template not found' });
+    res.json(db.prepare('SELECT * FROM email_templates WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/email-templates/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
-    db.prepare('DELETE FROM email_templates WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
+    const r = db.prepare('DELETE FROM email_templates WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
+    if (!r.changes) return res.status(404).json({ error: 'Template not found' });
     res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3206,14 +3260,16 @@ app.put('/api/auto-reply/:id', auth, requirePerm('manage_settings'), (req, res) 
     const { name, keywords, reply_message, match_type, is_active } = req.body;
     db.prepare('UPDATE auto_reply_rules SET name=?, keywords=?, reply_message=?, match_type=?, is_active=? WHERE id=? AND user_id=?')
       .run(name, JSON.stringify(keywords), reply_message, match_type, is_active ? 1 : 0, req.params.id, req.workspaceOwnerId);
-    res.json(db.prepare('SELECT * FROM auto_reply_rules WHERE id = ?').get(req.params.id));
+    const rule = db.prepare('SELECT * FROM auto_reply_rules WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId);
+    if (!rule) return res.status(404).json({ error: 'Rule not found' });
+    res.json(rule);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/auto-reply/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
-    db.prepare('DELETE FROM auto_reply_rules WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
-    res.json({ message: 'Deleted' });
+    const r = db.prepare('DELETE FROM auto_reply_rules WHERE id = ? AND user_id = ?').run(req.params.id, req.workspaceOwnerId);
+    if (!r.changes) return res.status(404).json({ error: 'Rule not found' }); res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3504,12 +3560,16 @@ app.post('/api/tags', auth, requirePerm('manage_settings'), (req, res) => {
 app.put('/api/tags/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { name, color } = req.body;
-    db.prepare('UPDATE tags SET name=?, color=? WHERE id=? AND user_id=?').run(name, color, req.params.id, req.workspaceOwnerId);
-    res.json(db.prepare('SELECT * FROM tags WHERE id = ?').get(req.params.id));
+    const r = db.prepare('UPDATE tags SET name=?, color=? WHERE id=? AND user_id=?').run(name, color, req.params.id, req.workspaceOwnerId);
+    if (!r.changes) return res.status(404).json({ error: 'Tag not found' });
+    res.json(db.prepare('SELECT * FROM tags WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/tags/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
+    // Ownership first: the lead_tags cleanup ran unscoped, so any workspace could
+    // strip a tag off every one of another studio's leads.
+    if (!db.prepare('SELECT 1 FROM tags WHERE id=? AND user_id=?').get(req.params.id, req.workspaceOwnerId)) return res.status(404).json({ error: 'Tag not found' });
     db.prepare('DELETE FROM lead_tags WHERE tag_id=?').run(req.params.id);
     db.prepare('DELETE FROM tags WHERE id=? AND user_id=?').run(req.params.id, req.workspaceOwnerId);
     res.json({ message: 'Deleted' });
@@ -3548,11 +3608,13 @@ app.put('/api/presets/:id', auth, requirePerm('manage_settings'), (req, res) => 
   try {
     const { title, body } = req.body;
     db.prepare('UPDATE message_presets SET title=?, body=? WHERE id=? AND user_id=?').run(title, body, req.params.id, req.workspaceOwnerId);
-    res.json(db.prepare('SELECT * FROM message_presets WHERE id = ?').get(req.params.id));
+    const preset = db.prepare('SELECT * FROM message_presets WHERE id = ? AND user_id = ?').get(req.params.id, req.workspaceOwnerId);
+    if (!preset) return res.status(404).json({ error: 'Preset not found' });
+    res.json(preset);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/presets/:id', auth, requirePerm('manage_settings'), (req, res) => {
-  try { db.prepare('DELETE FROM message_presets WHERE id=? AND user_id=?').run(req.params.id, req.workspaceOwnerId); res.json({ message: 'Deleted' }); }
+  try { const r = db.prepare('DELETE FROM message_presets WHERE id=? AND user_id=?').run(req.params.id, req.workspaceOwnerId); if (!r.changes) return res.status(404).json({ error: 'Preset not found' }); res.json({ message: 'Deleted' }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3788,8 +3850,8 @@ app.post('/api/notifications/read-all', auth, (req, res) => {
 // POST /api/notifications/:id/read — mark one read
 app.post('/api/notifications/:id/read', auth, (req, res) => {
   try {
-    db.prepare(`UPDATE notifications SET is_read = 1 WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
-    res.json({ ok: true });
+    const r = db.prepare(`UPDATE notifications SET is_read = 1 WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
+    if (!r.changes) return res.status(404).json({ error: 'Notification not found' }); res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3856,6 +3918,9 @@ app.post('/api/chat/channels', auth, (req, res) => {
 // DELETE /api/chat/channels/:id
 app.delete('/api/chat/channels/:id', auth, (req, res) => {
   try {
+    // Only the channel's creator, in this workspace — checked BEFORE its messages go.
+    // The message wipe ran unscoped: anyone could empty any channel, in any studio.
+    if (!db.prepare('SELECT 1 FROM chat_channels WHERE id = ? AND created_by = ? AND workspace_id = ?').get(req.params.id, req.userId, req.workspaceId)) return res.status(404).json({ error: 'Channel not found' });
     db.prepare('DELETE FROM chat_messages WHERE channel_id = ?').run(req.params.id);
     db.prepare('DELETE FROM chat_channels WHERE id = ? AND created_by = ?').run(req.params.id, req.userId);
     res.json({ success: true });
@@ -3891,8 +3956,10 @@ app.post('/api/chat/channels/:channelId/messages', auth, (req, res) => {
     const user = db.prepare('SELECT business_name, email FROM users WHERE id = ?').get(req.userId);
     const senderName = user?.business_name || user?.email || 'Unknown';
     const id = require('crypto').randomUUID();
+    // A reply can only point at a message in this same channel.
+    const replyTo = reply_to && db.prepare('SELECT 1 FROM chat_messages WHERE id = ? AND channel_id = ?').get(reply_to, req.params.channelId) ? reply_to : null;
     db.prepare('INSERT INTO chat_messages (id, channel_id, user_id, sender_name, body, reply_to) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(id, req.params.channelId, req.userId, senderName, body.trim(), reply_to || null);
+      .run(id, req.params.channelId, req.userId, senderName, body.trim(), replyTo);
     const message = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);
     message.reactions = [];
     // Comms 2.0: real-time fan-out to the whole workspace + @mention handling.
@@ -3925,6 +3992,7 @@ app.post('/api/chat/channels/:channelId/messages/media', auth, upload.single('fi
 app.delete('/api/chat/messages/:id', auth, (req, res) => {
   try {
     const m = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+    if (!m) return res.status(404).json({ error: 'Message not found' }); // the pin cleanup below ran for ANY message id
     db.prepare('DELETE FROM chat_messages WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
     try { db.prepare('DELETE FROM chat_pins WHERE message_id = ?').run(req.params.id); } catch {}
     // Channel-scoped: see comms.broadcastToChannel — private/DM events must not
@@ -3999,7 +4067,7 @@ app.post('/api/workspace/invite', auth, async (req, res) => {
     if (!['admin', 'manager', 'user'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
     // Check if user already exists in this workspace
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const existingUser = db.prepare('SELECT id FROM users WHERE lower(email) = lower(?)').get(email);
     const existingMember = existingUser
       ? db.prepare('SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(req.workspaceId, existingUser.id)
       : null;
@@ -4014,26 +4082,21 @@ app.post('/api/workspace/invite', auth, async (req, res) => {
     const invite_token = generateId() + generateId(); // long token
     const memberId = generateId();
 
-    if (existingUser) {
-      // Add existing user to workspace
-      db.prepare(`INSERT INTO workspace_members (id, workspace_id, user_id, role, full_name, invite_email, invite_status) VALUES (?, ?, ?, ?, ?, ?, 'active')`)
-        .run(memberId, req.workspaceId, existingUser.id, role, full_name || email, email);
-      invalidateWorkspaceMembers(req.workspaceId);
-      db.prepare('UPDATE users SET workspace_id = ? WHERE id = ?').run(req.workspaceId, existingUser.id);
-    } else {
-      // Create pending invite
-      db.prepare(`INSERT INTO workspace_members (id, workspace_id, user_id, role, full_name, invite_email, invite_token, invite_status) VALUES (?, ?, NULL, ?, ?, ?, ?, 'pending')`)
-        .run(memberId, req.workspaceId, role, full_name || '', email, invite_token);
-    }
+    // Always a pending invite. An email that already had an account used to be
+    // joined on the spot and its users.workspace_id rewritten — so anyone could
+    // pull another studio's owner into their own workspace, no email, no consent.
+    // An existing account now accepts with its own password (accept-invite).
+    db.prepare(`INSERT INTO workspace_members (id, workspace_id, user_id, role, full_name, invite_email, invite_token, invite_status) VALUES (?, ?, NULL, ?, ?, ?, ?, 'pending')`)
+      .run(memberId, req.workspaceId, role, full_name || '', email, invite_token);
 
     const member = db.prepare('SELECT * FROM workspace_members WHERE id = ?').get(memberId);
     logAudit(req.workspaceId, req.userId, 'invite_member', 'workspace_member', memberId, { email, role });
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const inviteLink = existingUser ? null : `${frontendUrl}/accept-invite?token=${invite_token}`;
+    const inviteLink = `${frontendUrl}/accept-invite?token=${invite_token}`;
 
     // ── Send invite email via workspace SMTP settings ──
     let emailSent = false;
-    if (!existingUser && inviteLink) {
+    if (inviteLink) {
       try {
         const smtpRow = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(req.workspaceOwnerId);
         const inviterUser = db.prepare('SELECT business_name, email FROM users WHERE id = ?').get(req.workspaceOwnerId);
@@ -5035,15 +5098,17 @@ app.put('/api/memories/:id', auth, (req, res) => {
       UPDATE ai_memories SET memory_type=?, key=?, value=?, confidence=?, updated_at=CURRENT_TIMESTAMP
       WHERE id=? AND workspace_id=?
     `).run(memory_type, key, value, confidence, req.params.id, req.workspaceId);
-    res.json(db.prepare('SELECT * FROM ai_memories WHERE id = ?').get(req.params.id));
+    const memory = db.prepare('SELECT * FROM ai_memories WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    if (!memory) return res.status(404).json({ error: 'Memory not found' });
+    res.json(memory);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // DELETE /api/memories/:id
 app.delete('/api/memories/:id', auth, (req, res) => {
   try {
-    db.prepare('DELETE FROM ai_memories WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
-    res.json({ message: 'Deleted' });
+    const r = db.prepare('DELETE FROM ai_memories WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
+    if (!r.changes) return res.status(404).json({ error: 'Memory not found' }); res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -5123,14 +5188,15 @@ require('./knowledge-crawler')(app, db, { auth, requirePerm, generateId, extract
 
 app.delete('/api/knowledge/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
-    const doc = db.prepare('SELECT * FROM knowledge_documents WHERE id = ?').get(req.params.id);
+    // Scoped: this deleted ANY studio's document, its file and its AI memories.
+    const doc = db.prepare('SELECT * FROM knowledge_documents WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
     if (!doc) return res.status(404).json({ error: 'Not found' });
     // Delete file safely
     try { if (doc.file_path && fs.existsSync(doc.file_path)) fs.unlinkSync(doc.file_path); } catch {}
     // Delete memories from this doc
-    try { db.prepare('DELETE FROM ai_memories WHERE document_id = ?').run(req.params.id); } catch {}
+    try { db.prepare('DELETE FROM ai_memories WHERE document_id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); } catch {}
     // Delete document record
-    db.prepare('DELETE FROM knowledge_documents WHERE id = ?').run(req.params.id);
+    db.prepare('DELETE FROM knowledge_documents WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
     res.json({ message: 'Deleted' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -5138,6 +5204,7 @@ app.delete('/api/knowledge/:id', auth, requirePerm('manage_settings'), (req, res
 // GET /api/knowledge/:id/memories — get memories from a specific document
 app.get('/api/knowledge/:id/memories', auth, (req, res) => {
   try {
+    if (!db.prepare('SELECT 1 FROM knowledge_documents WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId)) return res.status(404).json({ error: 'Document not found' });
     const memories = db.prepare('SELECT * FROM ai_memories WHERE document_id = ? AND workspace_id = ?').all(req.params.id, req.workspaceId);
     res.json({ memories });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -5595,16 +5662,33 @@ function publicCredentials(raw) {
   }
   return out;
 }
+// Secret fields (page tokens, app secrets) are SEALED at rest, like mailbox
+// passwords (mail-security.js): a database copy no longer carries every studio's
+// Facebook/Instagram page token. meta-send.js unseals them at the moment of use.
 function mergeCredentials(storedRaw, incoming) {
   let stored = {}; try { stored = JSON.parse(storedRaw || '{}'); } catch {}
   const next = { ...stored };
   for (const [k, v] of Object.entries(incoming || {})) {
     if (k.startsWith('has_')) continue;
     if (SECRET_CRED.test(k) && v === CRED_MASK) continue; // untouched secret
-    next[k] = v;
+    next[k] = SECRET_CRED.test(k) && typeof v === 'string' && v ? mailSec.sealSecret(v) : v;
   }
   return next;
 }
+// Seal any secret credential fields still stored in plain text. Safe on every boot.
+(function sealStoredCredentials() {
+  try {
+    let n = 0;
+    const upd = db.prepare('UPDATE platform_accounts SET credentials = ? WHERE id = ?');
+    for (const row of db.prepare("SELECT id, credentials FROM platform_accounts WHERE credentials IS NOT NULL AND credentials != '{}'").all()) {
+      let c = {}; try { c = JSON.parse(row.credentials); } catch { continue; }
+      let changed = false;
+      for (const [k, v] of Object.entries(c)) if (SECRET_CRED.test(k) && typeof v === 'string' && v && !v.startsWith('v1:')) { c[k] = mailSec.sealSecret(v); changed = true; }
+      if (changed) { upd.run(JSON.stringify(c), row.id); n++; }
+    }
+    if (n) console.log(`🔐 Sealed connected-account secrets for ${n} account(s)`);
+  } catch (e) { console.error('credential sealing skipped:', e.message); }
+})();
 
 app.get('/api/platform-accounts', auth, (req, res) => {
   try {
@@ -5942,7 +6026,7 @@ app.delete('/api/leads/:leadId/channels/:channelId', auth, (req, res) => {
 app.get('/api/leads/:leadId/related', auth, (req, res) => {
   try {
     const lead = getScopedLead(req, req.params.leadId);
-    if (!lead) return res.json({ suggestions: [], linked: [] });
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     // Linked = lead_relations rows where this lead is on either side
     const linked = db.prepare(`
@@ -6231,7 +6315,9 @@ app.get('/api/message-queue', auth, (req, res) => {
 
 app.post('/api/message-queue/:id/retry', auth, (req, res) => {
   try {
-    db.prepare(`UPDATE outbound_message_queue SET status = 'pending', retry_count = 0, next_retry_at = NULL, error_message = NULL WHERE id = ?`).run(req.params.id);
+    // Scoped: re-queued ANY studio's failed message by id — sending it again.
+    const r = db.prepare(`UPDATE outbound_message_queue SET status = 'pending', retry_count = 0, next_retry_at = NULL, error_message = NULL WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
+    if (!r.changes) return res.status(404).json({ error: 'Message not found' });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -6908,6 +6994,7 @@ app.post('/api/leads/:leadId/meetings', auth, async (req, res) => {
 app.get('/api/leads/:leadId/meetings', auth, (req, res) => {
   try {
     const { leadId } = req.params;
+    if (!getScopedLead(req, leadId)) return res.status(404).json({ error: 'Lead not found' });
     const rows = db.prepare('SELECT * FROM meetings WHERE workspace_id = ? AND lead_id = ? ORDER BY starts_at DESC')
       .all(req.workspaceId, leadId);
     res.json(rows);

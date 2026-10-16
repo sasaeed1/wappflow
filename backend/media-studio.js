@@ -1,4 +1,5 @@
 'use strict';
+require('./safe-jimp'); // fence Jimp.read before any use (see safe-jimp.js)
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -291,7 +292,13 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   // ─────────────────────────── end STORAGE SEAM ──────────────────────────────
 
   // ── Watermark helpers (jimp; non-destructive — writes a separate variant) ────
-  const keyToPath = (u) => path.join(uploadsDir, String(u || '').replace(/^https?:\/\/[^/]+/, '').replace(/^\/?uploads\//, ''));
+  // Never resolves outside uploadsDir: a key with ../ (from a request body) used to
+  // reach any image file on the server.
+  const UPLOADS_ROOT = path.resolve(uploadsDir);
+  const keyToPath = (u) => {
+    const abs = path.resolve(UPLOADS_ROOT, String(u || '').replace(/^https?:\/\/[^/]+/, '').replace(/^\/?uploads\//, ''));
+    return abs.startsWith(UPLOADS_ROOT + path.sep) ? abs : path.join(UPLOADS_ROOT, '__outside_uploads__');
+  };
   const pickWmFont = (Jimp, cfg) => Jimp[`FONT_SANS_128_${(cfg.color || 'white') === 'black' ? 'BLACK' : 'WHITE'}`];
   async function buildMark(Jimp, W, H, cfg, logoImg, font) {
     let mark;
@@ -336,6 +343,17 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   // project someone opens into a 500.
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='leads'").get()) {
     throw new Error('leads must exist before media-studio mounts (it joins the CRM for client names)');
+  }
+
+  // An asset id that arrives in a request body (a cover, an album slot) must be one
+  // of this workspace's own. Otherwise a studio could point its project or album at
+  // another studio's photo and read it back — or render it into a PDF and download it.
+  function ownAssetId(workspaceId, id) {
+    if (id == null || id === '') return null;
+    return db.prepare('SELECT id FROM ms_assets WHERE id = ? AND workspace_id = ?').get(String(id), workspaceId)?.id;
+  }
+  function ownSlots(workspaceId, slots) {
+    return (Array.isArray(slots) ? slots : []).map((sl) => (sl && sl.asset_id && !ownAssetId(workspaceId, sl.asset_id) ? { ...sl, asset_id: null } : sl));
   }
 
   function getProject(workspaceId, id) {
@@ -472,6 +490,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
   app.put('/api/media/projects/:id', auth, (req, res) => {
     try {
       const allowed = ['title', 'project_type', 'shoot_date', 'location', 'status', 'cover_asset_id'];
+      if (req.body.cover_asset_id && ownAssetId(req.workspaceId, req.body.cover_asset_id) === undefined) return res.status(400).json({ error: 'That photo isn’t in this workspace.' });
       const fields = [], params = [];
       allowed.forEach(f => { if (req.body[f] !== undefined) { fields.push(`${f} = ?`); params.push(req.body[f]); } });
       if (req.body.settings !== undefined) { fields.push('settings = ?'); params.push(JSON.stringify(req.body.settings)); }
@@ -550,7 +569,7 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       const gate = storageEnforce.gate(db, req.workspaceId, Number(req.body.size) || 0);
       if (!gate.allowed) return res.status(413).json({ error: 'Storage limit reached', storage_limit: true, used_gb: gate.used_gb, limit_gb: gate.limit_gb, pct: gate.pct });
       const fn = String(req.body.filename || 'file').normalize('NFKD').replace(/[^\w.\-]/g, '_').slice(0, 100);
-      const key = `media/projects/${project.id}/${Date.now()}-${Math.random().toString(16).slice(2, 8)}-${fn}`;
+      const key = `media/projects/${project.id}/${Date.now()}-${crypto.randomBytes(8).toString('hex')}-${fn}`; // the file name is what keeps a client's photo private
       const upload_url = await storage.generateSignedUploadUrl(key, req.body.content_type);
       res.json({ provider: storage.provider, key, upload_url, expires_in: 900 });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -682,7 +701,9 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       // process in the background so large batches never time out the request
       (async () => {
         let logoImg = null, font = null;
-        try { if (cfg.type === 'logo' && cfg.logo_url) logoImg = await Jimp.read(keyToPath(cfg.logo_url)); } catch {}
+        // Only a logo uploaded through /watermark/logo (media/<random name>). Any other
+        // path let a studio stamp a file from another studio's project onto its photos.
+        try { if (cfg.type === 'logo' && cfg.logo_url) logoImg = await Jimp.read(keyToPath(`media/${path.basename(String(cfg.logo_url))}`)); } catch {}
         try { if (cfg.type !== 'logo') font = await Jimp.loadFont(pickWmFont(Jimp, cfg)); } catch {}
         let done = 0;
         for (const aid of ids) {
@@ -1666,6 +1687,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
 
   app.get('/api/media/projects/:id/galleries', auth, (req, res) => {
     try {
+      if (!getProject(req.workspaceId, req.params.id)) return res.status(404).json({ error: 'Project not found' });
       const rows = db.prepare(`
         SELECT g.*,
           (SELECT COUNT(*) FROM ms_gallery_assets ga WHERE ga.gallery_id = g.id) AS asset_count,
@@ -2008,6 +2030,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
 
   app.get('/api/media/projects/:id/albums', auth, (req, res) => {
     try {
+      if (!getProject(req.workspaceId, req.params.id)) return res.status(404).json({ error: 'Project not found' });
       const rows = db.prepare(`
         SELECT a.*, (SELECT COUNT(*) FROM ms_album_pages p WHERE p.album_id = a.id) AS page_count
         FROM ms_albums a WHERE a.project_id = ? AND a.workspace_id = ? ORDER BY a.created_at DESC
@@ -2024,7 +2047,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
         let slots = []; try { slots = JSON.parse(p.slots || '[]'); } catch {}
         const filled = slots.map(s => {
           if (!s || !s.asset_id) return { asset_id: null };
-          const asset = db.prepare('SELECT id, filename, variants, storage_key FROM ms_assets WHERE id = ?').get(s.asset_id);
+          const asset = db.prepare('SELECT id, filename, variants, storage_key FROM ms_assets WHERE id = ? AND workspace_id = ?').get(s.asset_id, req.workspaceId);
+          if (!asset) return { asset_id: null };
           let v = {}; try { v = JSON.parse(asset?.variants || '{}'); } catch {}
           return { asset_id: s.asset_id, thumb_url: v.thumb || v.web || (asset ? publicUrl(asset.storage_key) : null) };
         });
@@ -2038,6 +2062,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     try {
       const a = getAlbum(req.workspaceId, req.params.id);
       if (!a) return res.status(404).json({ error: 'Album not found' });
+      if (req.body.cover_asset_id && ownAssetId(req.workspaceId, req.body.cover_asset_id) === undefined) return res.status(400).json({ error: 'That photo isn’t in this workspace.' });
       const fields = [], params = [];
       ['title', 'status', 'cover_asset_id'].forEach(f => { if (req.body[f] !== undefined) { fields.push(`${f} = ?`); params.push(req.body[f]); } });
       if (req.body.spec !== undefined) { fields.push('spec = ?'); params.push(JSON.stringify(req.body.spec)); }
@@ -2067,7 +2092,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       const maxNo = db.prepare('SELECT COALESCE(MAX(page_no), -1) m FROM ms_album_pages WHERE album_id = ?').get(a.id).m;
       const id = generateId();
       db.prepare('INSERT INTO ms_album_pages (id, album_id, page_no, layout_template, slots) VALUES (?, ?, ?, ?, ?)')
-        .run(id, a.id, maxNo + 1, tmpl, JSON.stringify(Array.isArray(req.body.slots) ? req.body.slots : []));
+        .run(id, a.id, maxNo + 1, tmpl, JSON.stringify(ownSlots(req.workspaceId, req.body.slots)));
       res.status(201).json(db.prepare('SELECT * FROM ms_album_pages WHERE id = ?').get(id));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -2091,7 +2116,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
       if (!a) return res.status(404).json({ error: 'Album not found' });
       const fields = [], params = [];
       if (req.body.layout_template && ALBUM_LAYOUTS[req.body.layout_template]) { fields.push('layout_template = ?'); params.push(req.body.layout_template); }
-      if (req.body.slots !== undefined) { fields.push('slots = ?'); params.push(JSON.stringify(req.body.slots)); }
+      if (req.body.slots !== undefined) { fields.push('slots = ?'); params.push(JSON.stringify(ownSlots(req.workspaceId, req.body.slots))); }
       if (req.body.page_no !== undefined) { fields.push('page_no = ?'); params.push(req.body.page_no); }
       if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
       params.push(req.params.pageId, a.id);
@@ -2229,7 +2254,8 @@ Only suggest actions that make sense for the question. If none make sense, retur
 
   app.delete('/api/media/clips/:clipId', auth, (req, res) => {
     try {
-      db.prepare('DELETE FROM ms_video_clips WHERE id = ? AND workspace_id = ?').run(req.params.clipId, req.workspaceId);
+      const r = db.prepare('DELETE FROM ms_video_clips WHERE id = ? AND workspace_id = ?').run(req.params.clipId, req.workspaceId);
+      if (!r.changes) return res.status(404).json({ error: 'Clip not found' });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

@@ -17,8 +17,14 @@
 
 const GRAPH = () => (process.env.META_GRAPH_URL || 'https://graph.facebook.com/v19.0').replace(/\/+$/, '');
 
+// Secret fields are sealed at rest (server.js mergeCredentials); unseal at use.
+// Plain-text values from before sealing pass through unchanged.
+const { unsealSecret } = require('./mail-security');
+const SECRET_CRED = /secret|token|password|pass$|key$/i;
 function readCreds(account) {
-  try { return JSON.parse(account?.credentials || '{}'); } catch { return {}; }
+  let c = {}; try { c = JSON.parse(account?.credentials || '{}'); } catch { return {}; }
+  for (const [k, v] of Object.entries(c)) if (SECRET_CRED.test(k) && typeof v === 'string') c[k] = unsealSecret(v);
+  return c;
 }
 
 // Turn Meta's error into something a business owner can act on.

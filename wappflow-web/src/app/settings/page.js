@@ -2152,9 +2152,10 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
 
   return (
     <div style={{ border: `1.5px solid ${isConnected ? '#10b98130' : 'var(--border)'}`, borderRadius: 16, overflow: 'hidden', background: isConnected ? 'rgba(16,185,129,0.10)' : 'var(--surface2)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {/* Header — wraps on a phone: the buttons drop to their own row instead of
+          squeezing the status text and pushing Disconnect off the card. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, padding: '14px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: '1 1 220px' }}>
           <div style={{ width: 38, height: 38, borderRadius: 12, background: isConnected ? '#10b98120' : 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             {isConnected ? <Wifi size={18} color="#10b981" /> : isError ? <WifiOff size={18} color="#ef4444" /> : <RefreshCw size={18} color="#f59e0b" style={{ animation: 'spin 1.5s linear infinite' }} />}
           </div>
@@ -2185,7 +2186,7 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
             </p>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {/* Disconnected/errored → "Connect" (force=true since there's nothing running) */}
           {isError && (
             <button onClick={() => handleReconnect(true)} disabled={reconnecting} style={{ padding: '7px 14px', background: '#25d366', color: 'white', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2208,13 +2209,13 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
             </button>
           )}
           {isConnected && (
-            <button onClick={handleSyncMissed} disabled={syncing} title="Bring in messages and leads that arrived while WhatsApp was disconnected" style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #25d366', color: '#25d366', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={handleSyncMissed} disabled={syncing} title="Bring in messages and leads that arrived while WhatsApp was disconnected" style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #25d366', color: '#25d366', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
               <RefreshCw size={13} style={syncing ? { animation: 'spin 1s linear infinite' } : {}} />
               {syncing ? 'Syncing…' : 'Sync missed messages'}
             </button>
           )}
           {isConnected && (
-            <button onClick={handleDisconnect} style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #ef4444', color: '#ef4444', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+            <button onClick={handleDisconnect} style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #ef4444', color: '#ef4444', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Disconnect
             </button>
           )}

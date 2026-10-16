@@ -319,12 +319,21 @@ module.exports = function mountCommandCenter(app, db, deps = {}) {
   const locked = (id) => { const f = fails.get(id); return f && f.n >= 8 && Date.now() - f.t < 15 * 60000; };
   const fail = (id) => { const f = fails.get(id) || { n: 0, t: Date.now() }; f.n += 1; f.t = Date.now(); fails.set(id, f); };
 
-  app.post('/api/cc/login', (req, res) => {
+  // The password step had no lockout of its own (only the code step did), compared
+  // with compareSync — freezing the whole API for every customer on each attempt —
+  // and answered an unknown email faster than a wrong password. Now: 8 failures per
+  // IP per 15 minutes, async compare, and the same work either way.
+  const DUMMY_HASH = bcrypt.hashSync('cc-no-such-admin', 10);
+  app.post('/api/cc/login', async (req, res) => {
     try {
       if (!ipAllowed(req)) return res.status(403).json({ error: 'Not allowed from this network' });
+      const ipKey = `ip:${req.ip || ''}`;
+      if (locked(ipKey)) return res.status(429).json({ error: 'Too many failed sign-in attempts. Wait 15 minutes and try again.' });
       const { email, password } = req.body || {};
       const admin = db.prepare("SELECT * FROM cc_admins WHERE email = ? AND status = 'active'").get(String(email || '').toLowerCase());
-      if (!admin || !bcrypt.compareSync(String(password || ''), admin.password_hash)) {
+      const ok = await bcrypt.compare(String(password || ''), admin ? admin.password_hash : DUMMY_HASH);
+      if (!admin || !ok) {
+        fail(ipKey);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       const mfa_token = jwt.sign({ adminId: admin.id, aud: MFA_AUD }, JWT_SECRET, { expiresIn: '10m' });

@@ -227,7 +227,7 @@ module.exports = function mountStudioAI(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.delete('/api/studio-ai/styles/:id', auth, (req, res) => {
-    try { db.prepare('DELETE FROM ms_style_profiles WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
+    try { const r = db.prepare('DELETE FROM ms_style_profiles WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); if (!r.changes) return res.status(404).json({ error: 'Style not found' }); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
