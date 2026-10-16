@@ -423,6 +423,11 @@ const auth = (req, res, next) => {
 
     // Workspace context
     const user = db.prepare('SELECT workspace_id, business_name, full_name, token_version FROM users WHERE id = ?').get(decoded.userId);
+    // A signed token outlives its account. Without this, a deleted user's token was
+    // still accepted and fell through to the defaults below — role super_admin, a
+    // "workspace" named after their own id — and every write keyed to them failed
+    // on the users foreign key (GET /api/settings/company → 500).
+    if (!user) return res.status(401).json({ error: 'This account no longer exists — please sign in again.' });
 
     // Session revocation (Phase 9). Tokens here are signed WITHOUT an expiry, so
     // without this a stolen one outlives the password change meant to stop it.
