@@ -159,6 +159,19 @@ const decode = (t) => JSON.parse(Buffer.from(String(t).split('.')[1], 'base64').
     assert.strictEqual((await j('GET', '/leads', V.token)).status, 401, 'a revoked session still reads data');
   });
 
+  await check('a DELETED account’s token is refused, not treated as a super admin', async () => {
+    const r = await j('POST', '/auth/register', null, { email: `gone-${RUN}@test.local`, password: 'gone-password-1', businessName: 'Gone' });
+    assert(r.d?.token, 'could not register');
+    const db = openDb(true);
+    db.pragma('foreign_keys = OFF'); // simulate an account removed out from under a live session
+    db.prepare('DELETE FROM users WHERE id = ?').run(r.d.user.id);
+    db.close();
+    for (const p of ['/settings/company', '/leads', '/auth/me']) {
+      const res = await j('GET', p, r.d.token);
+      assert.strictEqual(res.status, 401, `${p} answered ${res.status} for a deleted account`);
+    }
+  });
+
   await check('brute force is rate limited', async () => {
     const email = `brute-${RUN}@test.local`;
     await j('POST', '/auth/register', null, { email, password: 'brute-password-1', businessName: 'B' });

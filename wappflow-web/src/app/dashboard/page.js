@@ -450,7 +450,10 @@ function KanbanColumn({ column, leads, onLeadClick, allTags, onTagToggle, newLea
   // (root gets r-kanban-col so columns stay a usable width and the board scrolls sideways on phones)
   return (
     <div className="r-kanban-col" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-      <div className="dash-col-head" style={{ position: 'sticky', top: 'calc(var(--shell-h) + 57px)', zIndex: 30, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '6px 4px' }}>
+      {/* Sticks right under the top bar. The +57px it had made room for the old
+          sticky toolbar; the hero that replaced it scrolls away, so that offset
+          left a gap the cards showed through. */}
+      <div className="dash-col-head" style={{ position: 'sticky', top: 'var(--shell-h)', zIndex: 30, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '6px 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: column.color, boxShadow: `0 0 6px ${column.color}66` }} />
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{column.label}</span>

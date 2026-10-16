@@ -152,6 +152,25 @@ const openDb = (rw) => new Database(process.env.WF_DB, rw ? {} : { readonly: tru
     assert.strictEqual(n, 3, `${n} reset links were issued`);
   });
 
+  await check('"Sync missed messages" is scoped to your own account and needs WhatsApp permission', async () => {
+    const waId = 'wa-' + RUN;
+    const other = await j('POST', '/auth/register', null, { email: `sweep-other-${RUN}@test.local`, password: 'a-good-password-1', businessName: 'Other' });
+    const agent = await j('POST', '/auth/register', null, { email: `sweep-agent-${RUN}@test.local`, password: 'a-good-password-1', businessName: 'Agent' });
+    const db = openDb(true);
+    db.prepare("INSERT INTO platform_accounts (id, workspace_id, platform, account_name, status) VALUES (?, ?, 'whatsapp', 'Main', 'disconnected')").run(waId, A.user.workspace_id);
+    // The agent joins A's workspace as a plain user (no manage_whatsapp).
+    db.prepare('UPDATE users SET workspace_id = ? WHERE id = ?').run(A.user.workspace_id, agent.d.user.id);
+    db.prepare("INSERT INTO workspace_members (id, workspace_id, user_id, role, invite_status) VALUES (?, ?, ?, 'user', 'active')").run('wm-' + RUN, A.user.workspace_id, agent.d.user.id);
+    db.close();
+    const notConnected = await j('POST', `/whatsapp/accounts/${waId}/sync-missed`, A.token);
+    assert.strictEqual(notConnected.status, 409, JSON.stringify(notConnected.d));
+    assert(/connect/i.test(notConnected.d?.error || ''), notConnected.d?.error);
+    const foreign = await j('POST', `/whatsapp/accounts/${waId}/sync-missed`, other.d.token);
+    assert.strictEqual(foreign.status, 404, `another workspace got ${foreign.status}`);
+    const noPerm = await j('POST', `/whatsapp/accounts/${waId}/sync-missed`, agent.d.token);
+    assert.strictEqual(noPerm.status, 403, `a user without WhatsApp permission got ${noPerm.status}`);
+  });
+
   // LAST: uses up this IP's account-request allowance.
   await check('forgot-password is rate limited per IP even though it always answers 200', async () => {
     let limited = false;
