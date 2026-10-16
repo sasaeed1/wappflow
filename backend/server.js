@@ -3588,6 +3588,19 @@ app.post('/api/whatsapp/accounts/:id/connect', auth, requirePerm('manage_whatsap
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// "Sync missed messages" on an account card. The automatic catch-up runs once, a few
+// seconds after connecting — after a fresh QR link the phone may still be copying
+// history across, so there was no way to run it again later. Same import, same
+// duplicate check (wa_message_id); the result arrives as missed_sync_complete.
+app.post('/api/whatsapp/accounts/:id/sync-missed', auth, requirePerm('manage_whatsapp'), (req, res) => {
+  const account = db.prepare('SELECT * FROM platform_accounts WHERE id = ? AND workspace_id = ? AND platform = ?').get(req.params.id, req.workspaceId, 'whatsapp');
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  if (!whatsappService.getStatus(account.id).isReady) return res.status(409).json({ error: 'Connect this WhatsApp number first, then sync.' });
+  logAudit(req.workspaceId, req.userId, 'whatsapp_sync_missed', 'platform_account', account.id, {});
+  res.json({ ok: true, started: true });
+  whatsappService.syncMissedForAccount(account.id).catch((e) => console.error('[sync-missed]', e.message));
+});
+
 // Link by phone number: WhatsApp → Linked devices → Link with phone number
 // instead → type this 8-character code. The account must be connecting (QR
 // showing) — the code replaces the QR scan.

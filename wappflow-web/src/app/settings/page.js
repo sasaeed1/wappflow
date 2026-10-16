@@ -25,6 +25,7 @@ import { usePlan, nextPlanLabel, formatMoney } from '@/lib/plan';
 import { LockedOverlay, LockBadge, LockTooltip, UpgradeCta } from '@/components/PlanLock';
 import InstallAppCard from '@/components/InstallAppCard';
 import { usePermissions } from '@/lib/permissions';
+import { useRealtime } from '@/components/shell/realtime';
 
 // Map of settings tab → required feature flag + required plan name.
 // If the user's plan doesn't have the feature, the tab is shown locked.
@@ -2100,6 +2101,32 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
     } catch {} finally { setReconnecting(false); }
   };
 
+  // Re-runs the catch-up import on demand (the automatic one runs once, seconds after
+  // connecting — often before the phone has finished copying history to a new link).
+  const [syncing, setSyncing] = useState(false);
+  const syncAsked = useRef(0);
+  const handleSyncMissed = async () => {
+    setSyncing(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BASE_URL}/api/whatsapp/accounts/${account.id}/sync-missed`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error || 'Couldn’t start the sync — try again in a minute.', 'error'); setSyncing(false); return; }
+      syncAsked.current = Date.now();
+      showToast('Checking WhatsApp for missed messages — anything new lands on your board in a minute or two.');
+    } catch { showToast('Couldn’t reach the server — try again in a minute.', 'error'); setSyncing(false); return; }
+    setTimeout(() => setSyncing(false), 10000); // one press at a time; duplicates are skipped server-side anyway
+  };
+  // Only the card that asked reports the result (the event carries no account id).
+  useRealtime('missed_sync_complete', (data) => {
+    if (!syncAsked.current || Date.now() - syncAsked.current > 10 * 60000) return;
+    syncAsked.current = 0;
+    const parts = [];
+    if (data.leadsCreated > 0) parts.push(`${data.leadsCreated} new lead${data.leadsCreated > 1 ? 's' : ''}`);
+    if (data.totalImported > 0) parts.push(`${data.totalImported} message${data.totalImported > 1 ? 's' : ''}`);
+    if (parts.length) showToast(`Imported ${parts.join(' and ')} from WhatsApp.`);
+  });
+
   const handleDisconnect = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -2178,6 +2205,12 @@ function WhatsAppAccountCard({ account, showToast, onDelete, onNameSave }) {
             <button onClick={() => handleReconnect(true)} disabled={reconnecting} style={{ padding: '7px 14px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               <RefreshCw size={13} style={reconnecting ? { animation: 'spin 1s linear infinite' } : {}} />
               Reset
+            </button>
+          )}
+          {isConnected && (
+            <button onClick={handleSyncMissed} disabled={syncing} title="Bring in messages and leads that arrived while WhatsApp was disconnected" style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #25d366', color: '#25d366', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={13} style={syncing ? { animation: 'spin 1s linear infinite' } : {}} />
+              {syncing ? 'Syncing…' : 'Sync missed messages'}
             </button>
           )}
           {isConnected && (
