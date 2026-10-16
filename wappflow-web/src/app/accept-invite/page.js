@@ -29,7 +29,9 @@ function AcceptInviteContent() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (form.password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    // No 8-character rule here: an existing account may have an older, shorter
+    // password. The server enforces the minimum for new accounts.
+    if (!form.password) { setError('Enter a password'); return; }
     if (form.password !== form.confirm) { setError('Passwords do not match'); return; }
     setSubmitting(true);
     try {
@@ -111,7 +113,7 @@ function AcceptInviteContent() {
               )}
 
               <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: '0 0 4px' }}>Set up your account</h1>
-              <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 24px' }}>Choose a name and password to get started</p>
+              <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 24px' }}>Choose a name and password to get started. Already have a WappFlow account with this email? Enter its current password instead.</p>
 
               {error && (
                 <div style={{ background: 'rgba(239,68,68,0.12)', border: '1.5px solid #fecaca', color: '#b91c1c', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -137,7 +139,7 @@ function AcceptInviteContent() {
                   <div style={{ position: 'relative' }}>
                     <Lock size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                     <Input
-                      type={showPwd ? 'text' : 'password'} required minLength={8}
+                      type={showPwd ? 'text' : 'password'} required
                       value={form.password}
                       onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
                       placeholder="At least 8 characters"

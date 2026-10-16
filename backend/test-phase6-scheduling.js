@@ -16,7 +16,7 @@ const availability = require('./availability');
 let pass = 0, fail = 0;
 const check = (n, fn) => { try { fn(); console.log('  ✓', n); pass++; } catch (e) { console.log('  ✗', n, '—', e.message || e); fail++; } };
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const { strip } = require('./test-source'); // line comments first — see test-source.js
 
 // The two tables genuinely store different formats, and the fixture has to honour
 // that or it tests nothing: bookings.start_at is a studio-LOCAL 'YYYY-MM-DD HH:MM:SS'

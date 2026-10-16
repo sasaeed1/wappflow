@@ -726,7 +726,7 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.delete('/api/cs/templates/:id', auth, (req, res) => {
-    try { db.prepare('DELETE FROM cs_templates WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
+    try { const r = db.prepare('DELETE FROM cs_templates WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); if (!r.changes) return res.status(404).json({ error: 'Template not found' }); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -778,7 +778,7 @@ module.exports = function mountContractsStudio(app, db, deps = {}) {
     catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.delete('/api/cs/clauses/:id', auth, (req, res) => {
-    try { db.prepare('DELETE FROM cs_clauses WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
+    try { const r = db.prepare('DELETE FROM cs_clauses WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); if (!r.changes) return res.status(404).json({ error: 'Clause not found' }); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 

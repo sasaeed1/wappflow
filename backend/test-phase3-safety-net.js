@@ -13,7 +13,7 @@ const sd = require('./soft-delete');
 
 let pass = 0, fail = 0;
 const check = (n, fn) => { try { fn(); console.log('  ✓', n); pass++; } catch (e) { console.log('  ✗', n, '—', e.message || e); fail++; } };
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const { strip } = require('./test-source'); // line comments first — see test-source.js
 const SERVER = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
 const MEDIA = fs.readFileSync(path.join(__dirname, 'media-studio.js'), 'utf8');
 

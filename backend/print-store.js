@@ -83,7 +83,7 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.delete('/api/store/products/:id', auth, (req, res) => {
-    try { db.prepare('DELETE FROM ms_print_products WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); res.json({ ok: true }); }
+    try { const r = db.prepare('DELETE FROM ms_print_products WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId); if (!r.changes) return res.status(404).json({ error: 'Product not found' }); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -113,7 +113,7 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.post('/api/store/orders/:id/status', auth, (req, res) => {
-    try { db.prepare('UPDATE ms_print_orders SET status = ? WHERE id = ? AND workspace_id = ?').run(String(req.body.status || 'new'), req.params.id, req.workspaceId); res.json({ ok: true }); }
+    try { const r = db.prepare('UPDATE ms_print_orders SET status = ? WHERE id = ? AND workspace_id = ?').run(String(req.body.status || 'new'), req.params.id, req.workspaceId); if (!r.changes) return res.status(404).json({ error: 'Order not found' }); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 

@@ -14,7 +14,7 @@ const engine = require('./video-engine');
 let pass = 0, fail = 0;
 const check = (n, fn) => { try { fn(); console.log('  ✓', n); pass++; } catch (e) { console.log('  ✗', n, '—', e.message || e); fail++; } };
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const { strip } = require('./test-source'); // line comments first — see test-source.js
 
 // ── the silent drop, exercised ──────────────────────────────────────────────
 check('legacy transition names resolve instead of being silently dropped', () => {
@@ -61,19 +61,18 @@ check('a whip survives sanitizeTimeline as a real transition', () => {
 
 // ── one vocabulary, end to end ──────────────────────────────────────────────
 check('the editor picker offers what the renderer can actually draw', () => {
-  const consts = read(path.join('..', '..', 'wf-prop3-wt', 'wappflow-web', 'src', 'app', 'studio', 'video-constants.js'));
+  const consts = read(path.join('..', 'wappflow-web', 'src', 'app', 'studio', 'video-constants.js'));
   const offered = [...consts.matchAll(/\{ id: '(\w+)', label:/g)].map((m) => m[1]);
   for (const t of engine.TRANSITIONS) {
     assert(offered.includes(t), `renderer supports "${t}" but the picker never offers it`);
   }
 });
 
-check('the Story-Engine editor speaks canonical names', () => {
-  const editor = read(path.join('..', '..', 'wf-prop3-wt', 'wappflow-web', 'src', 'app', 'studio', '[id]', 'reel', '[reelId]', 'page.js'));
-  const code = strip(editor);
-  assert(/const TRANSITIONS = \[\s*\{ id: 'none'/.test(code), 'editor still uses bare legacy strings');
-  assert(/LEGACY_TRANSITION = \{ cut: 'none', whip: 'slide', dissolve: 'crossDissolve' \}/.test(code),
-    'plans saved with old spellings would show a blank select');
+check('the retired Story-Engine editor stays deleted (one reel artifact, one editor)', () => {
+  // Phase 6 (final) removed this page; the check that read it had been failing on
+  // a missing file ever since. What still matters is that it does not come back.
+  const gone = path.join(__dirname, '..', 'wappflow-web', 'src', 'app', 'studio', '[id]', 'reel', '[reelId]', 'page.js');
+  assert(!require('fs').existsSync(gone), 'a second reel editor is back — Phase 6 made it one');
 });
 
 // ── ownership: who may write which table ────────────────────────────────────
@@ -120,7 +119,7 @@ check('ms_timelines.source declares every value written to it', () => {
 });
 
 check('the Reels list badges every AI-built timeline, not just one kind', () => {
-  const page = read(path.join('..', '..', 'wf-prop3-wt', 'wappflow-web', 'src', 'app', 'studio', '[id]', 'video', 'page.js'));
+  const page = read(path.join('..', 'wappflow-web', 'src', 'app', 'studio', '[id]', 'video', 'page.js'));
   assert(/t\.source === 'ai_reel'/.test(page), "Auto-reel timelines still render with no badge");
   assert(/t\.source === 'ai_draft'/.test(page), 'AI draft badge lost');
 });

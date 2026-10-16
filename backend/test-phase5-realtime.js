@@ -12,7 +12,7 @@ const Database = require('better-sqlite3');
 let pass = 0, fail = 0;
 const check = (n, fn) => { try { fn(); console.log('  ✓', n); pass++; } catch (e) { console.log('  ✗', n, '—', e.message || e); fail++; } };
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const { strip } = require('./test-source'); // line comments first — see test-source.js
 const SERVER = read('server.js');
 const S = strip(SERVER);
 const COMMS = strip(read('comms.js'));
@@ -123,8 +123,11 @@ check('workspace member lookup is cached, with an explicit invalidation seam', (
   assert(/function invalidateWorkspaceMembers\(/.test(S), 'no invalidation seam');
   assert(/for \(const userId of workspaceMemberIds\(workspaceId\)\) broadcastToUser/.test(S), 'broadcast does not use the cache');
   // The seam is worthless unless the mutations actually call it: join, invite-accept, remove.
-  assert.strictEqual((S.match(/invalidateWorkspaceMembers\(/g) || []).length - 1, 3,
-    'expected 3 invalidation call sites (invite accepted, member added, member removed)');
+  // Two since the invite fix: an existing account is no longer joined at invite
+  // time (that moved accounts between studios without consent), so membership only
+  // changes when an invite is ACCEPTED or a member is REMOVED.
+  assert.strictEqual((S.match(/invalidateWorkspaceMembers\(/g) || []).length - 1, 2,
+    'expected 2 invalidation call sites (invite accepted, member removed)');
 });
 
 check('restore is no longer silent, and merge sends a full lead like every other site', () => {

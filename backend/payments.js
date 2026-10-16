@@ -130,11 +130,15 @@ module.exports = function mountPayments(app, db, deps = {}) {
   }
 
   // Apply the consequence of a successful payment to the linked entity.
+  // Every update is held to the payment's own workspace. They ran on the bare id,
+  // and the link route accepted any ref_id — so a studio could raise a link against
+  // another studio's invoice, mark its own link paid, and flip that invoice to paid.
   function settle(p) {
     try {
-      if (p.kind === 'invoice') db.prepare("UPDATE invoices SET status = 'paid' WHERE id = ?").run(p.ref_id);
-      else if (p.kind === 'print_order') db.prepare("UPDATE ms_print_orders SET status = 'paid' WHERE id = ?").run(p.ref_id);
-      if (p.lead_id) addContactHistory(p.lead_id, p.created_by, 'payment', `Payment received: ${p.currency_symbol || '$'}${p.amount} (${p.kind})`);
+      const ownerId = db.prepare('SELECT owner_id FROM workspaces WHERE id = ?').get(p.workspace_id)?.owner_id || null;
+      if (p.kind === 'invoice') db.prepare("UPDATE invoices SET status = 'paid' WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))").run(p.ref_id, p.workspace_id, ownerId);
+      else if (p.kind === 'print_order') db.prepare("UPDATE ms_print_orders SET status = 'paid' WHERE id = ? AND workspace_id = ?").run(p.ref_id, p.workspace_id);
+      if (p.lead_id && db.prepare('SELECT 1 FROM leads WHERE id = ? AND workspace_id = ?').get(p.lead_id, p.workspace_id)) addContactHistory(p.lead_id, p.created_by, 'payment', `Payment received: ${p.currency_symbol || '$'}${p.amount} (${p.kind})`);
     } catch { /* settlement best-effort */ }
   }
   function markPaid(p, providerRef) {
@@ -223,6 +227,16 @@ module.exports = function mountPayments(app, db, deps = {}) {
     try {
       const b = req.body || {};
       if (!b.amount || !b.kind) return res.status(400).json({ error: 'amount + kind required' });
+      // What the link is FOR must be this workspace's own.
+      if (b.lead_id && !db.prepare('SELECT 1 FROM leads WHERE id = ? AND workspace_id = ?').get(b.lead_id, req.workspaceId)) return res.status(404).json({ error: 'Lead not found' });
+      if (b.ref_id) {
+        const own = b.kind === 'invoice'
+          ? db.prepare('SELECT 1 FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').get(b.ref_id, req.workspaceId, req.workspaceOwnerId)
+          : b.kind === 'print_order'
+            ? db.prepare('SELECT 1 FROM ms_print_orders WHERE id = ? AND workspace_id = ?').get(b.ref_id, req.workspaceId)
+            : null;
+        if (!own) return res.status(404).json({ error: b.kind === 'invoice' ? 'Invoice not found' : 'Not found' });
+      }
       const link = await createPaymentLink({ ...b, workspaceId: req.workspaceId, userId: req.userId });
       res.json({ ok: true, ...link });
     } catch (e) { res.status(500).json({ error: e.message }); }

@@ -17,7 +17,7 @@ const model = require('./album-model');
 let pass = 0, fail = 0;
 const check = (n, fn) => { try { fn(); console.log('  ✓', n); pass++; } catch (e) { console.log('  ✗', n, '—', e.message || e); fail++; } };
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const { strip } = require('./test-source'); // line comments first — see test-source.js
 
 check('a page never claims more slots than its layout can hold', () => {
   for (const [layout, cap] of Object.entries(model.ALBUM_LAYOUTS)) {
@@ -136,11 +136,11 @@ check('the second album editor and its routes are gone', () => {
   // Generation must remain — it is the feature, and it now feeds the real model.
   assert(/app\.post\('\/api\/studio-ai\/projects\/:id\/album'/.test(sai), 'album generation was removed by mistake');
 
-  const web = path.join(__dirname, '..', '..', 'wf-prop3-wt', 'wappflow-web', 'src');
+  const web = path.join(__dirname, '..', 'wappflow-web', 'src');
   assert(!fs.existsSync(path.join(web, 'app', 'studio', '[id]', 'album')), 'the duplicate editor route still exists');
-  const api = read(path.join('..', '..', 'wf-prop3-wt', 'wappflow-web', 'src', 'lib', 'api.js'));
+  const api = read(path.join('..', 'wappflow-web', 'src', 'lib', 'api.js'));
   assert(!/getAlbum: \(albumId\) => api\.get\(`\/studio-ai\/albums/.test(api), 'dead API method survives');
-  const page = read(path.join('..', '..', 'wf-prop3-wt', 'wappflow-web', 'src', 'app', 'studio', '[id]', 'page.js'));
+  const page = read(path.join('..', 'wappflow-web', 'src', 'app', 'studio', '[id]', 'page.js'));
   assert(/\/studio\/\$\{projectId\}\/albums\/\$\{albumId\}/.test(page), 'the AI panel still links to the retired editor');
 });
 

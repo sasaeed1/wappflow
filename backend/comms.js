@@ -179,7 +179,11 @@ module.exports = function mountComms(app, db, deps = {}) {
     if (/@(channel|everyone|here)\b/i.test(message.body || '')) {
       try { ids = ids.concat(channelMemberIds(message.channel_id, workspaceId)); } catch {}
     }
-    ids = [...new Set(ids.filter(u => u && u !== message.user_id))];
+    // Only people who can see this channel. A mention used to accept ANY user id —
+    // the message text then went out as a push and a bell entry to someone in
+    // another studio, or to a teammate outside a private channel.
+    let allowed = new Set(); try { allowed = new Set(channelMemberIds(message.channel_id, workspaceId)); } catch {}
+    ids = [...new Set(ids.filter(u => u && u !== message.user_id && allowed.has(u)))];
     for (const uid of ids) {
       try {
         db.prepare('INSERT INTO chat_mentions (id, message_id, channel_id, user_id, author_id) VALUES (?,?,?,?,?)')
@@ -203,7 +207,8 @@ module.exports = function mountComms(app, db, deps = {}) {
     // Thread reply → notify the root author (if not self and not already mentioned).
     if (message.reply_to) {
       try {
-        const root = db.prepare('SELECT user_id FROM chat_messages WHERE id = ?').get(message.reply_to);
+        // The thread root must be in this same channel (it was looked up anywhere).
+        const root = db.prepare('SELECT user_id FROM chat_messages WHERE id = ? AND channel_id = ?').get(message.reply_to, message.channel_id);
         const rootAuthor = root && root.user_id;
         if (rootAuthor && rootAuthor !== message.user_id && !ids.includes(rootAuthor)) {
           broadcastToUser(rootAuthor, 'chat_thread_reply', { channel_id: message.channel_id, message, root_id: message.reply_to });
@@ -316,7 +321,9 @@ module.exports = function mountComms(app, db, deps = {}) {
   });
   app.delete('/api/comms/messages/:id/pin', auth, (req, res) => {
     try {
-      const m = db.prepare('SELECT channel_id FROM chat_messages WHERE id = ?').get(req.params.id);
+      // Scoped to this workspace: the unpin ran on any message id, in any studio.
+      const m = db.prepare('SELECT m.channel_id FROM chat_messages m JOIN chat_channels c ON c.id = m.channel_id WHERE m.id = ? AND c.workspace_id = ?').get(req.params.id, req.workspaceId);
+      if (!m) return res.status(404).json({ error: 'Message not found' });
       db.prepare('DELETE FROM chat_pins WHERE message_id = ?').run(req.params.id);
       if (m) broadcastToChannel(m.channel_id, req.workspaceId, 'chat_unpin', { channel_id: m.channel_id, message_id: req.params.id });
       res.json({ ok: true });
