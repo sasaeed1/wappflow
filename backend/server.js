@@ -215,11 +215,20 @@ app.use(express.json({ limit: '10mb' }));
 // script on our origin.
 function unguessable() { return require('crypto').randomBytes(16).toString('hex'); }
 const ACTIVE_CONTENT = /\.(html?|xhtml|svgz?|xml|xsl|js|mjs)$/i;
+const { SIGNED_ONLY_KEY } = require('./storage');
 app.use('/uploads', (req, res, next) => {
+  // Judge the decoded, normalised path - the one the file server actually opens -
+  // not the raw URL.
+  let rel = req.path;
+  try { rel = decodeURIComponent(rel); } catch { /* malformed: static refuses it */ }
+  rel = path.posix.normalize(rel).replace(/^\/+/, '');
+  // Gallery ZIPs go out only through their signed, expiring link: served from here
+  // they outlived an unpublished gallery or a changed password.
+  if (SIGNED_ONLY_KEY.test(rel)) return res.status(404).end();
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  if (ACTIVE_CONTENT.test(req.path)) {
+  if (ACTIVE_CONTENT.test(rel)) {
     res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
     res.setHeader('Content-Disposition', 'attachment');
   }

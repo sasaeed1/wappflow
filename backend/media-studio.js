@@ -582,6 +582,8 @@ module.exports = function mountMediaStudio(app, db, deps = {}) {
       if (!project) return res.status(404).json({ error: 'Project not found' });
       const { key, filename, content_type, size, folder_id } = req.body || {};
       if (!key) return res.status(400).json({ error: 'key required' });
+      // Only a key this project's sign step could have issued.
+      if (!storage.isSafeKey(key) || !key.startsWith(`media/projects/${project.id}/`)) return res.status(400).json({ error: 'That upload doesn’t belong to this project — please upload the file again.' });
       if (!(await storage.fileExists(key))) return res.status(409).json({ error: 'file not in storage yet — PUT it to the signed URL first' });
       const assetId = generateId();
       const variants = JSON.stringify({ original: publicUrl(key) });
