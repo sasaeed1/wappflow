@@ -86,14 +86,19 @@ async function smtpTransport(nodemailer, row) {
 /** Seal any mail passwords still stored as plain text. Safe to run on every boot. */
 function sealLegacyRows(db) {
   let n = 0;
-  for (const [table, col] of [['email_smtp_settings', 'smtp_pass'], ['email_imap_settings', 'imap_pass']]) {
+  for (const [table, col, key = 'id'] of [
+    ['email_smtp_settings', 'smtp_pass'],
+    ['email_imap_settings', 'imap_pass'],
+    // A Google refresh token is a standing key to the studio's calendar.
+    ['workspace_integrations', 'google_calendar_refresh_token', 'workspace_id'],
+  ]) {
     try {
-      const rows = db.prepare(`SELECT id, ${col} AS v FROM ${table} WHERE ${col} IS NOT NULL AND ${col} != '' AND ${col} NOT LIKE 'v1:%'`).all();
-      const upd = db.prepare(`UPDATE ${table} SET ${col} = ? WHERE id = ?`);
-      for (const r of rows) { upd.run(sealSecret(r.v), r.id); n++; }
+      const rows = db.prepare(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} IS NOT NULL AND ${col} != '' AND ${col} NOT LIKE 'v1:%'`).all();
+      const upd = db.prepare(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`);
+      for (const r of rows) { upd.run(sealSecret(r.v), r.k); n++; }
     } catch { /* table not created yet */ }
   }
-  if (n) console.log(`🔐 Sealed ${n} stored mail password(s) at rest`);
+  if (n) console.log(`🔐 Sealed ${n} stored secret(s) at rest`);
   return n;
 }
 

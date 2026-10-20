@@ -215,11 +215,20 @@ app.use(express.json({ limit: '10mb' }));
 // script on our origin.
 function unguessable() { return require('crypto').randomBytes(16).toString('hex'); }
 const ACTIVE_CONTENT = /\.(html?|xhtml|svgz?|xml|xsl|js|mjs)$/i;
+const { SIGNED_ONLY_KEY } = require('./storage');
 app.use('/uploads', (req, res, next) => {
+  // Judge the decoded, normalised path - the one the file server actually opens -
+  // not the raw URL.
+  let rel = req.path;
+  try { rel = decodeURIComponent(rel); } catch { /* malformed: static refuses it */ }
+  rel = path.posix.normalize(rel).replace(/^\/+/, '');
+  // Gallery ZIPs go out only through their signed, expiring link: served from here
+  // they outlived an unpublished gallery or a changed password.
+  if (SIGNED_ONLY_KEY.test(rel)) return res.status(404).end();
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  if (ACTIVE_CONTENT.test(req.path)) {
+  if (ACTIVE_CONTENT.test(rel)) {
     res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
     res.setHeader('Content-Disposition', 'attachment');
   }
@@ -314,13 +323,22 @@ const DEFAULT_ROLE_PERMISSIONS = {
 // that role (Team → Roles) → this member's own overrides. Previously a member override
 // REPLACED the defaults wholesale and the workspace's role settings were ignored by
 // auth entirely, so what the Team page showed was not what applied.
+// Only known permission keys, only booleans. Saved JSON was merged into the
+// permission set as-is, so a key like "__proto__" could reshape it.
+const PERMISSION_KEYS = Object.keys(DEFAULT_ROLE_PERMISSIONS.super_admin);
+function sanitizePermissions(p) {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
+  const out = {};
+  for (const k of PERMISSION_KEYS) if (typeof p[k] === 'boolean') out[k] = p[k];
+  return out;
+}
 function effectivePermissions(workspaceId, role, memberJson) {
   const base = { ...(DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.user) };
   try {
     const row = db.prepare('SELECT permissions FROM workspace_role_permissions WHERE workspace_id = ? AND role = ?').get(workspaceId, role);
-    if (row?.permissions) Object.assign(base, JSON.parse(row.permissions));
+    if (row?.permissions) Object.assign(base, sanitizePermissions(JSON.parse(row.permissions)) || {});
   } catch {}
-  try { if (memberJson) Object.assign(base, JSON.parse(memberJson)); } catch {}
+  try { if (memberJson) Object.assign(base, sanitizePermissions(JSON.parse(memberJson)) || {}); } catch {}
   if (role === 'super_admin') for (const k of Object.keys(base)) base[k] = true; // the owner can never be locked out
   return base;
 }
@@ -450,7 +468,16 @@ const auth = (req, res, next) => {
 
     // Get role from workspace_members
     const member = db.prepare('SELECT role, permissions FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(workspaceId, decoded.userId);
-    req.userRole = member?.role || 'super_admin';
+    // No membership row used to mean super_admin, for ANY workspace the account
+    // pointed at. Only an owner may fall through to that: their legacy workspace
+    // (id === their user id) or one they own. Anyone else has no access here.
+    let role = member?.role;
+    if (!role) {
+      const owns = workspaceId === decoded.userId || !!db.prepare('SELECT 1 FROM workspaces WHERE id = ? AND owner_id = ?').get(workspaceId, decoded.userId);
+      if (!owns) return res.status(403).json({ error: 'You are no longer a member of this workspace.' });
+      role = 'super_admin';
+    }
+    req.userRole = role;
     req.userPermissions = effectivePermissions(workspaceId, req.userRole, member?.permissions);
     // ONE lead-visibility rule (list + detail + sub-resources): custom per-member
     // view_all_leads wins when set; otherwise the role default applies.
@@ -1275,8 +1302,35 @@ function invalidateWorkspaceMembers(workspaceId) {
   if (workspaceId) memberCache.delete(workspaceId); else memberCache.clear();
 }
 
+// Which lead (if any) a live frame is about. Lead frames went to EVERY member,
+// so someone limited to their own leads watched every other lead — names,
+// phone numbers, message text — arrive in real time.
+const LEAD_URL = /^\/leads\/([^/?#]+)/;
+function frameLead(type, data) {
+  if (!data || typeof data !== 'object') return null;
+  if (data.lead && data.lead.id) return data.lead;
+  const id = data.lead_id || data.leadId || (data.message && data.message.lead_id) || (type === 'notification' && LEAD_URL.exec(String(data.url || ''))?.[1]);
+  if (!id) return null;
+  try { return db.prepare('SELECT id, assigned_to FROM leads WHERE id = ?').get(String(id)) || { id, assigned_to: null }; } catch { return { id, assigned_to: null }; }
+}
+function memberSeesAllLeads(workspaceId, userId) {
+  const m = db.prepare('SELECT role, permissions FROM workspace_members WHERE workspace_id = ? AND user_id = ?').get(workspaceId, userId);
+  if (!m) return false;
+  return !!effectivePermissions(workspaceId, m.role || 'user', m.permissions).view_all_leads;
+}
 function broadcastToWorkspace(workspaceId, type, data) {
-  for (const userId of workspaceMemberIds(workspaceId)) broadcastToUser(userId, type, data);
+  const lead = frameLead(type, data);
+  for (const userId of workspaceMemberIds(workspaceId)) {
+    // Only frames about a lead (or notifications) need the permission lookup —
+    // progress ticks and the like go straight through.
+    if ((lead || type === 'notification') && !memberSeesAllLeads(workspaceId, userId)) {
+      if (lead && lead.assigned_to !== userId) continue;
+      // Workspace-wide notifications that are not about a lead they own (payments,
+      // bookings, store orders…) name customers too; they are for full-access roles.
+      if (!lead && type === 'notification') continue;
+    }
+    broadcastToUser(userId, type, data);
+  }
   // Chat bubbles (PROP-007): an inbound customer message also becomes a push for
   // members who have WappFlow closed. Never allowed to affect the live frame.
   if (chatBubblesApi) { try { chatBubblesApi.onBroadcast(workspaceId, type, data); } catch {} }
@@ -2709,11 +2763,13 @@ app.delete('/api/leads/:id', auth, requirePerm('delete_lead'), (req, res) => {
 
 app.post('/api/leads/:id/restore', auth, (req, res) => {
   try {
+    // Only a lead this member may see (getScopedLead covers binned leads too).
+    if (!getScopedLead(req, req.params.id)) return res.status(404).json({ error: 'Lead not found' });
     const r = db.prepare(`UPDATE leads SET is_deleted = 0, deleted_at = NULL WHERE id = ? AND workspace_id = ?`).run(req.params.id, req.workspaceId);
     // Was read back by id alone — another workspace's lead came back in full and
     // was broadcast into the caller's workspace.
     if (!r.changes) return res.status(404).json({ error: 'Lead not found' });
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND workspace_id = ?').get(req.params.id, req.workspaceId);
+    const lead = getScopedLead(req, req.params.id);
     // Delete broadcast lead_deleted; restore said nothing, so a restored lead
     // stayed invisible on every other open session until a manual refetch.
     if (lead) broadcastToWorkspace(req.workspaceId, 'lead_restored', { lead });
@@ -3004,8 +3060,10 @@ function parseInvoice(inv) {
 
 app.get('/api/invoices', auth, (req, res) => {
   try {
-    const sql = 'SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL) ORDER BY created_at DESC';
-    const params = [req.workspaceId, req.workspaceOwnerId];
+    // A member limited to their own leads sees only those leads' invoices.
+    const own = req.canViewAllLeads ? '' : ' AND lead_id IN (SELECT id FROM leads WHERE assigned_to = ?)';
+    const sql = `SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?)) AND (invoices.is_deleted = 0 OR invoices.is_deleted IS NULL)${own} ORDER BY created_at DESC`;
+    const params = req.canViewAllLeads ? [req.workspaceId, req.workspaceOwnerId] : [req.workspaceId, req.workspaceOwnerId, req.userId];
     const page = pagination.pageParams(req);
     if (!page) return res.json({ invoices: db.prepare(sql).all(...params).map(parseInvoice) });
     const p = pagination.paginate(db, { sql, countSql: pagination.toCountSql(sql), params, page });
@@ -3020,7 +3078,7 @@ app.get('/api/invoices/bin', auth, (req, res) => {
     const invoices = db.prepare(
       `SELECT * FROM invoices WHERE (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))
        AND is_deleted = 1 ORDER BY deleted_at DESC`
-    ).all(req.workspaceId, req.workspaceOwnerId).map(parseInvoice);
+    ).all(req.workspaceId, req.workspaceOwnerId).filter((i) => req.canViewAllLeads || (i.lead_id && getScopedLead(req, i.lead_id))).map(parseInvoice);
     res.json({ invoices });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3041,7 +3099,7 @@ app.post('/api/invoices/:id/restore', auth, requirePerm('manage_invoices'), (req
 app.get('/api/invoices/:id', auth, (req, res) => {
   try {
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND (workspace_id = ? OR (workspace_id IS NULL AND user_id = ?))').get(req.params.id, req.workspaceId, req.workspaceOwnerId);
-    if (!invoice) return res.status(404).json({ error: 'Not found' });
+    if (!invoice || (!req.canViewAllLeads && !(invoice.lead_id && getScopedLead(req, invoice.lead_id)))) return res.status(404).json({ error: 'Not found' });
     res.json({ invoice: parseInvoice(invoice) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3777,7 +3835,14 @@ app.post('/api/push/test', auth, async (req, res) => {
 // GET /api/notifications — recent feed + unread count for the current viewer
 app.get('/api/notifications', auth, (req, res) => {
   try {
-    const rows = db.prepare(`SELECT * FROM notifications WHERE workspace_id = ? AND (user_id IS NULL OR user_id = ?) ORDER BY created_at DESC LIMIT 60`).all(req.workspaceId, req.userId);
+    let rows = db.prepare(`SELECT * FROM notifications WHERE workspace_id = ? AND (user_id IS NULL OR user_id = ?) ORDER BY created_at DESC LIMIT 60`).all(req.workspaceId, req.userId);
+    // Same rule as the live fan-out: a member limited to their own leads gets their
+    // own notifications, plus workspace ones about leads assigned to them.
+    if (!req.canViewAllLeads) rows = rows.filter((r) => {
+      if (r.user_id === req.userId) return true;
+      const m = LEAD_URL.exec(String(r.url || ''));
+      return !!(m && getScopedLead(req, m[1]));
+    });
     const unread = rows.filter(r => !r.is_read).length;
     res.json({ notifications: rows, unread });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4170,9 +4235,15 @@ app.put('/api/workspace/members/:id', auth, (req, res) => {
     if (!member) return res.status(404).json({ error: 'Member not found' });
     if (member.role === 'super_admin' && req.userRole !== 'super_admin') return res.status(403).json({ error: 'Cannot modify super admin' });
     if (role === 'super_admin' && req.userRole !== 'super_admin') return res.status(403).json({ error: 'Cannot assign super admin' });
+    if (role !== undefined && !['super_admin', 'admin', 'manager', 'user'].includes(role)) return res.status(400).json({ error: 'Unknown role.' });
+    // Nobody edits their own role or permissions — an owner demoting themselves
+    // would leave the workspace with no owner; anyone else would be self-granting.
+    if (member.user_id === req.userId) return res.status(400).json({ error: 'You can’t change your own role. Ask another admin.' });
+    const cleanPerms = sanitizePermissions(permissions);
+    if (permissions !== undefined && permissions !== null && !cleanPerms) return res.status(400).json({ error: 'Permissions must be on/off switches.' });
 
     db.prepare('UPDATE workspace_members SET role = ?, permissions = ? WHERE id = ?')
-      .run(role || member.role, permissions ? JSON.stringify(permissions) : member.permissions, req.params.id);
+      .run(role || member.role, cleanPerms ? JSON.stringify(cleanPerms) : member.permissions, req.params.id);
     res.json({ member: db.prepare('SELECT * FROM workspace_members WHERE id = ?').get(req.params.id) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4199,7 +4270,8 @@ app.delete('/api/workspace/members/:id', auth, (req, res) => {
     });
     // Reset user's workspace to null if they're removed
     if (member.user_id) {
-      db.prepare('UPDATE users SET workspace_id = NULL WHERE id = ?').run(member.user_id);
+      // …and end their sessions now: a removed member's open tabs kept working.
+      db.prepare('UPDATE users SET workspace_id = NULL, token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(member.user_id);
     }
     res.json({ message: 'Member removed' });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4223,10 +4295,13 @@ app.put('/api/workspace/role-permissions', auth, (req, res) => {
     if (req.userRole !== 'super_admin') return res.status(403).json({ error: 'Only workspace owner can modify role permissions' });
     const { role, permissions } = req.body;
     if (!role || !permissions) return res.status(400).json({ error: 'role and permissions required' });
+    if (!['admin', 'manager', 'user'].includes(role)) return res.status(400).json({ error: 'Unknown role.' });
+    const cleanRolePerms = sanitizePermissions(permissions);
+    if (!cleanRolePerms) return res.status(400).json({ error: 'Permissions must be on/off switches.' });
     db.prepare(`
       INSERT INTO workspace_role_permissions (id, workspace_id, role, permissions) VALUES (?, ?, ?, ?)
       ON CONFLICT(workspace_id, role) DO UPDATE SET permissions = excluded.permissions
-    `).run(generateId(), req.workspaceId, role, JSON.stringify(permissions));
+    `).run(generateId(), req.workspaceId, role, JSON.stringify(cleanRolePerms));
     res.json({ message: 'Permissions updated' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4236,7 +4311,7 @@ app.put('/api/workspace/role-permissions', auth, (req, res) => {
 // ════════════════════════════════════════════════════════════
 
 // GET /api/settings/email-smtp
-app.get('/api/settings/email-smtp', auth, (req, res) => {
+app.get('/api/settings/email-smtp', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     let row = db.prepare('SELECT * FROM email_smtp_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     if (!row) row = { smtp_host: '', smtp_port: 587, smtp_secure: 0, smtp_user: '', smtp_pass: '', from_name: '', from_email: '' };
@@ -4289,7 +4364,7 @@ app.post('/api/settings/email-smtp/test', auth, async (req, res) => {
 //  EMAIL IMAP SETTINGS (RECEIVING)
 // ════════════════════════════════════════════════════════════
 
-app.get('/api/settings/email-imap', auth, (req, res) => {
+app.get('/api/settings/email-imap', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     let row = db.prepare('SELECT * FROM email_imap_settings WHERE user_id = ?').get(req.workspaceOwnerId);
     if (!row) row = { imap_host: '', imap_port: 993, imap_secure: 1, imap_user: '', imap_pass: '', is_enabled: 0 };
@@ -4400,7 +4475,7 @@ const { simpleParser } = require('mailparser');
 let triggerEmailPoll = null; // Set by startEmailPoller; used for manual poll endpoint
 
 // POST /api/settings/email-imap/poll-now — immediately run IMAP poll
-app.post('/api/settings/email-imap/poll-now', auth, async (req, res) => {
+app.post('/api/settings/email-imap/poll-now', auth, requirePerm('manage_settings'), async (req, res) => {
   try {
     if (typeof triggerEmailPoll === 'function') {
       await triggerEmailPoll(req.workspaceOwnerId);
@@ -5077,7 +5152,7 @@ const redactCapabilityUrls = (text) =>
   });
 
 // POST /api/memories — manually add a memory
-app.post('/api/memories', auth, (req, res) => {
+app.post('/api/memories', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { memory_type, key, value, confidence } = req.body;
     if (!key || !value) return res.status(400).json({ error: 'key and value required' });
@@ -5091,7 +5166,7 @@ app.post('/api/memories', auth, (req, res) => {
 });
 
 // PUT /api/memories/:id — update a memory
-app.put('/api/memories/:id', auth, (req, res) => {
+app.put('/api/memories/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { memory_type, key, value, confidence } = req.body;
     db.prepare(`
@@ -5105,7 +5180,7 @@ app.put('/api/memories/:id', auth, (req, res) => {
 });
 
 // DELETE /api/memories/:id
-app.delete('/api/memories/:id', auth, (req, res) => {
+app.delete('/api/memories/:id', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const r = db.prepare('DELETE FROM ai_memories WHERE id = ? AND workspace_id = ?').run(req.params.id, req.workspaceId);
     if (!r.changes) return res.status(404).json({ error: 'Memory not found' }); res.json({ message: 'Deleted' });
@@ -6658,23 +6733,31 @@ app.delete('/api/lead-pins/:leadId', auth, (req, res) => {
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 
 // Helpers --------------------------------------------------------------------
+// The Google refresh token is a standing key to the studio's calendar. It is
+// sealed at rest like the mail passwords, so a copied database file or backup
+// does not hand it over; callers only ever see the plain value.
+const SEALED_INTEGRATION_COLS = ['google_calendar_refresh_token'];
 function readIntegrations(workspaceId) {
-  return db.prepare('SELECT * FROM workspace_integrations WHERE workspace_id = ?').get(workspaceId) || null;
+  const row = db.prepare('SELECT * FROM workspace_integrations WHERE workspace_id = ?').get(workspaceId);
+  if (!row) return null;
+  for (const c of SEALED_INTEGRATION_COLS) if (row[c]) row[c] = mailSec.unsealSecret(row[c]) || null;
+  return row;
 }
 
 function upsertIntegrations(workspaceId, patch) {
+  const val = (c) => (SEALED_INTEGRATION_COLS.includes(c) && patch[c]) ? mailSec.sealSecret(patch[c]) : patch[c];
   const existing = readIntegrations(workspaceId);
   if (existing) {
     const cols = Object.keys(patch);
     if (!cols.length) return existing;
     const sets = cols.map(c => `${c} = ?`).join(', ');
     db.prepare(`UPDATE workspace_integrations SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ?`)
-      .run(...cols.map(c => patch[c]), workspaceId);
+      .run(...cols.map(val), workspaceId);
   } else {
     const cols = ['workspace_id', ...Object.keys(patch)];
     const placeholders = cols.map(() => '?').join(',');
     db.prepare(`INSERT INTO workspace_integrations (${cols.join(',')}) VALUES (${placeholders})`)
-      .run(workspaceId, ...Object.keys(patch).map(c => patch[c]));
+      .run(workspaceId, ...Object.keys(patch).map(val));
   }
   return readIntegrations(workspaceId);
 }
@@ -6844,7 +6927,8 @@ app.get('/api/integrations/status', auth, (req, res) => {
 });
 
 // PUT /api/integrations/calendly — save / update Calendly URL
-app.put('/api/integrations/calendly', auth, (req, res) => {
+// manage_settings: a member could point the studio's booking link at their own Calendly.
+app.put('/api/integrations/calendly', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     const { url } = req.body || {};
     if (url && !/^https?:\/\/(?:www\.)?calendly\.com\//i.test(String(url).trim())) {
@@ -6858,7 +6942,7 @@ app.put('/api/integrations/calendly', auth, (req, res) => {
 });
 
 // POST /api/integrations/google-calendar/connect — exchange auth code for refresh token
-app.post('/api/integrations/google-calendar/connect', auth, async (req, res) => {
+app.post('/api/integrations/google-calendar/connect', auth, requirePerm('manage_settings'), async (req, res) => {
   try {
     const { code } = req.body || {};
     if (!code) return res.status(400).json({ error: 'Authorization code required' });
@@ -6893,7 +6977,7 @@ app.post('/api/integrations/google-calendar/connect', auth, async (req, res) => 
 });
 
 // DELETE /api/integrations/google-calendar — disconnect
-app.delete('/api/integrations/google-calendar', auth, (req, res) => {
+app.delete('/api/integrations/google-calendar', auth, requirePerm('manage_settings'), (req, res) => {
   try {
     upsertIntegrations(req.workspaceId, {
       google_calendar_refresh_token: null,

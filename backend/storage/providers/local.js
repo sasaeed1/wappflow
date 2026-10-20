@@ -5,8 +5,13 @@
 // the existing /uploads static route. Never removed — R2 is purely additive.
 
 module.exports = function localProvider({ uploadsDir, path = require('path'), fs = require('fs') } = {}) {
-  const root = uploadsDir || path.join(process.cwd(), 'uploads');
-  const abs = (key) => path.join(root, String(key));
+  const root = path.resolve(uploadsDir || path.join(process.cwd(), 'uploads'));
+  // Every key resolves inside the uploads root or is refused.
+  const abs = (key) => {
+    const p = path.resolve(root, String(key));
+    if (!p.startsWith(root + path.sep)) throw new Error('Invalid storage key');
+    return p;
+  };
 
   return {
     name: 'local',

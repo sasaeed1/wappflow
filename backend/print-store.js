@@ -10,6 +10,15 @@
 const crypto = require('crypto');
 
 const { publicBrand, journeyLinks } = require('./public-brand');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+// A public order creates a lead, an invoice and a payment link. Without a limit of
+// its own a script could flood a studio with them; 15 per shop per IP per 10 min.
+const orderLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: Number(process.env.RATE_LIMIT_ORDER) || 15, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: (req) => `${req.params.token}:${ipKeyGenerator(req.ip || '')}`,
+  message: { error: 'Too many orders from this connection — please try again in a few minutes.' },
+});
+const cap = (v, n) => (v == null || typeof v === 'object' ? '' : String(v).trim().slice(0, n));
 
 module.exports = function mountPrintStore(app, db, deps = {}) {
   const {
@@ -150,15 +159,19 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/store/public/:token', async (req, res) => {
+  app.post('/api/store/public/:token', orderLimiter, async (req, res) => {
     try {
       const g = db.prepare('SELECT * FROM ms_galleries WHERE share_token = ?').get(req.params.token);
       if (!g) return res.status(404).json({ error: 'Not available' });
       // The shop hangs off the gallery's token, so it closes when the gallery expires.
       if (isGalleryExpired(g)) return res.status(410).json({ error: 'This gallery has expired.', expired: true });
       const ws = g.workspace_id; const { sym } = brandSym(ws);
-      const { items, name, phone, email, note } = req.body || {};
+      const b = req.body || {};
+      const items = b.items;
+      // Strangers' input: lengths capped, the cart bounded.
+      const name = cap(b.name, 120), phone = cap(b.phone, 40) || null, email = cap(b.email, 254) || null, note = cap(b.note, 2000) || null;
       if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Your cart is empty' });
+      if (items.length > 50) return res.status(400).json({ error: 'That’s a lot of items — please split it into smaller orders.' });
       if (!name || !(phone || email)) return res.status(400).json({ error: 'Name and a phone or email are required' });
       // price server-side from the catalog
       // Which photograph each line is for. An order that says "2× Fine art print
@@ -174,7 +187,7 @@ module.exports = function mountPrintStore(app, db, deps = {}) {
         const p = db.prepare('SELECT * FROM ms_print_products WHERE id = ? AND workspace_id = ?').get(it.product_id, ws);
         if (!p) continue;
         const opts = J(p.options, []); const opt = opts.find(o => o.label === it.option) || opts[0] || { label: '', price: 0 };
-        const qty = Math.max(1, Number(it.qty) || 1); const price = Number(opt.price) || 0;
+        const qty = Math.min(100, Math.max(1, Math.floor(Number(it.qty) || 1))); const price = Number(opt.price) || 0;
         const assetId = it.asset_id && inGallery.has(String(it.asset_id)) ? String(it.asset_id) : null;
         total += price * qty;
         lines.push({ name: p.name, option: opt.label, qty, price, ...(assetId ? { asset_id: assetId } : {}) });

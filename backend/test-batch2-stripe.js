@@ -99,7 +99,16 @@ check('duplicate events return 200 (Stripe stops retrying)', () =>
   assert(/duplicate:\s*true/.test(wh)));
 check('settlement path unchanged (client_reference_id → markPaid)', () => {
   assert(/sess && sess\.client_reference_id/.test(wh));
-  assert(/p\.status !== 'paid'\) markPaid\(p, sess\.id\)/.test(wh));
+  assert(/p\.status !== 'paid' && [^\n]*\) markPaid\(p, sess\.id\)/.test(wh));
+});
+// Only real money settles: a delayed method completes checkout with payment_status
+// 'unpaid', and a session for another payment or a smaller amount must not count.
+check('only a paid session for this payment, for the full amount, settles it', () => {
+  const line = (wh.match(/if \(p && p\.status !== 'paid'[^\n]*markPaid\(p, sess\.id\)/) || [''])[0];
+  assert(/sess\.payment_status === 'paid'/.test(line), 'payment_status is not checked');
+  assert(/sameSession/.test(line) && /p\.provider_ref === sess\.id/.test(wh), 'the session is not matched to the payment');
+  assert(/fullAmount/.test(line) && /Number\(sess\.amount_total\) >= expected/.test(wh), 'the amount is not checked');
+  assert(/checkout\.session\.async_payment_succeeded/.test(wh), 'delayed payments never settle');
 });
 check('boot warning when Stripe live but webhook secret missing', () =>
   assert(/STRIPE_SECRET_KEY set\) but STRIPE_WEBHOOK_SECRET is missing/.test(pay)));

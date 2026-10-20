@@ -14,6 +14,18 @@
 
 const PROVIDER = (process.env.STORAGE_PROVIDER || 'local').toLowerCase();
 
+// A storage key is a relative path under the uploads root that the SERVER chose.
+// Anything that could step outside that root ("..", an absolute path, a backslash,
+// a NUL) is refused wherever a key is used.
+function isSafeKey(key) {
+  const k = typeof key === 'string' ? key : '';
+  if (!k || k.length > 512 || k.includes('\0') || k.includes('\\') || k.startsWith('/')) return false;
+  return k.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..');
+}
+// Gallery ZIPs are downloaded only through their signed, expiring link
+// (/api/media/exports/:id/file); no public path may hand one out.
+const SIGNED_ONLY_KEY = /^media\/exports\/[^/]+\.zip$/i;
+
 module.exports = function createStorage({ uploadsDir, path = require('path'), fs = require('fs') } = {}) {
   let active;
   if (PROVIDER === 'r2') {
@@ -29,6 +41,7 @@ module.exports = function createStorage({ uploadsDir, path = require('path'), fs
   }
 
   return {
+    isSafeKey,
     provider: active.name,                 // 'local' | 'r2' — the active default
     isRemote: active.name === 'r2',
 
@@ -50,6 +63,9 @@ module.exports = function createStorage({ uploadsDir, path = require('path'), fs
   };
 };
 
+module.exports.isSafeKey = isSafeKey;
+module.exports.SIGNED_ONLY_KEY = SIGNED_ONLY_KEY;
+
 // Provider-agnostic file route: getPublicUrl() points private-R2 objects here, and
 // this 302-redirects to a short-lived presigned URL (or serves the local file). So a
 // private bucket needs no public CDN, and the same URL works whatever the provider.
@@ -57,7 +73,10 @@ module.exports.mountRoutes = function mountStorageRoutes(app, storage) {
   const fs = require('fs');
   app.get('/api/storage/file/:key', async (req, res) => {
     try {
-      const key = decodeURIComponent(req.params.key);
+      // The router has already decoded the key; decode nothing more. Only safe
+      // media keys are public, and never a signed-only ZIP.
+      const key = String(req.params.key || '');
+      if (!isSafeKey(key) || !key.startsWith('media/') || SIGNED_ONLY_KEY.test(key)) return res.status(404).json({ error: 'Not found' });
       if (storage.isRemote) {
         const url = await storage.generateSignedDownloadUrl(key);
         if (url) return res.redirect(302, url);

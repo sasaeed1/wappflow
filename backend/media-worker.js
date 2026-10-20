@@ -535,7 +535,9 @@ module.exports = function createMediaWorker(db, deps = {}) {
         count++;
       }
 
-      const outRel = `media/exports/${exp.id}.zip`;
+      // Random tail: the export id is shown to gallery visitors, and on a public
+      // bucket an id-only name would be a permanent download link.
+      const outRel = `media/exports/${exp.id}-${require('crypto').randomBytes(12).toString('hex')}.zip`;
       let size;
       if (storage.isRemote) {
         const buf = zip.toBuffer();
