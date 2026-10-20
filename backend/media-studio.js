@@ -1,5 +1,6 @@
 'use strict';
 require('./safe-jimp'); // fence Jimp.read before any use (see safe-jimp.js)
+const publicLimits = require('./public-limits'); // per-link + per-IP limits for public routes
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -2969,7 +2970,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/media/portal/:token/favorite', (req, res) => {
+  app.post('/api/media/portal/:token/favorite', publicLimits.interact('portal'), (req, res) => {
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
@@ -2988,7 +2989,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
   });
 
   // Save the client's favourites as a named collection (gallery CX 2.0)
-  app.post('/api/media/portal/:token/collection', (req, res) => {
+  app.post('/api/media/portal/:token/collection', publicLimits.interact('portal'), (req, res) => {
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
@@ -2997,6 +2998,9 @@ Only suggest actions that make sense for the question. If none make sense, retur
       const name = String(req.body.name || 'My selection').slice(0, 120);
       let assetIds = Array.isArray(req.body.asset_ids) && req.body.asset_ids.length ? req.body.asset_ids
         : db.prepare('SELECT asset_id FROM ms_client_favorites WHERE gallery_id = ? AND contact_identifier = ?').all(g.id, who).map(r => r.asset_id);
+      // Only photos in THIS gallery (any id was stored as sent), and a sane number.
+      const inGallery = new Set(db.prepare('SELECT asset_id FROM ms_gallery_assets WHERE gallery_id = ?').all(g.id).map(r => r.asset_id));
+      assetIds = [...new Set(assetIds.map(String))].filter((a) => inGallery.has(a)).slice(0, 5000);
       if (!assetIds.length) return res.status(400).json({ error: 'Favourite some photos first.' });
       const id = generateId();
       db.prepare('INSERT INTO ms_fav_collections (id, gallery_id, workspace_id, name, contact_identifier, asset_ids) VALUES (?,?,?,?,?,?)')
@@ -3015,7 +3019,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/media/portal/:token/comment', (req, res) => {
+  app.post('/api/media/portal/:token/comment', publicLimits.interact('portal'), (req, res) => {
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
@@ -3032,7 +3036,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
   });
 
   // Client "Download all" — respects the gallery's download policy.
-  app.post('/api/media/portal/:token/export', (req, res) => {
+  app.post('/api/media/portal/:token/export', publicLimits.heavy('portal-export'), (req, res) => {
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
@@ -3042,7 +3046,12 @@ Only suggest actions that make sense for the question. If none make sense, retur
       if (policy === 'none') return res.status(403).json({ error: 'Downloads are disabled for this gallery' });
       const count = db.prepare('SELECT COUNT(*) n FROM ms_gallery_assets WHERE gallery_id = ?').get(g.id).n;
       if (count === 0) return res.status(400).json({ error: 'Gallery has no photos' });
-      const id = startGalleryExport(g, policy === 'high-res' ? 'original' : 'web', null);
+      const variant = policy === 'high-res' ? 'original' : 'web';
+      // A ZIP of the whole gallery is the heaviest thing a link can trigger. Hand back
+      // one made in the last hour instead of building another per click.
+      const recent = db.prepare("SELECT id, status FROM ms_exports WHERE gallery_id = ? AND variant = ? AND status IN ('pending','ready') AND created_by IS NULL AND created_at > datetime('now','-60 minutes') ORDER BY created_at DESC LIMIT 1").get(g.id, variant);
+      if (recent) return res.status(202).json({ export_id: recent.id, status: recent.status, reused: true });
+      const id = startGalleryExport(g, variant, null);
       res.status(202).json({ export_id: id, status: 'pending' });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -3058,7 +3067,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
   });
 
   // Client toggles a selection within an active proofing set.
-  app.post('/api/media/portal/:token/proofing/:setId/select', (req, res) => {
+  app.post('/api/media/portal/:token/proofing/:setId/select', publicLimits.interact('portal'), (req, res) => {
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });
@@ -3087,7 +3096,7 @@ Only suggest actions that make sense for the question. If none make sense, retur
   });
 
   // Client submits the set → photographer is notified.
-  app.post('/api/media/portal/:token/proofing/:setId/submit', (req, res) => {
+  app.post('/api/media/portal/:token/proofing/:setId/submit', publicLimits.interact('portal'), (req, res) => {
     try {
       const g = loadPublishedGallery(req.params.token);
       if (!g) return res.status(404).json({ error: 'Gallery not found' });

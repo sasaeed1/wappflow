@@ -121,7 +121,10 @@ check('webhook lead events use the keyed-by-user broadcaster, not a raw write', 
 check('workspace member lookup is cached, with an explicit invalidation seam', () => {
   assert(/const memberCache = new Map\(\)/.test(S), 'no member cache — a SELECT per SSE frame, per ffmpeg tick');
   assert(/function invalidateWorkspaceMembers\(/.test(S), 'no invalidation seam');
-  assert(/for \(const userId of workspaceMemberIds\(workspaceId\)\) broadcastToUser/.test(S), 'broadcast does not use the cache');
+  assert(/function broadcastToWorkspace[\s\S]{0,200}for \(const userId of workspaceMemberIds\(workspaceId\)\)[\s\S]{0,800}broadcastToUser\(userId/.test(S), 'broadcast does not use the cache');
+  // Members without view_all_leads only get frames about leads assigned to them,
+  // and the permission lookup is skipped for frames that are not about a lead.
+  assert(/\(lead \|\| type === 'notification'\) && !memberSeesAllLeads\(workspaceId, userId\)/.test(S), 'live frames are not filtered by lead visibility');
   // The seam is worthless unless the mutations actually call it: join, invite-accept, remove.
   // Two since the invite fix: an existing account is no longer joined at invite
   // time (that moved accounts between studios without consent), so membership only

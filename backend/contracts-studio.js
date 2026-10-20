@@ -10,6 +10,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 const crypto = require('crypto');
+const publicLimits = require('./public-limits'); // per-link + per-IP limits for public routes
 const pagination = require('./pagination');
 const csFields = require('./contract-fields');
 let ai = null; try { ai = require('./ai-engine'); } catch { /* AI optional */ }
@@ -1047,7 +1048,7 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/cs/public/:token/sign', async (req, res) => {
+  app.post('/api/cs/public/:token/sign', publicLimits.create('cs-sign'), async (req, res) => {
     try {
       const d = loadByToken(req.params.token);
       if (!d || d.status === 'voided') return res.status(404).json({ error: 'Not available' });
@@ -1113,7 +1114,7 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/cs/public/:token/decline', (req, res) => {
+  app.post('/api/cs/public/:token/decline', publicLimits.create('cs-decline'), (req, res) => {
     try {
       const d = loadByToken(req.params.token);
       if (!d) return res.status(404).json({ error: 'Not found' });
@@ -1127,7 +1128,7 @@ Brief: ${instruction || 'A professional agreement for a creative studio.'}`;
   });
 
   // Client Q&A — grounded, plain-language answers about the document.
-  app.post('/api/cs/public/:token/ask', async (req, res) => {
+  app.post('/api/cs/public/:token/ask', publicLimits.ai('cs-ask'), async (req, res) => {
     if (!ai || !ai.callLLM) return res.status(503).json({ error: 'Live answers are unavailable right now.' });
     try {
       const d = loadByToken(req.params.token);
@@ -1149,7 +1150,7 @@ QUESTION: ${q}`;
   });
 
   // Lightweight analytics beacon — time-on-page & block drop-off.
-  app.post('/api/cs/public/:token/track', (req, res) => {
+  app.post('/api/cs/public/:token/track', publicLimits.interact('cs-track'), (req, res) => {
     try {
       const d = loadByToken(req.params.token);
       if (!d) return res.status(204).end();

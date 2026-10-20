@@ -9,6 +9,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 const crypto = require('crypto');
+const publicLimits = require('./public-limits'); // per-link + per-IP limits for public routes
 const availability = require('./availability');   // shared busy-calendar (bookings + meetings)
 
 const { publicBrand, journeyLinks } = require('./public-brand');
@@ -375,12 +376,18 @@ module.exports = function mountBooking(app, db, deps = {}) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/booking/public/:slug', async (req, res) => {
+  app.post('/api/booking/public/:slug', publicLimits.create('booking'), async (req, res) => {
     try {
       const row = db.prepare('SELECT * FROM booking_settings WHERE slug = ?').get(req.params.slug);
       if (!row) return res.status(404).json({ error: 'Not available' });
       const ws = row.workspace_id; const cfg = cfgOf(row);
-      const { service, start_at, name, phone, email, notes, intake } = req.body || {};
+      const B = req.body || {};
+      // A stranger's input lands in the studio's CRM and calendar: lengths capped.
+      const cap = (v, n) => (v == null || typeof v === 'object' ? '' : String(v).trim().slice(0, n));
+      const service = cap(B.service, 120), start_at = cap(B.start_at, 40), name = cap(B.name, 120);
+      const phone = cap(B.phone, 40), email = cap(B.email, 254), notes = cap(B.notes, 2000);
+      const intake = B.intake && typeof B.intake === 'object' && !Array.isArray(B.intake)
+        ? Object.fromEntries(Object.entries(B.intake).slice(0, 30).map(([k, v]) => [cap(k, 200), cap(v, 1000)])) : undefined;
       if (!start_at) return res.status(400).json({ error: 'Pick a time' });
       if (!name || !(phone || email)) return res.status(400).json({ error: 'Name and a phone or email are required' });
       // required intake questions
@@ -463,7 +470,7 @@ module.exports = function mountBooking(app, db, deps = {}) {
       res.json({ brand: brand(b.workspace_id), booking: { service: b.service, start_at: b.start_at, name: b.name, status: b.status }, slots: computeSlots(b.workspace_id, cfg, b.duration_min, b.id), timezone: cfg.timezone || '' });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  app.post('/api/booking/manage/:token/reschedule', async (req, res) => {
+  app.post('/api/booking/manage/:token/reschedule', publicLimits.create('booking-manage'), async (req, res) => {
     try {
       const b = db.prepare('SELECT * FROM bookings WHERE token = ?').get(req.params.token);
       if (!b) return res.status(404).json({ error: 'Not found' });
@@ -500,7 +507,7 @@ module.exports = function mountBooking(app, db, deps = {}) {
       res.json({ ok: true, start_at });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  app.post('/api/booking/manage/:token/cancel', async (req, res) => {
+  app.post('/api/booking/manage/:token/cancel', publicLimits.create('booking-manage'), async (req, res) => {
     try {
       const b = db.prepare('SELECT * FROM bookings WHERE token = ?').get(req.params.token);
       if (!b) return res.status(404).json({ error: 'Not found' });

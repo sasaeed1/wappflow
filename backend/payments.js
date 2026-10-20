@@ -295,7 +295,9 @@ module.exports = function mountPayments(app, db, deps = {}) {
     catch { return res.status(400).json({ error: 'invalid payload' }); }
 
     try {
-      if (ev.type === 'checkout.session.completed') {
+      // async_payment_succeeded: the later "money actually arrived" event for bank
+      // debits and similar, whose checkout.session.completed says payment_status 'unpaid'.
+      if (ev.type === 'checkout.session.completed' || ev.type === 'checkout.session.async_payment_succeeded') {
         // Idempotency: exactly-once per Stripe event id via webhook_events UNIQUE(platform,event_id).
         // Recorded ONLY for handled event types so a future handler for other types isn't
         // pre-marked as processed. id is a generated PK, distinct from the Stripe event id.
@@ -309,7 +311,14 @@ module.exports = function mountPayments(app, db, deps = {}) {
         const sess = ev.data && ev.data.object;
         const pid = sess && sess.client_reference_id;
         const p = pid ? db.prepare('SELECT * FROM payments WHERE id = ?').get(pid) : null;
-        if (p && p.status !== 'paid') markPaid(p, sess.id);
+        // Only real money settles a payment: a completed checkout for a delayed method
+        // arrives with payment_status 'unpaid', and was being marked paid anyway. The
+        // session must also be the one created for this payment, for the full amount.
+        const expected = p ? Math.round((Number(p.amount) || 0) * 100) : 0;
+        const sameSession = p && (!p.provider_ref || p.provider_ref === sess.id);
+        const fullAmount = sess && Number(sess.amount_total) >= expected;
+        if (p && p.status !== 'paid' && sess.payment_status === 'paid' && sameSession && fullAmount) markPaid(p, sess.id);
+        else if (p && p.status !== 'paid') console.warn(`stripe webhook: not settling ${p.id} (status=${sess && sess.payment_status}, session match=${!!sameSession}, amount ok=${!!fullAmount})`);
       }
       res.json({ received: true });
     } catch (e) { res.status(200).json({ received: true, note: e.message }); }

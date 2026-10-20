@@ -46,12 +46,33 @@ module.exports = function mountSync(app, db, deps = {}) {
         bookings:  deltaRows('bookings', since, ws),
       };
 
+      // Paging is decided on the unfiltered rows: the cursor moves past all of them.
+      const capped = Object.entries(changes).filter(([, v]) => v.length >= PAGE_CAP).map(([k]) => k);
+
+      // A member limited to their own leads (view_all_leads off) synced EVERY lead
+      // and everything hanging off them. Keep only what ties back to a lead they
+      // can see: leads assigned to them, and rows whose lead (directly, or through
+      // their project / asset) is one of those.
+      if (!req.canViewAllLeads) {
+        const leadIds = new Set(db.prepare('SELECT id FROM leads WHERE workspace_id = ? AND assigned_to = ?').all(ws, req.userId).map((r) => r.id));
+        const projectIds = new Set(db.prepare('SELECT id, lead_id FROM ms_projects WHERE workspace_id = ?').all(ws).filter((p) => leadIds.has(p.lead_id)).map((p) => p.id));
+        let assetIds = new Set();
+        try { assetIds = new Set(db.prepare('SELECT id, project_id FROM ms_assets WHERE workspace_id = ?').all(ws).filter((a) => projectIds.has(a.project_id)).map((a) => a.id)); } catch {}
+        changes.leads = changes.leads.filter((l) => leadIds.has(l.id));
+        changes.projects = changes.projects.filter((p) => projectIds.has(p.id));
+        changes.assets = changes.assets.filter((a) => projectIds.has(a.project_id));
+        changes.cull = changes.cull.filter((c) => assetIds.has(c.asset_id));
+        changes.albums = changes.albums.filter((a) => projectIds.has(a.project_id));
+        changes.galleries = changes.galleries.filter((g) => projectIds.has(g.project_id));
+        changes.contracts = changes.contracts.filter((c) => leadIds.has(c.lead_id));
+        changes.bookings = changes.bookings.filter((b) => leadIds.has(b.lead_id));
+      }
+
       let plan = null, brain = [];
       try { plan = db.prepare('SELECT * FROM workspace_plan WHERE workspace_id = ?').get(ws) || null; } catch {}
       try { brain = db.prepare('SELECT key, value, confidence, source, updated_at FROM workspace_brain WHERE workspace_id = ?').all(ws); } catch {}
 
       const counts = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.length]));
-      const capped = Object.entries(counts).filter(([, n]) => n >= PAGE_CAP).map(([k]) => k);
 
       res.json({
         since, now, schema_version: 1,
